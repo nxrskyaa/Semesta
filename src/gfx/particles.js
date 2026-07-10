@@ -1,7 +1,10 @@
-// Partikel kotak pixel: percikan hit, splash air, ledakan slime, kilau level-up.
+// Pixel-cube particles: hit sparks, water splash, slime pops, level-up glitter.
+// Plus juicy combat FX: expanding shockwave rings and pooled light flashes.
 import * as THREE from 'three';
 
-const MAX = 600;
+const MAX = 800;
+const MAX_RINGS = 10;
+const MAX_FLASH = 6;
 
 export function createParticles(scene) {
   const geo = new THREE.BufferGeometry();
@@ -37,7 +40,7 @@ export function createParticles(scene) {
   }
 
   function fountain(pos, colorHex, count = 14) {
-    burst(pos, colorHex, count, 1.6, -1.5, 0.9); // gravitasi negatif: naik (level up)
+    burst(pos, colorHex, count, 1.6, -1.5, 0.9); // negative gravity: rises (level up)
   }
 
   function ring(pos, colorHex, count = 20, radius = 2.6) {
@@ -55,6 +58,45 @@ export function createParticles(scene) {
     }
   }
 
+  // --- shockwave: flat expanding ring mesh that fades out ---
+  const rings = [];
+  const ringGeo = new THREE.RingGeometry(0.72, 1.0, 26);
+  for (let i = 0; i < MAX_RINGS; i++) {
+    const m = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(ringGeo, m);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.visible = false;
+    scene.add(mesh);
+    rings.push({ mesh, m, t: 0, dur: 0, from: 0.3, to: 3 });
+  }
+  let ringCursor = 0;
+
+  function shockwave(pos, colorHex, radius = 3, dur = 0.4) {
+    const r = rings[ringCursor]; ringCursor = (ringCursor + 1) % MAX_RINGS;
+    r.m.color.set(colorHex);
+    r.mesh.position.set(pos.x, pos.y + 0.12, pos.z);
+    r.t = dur; r.dur = dur; r.from = radius * 0.2; r.to = radius;
+    r.mesh.visible = true;
+  }
+
+  // --- flash: pooled point light for casts/explosions ---
+  const flashes = [];
+  for (let i = 0; i < MAX_FLASH; i++) {
+    const L = new THREE.PointLight(0xffffff, 0, 9, 1.6);
+    scene.add(L);
+    flashes.push({ L, t: 0, dur: 0, peak: 0 });
+  }
+  let flashCursor = 0;
+
+  function flash(pos, colorHex, intensity = 6, dur = 0.3) {
+    const f = flashes[flashCursor]; flashCursor = (flashCursor + 1) % MAX_FLASH;
+    f.L.color.set(colorHex);
+    f.L.position.set(pos.x, pos.y + 0.8, pos.z);
+    f.t = dur; f.dur = dur; f.peak = intensity;
+  }
+
   function update(dt) {
     for (let i = 0; i < MAX; i++) {
       const p = pool[i];
@@ -67,7 +109,22 @@ export function createParticles(scene) {
     }
     geo.attributes.position.needsUpdate = true;
     geo.attributes.color.needsUpdate = true;
+
+    for (const r of rings) {
+      if (r.t <= 0) { r.mesh.visible = false; continue; }
+      r.t -= dt;
+      const k = 1 - Math.max(0, r.t / r.dur); // 0..1
+      const s = r.from + (r.to - r.from) * (1 - (1 - k) * (1 - k)); // ease-out
+      r.mesh.scale.setScalar(s);
+      r.m.opacity = 0.75 * (1 - k);
+    }
+
+    for (const f of flashes) {
+      if (f.t <= 0) { f.L.intensity = 0; continue; }
+      f.t -= dt;
+      f.L.intensity = f.peak * Math.max(0, f.t / f.dur);
+    }
   }
 
-  return { burst, fountain, ring, update };
+  return { burst, fountain, ring, shockwave, flash, update };
 }

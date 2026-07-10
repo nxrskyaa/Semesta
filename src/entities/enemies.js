@@ -1,8 +1,10 @@
-// Musuh Semesta — 8 jenis dengan AI berbeda:
+// Semesta enemies — 8 species with distinct AI:
 // melee (slime, nibbit, armorbug, treant, golem), ranged (fungling, wisp), charge (boarling).
+// Visual direction: big glossy pixel eyes & rounded silhouettes — cute-critter
+// (Pokemon/Pokopia) energy, not scary blocks.
 import * as THREE from 'three';
 import { WATER_LEVEL, BLOCK_H } from '../world/terrain.js';
-import { makeSlimeFaceTexture, toTexture } from '../gfx/textures.js';
+import { makeCritterFaceTexture, toTexture } from '../gfx/textures.js';
 import { rollDrops } from '../systems/items.js';
 
 export const ENEMY_TYPES = {
@@ -41,128 +43,170 @@ export const ENEMY_TYPES = {
 };
 
 // ---------------------------------------------------------------------------
-// pembuat mesh per tipe
+// mesh builders
 // ---------------------------------------------------------------------------
-let slimeFaceTex = null;
+const faceTexCache = new Map();
+function critterFace(key, opts) {
+  if (!faceTexCache.has(key)) faceTexCache.set(key, makeCritterFaceTexture(opts));
+  return faceTexCache.get(key);
+}
 
 function lam(color, opts = {}) {
   return new THREE.MeshLambertMaterial({ color: new THREE.Color(color), ...opts });
 }
 
+function facePlane(key, opts, w = 0.6, h = 0.45) {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: critterFace(key, opts), transparent: true }));
+  return mesh;
+}
+
 function buildSlimeMesh() {
-  if (!slimeFaceTex) slimeFaceTex = makeSlimeFaceTexture();
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.65),
-    lam('#63d996', { transparent: true, opacity: 0.78 }));
+    lam('#6de0a0', { transparent: true, opacity: 0.82 }));
   body.position.y = 0.28;
   body.castShadow = true;
-  const inner = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.24, 0.3),
+  // rounded top blob
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.46),
+    lam('#8aeab8', { transparent: true, opacity: 0.8 }));
+  top.position.y = 0.6;
+  const drip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.12),
+    lam('#8aeab8', { transparent: true, opacity: 0.9 }));
+  drip.position.set(0.1, 0.72, 0);
+  const inner = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.28),
     lam('#3aa86b', { transparent: true, opacity: 0.85 }));
-  inner.position.y = 0.22;
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.46),
-    new THREE.MeshBasicMaterial({ map: slimeFaceTex, transparent: true }));
+  inner.position.y = 0.2;
+  const face = facePlane('slime', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 2, mouth: 'open', cheeks: 'rgba(240,130,140,0.75)' }, 0.62, 0.46);
   face.position.set(0, 0.3, 0.34);
-  g.add(body, inner, face);
+  g.add(body, top, drip, inner, face);
   g.userData.body = body;
   return g;
 }
 
 function buildNibbitMesh() {
   const g = new THREE.Group();
-  const feathers = lam('#8fa8ba');
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.42), feathers);
-  body.position.y = 0.3;
+  const feathers = lam('#a8c4d4');
+  const featherLight = lam('#c8dce8');
+  // round chick body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.4, 0.44), feathers);
+  body.position.y = 0.32;
   body.castShadow = true;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.22), feathers);
-  head.position.set(0, 0.52, 0.18);
-  const beak = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.16), lam('#e8a33d'));
-  beak.position.set(0, 0.5, 0.36);
-  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.045),
-    new THREE.MeshBasicMaterial({ color: 0x14161a }));
-  eyeL.position.set(-0.09, 0.55, 0.27);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.09;
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.06), lam('#b8762a'));
-  legs.position.y = 0.08;
-  g.add(body, head, beak, eyeL, eyeR, legs);
+  const belly = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.08), featherLight);
+  belly.position.set(0, 0.26, 0.2);
+  // big head sitting right on the body
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.32, 0.34), feathers);
+  head.position.set(0, 0.6, 0.06);
+  const face = facePlane('nibbit', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, mouth: 'none' }, 0.4, 0.3);
+  face.position.set(0, 0.62, 0.24);
+  const beak = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.14), lam('#f0a83d'));
+  beak.position.set(0, 0.55, 0.3);
+  // tuft feather on top
+  const tuft = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14, 0.07), featherLight);
+  tuft.position.set(0, 0.8, 0.02);
+  tuft.rotation.z = 0.2;
+  // wing nubs
+  const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.28), featherLight);
+  wingL.position.set(-0.25, 0.36, 0);
+  const wingR = wingL.clone(); wingR.position.x = 0.25;
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.06), lam('#e8a33d'));
+  legs.position.y = 0.07;
+  g.add(body, belly, head, face, beak, tuft, wingL, wingR, legs);
   g.userData.body = body;
+  g.userData.wings = [wingL, wingR];
   return g;
 }
 
 function buildArmorbugMesh() {
   const g = new THREE.Group();
-  const shell = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.42, 1.0), lam('#6e5136'));
+  const shell = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.42, 1.0), lam('#5a8a8a'));
   shell.position.y = 0.34;
   shell.castShadow = true;
-  const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.7), lam('#87683f'));
+  const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.7), lam('#78b0a8'));
   ridge.position.y = 0.58;
-  const headM = lam('#544027');
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.26, 0.3), headM);
-  head.position.set(0, 0.26, 0.6);
-  const pincerL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.3), headM);
-  pincerL.position.set(-0.16, 0.22, 0.8);
+  // shell spots
+  for (const [dx, dz] of [[-0.2, -0.2], [0.22, 0.1], [0, 0.32], [-0.15, 0.15]]) {
+    const dot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.1), lam('#c8e0d8'));
+    dot.position.set(dx, 0.56, dz);
+    g.add(dot);
+  }
+  const headM = lam('#8a6a4a');
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.3, 0.3), headM);
+  head.position.set(0, 0.28, 0.6);
+  const face = facePlane('armorbug', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'smile' }, 0.42, 0.3);
+  face.position.set(0, 0.3, 0.76);
+  const pincerL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.24), headM);
+  pincerL.position.set(-0.16, 0.2, 0.8);
   const pincerR = pincerL.clone(); pincerR.position.x = 0.16;
   for (let i = 0; i < 3; i++) {
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.1), headM);
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.09), headM);
     legL.position.set(-0.5, 0.14, -0.25 + i * 0.3);
     const legR = legL.clone(); legR.position.x = 0.5;
     g.add(legL, legR);
   }
-  g.add(shell, ridge, head, pincerL, pincerR);
+  g.add(shell, ridge, head, face, pincerL, pincerR);
   g.userData.body = shell;
   return g;
 }
 
 function buildFunglingMesh() {
   const g = new THREE.Group();
-  const stem = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.45, 0.3), lam('#d8cfa8'));
-  stem.position.y = 0.25;
+  const stem = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.32), lam('#ead8b0'));
+  stem.position.y = 0.24;
   stem.castShadow = true;
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.3, 0.72), lam('#9a5a7a'));
-  cap.position.y = 0.58;
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.28, 0.74), lam('#c86a8a'));
+  cap.position.y = 0.56;
   cap.castShadow = true;
-  const capTop = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.18, 0.44), lam('#c98aa8'));
-  capTop.position.y = 0.78;
-  for (const [dx, dz] of [[-0.2, 0.2], [0.22, -0.1], [0, 0.28]]) {
+  const capTop = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.18, 0.46), lam('#e090ac'));
+  capTop.position.y = 0.76;
+  for (const [dx, dz] of [[-0.2, 0.2], [0.22, -0.1], [0, 0.28], [-0.24, -0.18]]) {
     const dot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.12),
-      new THREE.MeshBasicMaterial({ color: 0xe8dcc8 }));
-    dot.position.set(dx, 0.74, dz);
+      new THREE.MeshBasicMaterial({ color: 0xf5ecd8 }));
+    dot.position.set(dx, 0.72, dz);
     g.add(dot);
   }
-  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.03),
-    new THREE.MeshBasicMaterial({ color: 0x2a1a22 }));
-  eyeL.position.set(-0.08, 0.3, 0.16);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.08;
-  g.add(stem, cap, capTop, eyeL, eyeR);
+  const face = facePlane('fungling', { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'open', cheeks: 'rgba(230,140,150,0.7)' }, 0.36, 0.28);
+  face.position.set(0, 0.28, 0.17);
+  g.add(stem, cap, capTop, face);
   g.userData.body = cap;
   return g;
 }
 
 function buildBoarlingMesh() {
   const g = new THREE.Group();
-  const fur = lam('#6b4a32');
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.85), fur);
+  const fur = lam('#8a5f40');
+  const furDark = lam('#6a4630');
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.8), fur);
   body.position.y = 0.4;
   body.castShadow = true;
-  const mane = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.6), lam('#4d3220'));
+  const mane = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, 0.55), furDark);
   mane.position.set(0, 0.66, -0.05);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.3), fur);
-  head.position.set(0, 0.42, 0.52);
-  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.12), lam('#8a6a4a'));
-  snout.position.set(0, 0.36, 0.7);
-  const tuskL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05),
+  // big cute head
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.4, 0.32), fur);
+  head.position.set(0, 0.44, 0.5);
+  const face = facePlane('boarling', { eyeW: 3, eyeH: 4, gap: 6, eyeY: 1, mouth: 'none', angry: true }, 0.46, 0.34);
+  face.position.set(0, 0.5, 0.67);
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.1), lam('#d89aa0'));
+  snout.position.set(0, 0.36, 0.68);
+  const nostrils = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.02), lam('#a86a70'));
+  nostrils.position.set(0, 0.36, 0.74);
+  // floppy ears
+  const earL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.06), furDark);
+  earL.position.set(-0.2, 0.66, 0.42); earL.rotation.z = 0.4;
+  const earR = earL.clone(); earR.position.x = 0.2; earR.rotation.z = -0.4;
+  const tuskL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.05),
     new THREE.MeshBasicMaterial({ color: 0xf0e8d0 }));
-  tuskL.position.set(-0.12, 0.32, 0.66);
-  const tuskR = tuskL.clone(); tuskR.position.x = 0.12;
-  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.03),
-    new THREE.MeshBasicMaterial({ color: 0xff4433 }));
-  eyeL.position.set(-0.12, 0.5, 0.68);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.12;
-  for (const [dx, dz] of [[-0.18, 0.28], [0.18, 0.28], [-0.18, -0.28], [0.18, -0.28]]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.32, 0.14), lam('#4d3220'));
-    leg.position.set(dx, 0.16, dz);
+  tuskL.position.set(-0.14, 0.3, 0.64);
+  const tuskR = tuskL.clone(); tuskR.position.x = 0.14;
+  for (const [dx, dz] of [[-0.18, 0.26], [0.18, 0.26], [-0.18, -0.26], [0.18, -0.26]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 0.14), furDark);
+    leg.position.set(dx, 0.15, dz);
     g.add(leg);
   }
-  g.add(body, mane, head, snout, tuskL, tuskR, eyeL, eyeR);
+  // curly tail nub
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), furDark);
+  tail.position.set(0, 0.5, -0.44);
+  g.add(body, mane, head, face, snout, nostrils, earL, earR, tuskL, tuskR, tail);
   g.userData.body = body;
   return g;
 }
@@ -175,9 +219,16 @@ function buildWispMesh() {
   const shell = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44),
     lam('#7ab8d8', { transparent: true, opacity: 0.45 }));
   shell.position.y = 0.5;
+  const face = facePlane('wisp', { eyeW: 2, eyeH: 4, gap: 4, eyeY: 3, eye: '#3a6a8a', mouth: 'none' }, 0.34, 0.26);
+  face.position.set(0, 0.5, 0.24);
+  // little flame wisps orbiting
+  const flameL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1),
+    new THREE.MeshBasicMaterial({ color: 0xaee0f0, transparent: true, opacity: 0.8 }));
+  flameL.position.set(-0.35, 0.6, 0);
+  const flameR = flameL.clone(); flameR.position.set(0.35, 0.42, 0);
   const light = new THREE.PointLight(0x9adcf0, 2.4, 5, 1.8);
   light.position.y = 0.5;
-  g.add(core, shell, light);
+  g.add(core, shell, face, flameL, flameR, light);
   g.userData.body = shell;
   g.userData.spinning = shell;
   return g;
@@ -185,24 +236,28 @@ function buildWispMesh() {
 
 function buildTreantMesh() {
   const g = new THREE.Group();
-  const barkMat = lam('#4d3a28');
+  const barkMat = lam('#5a4432');
   const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.0, 0.55), barkMat);
   trunk.position.y = 0.7;
   trunk.castShadow = true;
-  const crown = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 0.85), lam('#33513c'));
+  const crown = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 0.85), lam('#3e7d47'));
   crown.position.y = 1.4;
   crown.castShadow = true;
-  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.05),
-    new THREE.MeshBasicMaterial({ color: 0xd8e858 }));
-  eyeL.position.set(-0.14, 0.92, 0.29);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.14;
+  const crownTop = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.24, 0.55), lam('#4f9857'));
+  crownTop.position.y = 1.68;
+  const face = facePlane('treant', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, eye: '#d8e858', mouth: 'open', mouthColor: '#2a2018', angry: true }, 0.5, 0.4);
+  face.position.set(0, 0.9, 0.29);
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.16), barkMat);
   armL.position.set(-0.44, 0.75, 0);
   const armR = armL.clone(); armR.position.x = 0.44;
+  // leafy hands
+  const leafL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.2), lam('#4f9857'));
+  leafL.position.set(-0.44, 0.36, 0);
+  const leafR = leafL.clone(); leafR.position.x = 0.44;
   const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.4, 0.2), barkMat);
   legL.position.set(-0.16, 0.2, 0);
   const legR = legL.clone(); legR.position.x = 0.16;
-  g.add(trunk, crown, eyeL, eyeR, armL, armR, legL, legR);
+  g.add(trunk, crown, crownTop, face, armL, armR, leafL, leafR, legL, legR);
   g.userData.body = trunk;
   g.userData.armL = armL; g.userData.armR = armR;
   return g;
@@ -210,8 +265,8 @@ function buildTreantMesh() {
 
 function buildGolemMesh() {
   const g = new THREE.Group();
-  const stone = lam('#6f7470');
-  const stoneDark = lam('#575c58');
+  const stone = lam('#8d9294');
+  const stoneDark = lam('#646a6c');
   const torso = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.0, 0.7), stone);
   torso.position.y = 1.0;
   torso.castShadow = true;
@@ -220,9 +275,8 @@ function buildGolemMesh() {
   const core = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.1),
     new THREE.MeshBasicMaterial({ color: 0xf0a848 }));
   core.position.set(0, 1.1, 0.36);
-  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.05),
-    new THREE.MeshBasicMaterial({ color: 0xffc860 }));
-  eye.position.set(0, 1.72, 0.24);
+  const face = facePlane('golem', { eyeW: 4, eyeH: 3, gap: 3, eyeY: 3, eye: '#ffc860', mouth: 'none' }, 0.44, 0.32);
+  face.position.set(0, 1.72, 0.24);
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.1, 0.34), stoneDark);
   armL.position.set(-0.78, 0.95, 0);
   armL.castShadow = true;
@@ -230,9 +284,9 @@ function buildGolemMesh() {
   const legL = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.55, 0.4), stoneDark);
   legL.position.set(-0.3, 0.28, 0);
   const legR = legL.clone(); legR.position.x = 0.3;
-  const moss = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.5), lam('#4c6a44'));
+  const moss = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.5), lam('#568a42'));
   moss.position.set(0.1, 1.55, -0.1);
-  g.add(torso, head, core, eye, armL, armR, legL, legR, moss);
+  g.add(torso, head, core, face, armL, armR, legL, legR, moss);
   g.userData.body = torso;
   g.userData.armL = armL; g.userData.armR = armR;
   return g;
@@ -245,7 +299,7 @@ const BUILDERS = {
 };
 
 // ---------------------------------------------------------------------------
-// nameplate (sprite canvas): nama + level + bar HP
+// nameplate (canvas sprite): name + level + HP bar
 // ---------------------------------------------------------------------------
 function makeNameplate(name, level, boss = false) {
   const c = document.createElement('canvas');
@@ -279,7 +333,7 @@ function redrawNameplate(np, hpFrac) {
 }
 
 // ---------------------------------------------------------------------------
-// manajer musuh
+// enemy manager
 // ---------------------------------------------------------------------------
 const MAX_ENEMIES = 38;
 
@@ -367,12 +421,13 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     e.knock.set((dx / l) * kn, (dz / l) * kn);
     hooks?.sfx?.(e.type === 'slime' ? 'hit_squish' : 'hit');
     particles.burst(e.mesh.position.clone().add(new THREE.Vector3(0, 0.5, 0)),
-      e.type === 'slime' ? '#63d996' : '#d1372c', 8, 2.2);
+      e.type === 'slime' ? '#6de0a0' : '#d1372c', 8, 2.2);
     if (e.hp <= 0) {
       e.dead = true;
       hooks?.sfx?.('death_' + (e.type === 'slime' ? 'squish' : e.type === 'nibbit' || e.type === 'wisp' ? 'chirp' : 'thud'));
       particles.burst(e.mesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)),
-        e.type === 'slime' ? '#63d996' : e.type === 'wisp' ? '#9adcf0' : '#8a6f52', 18, 3.2);
+        e.type === 'slime' ? '#6de0a0' : e.type === 'wisp' ? '#9adcf0' : '#a08a6a', 18, 3.2);
+      particles.shockwave?.(e.mesh.position, e.def.boss ? '#f0a848' : '#ffffff', e.def.boss ? 4 : 1.6, 0.35);
       const drops = rollDrops(e.type);
       onKill(e, drops);
       scene.remove(e.mesh);
@@ -401,7 +456,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       e.anim += dt;
       e.attackCd -= dt;
 
-      // stun / freeze menghentikan AI
+      // stun / freeze halts the AI
       if (e.stunT > 0 || e.frozenT > 0) {
         e.stunT = Math.max(0, e.stunT - dt);
         e.frozenT = Math.max(0, e.frozenT - dt);
@@ -432,12 +487,17 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
 
       applyKnock(e, dt);
 
-      // --- animasi per tipe ---
+      // --- per-species animation ---
       if (e.type === 'slime') {
         const s = 1 + Math.sin(e.anim * 6) * 0.12;
         e.mesh.scale.set(1 / Math.sqrt(s), s, 1 / Math.sqrt(s));
       } else if (e.type === 'nibbit') {
         e.mesh.position.y += Math.max(0, Math.sin(e.anim * 9)) * 0.06;
+        if (e.mesh.userData.wings) {
+          const flap = Math.max(0, Math.sin(e.anim * 9)) * 0.7;
+          e.mesh.userData.wings[0].rotation.z = flap;
+          e.mesh.userData.wings[1].rotation.z = -flap;
+        }
       } else if (e.type === 'wisp') {
         e.mesh.position.y = terrain.surfaceY(p.x, p.z) + 0.7 + Math.sin(e.anim * 2.3) * 0.22;
         if (e.mesh.userData.spinning) e.mesh.userData.spinning.rotation.y += dt * 1.8;
@@ -485,7 +545,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     if (distP > e.def.aggro * 2.2) { e.state = 'wander'; e.np.sprite.visible = e.hp < e.hpMax; return; }
     const dx = playerPos.x - p.x, dz = playerPos.z - p.z;
     const l = Math.hypot(dx, dz) || 1;
-    // jaga jarak
+    // keep distance
     if (distP < e.def.keepDist - 1) moveEnemy(e, (-dx / l) * e.def.speed, (-dz / l) * e.def.speed, dt);
     else if (distP > e.def.keepDist + 2) moveEnemy(e, (dx / l) * e.def.speed, (dz / l) * e.def.speed, dt);
     e.mesh.rotation.y = Math.atan2(dx, dz);
@@ -498,7 +558,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       projectiles.spawn({
         pos: from, dir, speed: e.type === 'wisp' ? 9 : 7.5, range: e.def.attackRange + 3, radius: 0.35,
         kind: e.type === 'wisp' ? 'orb' : 'arrow',
-        color: e.type === 'wisp' ? '#9adcf0' : '#c98aa8',
+        color: e.type === 'wisp' ? '#9adcf0' : '#e090ac',
         scale: e.type === 'wisp' ? 0.8 : 1.2,
         fromEnemy: true,
         onHitPlayer: () => hooks.onPlayerHit(e, e.dmg),
@@ -511,7 +571,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     const p = e.mesh.position;
     const playerPos = playerState.pos;
     if (e.chargeT > 0) {
-      // sedang menyeruduk
+      // mid-charge
       e.chargeT -= dt;
       moveEnemy(e, e.chargeDir.x * 7.5, e.chargeDir.y * 7.5, dt);
       if (!e.chargeHit && distP < 1.1) {
@@ -523,7 +583,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     if (e.windupT > 0) {
       e.windupT -= dt;
       e.mesh.rotation.y = Math.atan2(playerPos.x - p.x, playerPos.z - p.z);
-      e.mesh.position.x += (Math.random() - 0.5) * 0.02; // getar
+      e.mesh.position.x += (Math.random() - 0.5) * 0.02; // shiver
       if (e.windupT <= 0) {
         const dx = playerPos.x - p.x, dz = playerPos.z - p.z;
         const l = Math.hypot(dx, dz) || 1;
@@ -564,6 +624,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     if (!terrain.inBounds(ix, iz) || decorBlocked.has(`${ix},${iz}`)) { e.dir += 1.7; e.chargeT = 0; return; }
     const h = terrain.heightCell(ix, iz);
     if (h <= WATER_LEVEL - 1 && !e.def.water && !e.def.floats) { e.dir += 1.7; e.chargeT = 0; return; }
+    if (h <= WATER_LEVEL && !e.def.water && !e.def.floats) { e.dir += 1.7; e.chargeT = 0; return; }
     const ny = terrain.surfaceY(nx, nz);
     if (ny - p.y > BLOCK_H * 1.6) { e.dir += 1.7; e.chargeT = 0; return; }
     p.x = nx; p.z = nz;

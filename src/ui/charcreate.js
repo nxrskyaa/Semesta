@@ -1,99 +1,137 @@
-// Layar Create Character: nama, gender, class (MMO style), kustomisasi penuh,
-// dengan preview karakter 3D yang berputar. Mengembalikan Promise<{config, continued}>.
+// Character Creation — dark-fantasy MMO layout: appearance column, live 3D
+// hero preview on a pedestal, class column with stat bars & skills.
+// Resolves with Promise<{config, continued}>.
 import * as THREE from 'three';
 import { buildCharacterMesh } from '../entities/player.js';
 import {
-  CLASSES, GENDERS, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, OUTFIT_COLORS, defaultCharacter,
+  CLASSES, GENDERS, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS,
+  OUTFIT_STYLES, OUTFIT_COLORS, CAPE_COLORS, defaultCharacter,
 } from '../systems/classes.js';
 import { SKILLS } from '../systems/skills.js';
 import { skillIconUrl, itemIconUrl } from '../gfx/textures.js';
-import { ITEMS } from '../systems/items.js';
 
 const CSS = `
 #charcreate {
   position: fixed; inset: 0; z-index: 90; overflow-y: auto;
   background:
-    radial-gradient(ellipse at 30% 20%, #1c2a1c 0%, transparent 60%),
-    radial-gradient(ellipse at 80% 80%, #16201a 0%, transparent 55%),
-    #0e140e;
-  display: flex; align-items: center; justify-content: center;
-  font-family: inherit; color: #d8e0d0;
+    radial-gradient(ellipse at 50% -10%, #2a3320 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 90%, #1a2418 0%, transparent 50%),
+    radial-gradient(ellipse at 90% 80%, #241a28 0%, transparent 45%),
+    #0b0f0a;
+  color: #d8e0d0; font-family: inherit;
 }
-#charcreate .wrap {
-  display: flex; gap: 22px; padding: 22px; max-width: 900px; width: 100%;
-  align-items: stretch; flex-wrap: wrap; justify-content: center;
-}
+#charcreate .inner { max-width: 1060px; margin: 0 auto; padding: 18px 14px 30px; }
 #charcreate h1 {
-  width: 100%; text-align: center; font-size: 34px; letter-spacing: 10px;
-  color: #cfe3b8; text-shadow: 0 3px 0 #2a3a22, 0 6px 14px #000;
-  margin-bottom: 2px;
+  text-align: center; font-size: 38px; letter-spacing: 12px;
+  color: #e8d9a8; margin-top: 6px;
+  text-shadow: 0 0 24px #c8a03a44, 0 3px 0 #3a3016, 0 6px 14px #000;
 }
-#charcreate .subtitle { width: 100%; text-align: center; font-size: 11px; color: #7d8f74; letter-spacing: 3px; margin-bottom: 10px; }
+#charcreate .subtitle {
+  text-align: center; font-size: 10px; color: #8a967f; letter-spacing: 6px; margin: 4px 0 16px;
+}
+#charcreate .continue {
+  display: block; margin: 0 auto 14px; padding: 10px 26px; font-family: inherit;
+  font-size: 12px; letter-spacing: 2px; cursor: pointer;
+  background: linear-gradient(180deg, #23303c, #182028); color: #c8dce8; border: 2px solid #3a5a6a;
+}
+#charcreate .continue:hover { filter: brightness(1.25); }
+#charcreate .cols { display: flex; gap: 14px; align-items: stretch; }
+#charcreate .col { display: flex; flex-direction: column; gap: 10px; }
+#charcreate .col.left { flex: 1.05; min-width: 250px; }
+#charcreate .col.mid { flex: 1; min-width: 240px; }
+#charcreate .col.right { flex: 1.05; min-width: 250px; }
+
+#charcreate .box {
+  background: linear-gradient(180deg, rgba(22,28,18,0.92), rgba(13,17,11,0.92));
+  border: 2px solid #3a4633; box-shadow: 0 0 0 1px #060906, 0 6px 18px #000a;
+  padding: 12px;
+}
+#charcreate .box .bt {
+  font-size: 10px; letter-spacing: 3px; color: #c8b060; margin-bottom: 10px;
+  border-bottom: 1px solid #3a4633; padding-bottom: 6px;
+}
+#charcreate .row { margin-bottom: 10px; }
+#charcreate .row:last-child { margin-bottom: 0; }
+#charcreate .row label { display: block; font-size: 9px; color: #8a967f; letter-spacing: 2px; margin-bottom: 5px; }
+#charcreate input[type=text] {
+  width: 100%; background: #0e130d; border: 2px solid #3a4633; color: #e8e8d8;
+  font-family: inherit; font-size: 14px; padding: 7px 10px; outline: none;
+}
+#charcreate input[type=text]:focus { border-color: #c8b060; }
+#charcreate .segs { display: flex; gap: 5px; flex-wrap: wrap; }
+#charcreate .segs button {
+  flex: 1; min-width: 60px; background: #131a12; border: 2px solid #2c352c; color: #aab5a0;
+  font-family: inherit; font-size: 11px; padding: 7px 4px; cursor: pointer;
+}
+#charcreate .segs button.sel { border-color: #c8b060; color: #f0e5c0; background: #23291a; }
+#charcreate .swatches { display: flex; gap: 5px; flex-wrap: wrap; }
+#charcreate .sw {
+  width: 26px; height: 22px; border: 2px solid #2c352c; cursor: pointer; position: relative;
+}
+#charcreate .sw.sel { border-color: #f0e5c0; box-shadow: 0 0 7px #c8b06088; }
+#charcreate .sw.none { background: repeating-linear-gradient(45deg, #131a12, #131a12 4px, #202a20 4px, #202a20 8px); }
+#charcreate .sw.none::after { content: '✕'; position: absolute; inset: 0; text-align: center; line-height: 20px; font-size: 11px; color: #8a967f; }
+
 #charcreate .previewbox {
-  width: 280px; min-height: 380px; flex-shrink: 0;
-  background: linear-gradient(180deg, #131b13, #0f150f);
-  border: 3px solid #39443a; box-shadow: 0 6px 24px #000a, inset 0 0 40px #0006;
+  flex: 1; min-height: 380px; position: relative; overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 88%, #c8b06022 0%, transparent 40%),
+    linear-gradient(180deg, #10160f, #0b100a);
+  border: 2px solid #4a5236; box-shadow: 0 0 0 1px #060906, inset 0 0 60px #0009, 0 6px 18px #000a;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  position: relative;
 }
 #charcreate .previewbox canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 #charcreate .previewbox .pname {
-  position: relative; z-index: 2; margin-bottom: 12px; font-size: 13px; color: #e8e8d8;
-  background: #0009; padding: 3px 12px; border: 1px solid #39443a;
+  position: relative; z-index: 2; margin-bottom: 12px; font-size: 13px; color: #f0e5c0;
+  background: #000a; padding: 4px 14px; border: 1px solid #4a5236; letter-spacing: 1px;
 }
-#charcreate .form { flex: 1; min-width: 300px; max-width: 430px; display: flex; flex-direction: column; gap: 10px; }
-#charcreate .row label { display: block; font-size: 10px; color: #8a967f; letter-spacing: 2px; margin-bottom: 4px; }
-#charcreate input[type=text] {
-  width: 100%; background: #10160f; border: 2px solid #39443a; color: #e8e8d8;
-  font-family: inherit; font-size: 14px; padding: 7px 10px; outline: none;
+#charcreate .previewbox .dice {
+  position: absolute; top: 8px; right: 8px; z-index: 2; cursor: pointer;
+  background: #131a12cc; border: 2px solid #3a4633; color: #d8e0d0;
+  font-family: inherit; font-size: 14px; padding: 6px 10px;
 }
-#charcreate input[type=text]:focus { border-color: #9ab86a; }
-#charcreate .genders { display: flex; gap: 6px; }
-#charcreate .genders button, #charcreate .pill {
-  flex: 1; background: #161d16; border: 2px solid #2c352c; color: #aab5a0;
-  font-family: inherit; font-size: 12px; padding: 8px; cursor: pointer;
+#charcreate .previewbox .dice:hover { border-color: #c8b060; }
+#charcreate .previewbox .hintspin {
+  position: absolute; bottom: 46px; z-index: 2; font-size: 8px; letter-spacing: 2px; color: #6a7a62;
 }
-#charcreate .genders button.sel { border-color: #9ab86a; color: #dcedc8; background: #22301e; }
-#charcreate .classes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+#charcreate .classes { display: flex; flex-direction: column; gap: 6px; }
 #charcreate .cls {
-  background: #161d16; border: 2px solid #2c352c; padding: 8px; cursor: pointer; position: relative;
+  display: flex; align-items: center; gap: 10px;
+  background: #131a12; border: 2px solid #2c352c; padding: 8px 10px; cursor: pointer;
 }
-#charcreate .cls.sel { border-color: var(--cc); background: #1d261c; box-shadow: 0 0 10px #0006 inset; }
+#charcreate .cls.sel { border-color: var(--cc); background: #1c231a; box-shadow: inset 0 0 14px #0008, 0 0 8px var(--cc) inset; }
+#charcreate .cls img.w { width: 26px; height: 26px; image-rendering: pixelated; }
 #charcreate .cls .cn { font-size: 13px; color: var(--cc); }
-#charcreate .cls .ct { font-size: 9px; color: #8a967f; margin-top: 2px; letter-spacing: 1px; }
-#charcreate .cls img.w { position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; image-rendering: pixelated; }
-#charcreate .clsdesc { font-size: 10px; color: #9aa890; line-height: 1.6; min-height: 30px; }
-#charcreate .skills { display: flex; gap: 6px; }
+#charcreate .cls .ct { font-size: 8px; color: #8a967f; letter-spacing: 1px; margin-top: 2px; }
+#charcreate .clsdesc { font-size: 10px; color: #9aa890; line-height: 1.7; min-height: 44px; }
+#charcreate .stats { display: flex; flex-direction: column; gap: 5px; }
+#charcreate .stat { display: flex; align-items: center; gap: 8px; font-size: 9px; color: #8a967f; }
+#charcreate .stat .sn { width: 52px; letter-spacing: 1px; }
+#charcreate .stat .sb { flex: 1; height: 8px; background: #0e130d; border: 1px solid #2c352c; }
+#charcreate .stat .sb > div { height: 100%; background: linear-gradient(90deg, var(--cc), var(--cc)); opacity: 0.85; }
+#charcreate .skills { display: flex; flex-direction: column; gap: 5px; }
 #charcreate .skills .sk {
-  display: flex; gap: 5px; align-items: center; background: #161d16;
-  border: 2px solid #2c352c; padding: 4px 7px; font-size: 9px; color: #aab5a0; flex: 1;
+  display: flex; gap: 8px; align-items: center; background: #131a12;
+  border: 2px solid #2c352c; padding: 5px 8px; font-size: 10px; color: #cfd8c8;
 }
-#charcreate .skills img { width: 18px; height: 18px; image-rendering: pixelated; }
-#charcreate .swatches { display: flex; gap: 5px; flex-wrap: wrap; }
-#charcreate .sw {
-  width: 30px; height: 24px; border: 2px solid #2c352c; cursor: pointer;
-}
-#charcreate .sw.sel { border-color: #e8e8d8; box-shadow: 0 0 6px #fff5; }
-#charcreate .stepper { display: flex; align-items: center; gap: 8px; }
-#charcreate .stepper button {
-  width: 34px; height: 30px; background: #161d16; border: 2px solid #2c352c;
-  color: #dcedc8; font-family: inherit; font-size: 14px; cursor: pointer;
-}
-#charcreate .stepper span { flex: 1; text-align: center; font-size: 12px; }
+#charcreate .skills img { width: 20px; height: 20px; image-rendering: pixelated; }
+#charcreate .skills small { display: block; color: #7d8f74; font-size: 8px; margin-top: 2px; line-height: 1.5; }
+
 #charcreate .go {
-  margin-top: 6px; padding: 13px; font-family: inherit; font-size: 16px; letter-spacing: 4px;
-  background: linear-gradient(180deg, #3d5c35, #2c4527); color: #e5f0d5;
-  border: 3px solid #5a7a4a; cursor: pointer; text-shadow: 0 2px 0 #1a2a15;
+  display: block; width: min(420px, 90%); margin: 18px auto 0; padding: 15px; text-align: center;
+  font-family: inherit; font-size: 17px; letter-spacing: 5px; cursor: pointer;
+  background: linear-gradient(180deg, #57452a, #3a2e18);
+  color: #ffe9b0; border: 2px solid #c8a03a; text-shadow: 0 2px 0 #241c0a;
+  box-shadow: 0 0 20px #c8a03a33, 0 6px 16px #000a;
 }
-#charcreate .go:hover { filter: brightness(1.15); }
-#charcreate .continue {
-  padding: 10px; font-family: inherit; font-size: 12px; letter-spacing: 2px;
-  background: #1d2a33; color: #c8dcE8; border: 2px solid #3a5a6a; cursor: pointer;
-}
-@media (max-width: 700px) {
-  #charcreate .wrap { padding: 12px; gap: 12px; }
-  #charcreate .previewbox { width: 100%; min-height: 240px; }
-  #charcreate h1 { font-size: 26px; }
+#charcreate .go:hover { filter: brightness(1.2); }
+
+@media (max-width: 900px) {
+  #charcreate .cols { flex-direction: column; }
+  #charcreate .col.mid { order: -1; }
+  #charcreate .previewbox { min-height: 260px; }
+  #charcreate h1 { font-size: 26px; letter-spacing: 8px; }
 }
 `;
 
@@ -103,59 +141,99 @@ export function showCharacterCreation(savedGame) {
     style.textContent = CSS;
     document.head.appendChild(style);
 
-    const config = savedGame?.character ? { ...savedGame.character } : defaultCharacter();
+    const config = { ...defaultCharacter(), ...(savedGame?.character || {}) };
+    // migrate any legacy save fields
+    if (!(config.cls in CLASSES)) config.cls = 'knight';
 
     const root = document.createElement('div');
     root.id = 'charcreate';
     document.body.appendChild(root);
 
     root.innerHTML = `
-      <div class="wrap">
+      <div class="inner">
         <h1>SEMESTA</h1>
-        <div class="subtitle">CIPTAKAN LEGENDAMU</div>
-        <div class="previewbox">
-          <canvas></canvas>
-          <div class="pname"></div>
+        <div class="subtitle">— FORGE YOUR LEGEND —</div>
+        ${savedGame ? `<button class="continue">▶ CONTINUE — ${savedGame.character.name} · Lv${savedGame.level || 1}</button>` : ''}
+        <div class="cols">
+          <div class="col left">
+            <div class="box">
+              <div class="bt">IDENTITY</div>
+              <div class="row"><label>NAME</label><input type="text" maxlength="14" value="${config.name}"></div>
+              <div class="row"><label>GENDER</label><div class="segs genders"></div></div>
+            </div>
+            <div class="box" style="flex:1">
+              <div class="bt">APPEARANCE</div>
+              <div class="row"><label>SKIN TONE</label><div class="swatches skin"></div></div>
+              <div class="row"><label>HAIR STYLE</label><div class="segs hairstyle"></div></div>
+              <div class="row"><label>HAIR COLOR</label><div class="swatches hairc"></div></div>
+              <div class="row"><label>EYE COLOR</label><div class="swatches eyes"></div></div>
+              <div class="row"><label>OUTFIT</label><div class="segs outfitstyle"></div></div>
+              <div class="row"><label>OUTFIT COLOR</label><div class="swatches outfit"></div></div>
+              <div class="row"><label>CAPE</label><div class="swatches cape"></div></div>
+            </div>
+          </div>
+          <div class="col mid">
+            <div class="previewbox">
+              <canvas></canvas>
+              <button class="dice" title="Randomize appearance">🎲</button>
+              <div class="hintspin">PREVIEW ROTATES</div>
+              <div class="pname"></div>
+            </div>
+          </div>
+          <div class="col right">
+            <div class="box">
+              <div class="bt">CLASS</div>
+              <div class="classes"></div>
+              <div class="clsdesc" style="margin-top:8px"></div>
+            </div>
+            <div class="box">
+              <div class="bt">ATTRIBUTES</div>
+              <div class="stats"></div>
+            </div>
+            <div class="box" style="flex:1">
+              <div class="bt">CLASS SKILLS</div>
+              <div class="skills"></div>
+            </div>
+          </div>
         </div>
-        <div class="form">
-          ${savedGame ? `<button class="continue">▶ LANJUTKAN — ${savedGame.character.name} · ${CLASSES[savedGame.character.cls].name} Lv${savedGame.level || 1}</button>` : ''}
-          <div class="row"><label>NAMA</label><input type="text" maxlength="14" value="${config.name}"></div>
-          <div class="row"><label>GENDER</label><div class="genders"></div></div>
-          <div class="row"><label>CLASS</label><div class="classes"></div><div class="clsdesc" style="margin-top:5px"></div></div>
-          <div class="row"><label>SKILL CLASS</label><div class="skills"></div></div>
-          <div class="row"><label>WARNA KULIT</label><div class="swatches skin"></div></div>
-          <div class="row"><label>GAYA RAMBUT</label><div class="stepper hair">
-            <button data-d="-1">&lt;</button><span></span><button data-d="1">&gt;</button></div></div>
-          <div class="row"><label>WARNA RAMBUT</label><div class="swatches hairc"></div></div>
-          <div class="row"><label>WARNA PAKAIAN</label><div class="swatches outfit"></div></div>
-          <button class="go">⚔ MULAI PETUALANGAN</button>
-        </div>
+        <button class="go">⚔ &nbsp;BEGIN THE ADVENTURE&nbsp; ⚔</button>
       </div>
     `;
 
-    // --- preview 3D ---
+    // --- 3D preview ---
     const pCanvas = root.querySelector('.previewbox canvas');
     const renderer = new THREE.WebGLRenderer({ canvas: pCanvas, antialias: false, alpha: true });
     const scene = new THREE.Scene();
-    const cam = new THREE.PerspectiveCamera(38, 1, 0.1, 20);
-    cam.position.set(0, 1.35, 3.4);
-    cam.lookAt(0, 0.75, 0);
-    scene.add(new THREE.HemisphereLight(0xbfccb8, 0x3a443a, 1.15));
-    const key = new THREE.DirectionalLight(0xfff2dc, 1.6);
+    const cam = new THREE.PerspectiveCamera(36, 1, 0.1, 20);
+    cam.position.set(0, 1.15, 3.1);
+    cam.lookAt(0, 0.68, 0);
+    scene.add(new THREE.HemisphereLight(0xcfd8c0, 0x3a443a, 1.2));
+    const key = new THREE.DirectionalLight(0xfff2dc, 1.7);
     key.position.set(2, 3, 2.5);
     scene.add(key);
+    const rim = new THREE.DirectionalLight(0xc8a03a, 0.8);
+    rim.position.set(-2, 1.5, -2);
+    scene.add(rim);
     const pedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.85, 0.95, 0.18, 8),
-      new THREE.MeshLambertMaterial({ color: 0x39443a })
+      new THREE.CylinderGeometry(0.8, 0.92, 0.16, 8),
+      new THREE.MeshLambertMaterial({ color: 0x4a5236 })
     );
-    pedestal.position.y = -0.09;
+    pedestal.position.y = -0.08;
     scene.add(pedestal);
+    const pedestalTrim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.86, 0.86, 0.04, 8),
+      new THREE.MeshLambertMaterial({ color: 0x8a7a3a })
+    );
+    pedestalTrim.position.y = -0.02;
+    scene.add(pedestalTrim);
 
     let rig = null;
     function rebuild() {
+      const prevRot = rig ? rig.group.rotation.y : 0.4;
       if (rig) scene.remove(rig.group);
       rig = buildCharacterMesh(config);
       rig.setWeapon(CLASSES[config.cls].startWeapon);
+      rig.group.rotation.y = prevRot;
       scene.add(rig.group);
     }
     rebuild();
@@ -175,43 +253,62 @@ export function showCharacterCreation(savedGame) {
       if (!alive) return;
       requestAnimationFrame(spin);
       const dt = (now - t0) / 1000; t0 = now;
-      if (rig) rig.group.rotation.y += dt * 0.9;
+      if (rig) rig.group.rotation.y += dt * 0.8;
       renderer.render(scene, cam);
     })(t0);
 
-    // --- kontrol form ---
+    // --- form controls ---
     const els = {
       name: root.querySelector('input'),
       pname: root.querySelector('.pname'),
       genders: root.querySelector('.genders'),
       classes: root.querySelector('.classes'),
       clsdesc: root.querySelector('.clsdesc'),
+      stats: root.querySelector('.stats'),
       skills: root.querySelector('.skills'),
       skin: root.querySelector('.swatches.skin'),
       hairc: root.querySelector('.swatches.hairc'),
+      eyes: root.querySelector('.swatches.eyes'),
       outfit: root.querySelector('.swatches.outfit'),
-      hairLabel: root.querySelector('.stepper.hair span'),
+      cape: root.querySelector('.swatches.cape'),
+      hairstyle: root.querySelector('.segs.hairstyle'),
+      outfitstyle: root.querySelector('.segs.outfitstyle'),
+    };
+
+    const swatchRow = (el, colors, sel, extraNone = false) => {
+      let h = extraNone ? `<div class="sw none ${sel === -1 ? 'sel' : ''}" data-i="-1"></div>` : '';
+      h += colors.map((c, i) =>
+        `<div class="sw ${sel === i ? 'sel' : ''}" data-i="${i}" style="background:${c}"></div>`).join('');
+      el.innerHTML = h;
     };
 
     function renderForm() {
       els.pname.textContent = `${config.name} · ${CLASSES[config.cls].name}`;
       els.genders.innerHTML = Object.entries(GENDERS)
         .map(([id, nm]) => `<button data-g="${id}" class="${config.gender === id ? 'sel' : ''}">${nm}</button>`).join('');
-      els.classes.innerHTML = Object.entries(CLASSES).map(([id, c]) =>
-        `<div class="cls ${config.cls === id ? 'sel' : ''}" data-c="${id}" style="--cc:${c.color}">
-          <img class="w" src="${itemIconUrl(c.startWeapon)}">
-          <div class="cn">${c.name}</div><div class="ct">${c.tagline.toUpperCase()}</div>
+      els.hairstyle.innerHTML = HAIR_STYLES
+        .map((nm, i) => `<button data-hs="${i}" class="${config.hairStyle === i ? 'sel' : ''}">${nm}</button>`).join('');
+      els.outfitstyle.innerHTML = OUTFIT_STYLES
+        .map((nm, i) => `<button data-os="${i}" class="${config.outfitStyle === i ? 'sel' : ''}">${nm}</button>`).join('');
+      swatchRow(els.skin, SKIN_TONES, config.skin);
+      swatchRow(els.hairc, HAIR_COLORS, config.hairColor);
+      swatchRow(els.eyes, EYE_COLORS, config.eyes);
+      swatchRow(els.outfit, OUTFIT_COLORS, config.outfit);
+      swatchRow(els.cape, CAPE_COLORS, config.cape, true);
+
+      const c = CLASSES[config.cls];
+      els.classes.innerHTML = Object.entries(CLASSES).map(([id, cc]) =>
+        `<div class="cls ${config.cls === id ? 'sel' : ''}" data-c="${id}" style="--cc:${cc.color}">
+          <img class="w" src="${itemIconUrl(cc.startWeapon)}">
+          <div><div class="cn">${cc.name}</div><div class="ct">${cc.tagline.toUpperCase()}</div></div>
         </div>`).join('');
-      els.clsdesc.textContent = CLASSES[config.cls].desc;
-      els.skills.innerHTML = CLASSES[config.cls].skills.map((s) =>
-        `<div class="sk" title="${SKILLS[s].desc}"><img src="${skillIconUrl(s, SKILLS[s].icon)}">${SKILLS[s].name}</div>`).join('');
-      els.skin.innerHTML = SKIN_TONES.map((c, i) =>
-        `<div class="sw ${config.skin === i ? 'sel' : ''}" data-i="${i}" style="background:${c}"></div>`).join('');
-      els.hairc.innerHTML = HAIR_COLORS.map((c, i) =>
-        `<div class="sw ${config.hairColor === i ? 'sel' : ''}" data-i="${i}" style="background:${c}"></div>`).join('');
-      els.outfit.innerHTML = OUTFIT_COLORS.map((c, i) =>
-        `<div class="sw ${config.outfit === i ? 'sel' : ''}" data-i="${i}" style="background:${c}"></div>`).join('');
-      els.hairLabel.textContent = HAIR_STYLES[config.hairStyle];
+      els.clsdesc.textContent = c.desc;
+      els.stats.innerHTML = Object.entries({ POWER: c.stats.power, SPEED: c.stats.speed, RANGE: c.stats.range, DEFENSE: c.stats.defense })
+        .map(([nm, v]) => `<div class="stat" style="--cc:${c.color}"><span class="sn">${nm}</span>
+          <div class="sb"><div style="width:${v * 20}%"></div></div></div>`).join('');
+      els.skills.innerHTML = c.skills.map((s) =>
+        `<div class="sk"><img src="${skillIconUrl(s, SKILLS[s].icon)}">
+          <div>${SKILLS[s].name}<small>${SKILLS[s].desc}</small></div></div>`).join('');
     }
     renderForm();
 
@@ -220,23 +317,36 @@ export function showCharacterCreation(savedGame) {
       if (g) { config.gender = g.dataset.g; renderForm(); rebuild(); return; }
       const c = e.target.closest('[data-c]');
       if (c) { config.cls = c.dataset.c; renderForm(); rebuild(); return; }
+      const hs = e.target.closest('[data-hs]');
+      if (hs) { config.hairStyle = +hs.dataset.hs; renderForm(); rebuild(); return; }
+      const os = e.target.closest('[data-os]');
+      if (os) { config.outfitStyle = +os.dataset.os; renderForm(); rebuild(); return; }
       const sw = e.target.closest('.sw');
       if (sw) {
         const i = +sw.dataset.i;
         if (sw.parentElement === els.skin) config.skin = i;
         else if (sw.parentElement === els.hairc) config.hairColor = i;
+        else if (sw.parentElement === els.eyes) config.eyes = i;
         else if (sw.parentElement === els.outfit) config.outfit = i;
+        else if (sw.parentElement === els.cape) config.cape = i;
         renderForm(); rebuild(); return;
       }
-      const st = e.target.closest('.stepper button');
-      if (st) {
-        config.hairStyle = (config.hairStyle + +st.dataset.d + 5) % 5;
-        renderForm(); rebuild(); return;
+      if (e.target.closest('.dice')) {
+        const ri = (n) => Math.floor(Math.random() * n);
+        config.gender = Math.random() < 0.5 ? 'male' : 'female';
+        config.skin = ri(SKIN_TONES.length);
+        config.hairStyle = ri(HAIR_STYLES.length);
+        config.hairColor = ri(HAIR_COLORS.length);
+        config.eyes = ri(EYE_COLORS.length);
+        config.outfitStyle = ri(OUTFIT_STYLES.length);
+        config.outfit = ri(OUTFIT_COLORS.length);
+        config.cape = ri(CAPE_COLORS.length + 1) - 1;
+        renderForm(); rebuild();
       }
     });
 
     els.name.addEventListener('input', () => {
-      config.name = els.name.value.trim() || 'Petualang';
+      config.name = els.name.value.trim() || 'Adventurer';
       els.pname.textContent = `${config.name} · ${CLASSES[config.cls].name}`;
     });
 
@@ -245,7 +355,7 @@ export function showCharacterCreation(savedGame) {
       window.removeEventListener('resize', resizePreview);
       renderer.dispose();
       root.remove();
-      resolve({ config: continued ? savedGame.character : config, continued });
+      resolve({ config: continued ? { ...defaultCharacter(), ...savedGame.character } : config, continued });
     }
 
     root.querySelector('.go').addEventListener('click', () => finish(false));

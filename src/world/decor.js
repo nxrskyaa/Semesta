@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { mulberry32, valueNoise2, fbm2 } from '../util/noise.js';
 import { BLOCK_H, WATER_LEVEL } from './terrain.js';
 import {
-  makeBarkTexture, makeLeafTexture, makeGrassTuftTexture, makeFlameTexture, PALETTE,
+  makeBarkTexture, makeLeafTexture, makeGrassTuftTexture, makeFlowerTexture,
+  makeFlameTexture, PALETTE,
 } from '../gfx/textures.js';
 
 const SEED = 4242;
@@ -14,7 +15,7 @@ export function buildDecor(terrain, scene) {
   const rng = mulberry32(SEED);
   const blocked = new Set(); // sel yang tidak bisa dilewati (batang pohon, batu besar)
 
-  const trees = [], rocks = [], tufts = [], torches = [];
+  const trees = [], rocks = [], tufts = [], torches = [], flowers = [], bushes = [];
 
   // --- penempatan ---
   for (let iz = 2; iz < S - 2; iz++) {
@@ -46,6 +47,17 @@ export function buildDecor(terrain, scene) {
       }
       if ((t === 0 || t === 4) && r > 0.4 && r < 0.68) {
         tufts.push({ x: wx + (rng() - 0.5) * 0.5, y, z: wz + (rng() - 0.5) * 0.5, s: 0.5 + rng() * 0.5 });
+      }
+      // flowers bloom on flower-meadow tiles (and a few stray ones on grass)
+      if ((t === 6 && r < 0.5) || (t === 0 && r > 0.965)) {
+        flowers.push({
+          x: wx + (rng() - 0.5) * 0.6, y, z: wz + (rng() - 0.5) * 0.6,
+          s: 0.4 + rng() * 0.35, c: Math.floor(rng() * PALETTE.flowers.length),
+        });
+      }
+      // low round bushes on grass
+      if (t === 0 && r > 0.68 && r < 0.695 && dSpawn > 5) {
+        bushes.push({ x: wx, y, z: wz, s: 0.4 + rng() * 0.35 });
       }
     }
   }
@@ -131,6 +143,46 @@ export function buildDecor(terrain, scene) {
       tuftMesh.setMatrixAt(i, m);
     });
     group.add(tuftMesh);
+  }
+
+  // --- flowers: two crossed planes per bloom, split by color ---
+  if (flowers.length) {
+    const byColor = new Map();
+    for (const f of flowers) {
+      if (!byColor.has(f.c)) byColor.set(f.c, []);
+      byColor.get(f.c).push(f);
+    }
+    for (const [ci, list] of byColor) {
+      const tex = makeFlowerTexture(PALETTE.flowers[ci]);
+      const p1 = new THREE.PlaneGeometry(1, 1);
+      const p2 = new THREE.PlaneGeometry(1, 1);
+      p2.rotateY(Math.PI / 2);
+      const fGeo = mergeGeoms([p1, p2]);
+      const fMat = new THREE.MeshLambertMaterial({
+        map: tex, transparent: false, alphaTest: 0.5, side: THREE.DoubleSide,
+      });
+      const fMesh = new THREE.InstancedMesh(fGeo, fMat, list.length);
+      list.forEach((f, i) => {
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (i * 0.61) % Math.PI);
+        m.compose(v.set(f.x, f.y + f.s * 0.4, f.z), q, sc.set(f.s, f.s, f.s));
+        fMesh.setMatrixAt(i, m);
+      });
+      group.add(fMesh);
+    }
+  }
+
+  // --- bushes: squat rounded leaf boxes ---
+  if (bushes.length) {
+    const bGeo = new THREE.BoxGeometry(1, 0.6, 1);
+    const bMat = new THREE.MeshLambertMaterial({ map: makeLeafTexture() });
+    const bMesh = new THREE.InstancedMesh(bGeo, bMat, bushes.length);
+    bMesh.castShadow = true;
+    bushes.forEach((b, i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), b.s * 9);
+      m.compose(v.set(b.x, b.y + b.s * 0.28, b.z), q, sc.set(b.s * 1.3, b.s, b.s * 1.2));
+      bMesh.setMatrixAt(i, m);
+    });
+    group.add(bMesh);
   }
 
   // --- obor ---

@@ -2,7 +2,7 @@
 import { WATER_LEVEL } from '../world/terrain.js';
 
 const TYPE_COLOR = {
-  0: '#4e6a45', 1: '#8a6f5e', 2: '#5d4c42', 3: '#6f7470', 4: '#42603c', 5: '#3f7fae',
+  0: '#5e9448', 1: '#b3925c', 2: '#8a654a', 3: '#8d9294', 4: '#568a42', 5: '#41a0c8', 6: '#6aa84f',
 };
 
 export function createMinimap(canvas, terrain, decor) {
@@ -16,8 +16,8 @@ export function createMinimap(canvas, terrain, decor) {
       const i = terrain.idx(ix, iz);
       const h = terrain.height[i];
       let col;
-      if (h <= WATER_LEVEL) col = h <= WATER_LEVEL - 2 ? '#2e628c' : '#3f7fae';
-      else col = TYPE_COLOR[terrain.type[i]] || '#4e6a45';
+      if (h <= WATER_LEVEL) col = h <= WATER_LEVEL - 2 ? '#2f7fa6' : '#41a0c8';
+      else col = TYPE_COLOR[terrain.type[i]] || '#5e9448';
       bctx.fillStyle = col;
       bctx.fillRect(ix, iz, 1, 1);
       // shading ketinggian ringan

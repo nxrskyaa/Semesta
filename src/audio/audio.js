@@ -1,5 +1,6 @@
-// Audio Semesta — semuanya disintesis WebAudio (tanpa file):
-// musik generatif (siang tenang / malam mencekam / lapisan combat) + SFX lengkap.
+// Semesta audio — everything is synthesized with WebAudio (no files):
+// generative music (calm day / tense night / combat layer) + a full SFX kit
+// + a filtered-noise rain loop for the weather system.
 
 export function createAudio() {
   let ctx = null;
@@ -165,6 +166,32 @@ export function createAudio() {
   function setMood(isNight) { mood = isNight ? 'night' : 'day'; }
   function setCombat(level) { combat += (level - combat) * 0.05; }
 
+  // --- rain loop: looped noise through a lowpass, faded by intensity ---
+  let rainSrc = null, rainGain = null;
+  function setRain(intensity) {
+    if (!ctx || !started) return;
+    if (intensity > 0.02 && !rainSrc) {
+      rainSrc = ctx.createBufferSource();
+      rainSrc.buffer = noiseBuf();
+      rainSrc.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = 900;
+      rainGain = ctx.createGain();
+      rainGain.gain.value = 0;
+      rainSrc.connect(f).connect(rainGain).connect(master);
+      rainSrc.start();
+    }
+    if (rainGain) {
+      rainGain.gain.linearRampToValueAtTime(muted ? 0 : intensity * 0.055, ctx.currentTime + 0.4);
+    }
+    if (intensity <= 0.02 && rainSrc) {
+      const src = rainSrc, g = rainGain;
+      rainSrc = null; rainGain = null;
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6);
+      setTimeout(() => { try { src.stop(); } catch { /* already stopped */ } }, 800);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // SFX
   // -------------------------------------------------------------------------
@@ -236,6 +263,18 @@ export function createAudio() {
     wisp_shot:  () => tone('sine', 1200, 500, 0.18, 0.1),
     boar_charge:() => { tone('sawtooth', 140, 90, 0.3, 0.18); noise(0.25, 0.12, 'lowpass', 500); },
     death_player:() => { [330, 262, 196, 131].forEach((f, i) => tone('sawtooth', f, f, 0.3, 0.14, ctx ? ctx.currentTime + i * 0.22 : null)); },
+    // fishing
+    cast:       () => { noise(0.14, 0.1, 'highpass', 1600); tone('sine', 500, 200, 0.18, 0.08, ctx ? ctx.currentTime + 0.1 : null); },
+    splash:     () => { noise(0.25, 0.16, 'lowpass', 900, 300); tone('sine', 300, 120, 0.15, 0.08); },
+    bite:       () => { tone('square', 900, 900, 0.06, 0.12); tone('square', 1200, 1200, 0.08, 0.12, ctx ? ctx.currentTime + 0.08 : null); },
+    catch:      () => { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.12, 0.12, ctx ? ctx.currentTime + i * 0.07 : null)); noise(0.2, 0.1, 'lowpass', 1000, 400); },
+    // world & quests
+    chest:      () => { tone('square', 300, 500, 0.1, 0.12); [660, 880, 1100].forEach((f, i) => tone('triangle', f, f, 0.12, 0.1, ctx ? ctx.currentTime + 0.1 + i * 0.07 : null)); },
+    talk:       () => { tone('square', 520, 660, 0.05, 0.06); },
+    quest_accept: () => { [440, 587].forEach((f, i) => tone('triangle', f, f, 0.14, 0.12, ctx ? ctx.currentTime + i * 0.09 : null)); },
+    quest_done: () => { [523, 659, 784, 988, 1175].forEach((f, i) => tone('triangle', f, f, 0.15, 0.13, ctx ? ctx.currentTime + i * 0.08 : null)); },
+    pet_summon: () => { [660, 880, 990].forEach((f, i) => tone('sine', f, f * 1.2, 0.12, 0.1, ctx ? ctx.currentTime + i * 0.06 : null)); },
+    thunder:    () => { noise(0.9, 0.2, 'lowpass', 300, 60); tone('sine', 80, 30, 0.7, 0.16); },
   };
 
   function sfx(name) {
@@ -243,5 +282,5 @@ export function createAudio() {
     SFX[name]?.();
   }
 
-  return { start, sfx, setMood, setCombat, toggleMute, isMuted };
+  return { start, sfx, setMood, setCombat, setRain, toggleMute, isMuted };
 }

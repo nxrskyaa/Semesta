@@ -1,13 +1,13 @@
-// Terrain voxel Semesta: heightmap fBm -> mesh chunk dengan face culling.
-// Blok setengah tinggi (0.45) biar undakan halus seperti video referensi.
+// Semesta voxel terrain: fBm heightmap -> chunked mesh with face culling.
+// Half-height blocks (0.45) keep slopes smooth and stair-steppy.
 import * as THREE from 'three';
 import { fbm2, valueNoise2, mulberry32 } from '../util/noise.js';
 import { TILE } from '../gfx/textures.js';
 
-export const WORLD_SIZE = 160;          // sel per sisi
-export const BLOCK_H = 0.45;            // tinggi satu undakan
-export const WATER_LEVEL = 2;           // sel dengan h <= ini terendam
-export const WATER_Y = (WATER_LEVEL + 1) * BLOCK_H + 0.07; // sedikit di atas puncak sel tepian
+export const WORLD_SIZE = 160;          // cells per side
+export const BLOCK_H = 0.45;            // height of one step
+export const WATER_LEVEL = 2;           // cells with h <= this are submerged
+export const WATER_Y = (WATER_LEVEL + 1) * BLOCK_H + 0.07; // slightly above shore-cell tops
 
 const SEED = 20240612;
 const CHUNK = 16;
@@ -18,7 +18,7 @@ export class Terrain {
     const S = WORLD_SIZE;
     this.size = S;
     this.height = new Int8Array(S * S);
-    this.type = new Uint8Array(S * S); // 0 grass,1 path,2 dirt,3 stone,4 moss,5 shore
+    this.type = new Uint8Array(S * S); // 0 grass,1 path,2 dirt,3 stone,4 moss,5 shore,6 flowers
     this._generate();
   }
 
@@ -30,11 +30,11 @@ export class Terrain {
   }
 
   heightCell(ix, iz) {
-    if (!this.inBounds(ix, iz)) return MAX_H; // dinding dunia
+    if (!this.inBounds(ix, iz)) return MAX_H; // world wall
     return this.height[this.idx(ix, iz)];
   }
 
-  // Ketinggian permukaan (y dunia) di posisi kontinu
+  // world-space surface height at a continuous position
   surfaceY(x, z) {
     const [ix, iz] = this.cellOf(x, z);
     return this.heightCell(ix, iz) * BLOCK_H + BLOCK_H;
@@ -49,23 +49,25 @@ export class Terrain {
     return this.type[this.idx(ix, iz)];
   }
 
-  // Bisa jalan dari elevasi yFrom ke sel target? (naik max 1 undakan, air dalam diblok)
+  // Can we walk from elevation yFrom onto the target cell?
+  // Water cells are fully blocked (no walking on lakes), max climb ~1.5 steps.
   walkable(x, z, yFrom) {
     const [ix, iz] = this.cellOf(x, z);
     if (!this.inBounds(ix, iz)) return false;
     const h = this.heightCell(ix, iz);
-    if (h <= WATER_LEVEL - 1) return false;              // air dalam
+    if (h <= WATER_LEVEL) return false;                  // submerged — blocked
     const y = h * BLOCK_H + BLOCK_H;
-    return y - yFrom <= BLOCK_H * 1.6;                   // max naik ~1.5 undakan
+    return y - yFrom <= BLOCK_H * 1.6;
   }
 
   _generate() {
     const S = this.size;
-    // pusat danau & mata jalan ditentukan deterministik
+    // lake basins are deterministic
     const lakes = [
       { x: S * 0.30, z: S * 0.62, r: 13 },
       { x: S * 0.68, z: S * 0.30, r: 9 },
     ];
+    this.lakes = lakes;
 
     for (let iz = 0; iz < S; iz++) {
       for (let ix = 0; ix < S; ix++) {
@@ -73,7 +75,7 @@ export class Terrain {
         let e = fbm2(nx * 5.5, nz * 5.5, SEED, 4);
         e = Math.pow(e, 1.25) * (MAX_H - 1) + 1.2;
 
-        // cekungan danau
+        // lake depressions
         for (const L of lakes) {
           const d = Math.hypot(ix - L.x, iz - L.z);
           if (d < L.r * 1.8) {
@@ -81,7 +83,7 @@ export class Terrain {
             e -= t * t * 7.5;
           }
         }
-        // tepi dunia naik jadi tebing
+        // world edges rise into cliffs
         const edge = Math.min(ix, iz, S - 1 - ix, S - 1 - iz);
         if (edge < 6) e += (6 - edge) * 1.1;
 
@@ -90,29 +92,30 @@ export class Terrain {
       }
     }
 
-    // jalan setapak berkelok: 2 jalur menyilang dunia
+    // winding footpaths: 2 routes crossing the world
     this._carvePath(SEED + 5, true);
     this._carvePath(SEED + 9, false);
 
-    // tipe permukaan
-    const rng = mulberry32(SEED + 77);
+    // surface types
     for (let iz = 0; iz < S; iz++) {
       for (let ix = 0; ix < S; ix++) {
         const i = this.idx(ix, iz);
-        if (this.type[i] === 1) continue; // path sudah ditandai
+        if (this.type[i] === 1) continue; // path already marked
         const h = this.height[i];
         const nx = ix / S, nz = iz / S;
         if (h <= WATER_LEVEL) { this.type[i] = 5; continue; }
         if (h >= MAX_H - 2) { this.type[i] = 3; continue; }
         const patch = fbm2(nx * 19, nz * 19, SEED + 31, 3);
-        if (patch < 0.34) { this.type[i] = 2; continue; }       // serasah tanah
+        if (patch < 0.34) { this.type[i] = 2; continue; }       // dirt litter
         const moss = valueNoise2(nx * 17, nz * 17, SEED + 41);
         if (moss > 0.78) { this.type[i] = 4; continue; }
+        const flowers = valueNoise2(nx * 23, nz * 23, SEED + 63);
+        if (flowers > 0.72) { this.type[i] = 6; continue; }     // flower meadow
         this.type[i] = 0;
       }
     }
 
-    // titik spawn: cari rumput dekat tengah
+    // spawn point: find grass near the center
     this.spawn = this._findSpawn();
   }
 
@@ -128,8 +131,8 @@ export class Terrain {
         const iz = horizontal ? bc + w : a;
         if (!this.inBounds(ix, iz)) continue;
         const i = this.idx(ix, iz);
-        if (this.height[i] <= WATER_LEVEL) continue; // jangan timpa danau
-        // ratakan jalan terhadap tetangga jalur
+        if (this.height[i] <= WATER_LEVEL) continue; // don't pave the lakes
+        // flatten path against previous path cell
         if (w === 0 && a > 0) {
           const pi = horizontal ? this.idx(ix - 1, iz) : this.idx(ix, iz - 1);
           const ph = this.height[pi];
@@ -159,8 +162,8 @@ export class Terrain {
   }
 }
 
-const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE];
-const SIDE_TILE = [TILE.GRASS_SIDE, TILE.PATH_SIDE, TILE.DIRT_SIDE, TILE.STONE_SIDE, TILE.GRASS_SIDE, TILE.SHORE];
+const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE, TILE.FLOWER_A];
+const SIDE_TILE = [TILE.GRASS_SIDE, TILE.PATH_SIDE, TILE.DIRT_SIDE, TILE.STONE_SIDE, TILE.GRASS_SIDE, TILE.SHORE, TILE.GRASS_SIDE];
 
 export function buildTerrainMesh(terrain, atlas) {
   const S = terrain.size;
@@ -168,6 +171,7 @@ export function buildTerrainMesh(terrain, atlas) {
   const material = new THREE.MeshLambertMaterial({ map: atlas.texture });
 
   const grassVariants = [TILE.GRASS_A, TILE.GRASS_B, TILE.GRASS_C];
+  const flowerVariants = [TILE.FLOWER_A, TILE.FLOWER_B];
 
   for (let cz = 0; cz < S / CHUNK; cz++) {
     for (let cx = 0; cx < S / CHUNK; cx++) {
@@ -193,14 +197,15 @@ export function buildTerrainMesh(terrain, atlas) {
 
           let topTile = TOP_TILE[t];
           if (t === 0) topTile = grassVariants[(ix * 7 + iz * 13) % 3];
+          if (t === 6) topTile = flowerVariants[(ix * 5 + iz * 11) % 2];
 
-          // muka atas (urutan CCW dilihat dari atas)
+          // top face (CCW seen from above)
           quad(
             [[x, y, z + 1], [x + 1, y, z + 1], [x + 1, y, z], [x, y, z]],
             [0, 1, 0], topTile
           );
 
-          // muka samping per undakan — urutan vertex: bawah-A, bawah-B, atas-B, atas-A (CCW dari luar)
+          // side faces per step — vertex order: bottom-A, bottom-B, top-B, top-A (CCW from outside)
           const sides = [
             { dx: 1, dz: 0, n: [1, 0, 0], c: (yy0, yy1) => [[x + 1, yy0, z + 1], [x + 1, yy0, z], [x + 1, yy1, z], [x + 1, yy1, z + 1]] },
             { dx: -1, dz: 0, n: [-1, 0, 0], c: (yy0, yy1) => [[x, yy0, z], [x, yy0, z + 1], [x, yy1, z + 1], [x, yy1, z]] },

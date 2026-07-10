@@ -1,76 +1,76 @@
-// Skill per class: definisi + runtime (cooldown, buff, eksekusi efek).
+// Per-class skills: definitions + runtime (cooldowns, buffs, effect execution).
 import * as THREE from 'three';
 
 export const SKILLS = {
-  // --- Ksatria ---
+  // --- Knight ---
   bash: {
     name: 'Bash', cd: 5, cost: 16,
-    desc: 'Hantaman berat 250% damage + stun 1.2 detik.',
+    desc: 'Heavy smash for 250% damage + 1.2s stun.',
     icon: { shape: 'burst', color: '#e8a33d' },
   },
   whirlwind: {
     name: 'Whirlwind', cd: 8, cost: 24,
-    desc: 'Putaran pedang 360°, 170% damage + dorong semua musuh sekitar.',
+    desc: '360° blade spin, 170% damage + knocks everything back.',
     icon: { shape: 'spiral', color: '#c76b4a' },
   },
   warcry: {
     name: 'War Cry', cd: 14, cost: 20,
-    desc: '+35% damage selama 7 detik dan menggetarkan musuh terdekat.',
+    desc: '+35% damage for 7s and rattles nearby enemies.',
     icon: { shape: 'shout', color: '#e8574a' },
   },
-  // --- Pemanah ---
+  // --- Archer ---
   powershot: {
     name: 'Power Shot', cd: 6, cost: 18,
-    desc: 'Panah menembus semua musuh dalam garis lurus, 300% damage.',
+    desc: 'Piercing arrow through every enemy in a line, 300% damage.',
     icon: { shape: 'arrow', color: '#9fe86e' },
   },
   multishot: {
     name: 'Multishot', cd: 9, cost: 24,
-    desc: 'Tembakan kipas 5 panah sekaligus, masing-masing 130% damage.',
+    desc: 'Fan of 5 arrows at once, 130% damage each.',
     icon: { shape: 'fan', color: '#6fa05a' },
   },
   swiftness: {
     name: 'Swiftness', cd: 12, cost: 15,
-    desc: '+40% kecepatan gerak & serang selama 5 detik.',
+    desc: '+40% move & attack speed for 5s.',
     icon: { shape: 'wind', color: '#a8d8b8' },
   },
-  // --- Penyihir ---
+  // --- Mage ---
   fireball: {
     name: 'Fireball', cd: 7, cost: 24,
-    desc: 'Bola api meledak dalam area luas, 280% damage.',
+    desc: 'Fireball that explodes in a wide area, 280% damage.',
     icon: { shape: 'orb', color: '#ff7722' },
   },
   icenova: {
     name: 'Ice Nova', cd: 10, cost: 26,
-    desc: 'Ledakan es di sekeliling: 160% damage + bekukan 2 detik.',
+    desc: 'Frost burst around you: 160% damage + 2s freeze.',
     icon: { shape: 'star', color: '#8fd8f0' },
   },
   blink: {
     name: 'Blink', cd: 8, cost: 14,
-    desc: 'Teleportasi sejauh 6 meter ke arah kursor.',
+    desc: 'Teleport 6 meters toward the cursor.',
     icon: { shape: 'blink', color: '#b89af0' },
   },
-  // --- Pembunuh ---
+  // --- Assassin ---
   dashstrike: {
     name: 'Dash Strike', cd: 6, cost: 18,
-    desc: 'Melesat menembus musuh sejauh 5 meter, 220% damage.',
+    desc: 'Dash 5 meters through enemies, 220% damage.',
     icon: { shape: 'slash', color: '#c8d8e8' },
   },
   fanknives: {
     name: 'Fan of Knives', cd: 9, cost: 24,
-    desc: 'Lempar 8 pisau ke segala arah, 140% damage.',
+    desc: 'Throw 8 knives in every direction, 140% damage.',
     icon: { shape: 'knives', color: '#8a9ab0' },
   },
   shadowstep: {
     name: 'Shadow Step', cd: 10, cost: 16,
-    desc: 'Muncul di belakang musuh terdekat; serangan berikutnya pasti kritikal.',
+    desc: 'Appear behind the nearest enemy; next hit is a guaranteed crit.',
     icon: { shape: 'shadow', color: '#5a5a7a' },
   },
 };
 
-// deps: { player, enemyMgr, projectiles, particles, dmgNums, audio, terrain, aimPoint() }
+// deps: { player, enemyMgr, projectiles, particles, dmgNums, audio, terrain, aimPoint(), shake() }
 export function createSkillSystem(deps) {
-  const cooldowns = {}; // id -> sisa detik
+  const cooldowns = {}; // id -> seconds remaining
 
   function ready(id) { return (cooldowns[id] || 0) <= 0; }
   function cdFrac(id) { return Math.max(0, (cooldowns[id] || 0)) / SKILLS[id].cd; }
@@ -107,15 +107,20 @@ export function createSkillSystem(deps) {
       const p = deps.player.state;
       const dir = new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing));
       const at = p.pos.clone().add(dir.multiplyScalar(1.4));
-      deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.6, 0)), '#e8a33d', 16, 3.4);
+      deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.6, 0)), '#e8a33d', 20, 3.8);
+      deps.particles.shockwave(at, '#e8a33d', 2.6, 0.35);
+      deps.particles.flash(at, '#ffb055', 7, 0.25);
       deps.audio.sfx('bash');
+      deps.shake?.(0.35);
       for (const e of enemiesWithin(2.4, at)) hitEnemy(e, 2.5, { stun: 1.2 });
       deps.player.playSwing(1.4);
     },
     whirlwind() {
       const p = deps.player.state;
       deps.particles.ring?.(p.pos, '#c76b4a');
+      deps.particles.shockwave(p.pos, '#e08a5a', 3.4, 0.45);
       deps.audio.sfx('whirl');
+      deps.shake?.(0.3);
       for (const e of enemiesWithin(3.0)) {
         hitEnemy(e, 1.7);
         const dx = e.mesh.position.x - p.pos.x, dz = e.mesh.position.z - p.pos.z;
@@ -127,18 +132,22 @@ export function createSkillSystem(deps) {
     warcry() {
       const p = deps.player.state;
       deps.player.addBuff({ id: 'warcry', t: 7, dmg: 0.35 });
-      deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#e8574a', 20);
+      deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#e8574a', 24);
+      deps.particles.shockwave(p.pos, '#e8574a', 4.5, 0.5);
+      deps.particles.flash(p.pos, '#e8574a', 6, 0.4);
       deps.audio.sfx('warcry');
+      deps.shake?.(0.25);
       for (const e of enemiesWithin(4.5)) e.stunT = Math.max(e.stunT || 0, 0.6);
     },
     powershot() {
       const p = deps.player.state;
       aimAtCursor();
       deps.audio.sfx('powershot');
+      deps.particles.flash(p.pos, '#d8f0a0', 4, 0.2);
       deps.projectiles.spawn({
         pos: p.pos.clone().add(new THREE.Vector3(0, 0.75, 0)),
         dir: facingDir(), speed: 30, range: 22, radius: 0.8,
-        kind: 'arrow', color: '#d8f0a0', scale: 1.6, pierce: true,
+        kind: 'arrow', color: '#d8f0a0', scale: 1.6, pierce: true, trail: '#d8f0a0',
         onHitEnemy: (e) => hitEnemy(e, 3.0),
       });
       deps.player.playBowDraw();
@@ -160,13 +169,15 @@ export function createSkillSystem(deps) {
     },
     swiftness() {
       deps.player.addBuff({ id: 'swiftness', t: 5, speed: 0.4, atkSpeed: 0.4 });
-      deps.particles.fountain(deps.player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#a8d8b8', 14);
+      deps.particles.fountain(deps.player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#a8d8b8', 16);
+      deps.particles.shockwave(deps.player.state.pos, '#a8d8b8', 2, 0.35);
       deps.audio.sfx('swiftness');
     },
     fireball() {
       const p = deps.player.state;
       aimAtCursor();
       deps.audio.sfx('fireball');
+      deps.particles.flash(p.pos, '#ff9944', 5, 0.25);
       deps.projectiles.spawn({
         pos: p.pos.clone().add(new THREE.Vector3(0, 0.85, 0)),
         dir: facingDir(), speed: 12, range: 15, radius: 0.7,
@@ -179,7 +190,10 @@ export function createSkillSystem(deps) {
     icenova() {
       const p = deps.player.state;
       deps.audio.sfx('icenova');
-      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#8fd8f0', 30, 4.5, 3);
+      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#8fd8f0', 34, 5, 3);
+      deps.particles.shockwave(p.pos, '#8fd8f0', 3.6, 0.5);
+      deps.particles.flash(p.pos, '#aee0f0', 6, 0.35);
+      deps.shake?.(0.25);
       for (const e of enemiesWithin(3.2)) hitEnemy(e, 1.6, { freeze: 2 });
       deps.player.playStaffCast();
     },
@@ -189,8 +203,9 @@ export function createSkillSystem(deps) {
       const dir = target.clone().sub(p.pos); dir.y = 0;
       const dist = Math.min(6, dir.length());
       dir.normalize();
-      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#b89af0', 14, 2.5);
-      // cari titik walkable terjauh di sepanjang garis
+      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#b89af0', 16, 2.5);
+      deps.particles.shockwave(p.pos, '#b89af0', 1.6, 0.3);
+      // find the farthest walkable point along the line
       for (let d = dist; d > 0.5; d -= 0.5) {
         const nx = p.pos.x + dir.x * d, nz = p.pos.z + dir.z * d;
         if (deps.terrain.walkable(nx, nz, deps.terrain.surfaceY(nx, nz))) {
@@ -199,7 +214,8 @@ export function createSkillSystem(deps) {
           break;
         }
       }
-      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#b89af0', 18, 2.5);
+      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#b89af0', 20, 2.5);
+      deps.particles.flash(p.pos, '#b89af0', 5, 0.3);
       deps.audio.sfx('blink');
     },
     dashstrike() {
@@ -208,6 +224,7 @@ export function createSkillSystem(deps) {
       const dir = facingDir();
       deps.audio.sfx('dash');
       const hitSet = new Set();
+      const from = p.pos.clone();
       for (let d = 0.5; d <= 5; d += 0.5) {
         const nx = p.pos.x + dir.x * d, nz = p.pos.z + dir.z * d;
         for (const e of enemiesWithin(1.2, new THREE.Vector3(nx, 0, nz))) {
@@ -217,12 +234,22 @@ export function createSkillSystem(deps) {
         p.pos.x = nx; p.pos.z = nz;
       }
       p.pos.y = deps.terrain.surfaceY(p.pos.x, p.pos.z);
-      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#c8d8e8', 12, 3);
+      // afterimage streak along the dash
+      const steps = 5;
+      for (let i = 0; i < steps; i++) {
+        const t = i / steps;
+        deps.particles.burst(new THREE.Vector3(
+          from.x + (p.pos.x - from.x) * t, from.y + 0.4, from.z + (p.pos.z - from.z) * t,
+        ), '#c8d8e8', 4, 1.6, 2, 0.35);
+      }
+      deps.particles.shockwave(p.pos, '#c8d8e8', 1.8, 0.3);
+      deps.shake?.(0.2);
       deps.player.playSwing(1.1);
     },
     fanknives() {
       const p = deps.player.state;
       deps.audio.sfx('fanknives');
+      deps.particles.shockwave(p.pos, '#8a9ab0', 2.2, 0.35);
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
         deps.projectiles.spawn({
@@ -243,7 +270,8 @@ export function createSkillSystem(deps) {
         if (d < best) { best = d; nearest = e; }
       }
       deps.audio.sfx('blink');
-      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#5a5a7a', 12, 2);
+      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#5a5a7a', 14, 2);
+      deps.particles.shockwave(p.pos, '#5a5a7a', 1.4, 0.3);
       if (nearest) {
         const behind = nearest.mesh.position.clone()
           .add(new THREE.Vector3(Math.sin(nearest.mesh.rotation.y + Math.PI), 0, Math.cos(nearest.mesh.rotation.y + Math.PI)).multiplyScalar(1.0));
@@ -255,14 +283,18 @@ export function createSkillSystem(deps) {
         p.facing = Math.atan2(dx, dz);
         deps.player.addBuff({ id: 'shadowstep', t: 4, guaranteedCrit: true });
       }
-      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#8a7ad0', 14, 2);
+      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#8a7ad0', 16, 2);
+      deps.particles.flash(p.pos, '#8a7ad0', 4, 0.25);
     },
   };
 
   function explode(pos, radius, mult) {
-    deps.particles.burst(pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#ff7722', 26, 5, 4);
-    deps.particles.burst(pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#ffdd55', 14, 3.5, 2);
+    deps.particles.burst(pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#ff7722', 30, 5.5, 4);
+    deps.particles.burst(pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#ffdd55', 16, 3.8, 2);
+    deps.particles.shockwave(pos, '#ff9944', radius + 0.6, 0.45);
+    deps.particles.flash(pos, '#ff9944', 8, 0.35);
     deps.audio.sfx('explosion');
+    deps.shake?.(0.4);
     for (const e of enemiesWithin(radius, pos)) hitEnemy(e, mult);
   }
 
@@ -282,7 +314,7 @@ export function createSkillSystem(deps) {
   function cast(id) {
     const p = deps.player.state;
     const def = SKILLS[id];
-    if (!def || !ready(id) || p.dead || p.rolling > 0) return false;
+    if (!def || !ready(id) || p.dead || p.rolling > 0 || p.busy) return false;
     if (p.stamina < def.cost) { deps.audio.sfx('deny'); return false; }
     p.stamina -= def.cost;
     cooldowns[id] = def.cd;

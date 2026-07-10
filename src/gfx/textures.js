@@ -1,28 +1,30 @@
-// Semua pixel art Semesta di-generate di sini (canvas 16px, nearest-neighbor).
-// Palette dikunci supaya style 2.5D konsisten: hutan redup, hijau sage, tanah mauve.
+// All of Semesta's pixel art is generated here (16px canvas, nearest-neighbor).
+// Palette is locked for a consistent cozy 2.5D look: lush spring greens,
+// warm earth, clear turquoise water (Stardew-inspired, NOT minecraft-y).
 import * as THREE from 'three';
 import { mulberry32 } from '../util/noise.js';
 import { ITEMS } from '../systems/items.js';
 
 export const PALETTE = {
-  grass: ['#5b7850', '#63815a', '#557248', '#6d8a5e'],
-  grassBright: '#7fa065',
-  moss: '#4c6a44',
-  dirt: ['#7d635b', '#87695f', '#735a52'],
-  dirtDark: '#54423c',
-  path: ['#8a6f62', '#94786a', '#816759'],
-  stone: ['#7b807c', '#878c87', '#6f7470'],
-  stoneDark: '#575c58',
-  bark: '#3d3129',
-  barkLight: '#4d3f33',
-  leaf: '#33513c',
-  leafDark: '#294232',
-  leafLight: '#40634a',
-  water: '#3f7fae',
-  waterDeep: '#2e628c',
-  foam: '#cfe6ee',
-  torchWood: '#4a3a2a',
+  grass: ['#6aa84f', '#74b258', '#5f9a46', '#7fbd62'],
+  grassBright: '#a4d96a',
+  moss: '#568a42',
+  dirt: ['#9a7355', '#a67d5e', '#8a654a'],
+  dirtDark: '#6a4d38',
+  path: ['#c2a26a', '#cdad78', '#b3925c'],
+  stone: ['#8d9294', '#9aa0a2', '#7d8284'],
+  stoneDark: '#646a6c',
+  bark: '#5a4432',
+  barkLight: '#6e5540',
+  leaf: '#3e7d47',
+  leafDark: '#336a3c',
+  leafLight: '#4f9857',
+  water: '#41a0c8',
+  waterDeep: '#2f7fa6',
+  foam: '#d8f0f4',
+  torchWood: '#5a4432',
   flame: ['#ffdd55', '#ffaa33', '#ff7722'],
+  flowers: ['#f0e05a', '#e87a9a', '#8a9ae8', '#f0f0f0', '#f0a04a'],
 };
 
 function canvas(w, h) {
@@ -41,7 +43,7 @@ export function toTexture(cnv, { repeat = false } = {}) {
   return t;
 }
 
-// Gambar sprite dari peta string; legend: char -> warna ('.' = transparan)
+// Draw a sprite from a string map; legend: char -> color ('.' = transparent)
 export function drawMap(ctx, map, legend, ox = 0, oy = 0) {
   for (let y = 0; y < map.length; y++) {
     for (let x = 0; x < map[y].length; x++) {
@@ -66,13 +68,22 @@ function noisyFill(ctx, x0, y0, w, h, colors, rng, speckle = 0.35) {
   }
 }
 
+export function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.min(255, ((n >> 16) & 255) * (1 + amt)));
+  const g = Math.max(0, Math.min(255, ((n >> 8) & 255) * (1 + amt)));
+  const b = Math.max(0, Math.min(255, (n & 255) * (1 + amt)));
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+
 // ---------------------------------------------------------------------------
-// ATLAS BLOK TERRAIN — grid 4x4 tile @16px
+// TERRAIN BLOCK ATLAS — 4x4 tile grid @16px
 // ---------------------------------------------------------------------------
 export const TILE = {
   GRASS_A: 0, GRASS_B: 1, GRASS_C: 2, PATH: 3,
   DIRT: 4, STONE: 5, GRASS_SIDE: 6, DIRT_SIDE: 7,
   STONE_SIDE: 8, PATH_SIDE: 9, MOSS: 10, SHORE: 11,
+  FLOWER_A: 12, FLOWER_B: 13,
 };
 const ATLAS_GRID = 4, TILE_PX = 16;
 
@@ -83,20 +94,19 @@ export function makeTerrainAtlas() {
 
   const at = (i) => [(i % ATLAS_GRID) * TILE_PX, Math.floor(i / ATLAS_GRID) * TILE_PX];
 
-  // rumput 3 variasi
+  // 3 grass variants
   for (const [ti, base] of [[TILE.GRASS_A, 0], [TILE.GRASS_B, 1], [TILE.GRASS_C, 2]]) {
     const [x, y] = at(ti);
     noisyFill(ctx, x, y, 16, 16, [PALETTE.grass[base], ...PALETTE.grass, PALETTE.moss], rng, 0.5);
-    // helai rumput terang acak
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       ctx.fillStyle = PALETTE.grassBright;
       ctx.fillRect(x + Math.floor(rng() * 16), y + Math.floor(rng() * 16), 1, 1);
     }
   }
-  { // jalan setapak
+  { // footpath
     const [x, y] = at(TILE.PATH);
     noisyFill(ctx, x, y, 16, 16, [PALETTE.path[0], ...PALETTE.path, PALETTE.dirtDark], rng, 0.45);
-    for (let i = 0; i < 5; i++) { // kerikil
+    for (let i = 0; i < 5; i++) { // pebbles
       ctx.fillStyle = PALETTE.stone[1];
       ctx.fillRect(x + Math.floor(rng() * 15), y + Math.floor(rng() * 15), 2, 1);
     }
@@ -107,11 +117,11 @@ export function makeTerrainAtlas() {
     noisyFill(ctx, x, y, 16, 16, [PALETTE.stone[0], ...PALETTE.stone, PALETTE.stoneDark], rng, 0.35);
     ctx.fillStyle = PALETTE.stoneDark;
     ctx.fillRect(x + 3, y + 5, 6, 1); ctx.fillRect(x + 9, y + 11, 5, 1); }
-  { // sisi rumput: tanah + bibir hijau di atas
+  { // grass side: dirt + green lip on top
     const [x, y] = at(TILE.GRASS_SIDE);
     noisyFill(ctx, x, y, 16, 16, [PALETTE.dirt[2], ...PALETTE.dirt, PALETTE.dirtDark], rng, 0.4);
     noisyFill(ctx, x, y, 16, 3, [PALETTE.grass[0], ...PALETTE.grass], rng, 0.5);
-    for (let i = 0; i < 8; i++) { // rumput menjuntai
+    for (let i = 0; i < 8; i++) { // hanging grass
       const gx = Math.floor(rng() * 16);
       ctx.fillStyle = PALETTE.moss;
       ctx.fillRect(x + gx, y + 3, 1, 1 + Math.floor(rng() * 2));
@@ -128,9 +138,23 @@ export function makeTerrainAtlas() {
     noisyFill(ctx, x, y, 16, 2, [PALETTE.path[2], PALETTE.path[0]], rng, 0.5); }
   { const [x, y] = at(TILE.MOSS);
     noisyFill(ctx, x, y, 16, 16, [PALETTE.moss, PALETTE.grass[2], PALETTE.leafDark, PALETTE.grass[0]], rng, 0.5); }
-  { // tepi pantai basah
+  { // wet shore edge
     const [x, y] = at(TILE.SHORE);
-    noisyFill(ctx, x, y, 16, 16, [PALETTE.dirtDark, PALETTE.dirt[2], '#463830'], rng, 0.4); }
+    noisyFill(ctx, x, y, 16, 16, [PALETTE.dirtDark, PALETTE.dirt[2], '#5c4436'], rng, 0.4); }
+  // flowery grass variants
+  for (const [ti, seedOff] of [[TILE.FLOWER_A, 0], [TILE.FLOWER_B, 3]]) {
+    const [x, y] = at(ti);
+    noisyFill(ctx, x, y, 16, 16, [PALETTE.grass[1], ...PALETTE.grass, PALETTE.moss], rng, 0.5);
+    for (let i = 0; i < 3; i++) {
+      const fx = 2 + Math.floor(rng() * 12), fy = 2 + Math.floor(rng() * 12);
+      const col = PALETTE.flowers[(i + seedOff) % PALETTE.flowers.length];
+      ctx.fillStyle = col;
+      ctx.fillRect(x + fx - 1, y + fy, 1, 1); ctx.fillRect(x + fx + 1, y + fy, 1, 1);
+      ctx.fillRect(x + fx, y + fy - 1, 1, 1); ctx.fillRect(x + fx, y + fy + 1, 1, 1);
+      ctx.fillStyle = '#f5e88a';
+      ctx.fillRect(x + fx, y + fy, 1, 1);
+    }
+  }
 
   const texture = toTexture(c);
   const uv = (i) => {
@@ -144,14 +168,14 @@ export function makeTerrainAtlas() {
 }
 
 // ---------------------------------------------------------------------------
-// TEKSTUR DEKOR
+// DECOR TEXTURES
 // ---------------------------------------------------------------------------
 export function makeBarkTexture() {
   const rng = mulberry32(77);
   const c = canvas(16, 16);
   const ctx = c.getContext('2d');
-  noisyFill(ctx, 0, 0, 16, 16, [PALETTE.bark, PALETTE.barkLight, '#332821'], rng, 0.4);
-  ctx.fillStyle = '#2b221b';
+  noisyFill(ctx, 0, 0, 16, 16, [PALETTE.bark, PALETTE.barkLight, '#4a3626'], rng, 0.4);
+  ctx.fillStyle = '#42311f';
   ctx.fillRect(4, 0, 1, 16); ctx.fillRect(11, 0, 1, 16);
   return toTexture(c, { repeat: true });
 }
@@ -161,6 +185,11 @@ export function makeLeafTexture() {
   const c = canvas(16, 16);
   const ctx = c.getContext('2d');
   noisyFill(ctx, 0, 0, 16, 16, [PALETTE.leaf, PALETTE.leafDark, PALETTE.leafLight, PALETTE.leafDark], rng, 0.55);
+  // occasional bright leaf sparkle
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = '#66b06a';
+    ctx.fillRect(Math.floor(rng() * 16), Math.floor(rng() * 16), 1, 1);
+  }
   return toTexture(c, { repeat: true });
 }
 
@@ -182,6 +211,25 @@ export function makeGrassTuftTexture() {
   return toTexture(c);
 }
 
+export function makeFlowerTexture(color) {
+  const c = canvas(16, 16);
+  const ctx = c.getContext('2d');
+  drawMap(ctx, [
+    '................',
+    '.....ff..ff.....',
+    '....ffFFFFff....',
+    '.....fFyyFf.....',
+    '....ffFFFFff....',
+    '.....ff..ff.....',
+    '.......ss.......',
+    '.......ss.......',
+    '....gg.ss.......',
+    '.....ggss.......',
+    '.......ss.......',
+  ], { f: color, F: shade(color, 0.25), y: '#f5e88a', s: '#4f9857', g: '#66b06a' }, 0, 3);
+  return toTexture(c);
+}
+
 export function makeFlameTexture(frame = 0) {
   const c = canvas(8, 12);
   const ctx = c.getContext('2d');
@@ -197,69 +245,110 @@ export function makeWaterNoiseTexture() {
   const rng = mulberry32(555);
   const c = canvas(64, 64);
   const ctx = c.getContext('2d');
-  noisyFill(ctx, 0, 0, 64, 64, [PALETTE.water, PALETTE.waterDeep, '#4a8cba', PALETTE.water], rng, 0.4);
-  for (let i = 0; i < 30; i++) { // kilau
-    ctx.fillStyle = 'rgba(210,235,245,0.5)';
+  noisyFill(ctx, 0, 0, 64, 64, [PALETTE.water, PALETTE.waterDeep, '#54b0d4', PALETTE.water], rng, 0.4);
+  for (let i = 0; i < 30; i++) { // sparkle
+    ctx.fillStyle = 'rgba(225,245,250,0.55)';
     ctx.fillRect(Math.floor(rng() * 62), Math.floor(rng() * 63), 2, 1);
   }
   return toTexture(c, { repeat: true });
 }
 
 // ---------------------------------------------------------------------------
-// KARAKTER
+// CHARACTER FACE — 16x16, big expressive pixel eyes (Stardew-ish, not blocky)
 // ---------------------------------------------------------------------------
-export function makePlayerFaceTexture(skin = '#e8b98a', hair = '#3a2a20', female = false, bald = false) {
-  const c = canvas(8, 8);
+export function makePlayerFaceTexture(skin, hair, eyeColor, female = false, bald = false) {
+  const c = canvas(16, 16);
   const ctx = c.getContext('2d');
-  const mouth = shade(skin, -0.18);
-  const h = bald ? skin : hair;
-  const map = female ? [
-    'hhhhhhhh',
-    'hshhhhsh',
-    'hssssssh',
-    'ssssssss',
-    'sLssssLs',
-    'ssssssss',
-    'ssmmmmss',
-    'ssssssss',
-  ] : [
-    'hhhhhhhh',
-    'hhhhhhhh',
-    'hsssssih',
-    'ssssssss',
-    'sEssssEs',
-    'ssssssss',
-    'ssmmmmss',
-    'ssssssss',
-  ];
-  drawMap(ctx, map, { h, s: skin, E: '#2b2b33', L: '#33222e', m: mouth, i: h });
+  const px = (x, y, w = 1, h = 1, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
+
+  // base skin
+  px(0, 0, 16, 16, skin);
+  // subtle cheek/jaw shading
+  px(0, 13, 16, 3, shade(skin, -0.08));
+
+  // hair fringe (top of face texture) unless bald
+  if (!bald) {
+    px(0, 0, 16, 3, hair);
+    px(0, 3, 3, 2, hair); px(13, 3, 3, 2, hair);
+    // zig-zag fringe
+    px(4, 3, 2, 1, hair); px(7, 3, 2, 2, hair); px(11, 3, 1, 1, hair);
+    px(3, 4, 1, 1, shade(hair, -0.2)); px(12, 4, 1, 1, shade(hair, -0.2));
+  } else {
+    px(0, 0, 16, 2, shade(skin, 0.06));
+  }
+
+  // brows
+  const brow = bald ? shade(skin, -0.35) : shade(hair, -0.25);
+  px(3, 6, 3, 1, brow); px(10, 6, 3, 1, brow);
+
+  // eyes — 3 wide x 4 tall, dark lash line, colored iris, white highlight
+  const drawEye = (ex) => {
+    px(ex, 7, 3, 1, '#2b2620');            // lash line
+    px(ex, 8, 3, 2, eyeColor);             // iris
+    px(ex, 10, 3, 1, shade(eyeColor, -0.4)); // lower iris shadow
+    px(ex, 8, 1, 1, '#ffffff');            // highlight
+    if (female) { px(ex - 1, 7, 1, 1, '#2b2620'); px(ex + 3, 7, 1, 1, '#2b2620'); } // lashes
+  };
+  drawEye(3); drawEye(10);
+
+  // tiny nose shade
+  px(8, 11, 1, 1, shade(skin, -0.18));
+
+  // mouth — soft smile
+  px(6, 13, 1, 1, shade(skin, -0.3));
+  px(7, 13, 2, 1, shade(skin, -0.35));
+  px(9, 13, 1, 1, shade(skin, -0.3));
+
+  // blush
+  if (female) { px(1, 11, 2, 1, 'rgba(232,120,120,0.55)'); px(13, 11, 2, 1, 'rgba(232,120,120,0.55)'); }
+
   return toTexture(c);
 }
 
-function shade(hex, amt) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.max(0, Math.min(255, ((n >> 16) & 255) * (1 + amt)));
-  const g = Math.max(0, Math.min(255, ((n >> 8) & 255) * (1 + amt)));
-  const b = Math.max(0, Math.min(255, (n & 255) * (1 + amt)));
-  return `rgb(${r | 0},${g | 0},${b | 0})`;
-}
-
-export function makeSlimeFaceTexture() {
+// ---------------------------------------------------------------------------
+// CRITTER FACE — big glossy eyes for enemies & pets (Pokemon/Pokopia vibe).
+// Drawn on a transparent 16x12 canvas, used as a plane overlay on the body.
+// ---------------------------------------------------------------------------
+export function makeCritterFaceTexture(opts = {}) {
+  const {
+    eyeW = 3, eyeH = 4, gap = 6, eyeY = 2,
+    eye = '#26221e', mouth = 'smile', mouthColor = '#26221e',
+    cheeks = null, angry = false,
+  } = opts;
   const c = canvas(16, 12);
   const ctx = c.getContext('2d');
-  drawMap(ctx, [
-    '................',
-    '...E........E...',
-    '...EE.......EE..',
-    '................',
-    '......m..m......',
-    '......mmmm......',
-  ], { E: '#173326', m: '#1d4030' }, 0, 3);
+  const px = (x, y, w = 1, h = 1, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
+
+  const exL = 8 - Math.floor(gap / 2) - eyeW;
+  const exR = 8 + Math.ceil(gap / 2);
+  for (const ex of [exL, exR]) {
+    px(ex, eyeY, eyeW, eyeH, eye);
+    px(ex, eyeY, Math.max(1, eyeW - 2), Math.max(1, Math.floor(eyeH / 2) - 1) || 1, '#ffffff'); // big highlight
+    px(ex + eyeW - 1, eyeY + eyeH - 2, 1, 1, 'rgba(255,255,255,0.7)'); // lower shine
+    if (angry) px(ex - 1 + (ex === exR ? 0 : 0), eyeY - 1, eyeW + 1, 1, eye);
+  }
+  const my = eyeY + eyeH + 1;
+  if (mouth === 'smile') {
+    px(6, my, 1, 1, mouthColor); px(7, my + 1, 2, 1, mouthColor); px(9, my, 1, 1, mouthColor);
+  } else if (mouth === 'open') {
+    px(7, my, 2, 2, mouthColor);
+    px(7, my + 1, 2, 1, '#c86a6a');
+  } else if (mouth === 'fang') {
+    px(6, my, 4, 1, mouthColor);
+    px(6, my + 1, 1, 1, '#ffffff'); px(9, my + 1, 1, 1, '#ffffff');
+  } else if (mouth === 'w') { // cat mouth
+    px(6, my, 1, 1, mouthColor); px(8, my, 1, 1, mouthColor);
+    px(7, my + 1, 1, 1, mouthColor); px(9, my + 1, 1, 1, mouthColor);
+  }
+  if (cheeks) {
+    px(exL - 2, eyeY + eyeH - 1, 2, 1, cheeks);
+    px(exR + eyeW, eyeY + eyeH - 1, 2, 1, cheeks);
+  }
   return toTexture(c);
 }
 
 // ---------------------------------------------------------------------------
-// IKON ITEM 16x16 — dipakai HUD (dataURL) & drop 3D (texture)
+// ITEM ICONS 16x16 — used by HUD (dataURL) & 3D drops (texture)
 // ---------------------------------------------------------------------------
 const ICON_MAPS = {
   slime_gel: {
@@ -479,7 +568,74 @@ const ICON_MAPS = {
     ],
     legend: { f: '#4a4a52', F: '#6a6a72', o: '#e8742e', O: '#ffb055' },
   },
+  fish_minnow: {
+    map: [
+      '................',
+      '................',
+      '......bbbb......',
+      '..b..bBBBBb.....',
+      '..bb bBeBBBb....',
+      '..bbbBBBBBBb....',
+      '..bbbBBBBBb.....',
+      '..b..bBBBb......',
+      '......bbb.......',
+      '................',
+    ],
+    legend: { b: '#5a8a6a', B: '#8ab89a', e: '#26221e' },
+  },
+  fish_perch: {
+    map: [
+      '................',
+      '................',
+      '......oooo......',
+      '..o..oOOOOo.....',
+      '..oo oOeOOOo....',
+      '..oooOOOOOOo....',
+      '..oooOOOOOo.....',
+      '..o..oOOOo......',
+      '......ooo.......',
+      '................',
+    ],
+    legend: { o: '#c87840', O: '#f0a868', e: '#26221e' },
+  },
+  fish_koi: {
+    map: [
+      '................',
+      '................',
+      '......gggg......',
+      '..g..gGGGGg.....',
+      '..gg gGeGGWg....',
+      '..gggGGWWGGg....',
+      '..gggGGGGGg.....',
+      '..g..gGGGg......',
+      '......ggg.......',
+      '................',
+    ],
+    legend: { g: '#d8a028', G: '#f5c84a', W: '#ffffff', e: '#26221e' },
+  },
 };
+
+export const CHARM_COLORS = {
+  charm_moku: '#7ac86a',
+  charm_piko: '#f0d05a',
+  charm_bubbles: '#7ab8e8',
+  charm_cinder: '#f08a5a',
+  charm_luma: '#c8a8f0',
+};
+
+function paintCharmIcon(ctx, id) {
+  const col = CHARM_COLORS[id] || '#c8a8f0';
+  const px = (x, y, w = 1, h = 1, cc = col) => { ctx.fillStyle = cc; ctx.fillRect(x, y, w, h); };
+  // little medallion with a paw print
+  px(4, 3, 8, 10, shade(col, -0.4));
+  px(5, 4, 6, 8, col);
+  px(6, 5, 2, 1, '#ffffff');
+  // paw
+  px(7, 8, 2, 2, shade(col, -0.55));
+  px(6, 7, 1, 1, shade(col, -0.55)); px(9, 7, 1, 1, shade(col, -0.55)); px(7, 6, 2, 1, shade(col, -0.55));
+  // chain loop
+  px(7, 1, 2, 2, '#c8b060');
+}
 
 const WEAPON_MAPS = {
   wooden_sword: {
@@ -568,11 +724,10 @@ const WEAPON_MAPS = {
   },
 };
 
-// painter prosedural untuk senjata bow/staff/dagger (warna dari def.blade)
+// procedural painter for bow/staff/dagger weapon icons (colors from def.blade)
 function paintWeaponIcon(ctx, wdef) {
   const [dark, light] = wdef.blade;
   if (wdef.type === 'bow') {
-    // busur: lengkung + tali + panah
     for (let i = 0; i < 10; i++) {
       const t = i / 9;
       const x = 3 + Math.round(Math.sin(t * Math.PI) * 4);
@@ -581,13 +736,12 @@ function paintWeaponIcon(ctx, wdef) {
       ctx.fillRect(x, y, 2, 2);
     }
     ctx.fillStyle = '#d8d8c8';
-    for (let y = 3; y <= 13; y++) ctx.fillRect(3, y, 1, 1); // tali
+    for (let y = 3; y <= 13; y++) ctx.fillRect(3, y, 1, 1); // string
     ctx.fillStyle = light;
-    for (let i = 0; i < 7; i++) ctx.fillRect(5 + i, 8, 1, 1); // panah
+    for (let i = 0; i < 7; i++) ctx.fillRect(5 + i, 8, 1, 1); // arrow
     ctx.fillStyle = '#e8e8d8';
     ctx.fillRect(12, 7, 1, 1); ctx.fillRect(12, 9, 1, 1); ctx.fillRect(13, 8, 1, 1);
   } else if (wdef.type === 'staff') {
-    // tongkat diagonal + orb bercahaya
     for (let i = 0; i < 9; i++) {
       ctx.fillStyle = i % 3 ? dark : '#5a4630';
       ctx.fillRect(3 + i, 13 - i, 2, 2);
@@ -599,7 +753,6 @@ function paintWeaponIcon(ctx, wdef) {
     ctx.fillStyle = dark;
     ctx.fillRect(10, 3, 1, 2); ctx.fillRect(14, 3, 1, 2); ctx.fillRect(12, 1, 1, 1); ctx.fillRect(12, 5, 1, 1);
   } else if (wdef.type === 'dagger') {
-    // dua belati menyilang
     for (let i = 0; i < 6; i++) {
       ctx.fillStyle = light;
       ctx.fillRect(4 + i, 3 + i, 2, 1);
@@ -621,16 +774,18 @@ export function makeItemIconCanvas(id) {
   const ctx = c.getContext('2d');
   if (def) {
     drawMap(ctx, def.map, def.legend, 0, Math.floor((16 - def.map.length) / 2));
+  } else if (id.startsWith('charm_')) {
+    paintCharmIcon(ctx, id);
   } else if (ITEMS[id]?.weapon) {
     paintWeaponIcon(ctx, ITEMS[id]);
   } else {
-    ctx.fillStyle = '#c05cd0'; ctx.fillRect(4, 4, 8, 8); // item tak dikenal
+    ctx.fillStyle = '#c05cd0'; ctx.fillRect(4, 4, 8, 8); // unknown item
   }
   iconCache.set(id, c);
   return c;
 }
 
-// --- ikon skill: bentuk sederhana bergaya pixel ---
+// --- skill icons: simple pixel-styled shapes ---
 const skillIconCache = new Map();
 export function skillIconUrl(id, icon) {
   if (skillIconCache.has(id)) return skillIconCache.get(id);
@@ -711,7 +866,7 @@ export function itemIconTexture(id) {
   return toTexture(makeItemIconCanvas(id));
 }
 
-// Tekstur bilah pedang untuk model 3D di tangan player
+// Blade texture for the 3D weapon model in the player's hand
 export function makeBladeTexture(colors) {
   const rng = mulberry32(9);
   const c = canvas(8, 24);
