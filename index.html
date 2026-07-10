@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Semesta</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%2310160f'/><rect x='2' y='8' width='12' height='6' fill='%235b7850'/><rect x='6' y='2' width='4' height='8' fill='%2333513c'/><rect x='7' y='10' width='2' height='4' fill='%233d3129'/></svg>" />
+  <style>
+    :root {
+      --ui-dark: rgba(12, 16, 12, 0.82);
+      --ui-border: #3a4438;
+      --ui-text: #d8e0d0;
+      --hp-green: #6fd44a;
+      --xp-green: #58c93f;
+      --stam-orange: #f5a623;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1a221c; }
+    body {
+      font-family: 'Semesta Pixel', monospace;
+      user-select: none;
+      -webkit-user-select: none;
+      color: var(--ui-text);
+    }
+    #app { position: fixed; inset: 0; }
+    canvas.game { display: block; width: 100%; height: 100%; }
+
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    #hud * { image-rendering: pixelated; }
+
+    /* ---- boot / loading ---- */
+    #boot {
+      position: fixed; inset: 0; z-index: 100;
+      background: #10160f;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; transition: opacity 0.6s;
+    }
+    #boot.hidden { opacity: 0; pointer-events: none; }
+    #boot h1 {
+      font-size: 42px; letter-spacing: 8px; color: #cfe3b8;
+      text-shadow: 0 3px 0 #2a3a22, 0 6px 12px #000;
+    }
+    #boot .sub { font-size: 12px; color: #7d8f74; letter-spacing: 3px; }
+    #boot .bar {
+      width: 240px; height: 14px; border: 2px solid #3a4438; background: #1a231a;
+    }
+    #boot .bar > div { height: 100%; width: 0%; background: var(--xp-green); transition: width 0.2s; }
+
+    .dmg-num {
+      position: absolute; font-size: 15px; font-weight: bold;
+      color: #fff; text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+      pointer-events: none; white-space: nowrap; transform: translate(-50%, -50%);
+    }
+    .dmg-num.crit { color: #ffd23e; font-size: 19px; }
+    .dmg-num.player-hit { color: #ff6b5e; }
+    .dmg-num.heal { color: #7dff8a; }
+    .dmg-num.xp { color: #9fe86e; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="hud"></div>
+  <div id="boot">
+    <h1>SEMESTA</h1>
+    <div class="sub">MEMUAT DUNIA...</div>
+    <div class="bar"><div id="boot-bar"></div></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
