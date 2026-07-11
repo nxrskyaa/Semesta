@@ -83,6 +83,12 @@ const CSS = `
   display: flex; align-items: center; justify-content: center; font-size: 17px; }
 .pet-row.locked { opacity: 0.5; }
 .pet-row .perk { color: #9fe86e; }
+.coinbar {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gold);
+  margin-bottom: 10px; padding: 6px 10px; letter-spacing: 1px;
+  background: rgba(216,184,102,0.08); border: 1px solid var(--gold-dim);
+}
+.coinbar img { width: 16px; height: 16px; image-rendering: pixelated; }
 .help-body { font-size: 11px; color: #cfd8c8; line-height: 2; }
 .help-body h4 { font-size: 12px; color: #ffe9a8; letter-spacing: 2px; margin: 10px 0 4px; }
 .help-body b { background: #202a20; border: 1px solid #39443a; padding: 0 5px; color: #c5cdbd; font-weight: normal; }
@@ -92,6 +98,7 @@ const CSS = `
 export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
+  economy, cooking, estate, gacha,
 }) {
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -103,6 +110,10 @@ export function createPanels(hudRoot, {
     forge: document.createElement('div'),
     pets: document.createElement('div'),
     skills: document.createElement('div'),
+    shop: document.createElement('div'),
+    cook: document.createElement('div'),
+    estate: document.createElement('div'),
+    gacha: document.createElement('div'),
     help: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
@@ -120,6 +131,16 @@ export function createPanels(hudRoot, {
         ? `<div class="inv-cell" title="${ITEMS[m[0]].name}"><img src="${itemIconUrl(m[0])}"><span class="cnt">${m[1]}</span></div>`
         : '<div class="inv-cell"></div>';
     }
+    // cooked food you can eat straight from the bag
+    let foods = '';
+    for (const [id, n] of mats) {
+      const d = ITEMS[id];
+      if (!d?.consumable || id === 'tonic') continue;
+      foods += `<div class="rec-row"><img class="ic" src="${itemIconUrl(id)}">
+        <div class="nm">${d.name} x${n}<small>Restores ${d.heal} HP</small></div>
+        <button class="act" data-eat="${id}">EAT</button></div>`;
+    }
+    if (foods) foods = '<h4 class="sect">FOOD</h4>' + foods;
     let weps = '';
     for (const id of inventory.state.weapons) {
       const d = ITEMS[id];
@@ -129,11 +150,18 @@ export function createPanels(hudRoot, {
         <div class="nm">${d.name} ${plus ? `<span class="plus">+${plus}</span>` : ''}<small>DMG ${d.dmg} · SPD ${d.speed}${d.hits ? ` ×${d.hits}` : ''}</small></div>
         <button class="eq" data-eq="${id}" ${eq ? 'disabled' : ''}>${eq ? 'EQUIPPED' : 'EQUIP'}</button></div>`;
     }
-    panels.inv.innerHTML = `<h3>BAG <small>[Tab] close</small></h3><div class="inv-grid">${grid}</div>${weps}`;
+    const coinBar = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${inventory.state.coins} coins</div>`;
+    panels.inv.innerHTML = `<h3>BAG <small>[Tab] close</small></h3>${coinBar}<div class="inv-grid">${grid}</div>${foods}${weps}`;
     panels.inv.querySelectorAll('[data-eq]').forEach((b) => {
       b.addEventListener('click', () => {
         inventory.equip(b.dataset.eq);
         audio.sfx('ui');
+        renderInventory();
+      });
+    });
+    panels.inv.querySelectorAll('[data-eat]').forEach((b) => {
+      b.addEventListener('click', () => {
+        economy?.eat(b.dataset.eat);
         renderInventory();
       });
     });
@@ -283,6 +311,175 @@ export function createPanels(hudRoot, {
     });
   }
 
+  function renderShop() {
+    if (!economy) return;
+    const coins = inventory.state.coins;
+    let html = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>`;
+
+    html += '<h4 class="sect">BUY</h4>';
+    for (const g of economy.goods()) {
+      const afford = coins >= g.price && !g.soldout;
+      html += `<div class="rec-row"><img class="ic" src="${itemIconUrl(g.icon || g.id)}">
+        <div class="nm">${g.name}<small>${g.desc}</small></div>
+        <div class="cost"><span class="${afford ? 'ok' : 'lack'}">${g.soldout ? 'SOLD OUT' : g.price + 'c'}</span></div>
+        <button class="act" data-buy="${g.id}" ${afford ? '' : 'disabled'}>BUY</button></div>`;
+    }
+
+    html += '<h4 class="sect">SELL — fish, crops & materials</h4>';
+    const sellables = [...inventory.state.materials.entries()]
+      .filter(([id]) => ITEMS[id]?.sell)
+      .sort((a, b) => (ITEMS[b[0]].sell) - (ITEMS[a[0]].sell));
+    if (!sellables.length) html += '<div style="font-size:10px;color:var(--muted)">Nothing to sell yet — go fish, farm or hunt!</div>';
+    for (const [id, n] of sellables) {
+      const d = ITEMS[id];
+      html += `<div class="rec-row"><img class="ic" src="${itemIconUrl(id)}">
+        <div class="nm">${d.name} x${n}<small>${d.sell}c each</small></div>
+        <button class="eq" data-sell="${id}">SELL 1</button>
+        <button class="act" data-sellall="${id}">ALL (+${d.sell * n}c)</button></div>`;
+    }
+
+    panels.shop.innerHTML = `<h3>PIP'S SHOP <small>[Esc] close</small></h3>${html}`;
+    panels.shop.querySelectorAll('[data-buy]').forEach((b) => {
+      b.addEventListener('click', () => { economy.buy(b.dataset.buy); renderShop(); });
+    });
+    panels.shop.querySelectorAll('[data-sell]').forEach((b) => {
+      b.addEventListener('click', () => { economy.sell(b.dataset.sell, 1); renderShop(); });
+    });
+    panels.shop.querySelectorAll('[data-sellall]').forEach((b) => {
+      b.addEventListener('click', () => { economy.sell(b.dataset.sellall, Infinity); renderShop(); });
+    });
+  }
+
+  function renderCook() {
+    if (!cooking) return;
+    let html = '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;letter-spacing:1px">The fire crackles... time to grill the catch of the day.</div>';
+    for (const r of cooking.recipes()) {
+      const d = ITEMS[r.out];
+      let cost = '';
+      let ok = true;
+      for (const [id, n] of Object.entries(r.cost)) {
+        const have = inventory.count(id);
+        if (have < n) ok = false;
+        cost += `<span class="${have >= n ? 'ok' : 'lack'}" title="${ITEMS[id].name}"><img src="${itemIconUrl(id)}">${have}/${n}</span>`;
+      }
+      html += `<div class="rec-row"><img class="ic" src="${itemIconUrl(r.out)}">
+        <div class="nm">${d.name}<small>Restores ${d.heal} HP · sells for ${d.sell}c</small></div>
+        <div class="cost">${cost}</div>
+        <button class="act" data-cook="${r.out}" ${ok ? '' : 'disabled'}>COOK</button></div>`;
+    }
+    panels.cook.innerHTML = `<h3>CAMPFIRE COOKING <small>[Esc] close</small></h3>${html}`;
+    panels.cook.querySelectorAll('[data-cook]').forEach((b) => {
+      b.addEventListener('click', () => { cooking.cook(b.dataset.cook); renderCook(); });
+    });
+  }
+
+  function renderEstate() {
+    if (!estate) return;
+    const land = estate.currentLand();
+    const coins = inventory.state.coins;
+    let html = '';
+    if (!land) {
+      html = '<div style="font-size:10px;color:var(--muted)">Stand on a land parcel to build.</div>';
+    } else if (!land.owned) {
+      const afford = coins >= estate.landPrice;
+      html = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
+        <div class="rec-row"><div class="nm">Land Parcel #${land.idx + 1}
+          <small>A scenic clearing, ready for a home of your own.</small></div>
+          <div class="cost"><span class="${afford ? 'ok' : 'lack'}">${estate.landPrice}c</span></div>
+          <button class="act" data-buyland ${afford ? '' : 'disabled'}>BUY LAND</button></div>`;
+    } else if (!land.built) {
+      html = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
+        <h4 class="sect">CHOOSE A DESIGN — gather materials from birch trees & ore nodes</h4>`;
+      for (const [id, d] of Object.entries(estate.designs)) {
+        let cost = '';
+        let ok = coins >= d.coins;
+        for (const [mid, n] of Object.entries(d.cost)) {
+          const have = inventory.count(mid);
+          if (have < n) ok = false;
+          cost += `<span class="${have >= n ? 'ok' : 'lack'}"><img src="${itemIconUrl(mid)}">${have}/${n}</span>`;
+        }
+        if (d.coins) cost += `<span class="${coins >= d.coins ? 'ok' : 'lack'}">${d.coins}c</span>`;
+        html += `<div class="rec-row"><div class="dot" style="background:${d.roof}"></div>
+          <div class="nm">${d.name}<small>${d.desc}</small></div>
+          <div class="cost">${cost}</div>
+          <button class="act" data-build="${id}" ${ok ? '' : 'disabled'}>BUILD</button></div>`;
+      }
+    } else {
+      html = `<div style="font-size:11px;color:var(--text)">Welcome home! Your ${estate.designs[land.built].name} heals you while you're nearby, and monsters keep their distance.</div>`;
+    }
+    panels.estate.innerHTML = `<h3>YOUR ESTATE <small>[Esc] close</small></h3>${html}`;
+    panels.estate.querySelector('[data-buyland]')?.addEventListener('click', () => {
+      estate.buyLand(); renderEstate();
+    });
+    panels.estate.querySelectorAll('[data-build]').forEach((b) => {
+      b.addEventListener('click', () => { estate.build(b.dataset.build); renderEstate(); });
+    });
+  }
+
+  let gachaHistory = [];
+  function renderGacha(rolling = false, result = null) {
+    if (!gacha) return;
+    const coins = inventory.state.coins;
+    const afford = coins >= gacha.price;
+    const RARITY = {
+      common: ['COMMON', '#b8c4b0'], rare: ['RARE', '#7ab8e8'],
+      epic: ['EPIC', '#c8a8f0'], legendary: ['LEGENDARY', '#f0c455'],
+    };
+    let resultHtml;
+    if (rolling) {
+      resultHtml = '<div class="g-capsule spin">●</div><div class="g-hint">The capsule tumbles...</div>';
+    } else if (result) {
+      const [label, col] = RARITY[result.rarity];
+      resultHtml = `<div class="g-card" style="--rc:${col}">
+        <div class="g-rarity">${label}</div>
+        <img src="${itemIconUrl(result.iconId)}">
+        <div class="g-name">${result.name}</div>
+        ${result.note ? `<div class="g-note">${result.note}</div>` : ''}
+      </div>`;
+    } else {
+      resultHtml = '<div class="g-capsule">●</div><div class="g-hint">Spin for charms, mount whistles... maybe even Blossom.</div>';
+    }
+    const hist = gachaHistory.slice(-6).reverse().map((h) =>
+      `<span style="color:${RARITY[h.rarity][1]}">◆ ${h.name}</span>`).join('<br>');
+    panels.gacha.innerHTML = `<h3>WONDER CAPSULES <small>[Esc] close</small></h3>
+      <style>
+        .g-stage { text-align: center; padding: 12px 0 6px; min-height: 150px; }
+        .g-capsule { font-size: 56px; color: #f06a7a; text-shadow: 0 0 20px rgba(240,106,122,0.4); }
+        .g-capsule.spin { display: inline-block; animation: g-shake 0.12s linear infinite; }
+        @keyframes g-shake { 0% { transform: rotate(-14deg) translateX(-3px); } 50% { transform: rotate(12deg) translateX(3px); } 100% { transform: rotate(-14deg) translateX(-3px); } }
+        .g-hint { font-size: 10px; color: var(--muted); margin-top: 8px; letter-spacing: 1px; }
+        .g-card { display: inline-block; padding: 14px 26px; border: 2px solid var(--rc);
+          background: rgba(10,14,9,0.75); box-shadow: 0 0 22px var(--rc), inset 0 0 14px rgba(0,0,0,0.5);
+          animation: g-pop 0.3s ease-out; }
+        @keyframes g-pop { from { transform: scale(0.6); opacity: 0; } }
+        .g-rarity { font-size: 9px; letter-spacing: 4px; color: var(--rc); margin-bottom: 8px; }
+        .g-card img { width: 48px; height: 48px; image-rendering: pixelated; }
+        .g-name { font-size: 13px; color: var(--text); margin-top: 6px; }
+        .g-note { font-size: 9px; color: var(--muted); margin-top: 4px; }
+        .g-hist { font-size: 9px; line-height: 1.9; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
+        .g-rollbtn { width: 100%; margin-top: 10px; font-size: 13px !important; padding: 12px !important; letter-spacing: 3px !important; }
+        .g-odds { font-size: 8px; color: var(--muted); text-align: center; margin-top: 6px; letter-spacing: 1px; }
+      </style>
+      <div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
+      <div class="g-stage">${resultHtml}</div>
+      <button class="act g-rollbtn" data-roll ${(!afford || rolling) ? 'disabled' : ''}>
+        🎰 SPIN — ${gacha.price}c
+      </button>
+      <div class="g-odds">COMMON 60% · RARE 25% · EPIC 12% · LEGENDARY 3% — dupes refund coins</div>
+      ${hist ? `<div class="g-hist">${hist}</div>` : ''}`;
+    panels.gacha.querySelector('[data-roll]')?.addEventListener('click', () => {
+      const prize = gacha.roll();
+      if (!prize) { audio.sfx('deny'); return; }
+      audio.sfx('chest');
+      renderGacha(true, null);
+      setTimeout(() => {
+        gachaHistory.push(prize);
+        audio.sfx(prize.rarity === 'legendary' ? 'quest_done' : prize.rarity === 'epic' ? 'forge_ok' : 'catch');
+        renderGacha(false, prize);
+      }, 1100);
+    });
+  }
+
   function renderSkills() {
     if (!skillsApi) return;
     const { skillIds, skillSys, getPoints } = skillsApi;
@@ -346,6 +543,25 @@ export function createPanels(hudRoot, {
         4. Open sparkling <span class="tip">treasure chests</span> — goodies and rare <span class="tip">pet charms</span>.<br>
         5. Take quests from the villagers (look for the <span style="color:#ffd23e">!</span> marks) — they pay well,
         and some reward <span class="tip">rideable mounts</span>!
+        <h4>COINS & THE ECONOMY</h4>
+        Sell fish, crops and materials to <span class="tip">Pip's SHOP</span> (talk to Pip). Buy seeds,
+        plant them on the <span class="tip">farm plots</span> west of the village, harvest & sell.
+        Coins buy extra plots, <span class="tip">land parcels</span> for your own house, and
+        <span class="tip">Master NXR's Wonder Capsules</span> (gacha!) — pet charms, mount whistles,
+        even the legendary <span style="color:#f0a8c8">Blossom</span>.
+        <h4>GATHERING</h4>
+        <span class="tip">Pale birch trees</span> (golden-green tops) can be chopped for Hardwood.
+        <span class="tip">Dark boulders with glowing orange veins</span> can be mined for Iron Ore & Forge Stones.
+        Walk up and press <b>F</b> three times. Nodes regrow after a couple of minutes.
+        <h4>FISHING & AFK MODE</h4>
+        Press <b>F</b> at a shore to fish manually (best rarity). Press <b>G</b> for
+        <span class="tip">AFK fishing</span> — hands-free, but almost only common fish. Moving stops it.
+        <h4>SAFE ZONES & RESTING</h4>
+        Monsters never enter the <span class="tip">village</span>, <span class="tip">rest camps</span> (▲ on the map)
+        or your <span class="tip">built homes</span>. Standing by a campfire or your house heals you fast,
+        and everyone slowly recovers HP out of combat. Cook fish into meals at any campfire.
+        <h4>THE MAP</h4>
+        Press <b>N</b> (or tap the minimap) for the world map: village ⌂, camps ▲, land ◎, quests !, bosses ◆.
         <h4>WORLD BOSSES</h4>
         Every ~3 minutes a <span class="tip">World Boss</span> rises somewhere nearby — follow the gold
         diamond on the minimap. They hit hard but drop heaps of Forge Stones and pet charms.
@@ -360,7 +576,11 @@ export function createPanels(hudRoot, {
     `;
   }
 
-  const RENDER = { inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets, skills: renderSkills, help: renderHelp };
+  const RENDER = {
+    inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
+    skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
+    gacha: () => renderGacha(), help: renderHelp,
+  };
 
   function toggle(which) {
     const target = panels[which];

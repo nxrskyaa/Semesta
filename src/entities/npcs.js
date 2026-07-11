@@ -47,12 +47,58 @@ export const NPC_DEFS = [
     ],
   },
   {
-    id: 'merchant', name: 'Pip', species: 'bird', role: 'Collector',
+    id: 'merchant', name: 'Pip', species: 'bird', role: 'Shopkeeper',
     fur: '#7ab8d8', furLight: '#b8dcE8', outfit: '#c8a03a',
     dialog: [
-      'Ooh! Shiny things! I adore collectors like you.',
-      'Craft new weapons at the C menu — each class has its own recipes.',
+      'Ooh! Shiny things! I buy fish, crops and materials — and sell seeds!',
+      'Save your coins: farm plots and land for your own house are pricey.',
       'Pet charms summon little companions. Collect all ten, I dare you!',
+    ],
+  },
+  {
+    id: 'nxr', name: 'Master NXR', species: 'koala', role: 'Gacha Master',
+    fur: '#dce0e4', furLight: '#f4f6f8', outfit: '#26262c',
+    dialog: [
+      'Welcome, welcome! Feeling lucky today, adventurer?',
+      'My Wonder Capsules hold charms, whistles... even the legendary Blossom.',
+      'One spin, one destiny. The capsules never lie!',
+    ],
+  },
+  // ambient villagers — no quests, just life
+  {
+    id: 'momo', name: 'Momo', species: 'squirrel', role: 'Village Kid', ambient: true,
+    fur: '#c88a5a', furLight: '#e8b88a', outfit: '#e87a9a',
+    dialog: [
+      'Wanna race?! I always win. ALWAYS!',
+      'I saw a chest sparkle over the hill but Mom says monsters are scary.',
+      'When I grow up I want a cloud-cat mount!',
+    ],
+  },
+  {
+    id: 'tato', name: 'Grandpa Tato', species: 'turtle', role: 'Retired Angler', ambient: true,
+    fur: '#8aa86a', furLight: '#c8d8a8', outfit: '#7a6a4a',
+    dialog: [
+      'Back in my day the Golden Koi was THIS big... no, bigger.',
+      'A nap by the well, a grilled minnow... that is the life.',
+      'Slow and steady, young one. Slow and steady.',
+    ],
+  },
+  {
+    id: 'lulu', name: 'Lulu', species: 'duck', role: 'Dreamer', ambient: true,
+    fur: '#f0e8c8', furLight: '#f8f4e0', outfit: '#8a9ae8',
+    dialog: [
+      'I practice my quacking every morning. Want to hear? QUACK.',
+      'The rain is my favorite weather. Puddles!!',
+      'Someday I will swim all the way across the big lake.',
+    ],
+  },
+  {
+    id: 'bimo', name: 'Bimo', species: 'dog', role: 'Good Boy', ambient: true,
+    fur: '#a8825a', furLight: '#d8c0a0', outfit: '#4a9152',
+    dialog: [
+      'Woof! ...Ahem. I mean, hello, traveler.',
+      'I guard the village at night. Nothing gets past this nose.',
+      'If you find a bone out there... you know who to call. Woof.',
     ],
   },
 ];
@@ -143,6 +189,107 @@ function buildVillagerMesh(def) {
       wing.position.set(sx * 0.21, 0.36, -0.02);
       g.add(wing);
     }
+  } else if (def.species === 'koala') {
+    // Master NXR — modeled after the NXR mascot: fluffy koala, VR visor,
+    // golden batik headband & sash
+    for (const sx of [-1, 1]) {
+      // big fluffy round ears with pink inners
+      const ear = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 0), furLight);
+      ear.position.set(sx * 0.28, 0.2, -0.02);
+      head.add(ear);
+      const earFluff = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), fur);
+      earFluff.position.set(sx * 0.34, 0.28, -0.02);
+      head.add(earFluff);
+      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.04), lam('#f0b8c0'));
+      inner.position.set(sx * 0.26, 0.19, 0.08);
+      head.add(inner);
+    }
+    // VR visor with the NXR wordmark
+    const visorC = document.createElement('canvas');
+    visorC.width = 32; visorC.height = 12;
+    const vctx = visorC.getContext('2d');
+    vctx.fillStyle = '#2a2a30'; vctx.fillRect(0, 0, 32, 12);
+    vctx.fillStyle = '#3a3a42'; vctx.fillRect(1, 1, 30, 3);
+    vctx.fillStyle = '#9a9aa4';
+    vctx.font = 'bold 7px monospace'; vctx.textAlign = 'center';
+    vctx.fillText('NXR', 16, 9);
+    const visorTex = new THREE.CanvasTexture(visorC);
+    visorTex.magFilter = THREE.NearestFilter;
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.1),
+      [lam('#2a2a30'), lam('#2a2a30'), lam('#2a2a30'), lam('#2a2a30'),
+        new THREE.MeshBasicMaterial({ map: visorTex }), lam('#2a2a30')]);
+    visor.position.set(0, 0.04, 0.22);
+    head.add(visor);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.1, 0.46), lam('#1e1e24'));
+    strap.position.set(0, 0.04, -0.02);
+    head.add(strap);
+    // golden batik headband with a knot on top
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.09, 0.48), lam('#c8963a'));
+    band.position.set(0, 0.18, 0);
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.12), lam('#e8b84a'));
+    knot.position.set(0, 0.28, 0.06);
+    head.add(band, knot);
+    // koala nose
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.05), lam('#2a2a30'));
+    nose.position.set(0, -0.1, 0.25);
+    head.add(nose);
+    // golden ornate collar + batik sarong hem
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.28), lam('#c8963a'));
+    collar.position.y = 0.5;
+    const sarong = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.26), lam('#c8963a'));
+    sarong.position.y = 0.18;
+    const sarongDark = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.06, 0.27), lam('#1e1e24'));
+    sarongDark.position.y = 0.23;
+    // golden anklets
+    for (const sx of [-1, 1]) {
+      const anklet = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.05, 0.15), lam('#e8b84a'));
+      anklet.position.set(sx * 0.08, 0.04, 0);
+      g.add(anklet);
+    }
+    g.add(collar, sarong, sarongDark);
+  } else if (def.species === 'squirrel') {
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.06), fur);
+      ear.position.set(sx * 0.16, 0.27, 0);
+      head.add(ear);
+    }
+    // big fluffy tail curling up the back
+    const tail1 = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 0.14), fur);
+    tail1.position.set(0, 0.35, -0.22);
+    tail1.rotation.x = -0.3;
+    const tail2 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16), furLight);
+    tail2.position.set(0, 0.58, -0.28);
+    g.add(tail1, tail2);
+  } else if (def.species === 'turtle') {
+    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lam('#5a8a52'));
+    shell.position.set(0, 0.4, -0.16);
+    shell.scale.set(1, 0.75, 0.8);
+    g.add(shell);
+  } else if (def.species === 'duck') {
+    const bill = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.12), lam('#f0a83d'));
+    bill.position.set(0, -0.07, 0.28);
+    head.add(bill);
+    const tailNub = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), furLight);
+    tailNub.position.set(0, 0.36, -0.18);
+    tailNub.rotation.x = 0.5;
+    g.add(tailNub);
+  } else if (def.species === 'dog') {
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.06), lam('#8a6a48'));
+      ear.position.set(sx * 0.19, 0.2, 0.04);
+      ear.rotation.z = -sx * 0.5;
+      head.add(ear);
+    }
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.08), furLight);
+    snout.position.set(0, -0.1, 0.26);
+    head.add(snout);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.03), lam('#2a2620'));
+    nose.position.set(0, -0.08, 0.3);
+    head.add(nose);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.07), fur);
+    tail.position.set(0, 0.36, -0.18);
+    tail.rotation.x = -0.7;
+    g.add(tail);
   } else if (def.species === 'badger') {
     for (const sx of [-1, 1]) {
       const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.06), lam('#4a4650'));
@@ -368,6 +515,36 @@ function buildLamp() {
   return g;
 }
 
+function buildGachaMachine() {
+  const g = new THREE.Group();
+  // gold-trimmed cabinet
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.6), lam('#a83a4a'));
+  base.position.y = 0.4;
+  base.castShadow = true;
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.08, 0.64), lam('#c8963a'));
+  trim.position.y = 0.78;
+  // glass dome full of capsules
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8),
+    new THREE.MeshLambertMaterial({ color: 0xcfe8f5, transparent: true, opacity: 0.35 }));
+  dome.position.y = 1.05;
+  const capsuleCols = ['#f06a7a', '#f0c455', '#7ab8e8', '#8ac86a', '#c8a8f0', '#f0a8c8'];
+  capsuleCols.forEach((col, i) => {
+    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09, 0), lam(col));
+    const a = i * 1.05;
+    ball.position.set(Math.cos(a) * 0.16, 0.95 + (i % 3) * 0.12, Math.sin(a) * 0.16);
+    g.add(ball);
+  });
+  // crank + coin slot + dispenser
+  const crank = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.08), lam('#e8b84a'));
+  crank.position.set(0, 0.5, 0.33);
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), lam('#8a6a2a'));
+  handle.position.set(0, 0.56, 0.37);
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.05), lam('#1e1e24'));
+  slot.position.set(0, 0.24, 0.31);
+  g.add(base, trim, dome, crank, handle, slot);
+  return g;
+}
+
 function buildFlowerBed(rng) {
   const g = new THREE.Group();
   // low stone border + a cluster of bright blooms
@@ -468,9 +645,40 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     place(buildLamp(), lx, lz, false, 0);
   }
 
+  // Master NXR's wonder-capsule machine
+  const gachaSpot = place(buildGachaMachine(), 6.2, -1.4, true, 0);
+
   // cheerful flower beds by the huts
   for (const [fx, fz] of [[-4.6, -5.8], [5, -5.4], [-6.6, 4.4], [5.6, 4], [2, -7.2], [-1.8, 4.8]]) {
     place(buildFlowerBed(rng), fx, fz, false, -1);
+  }
+
+  // village campfire — the community cooking spot (interact to cook fish);
+  // kept clear of villager stations so the Cook prompt always wins here
+  const cookfire = groundAt(-0.8, 6.2);
+  {
+    const vf = new THREE.Group();
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const stone = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.13), lam('#8d9294'));
+      stone.position.set(Math.cos(a) * 0.38, 0.06, Math.sin(a) * 0.38);
+      vf.add(stone);
+    }
+    const flame = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 0),
+      new THREE.MeshBasicMaterial({ color: 0xffaa33 }));
+    flame.position.y = 0.24;
+    const spit = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.9), lam('#6a4a30'));
+    spit.position.y = 0.42;
+    const fishOnSpit = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.12), lam('#c8863a'));
+    fishOnSpit.position.y = 0.42;
+    const light = new THREE.PointLight(0xffaa44, 2.6, 7, 1.8);
+    light.position.y = 0.6;
+    vf.add(flame, spit, fishOnSpit, light);
+    vf.position.set(cookfire.x, cookfire.y, cookfire.z);
+    scene.add(vf);
+    cookfire.flame = flame;
+    const [fx, fz] = terrain.cellOf(cookfire.x, cookfire.z);
+    decorBlocked.add(`${fx},${fz}`);
   }
 
   // IMPORTANT: the spawn clearing must stay walkable — village props must
@@ -525,9 +733,33 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
       { ox: 2.4, oz: 1.6, act: 'idle' },
       { ox: 4.6, oz: 1.8, act: 'shop' },
     ],
+    nxr: [
+      { ox: 5.6, oz: -2.2, act: 'shop' },
+      { ox: 2.2, oz: 2.6, act: 'idle' },
+      { ox: 5.6, oz: -2.2, act: 'shop' },
+    ],
+    momo: [ // the kid zoomies loop
+      { ox: 1, oz: -4, act: 'idle' }, { ox: -4, oz: 1, act: 'idle' },
+      { ox: 3.5, oz: 3.5, act: 'idle' }, { ox: -1, oz: -6, act: 'idle' },
+    ],
+    tato: [
+      { ox: 2.4, oz: 3.4, act: 'sit' }, { ox: 1.6, oz: 2.2, act: 'idle' },
+      { ox: 2.4, oz: 3.4, act: 'sit' },
+    ],
+    lulu: [
+      { ox: -3.2, oz: 4.6, act: 'idle' }, { ox: -5.4, oz: 2.2, act: 'idle' },
+      { ox: -3.6, oz: 6.6, act: 'idle' },
+    ],
+    bimo: [
+      { ox: 6, oz: -6, act: 'idle' }, { ox: -6, oz: -6, act: 'idle' },
+      { ox: -6, oz: 6, act: 'idle' }, { ox: 6, oz: 6, act: 'idle' },
+    ],
   };
 
-  const npcStart = [[-3.5, -3], [2.5, 1.5], [-3.2, -1.8], [4, 5.5], [4.2, 3.2]];
+  const npcStart = [
+    [-3.5, -3], [2.5, 1.5], [-3.2, -1.8], [4, 5.5], [4.2, 3.2],
+    [5.6, -2.2], [1, -4], [2.4, 3.2], [-3.2, 4.6], [6, -6],
+  ];
   NPC_DEFS.forEach((def, i) => {
     const [ox, oz] = npcStart[i % npcStart.length];
     const spot = groundAt(ox, oz);
@@ -660,8 +892,9 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
             particles.burst(new THREE.Vector3(fx, p.y - 0.1, fz), '#c8e8f0', 2, 0.6, 3, 0.35);
           }
         } else if (st.act === 'shop') {
-          // stand at the stall, tidy the goods
-          n.mesh.rotation.y = Math.atan2(stallSpot.x - p.x, stallSpot.z - p.z);
+          // stand at their stand & tidy the goods (Pip: stall, NXR: capsule machine)
+          const stand = n.def.id === 'nxr' ? gachaSpot : stallSpot;
+          n.mesh.rotation.y = Math.atan2(stand.x - p.x, stand.z - p.z);
           u.armL.rotation.x = -0.6 + Math.sin(n.anim * 2.2) * 0.25;
           u.armR.rotation.x = -0.6 - Math.sin(n.anim * 2.2) * 0.25;
         } else { // idle
@@ -686,7 +919,7 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     return best;
   }
 
-  return { npcs, update, nearest };
+  return { npcs, update, nearest, cookfire };
 }
 
 // quest marker sprite ('!' available / '?' turn-in)

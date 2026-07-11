@@ -60,6 +60,13 @@ const CSS = `
   box-shadow: 0 0 12px #c8a03a55;
 }
 #touchui .ctx.show { display: flex; animation: ctx-in 0.15s; }
+#touchui .afk {
+  position: absolute; right: 208px; bottom: 70px; width: 40px; height: 40px;
+  border-radius: 50%; border: 2px solid rgba(150,180,220,0.6); background: rgba(20,28,40,0.7);
+  color: #b8d0f0; font-size: 15px; display: none; align-items: center; justify-content: center;
+  pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+#touchui .afk.show { display: flex; }
 #touchui .ctx:active { background: rgba(90,74,30,0.85); }
 #touchui .ctx .lbl {
   position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
@@ -92,6 +99,7 @@ export function createTouchControls(input, skillIds, callbacks) {
         style="background-image:url(${skillIconUrl(s, SKILLS[s].icon)})"><span class="cdo"></span></button>`).join('')}
       <button class="abtn pot" style="background-image:url(${itemIconUrl('tonic')})"><span class="cnt">0</span></button>
       <button class="ctx"><span class="ic">★</span><span class="lbl"></span></button>
+      <button class="afk" title="AFK fishing">💤</button>
     </div>
   `;
   document.body.appendChild(root);
@@ -165,6 +173,8 @@ export function createTouchControls(input, skillIds, callbacks) {
   on('.jump', () => callbacks.onJump?.());
   on('.pot', callbacks.onPotion);
   on('.ctx', () => callbacks.onInteract?.());
+  on('.afk', () => callbacks.onAfkFish?.());
+  const afkBtn = root.querySelector('.afk');
   root.querySelectorAll('[data-skill]').forEach((b) => {
     b.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -172,11 +182,12 @@ export function createTouchControls(input, skillIds, callbacks) {
     }, { passive: false });
   });
 
-  // contextual button: pass null to hide, or { label } to show
+  // contextual button: pass null to hide, or { label, afk? } to show
   function setPrompt(p) {
-    if (!p) { ctxBtn.classList.remove('show'); return; }
+    if (!p) { ctxBtn.classList.remove('show'); afkBtn.classList.remove('show'); return; }
     ctxLbl.textContent = p.label;
     ctxBtn.classList.add('show');
+    afkBtn.classList.toggle('show', !!p.afk);
   }
 
   function update(skillSys, potionCount) {

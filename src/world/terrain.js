@@ -251,6 +251,15 @@ export function buildTerrainMesh(terrain, atlas) {
           let tile = TOP_TILE[t];
           if (t === 0) tile = grassVariants[(ix * 7 + iz * 13) % 3];
           if (t === 6) tile = flowerVariants[(ix * 5 + iz * 11) % 2];
+          if (t === 1) { // path cells bordering grass get a soft grassy fringe
+            const n = (dx2, dz2) => {
+              const jx = ix + dx2, jz = iz + dz2;
+              return terrain.inBounds(jx, jz) ? terrain.type[terrain.idx(jx, jz)] : 1;
+            };
+            if (n(1, 0) !== 1 || n(-1, 0) !== 1 || n(0, 1) !== 1 || n(0, -1) !== 1) {
+              tile = TILE.PATH_EDGE;
+            }
+          }
           if (steep > BLOCK_H * 2.6) tile = TILE.STONE_SIDE;
           else if (steep > BLOCK_H * 1.5) tile = TILE.DIRT_SIDE;
 

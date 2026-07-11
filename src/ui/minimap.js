@@ -55,6 +55,21 @@ export function createMinimap(canvas, terrain, decor) {
       if (ex < 0 || ez < 0 || ex > canvas.width || ez > canvas.height) continue;
       ctx.fillRect(ex - 1.5, ez - 1.5, 3, 3);
     }
+    // village (basecamp) marker: little gold house, clamped to the edge so
+    // you can always walk back home
+    {
+      let hx = (terrain.spawn.x + S / 2 - sx) * k;
+      let hz = (terrain.spawn.z + S / 2 - sz) * k;
+      hx = Math.max(7, Math.min(canvas.width - 7, hx));
+      hz = Math.max(7, Math.min(canvas.height - 7, hz));
+      ctx.fillStyle = '#ffe27a';
+      ctx.fillRect(hx - 3, hz - 1, 6, 4);
+      ctx.beginPath();
+      ctx.moveTo(hx - 5, hz - 1); ctx.lineTo(hx, hz - 6); ctx.lineTo(hx + 5, hz - 1);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#5e3c10';
+      ctx.strokeRect(hx - 3, hz - 1, 6, 4);
+    }
     // world boss: big pulsing gold marker, clamped to the map edge if far
     for (const e of enemies) {
       if (e.dead || !e.isWorldBoss) continue;
@@ -83,5 +98,5 @@ export function createMinimap(canvas, terrain, decor) {
     ctx.restore();
   }
 
-  return { update };
+  return { update, base };
 }

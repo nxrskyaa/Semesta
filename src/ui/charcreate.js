@@ -130,6 +130,42 @@ const CSS = `
 }
 #charcreate .go:hover { filter: brightness(1.2); }
 
+/* --- ornamental detailing: corner brackets, breathing title, button shine --- */
+#charcreate .box { position: relative; }
+#charcreate .box::before, #charcreate .box::after {
+  content: ''; position: absolute; width: 10px; height: 10px; pointer-events: none;
+}
+#charcreate .box::before {
+  top: 3px; left: 3px;
+  border-top: 2px solid var(--gold-dim); border-left: 2px solid var(--gold-dim);
+}
+#charcreate .box::after {
+  bottom: 3px; right: 3px;
+  border-bottom: 2px solid var(--gold-dim); border-right: 2px solid var(--gold-dim);
+}
+#charcreate h1 { animation: cc-glow 3.5s ease-in-out infinite; }
+@keyframes cc-glow {
+  0%, 100% { text-shadow: 0 0 18px rgba(200,160,58,0.2), 0 3px 0 #3a3016, 0 6px 14px #000; }
+  50% { text-shadow: 0 0 34px rgba(200,160,58,0.45), 0 3px 0 #3a3016, 0 6px 14px #000; }
+}
+#charcreate .subtitle::before, #charcreate .subtitle::after {
+  content: '———'; color: #3a4633; margin: 0 10px; letter-spacing: -2px;
+}
+#charcreate .cls { transition: transform 0.1s, border-color 0.1s; }
+#charcreate .cls:hover { transform: translateX(3px); border-color: #5a6a4a; }
+#charcreate .cls.sel { transform: translateX(5px); }
+#charcreate .segs button { transition: border-color 0.1s, color 0.1s; }
+#charcreate .segs button:hover { border-color: #5a6a4a; color: #dce5cc; }
+#charcreate .sw { transition: transform 0.08s; }
+#charcreate .sw:hover { transform: scale(1.15); }
+#charcreate .go { position: relative; overflow: hidden; }
+#charcreate .go::after {
+  content: ''; position: absolute; top: 0; left: -80%; width: 40%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255,235,170,0.22), transparent);
+  animation: cc-shine 3.2s ease-in-out infinite;
+}
+@keyframes cc-shine { 0%, 60% { left: -80%; } 100% { left: 130%; } }
+
 @media (max-width: 900px) {
   #charcreate .cols { flex-direction: column; }
   #charcreate .col.mid { order: -1; }

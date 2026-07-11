@@ -1,25 +1,41 @@
 // Item definitions, per-class weapons, and enemy drop tables.
 
 export const ITEMS = {
-  // materials
-  slime_gel:    { name: 'Slime Gel' },
-  chitin_shell: { name: 'Chitin Shell' },
-  small_bone:   { name: 'Small Bone' },
-  feather:      { name: 'Feather' },
-  nibbit_beak:  { name: 'Nibbit Beak' },
-  green_herb:   { name: 'Green Herb' },
-  wheat_seed:   { name: 'Wheat Seed' },
-  hardwood:     { name: 'Hardwood' },
-  spore_sac:    { name: 'Spore Sac' },
-  boar_tusk:    { name: 'Boar Tusk' },
-  wisp_essence: { name: 'Wisp Essence' },
-  golem_core:   { name: 'Golem Core' },
-  forge_stone:  { name: 'Forge Stone' },
+  // materials (sell = coin value at Pip's shop)
+  slime_gel:    { name: 'Slime Gel', sell: 2 },
+  chitin_shell: { name: 'Chitin Shell', sell: 4 },
+  small_bone:   { name: 'Small Bone', sell: 2 },
+  feather:      { name: 'Feather', sell: 2 },
+  nibbit_beak:  { name: 'Nibbit Beak', sell: 3 },
+  green_herb:   { name: 'Green Herb', sell: 3 },
+  wheat_seed:   { name: 'Wheat Seed', sell: 1 },
+  hardwood:     { name: 'Hardwood', sell: 5 },
+  spore_sac:    { name: 'Spore Sac', sell: 4 },
+  boar_tusk:    { name: 'Boar Tusk', sell: 5 },
+  wisp_essence: { name: 'Wisp Essence', sell: 8 },
+  golem_core:   { name: 'Golem Core', sell: 40 },
+  forge_stone:  { name: 'Forge Stone', sell: 6 },
 
   // fish (fishing)
-  fish_minnow: { name: 'Mossy Minnow', fish: true },
-  fish_perch:  { name: 'Sunset Perch', fish: true },
-  fish_koi:    { name: 'Golden Koi', fish: true, rare: true },
+  fish_minnow: { name: 'Mossy Minnow', fish: true, sell: 4 },
+  fish_perch:  { name: 'Sunset Perch', fish: true, sell: 10 },
+  fish_koi:    { name: 'Golden Koi', fish: true, rare: true, sell: 60 },
+
+  // gathering
+  iron_ore: { name: 'Iron Ore', sell: 10 },
+
+  // farming — seeds grow into crops on your plots
+  seed_wheat:   { name: 'Wheat Seeds', seed: 'crop_wheat', growTime: 60, buy: 5 },
+  seed_berry:   { name: 'Berry Seeds', seed: 'crop_berry', growTime: 95, buy: 10 },
+  seed_pumpkin: { name: 'Pumpkin Seeds', seed: 'crop_pumpkin', growTime: 130, buy: 18 },
+  crop_wheat:   { name: 'Golden Wheat', crop: true, sell: 8 },
+  crop_berry:   { name: 'Sunberries', crop: true, sell: 15 },
+  crop_pumpkin: { name: 'Plump Pumpkin', crop: true, sell: 26 },
+
+  // cooking — grilled at any campfire, eat from the Bag
+  grilled_minnow: { name: 'Grilled Minnow', consumable: true, heal: 22, sell: 8 },
+  perch_dinner:   { name: 'Perch Dinner', consumable: true, heal: 55, sell: 20 },
+  koi_feast:      { name: 'Koi Feast', consumable: true, heal: 120, sell: 90 },
 
   // pet charms — owning one unlocks that pet (chests, world bosses, quests)
   charm_moku:    { name: 'Moku Charm', petCharm: 'moku' },
@@ -33,11 +49,13 @@ export const ITEMS = {
   charm_wooly:   { name: 'Wooly Charm', petCharm: 'wooly' },
   charm_koko:    { name: 'Koko Charm', petCharm: 'koko' },
 
-  // mount whistles — earned from villager quests
+  // mount whistles — starter one is free, the rest come from villager quests
+  mount_sprig:      { name: 'Sprig Whistle', mountId: 'sprig' },
   mount_trotter:    { name: 'Trotter Whistle', mountId: 'trotter' },
   mount_clucky:     { name: 'Clucky Whistle', mountId: 'clucky' },
   mount_shellsworth:{ name: 'Shellsworth Whistle', mountId: 'shellsworth' },
   mount_nimbus:     { name: 'Nimbus Whistle', mountId: 'nimbus' },
+  mount_blossom:    { name: 'Blossom Whistle', mountId: 'blossom' },
 
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },

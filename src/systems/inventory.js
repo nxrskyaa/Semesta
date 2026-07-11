@@ -7,6 +7,7 @@ export function createInventory(startWeapon = 'wooden_sword') {
     weapons: new Set([startWeapon]),
     upgrades: new Map(),           // weaponId -> plus level (forge)
     equipped: startWeapon,
+    coins: 0,                      // currency for Pip's shop / land
     listeners: new Set(),
   };
 
@@ -37,6 +38,21 @@ export function createInventory(startWeapon = 'wooden_sword') {
     return ITEMS.tonic;
   }
 
+  // eat any consumable food from the bag
+  function useConsumable(id) {
+    if (!ITEMS[id]?.consumable) return null;
+    if (!remove(id, 1)) return null;
+    return ITEMS[id];
+  }
+
+  function addCoins(n) { state.coins += n; notify(); }
+  function spendCoins(n) {
+    if (state.coins < n) return false;
+    state.coins -= n;
+    notify();
+    return true;
+  }
+
   function equip(id) {
     if (!state.weapons.has(id)) return false;
     state.equipped = id;
@@ -54,6 +70,7 @@ export function createInventory(startWeapon = 'wooden_sword') {
       weapons: [...state.weapons],
       upgrades: [...state.upgrades.entries()],
       equipped: state.equipped,
+      coins: state.coins,
     };
   }
   function load(data) {
@@ -61,9 +78,13 @@ export function createInventory(startWeapon = 'wooden_sword') {
     state.materials = new Map(data.materials || []);
     state.weapons = new Set(data.weapons || []);
     state.upgrades = new Map(data.upgrades || []);
+    state.coins = data.coins || 0;
     if (data.equipped && state.weapons.has(data.equipped)) state.equipped = data.equipped;
     notify();
   }
 
-  return { state, add, remove, count, onChange, usePotion, equip, equippedDef, equippedPlus, notify, serialize, load };
+  return {
+    state, add, remove, count, onChange, usePotion, useConsumable,
+    addCoins, spendCoins, equip, equippedDef, equippedPlus, notify, serialize, load,
+  };
 }

@@ -85,8 +85,9 @@ export function createDialog(audio) {
         <div class="objective">◆ ${q.objective.label} — ${opts.progress}/${q.objective.n}</div>
         <div class="btns"><button class="primary" data-a="close">OK</button></div>`;
     } else {
+      const extraBtn = opts.extra ? `<button class="primary" data-a="extra">${opts.extra.label}</button>` : '';
       inner += `<div class="txt">${opts.text}</div>
-        <div class="btns"><button class="primary" data-a="close">CLOSE</button></div>`;
+        <div class="btns"><button data-a="close">CLOSE</button>${extraBtn}</div>`;
     }
     root.innerHTML = inner;
     root.classList.add('show');
@@ -97,6 +98,7 @@ export function createDialog(audio) {
         audio.sfx('ui');
         if (a === 'accept') { opts.onAccept?.(); hide(); }
         else if (a === 'turnin') { opts.onTurnIn?.(); hide(); }
+        else if (a === 'extra') { hide(); opts.extra?.onClick?.(); }
         else hide();
       });
     });

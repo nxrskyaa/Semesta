@@ -389,6 +389,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (!terrain.inBounds(ix, iz)) continue;
       const h = terrain.heightCell(ix, iz);
       if (decorBlocked.has(`${ix},${iz}`)) continue;
+      if (hooks.inSafeZone?.(x, z)) continue; // never spawn inside sanctuaries
 
       let nearWater = false;
       for (let dz = -2; dz <= 2 && !nearWater; dz++) {
@@ -441,6 +442,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (!terrain.inBounds(ix, iz)) continue;
       if (terrain.heightCell(ix, iz) <= WATER_LEVEL) continue;
       if (decorBlocked.has(`${ix},${iz}`)) continue;
+      if (hooks.inSafeZone?.(x, z)) continue;
 
       const mesh = BUILDERS[kind.base]();
       mesh.scale.setScalar(kind.scale);
@@ -535,6 +537,19 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
 
       e.anim += dt;
       e.attackCd -= dt;
+
+      // sanctuaries (village / camps / player homes): monsters turn tail and
+      // shuffle back out — no fighting inside the safe radius
+      const zone = hooks.inSafeZone?.(p.x, p.z);
+      if (zone && !e.isWorldBoss) {
+        const dx = p.x - zone.x, dz = p.z - zone.z;
+        const l = Math.hypot(dx, dz) || 1;
+        e.state = 'wander';
+        e.mesh.rotation.y = Math.atan2(dx, dz);
+        moveEnemy(e, (dx / l) * e.def.speed * 1.7, (dz / l) * e.def.speed * 1.7, dt);
+        applyKnock(e, dt);
+        continue;
+      }
 
       // stun / freeze halts the AI
       if (e.stunT > 0 || e.frozenT > 0) {

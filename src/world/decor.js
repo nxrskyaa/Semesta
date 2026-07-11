@@ -5,9 +5,75 @@ import * as THREE from 'three';
 import { mulberry32, fbm2 } from '../util/noise.js';
 import { WATER_LEVEL } from './terrain.js';
 import {
-  makeBarkTexture, makeGrassTuftTexture, makeFlowerTexture,
+  makeGrassTuftTexture, makeFlowerTexture,
   makeFlameTexture, toTexture, PALETTE,
 } from '../gfx/textures.js';
+
+// --- pixel-art tree sprites (drawn on canvas, dark outline style) ---
+const TREE_PALETTES = [
+  { base: '#4a8a50', dark: '#2e5a36', light: '#6ab06a', trunk: '#5a4432', trunkDark: '#3e2f22' },
+  { base: '#468a62', dark: '#2c5a42', light: '#66b088', trunk: '#5a4432', trunkDark: '#3e2f22' },
+  { base: '#568a42', dark: '#38602c', light: '#7ab05a', trunk: '#6a5038', trunkDark: '#4a3826' },
+];
+
+function pxBlob(ctx, cx, cy, r, col) {
+  ctx.fillStyle = col;
+  for (let y = -r; y <= r; y++) {
+    for (let x = -r; x <= r; x++) {
+      if (x * x + y * y <= r * r + r * 0.3) ctx.fillRect(Math.round(cx + x), Math.round(cy + y), 1, 1);
+    }
+  }
+}
+
+function makeTreeSideTexture(variant) {
+  const P = TREE_PALETTES[variant % TREE_PALETTES.length];
+  const c = document.createElement('canvas');
+  c.width = 28; c.height = 36;
+  const ctx = c.getContext('2d');
+  // trunk (outlined)
+  pxBlob(ctx, 14, 30, 4, P.trunkDark);
+  ctx.fillStyle = P.trunkDark;
+  ctx.fillRect(11, 20, 6, 15);
+  ctx.fillStyle = P.trunk;
+  ctx.fillRect(12, 20, 4, 14);
+  ctx.fillRect(10, 32, 8, 3);
+  // canopy: dark outline pass, then base fill, then sunlit top
+  const lumps = [
+    [14, 11, 10], [7, 16, 6], [21, 16, 6], [14, 5, 6],
+  ];
+  for (const [x, y, r] of lumps) pxBlob(ctx, x, y, r + 1, P.dark);
+  for (const [x, y, r] of lumps) pxBlob(ctx, x, y, r, P.base);
+  pxBlob(ctx, 11, 7, 5, P.light);
+  pxBlob(ctx, 18, 10, 3, P.light);
+  // leafy speckles
+  ctx.fillStyle = P.dark;
+  for (const [sx, sy] of [[9, 14], [17, 17], [13, 15], [20, 12], [6, 18]]) ctx.fillRect(sx, sy, 1, 1);
+  return toTexture(c);
+}
+
+function makeTreeTopTexture(variant) {
+  const P = TREE_PALETTES[variant % TREE_PALETTES.length];
+  const c = document.createElement('canvas');
+  c.width = 26; c.height = 26;
+  const ctx = c.getContext('2d');
+  // scalloped rim: ring of outline bumps, then the filled crown
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    pxBlob(ctx, 13 + Math.cos(a) * 8, 13 + Math.sin(a) * 8, 5, P.dark);
+  }
+  pxBlob(ctx, 13, 13, 11, P.dark);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    pxBlob(ctx, 13 + Math.cos(a) * 7.5, 13 + Math.sin(a) * 7.5, 4, P.base);
+  }
+  pxBlob(ctx, 13, 13, 10, P.base);
+  // sunlight from the top-left + a peek of trunk heart
+  pxBlob(ctx, 10, 9, 5, P.light);
+  pxBlob(ctx, 16, 17, 2, P.dark);
+  ctx.fillStyle = P.dark;
+  for (const [sx, sy] of [[8, 16], [18, 8], [14, 20], [6, 11]]) ctx.fillRect(sx, sy, 1, 1);
+  return toTexture(c);
+}
 
 const SEED = 4242;
 
@@ -42,10 +108,10 @@ export function buildDecor(terrain, scene) {
       // keep the village clearing open
       const dSpawn = Math.hypot(wx - terrain.spawn.x, wz - terrain.spawn.z);
 
-      if (forest > 0.42 && r < 0.055 && dSpawn > 9 && !nearTree(trees, wx, wz, 2.8)) {
+      if (forest > 0.48 && r < 0.03 && dSpawn > 9 && !nearTree(trees, wx, wz, 3.6)) {
         trees.push({
           x: wx, y, z: wz,
-          tall: 2.6 + rng() * 1.8, girth: 0.18 + rng() * 0.1, seed: rng(),
+          s: 0.85 + rng() * 0.4, seed: rng(), variant: Math.floor(rng() * 3),
         });
         blocked.add(`${ix},${iz}`);
         continue;
@@ -95,63 +161,46 @@ export function buildDecor(terrain, scene) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
   const YUP = new THREE.Vector3(0, 1, 0);
 
-  // --- trees: tapered trunk + 2-3 rounded low-poly canopy blobs ---
-  const barkTex = makeBarkTexture();
-  const trunkGeo = new THREE.CylinderGeometry(0.55, 0.8, 1, 6);
-  const trunkMat = new THREE.MeshLambertMaterial({ map: barkTex });
-  const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
-  trunkMesh.castShadow = true; trunkMesh.receiveShadow = true;
+  // --- trees: proper PIXEL-ART imposters — two crossed sprite planes for the
+  // side view + a round scalloped cap for the top-down view. Short & sparse,
+  // so the steep camera never loses your character behind a forest wall.
+  const treeSideTexs = [0, 1, 2].map((vnt) => makeTreeSideTexture(vnt));
+  const treeTopTexs = [0, 1, 2].map((vnt) => makeTreeTopTexture(vnt));
+  const TREE_W = 2.3, TREE_H = 2.9;
 
-  // canopy: one fat core + a ring of side blobs + a bright crown blob —
-  // reads as a lush rounded treetop, nothing like stacked cubes
-  const canopyGeo = new THREE.IcosahedronGeometry(1, 1); // smoother blob
-  const canopyMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-  const blobsPerTree = 5;
-  const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, trees.length * blobsPerTree);
-  canopyMesh.castShadow = true;
-  const leafBase = ['#3e7d47', '#458a4e', '#3a7343'].map((c) => new THREE.Color(c));
-  const leafDark = new THREE.Color('#2f6339');
-  const leafLight = new THREE.Color('#5fa860');
-
-  trees.forEach((tr, i) => {
-    q.setFromAxisAngle(YUP, tr.seed * Math.PI);
-    m.compose(v.set(tr.x, tr.y + tr.tall * 0.5, tr.z), q, sc.set(tr.girth, tr.tall, tr.girth));
-    trunkMesh.setMatrixAt(i, m);
-
-    const baseCol = leafBase[i % leafBase.length];
-    const spread = 0.9 + tr.seed * 0.35;
-    // core blob
-    let bi = i * blobsPerTree;
-    q.setFromAxisAngle(YUP, tr.seed * 7);
-    m.compose(v.set(tr.x, tr.y + tr.tall * 1.02, tr.z), q,
-      sc.set(1.7 * spread, 1.35 * spread, 1.7 * spread));
-    canopyMesh.setMatrixAt(bi, m);
-    canopyMesh.setColorAt(bi, baseCol);
-    // 3 side blobs, slightly lower & darker (undercanopy shade)
-    for (let k = 0; k < 3; k++) {
-      const ang = tr.seed * 9 + k * (Math.PI * 2 / 3);
-      const rr = (1.05 + ((tr.seed * 13 + k) % 1) * 0.25) * spread;
-      q.setFromAxisAngle(YUP, tr.seed * 5 + k);
-      m.compose(
-        v.set(tr.x + Math.cos(ang) * 0.85 * spread, tr.y + tr.tall * (0.82 + k * 0.04), tr.z + Math.sin(ang) * 0.85 * spread),
-        q, sc.set(rr, rr * 0.8, rr),
-      );
-      bi = i * blobsPerTree + 1 + k;
-      canopyMesh.setMatrixAt(bi, m);
-      canopyMesh.setColorAt(bi, k === 1 ? baseCol : leafDark);
+  if (trees.length) {
+    const byVariant = [[], [], []];
+    for (const tr of trees) byVariant[tr.variant].push(tr);
+    for (let vnt = 0; vnt < 3; vnt++) {
+      const list = byVariant[vnt];
+      if (!list.length) continue;
+      // crossed vertical planes (the classic pixel-art tree sprite)
+      const p1 = new THREE.PlaneGeometry(TREE_W, TREE_H);
+      const p2 = new THREE.PlaneGeometry(TREE_W, TREE_H);
+      p2.rotateY(Math.PI / 2);
+      const crossGeo = mergeGeoms([p1, p2]);
+      const crossMat = new THREE.MeshLambertMaterial({
+        map: treeSideTexs[vnt], transparent: false, alphaTest: 0.5, side: THREE.DoubleSide,
+      });
+      const crossMesh = new THREE.InstancedMesh(crossGeo, crossMat, list.length);
+      crossMesh.castShadow = true;
+      // horizontal canopy cap so trees read as round blobs from above
+      const capGeo = new THREE.PlaneGeometry(TREE_W * 0.96, TREE_W * 0.96);
+      capGeo.rotateX(-Math.PI / 2);
+      const capMat = new THREE.MeshLambertMaterial({
+        map: treeTopTexs[vnt], transparent: false, alphaTest: 0.5, side: THREE.DoubleSide,
+      });
+      const capMesh = new THREE.InstancedMesh(capGeo, capMat, list.length);
+      list.forEach((tr, i) => {
+        q.setFromAxisAngle(YUP, (tr.seed * 1.2) % (Math.PI / 2));
+        m.compose(v.set(tr.x, tr.y + TREE_H * 0.5 * tr.s, tr.z), q, sc.set(tr.s, tr.s, tr.s));
+        crossMesh.setMatrixAt(i, m);
+        m.compose(v.set(tr.x, tr.y + TREE_H * 0.68 * tr.s, tr.z), q, sc.set(tr.s, tr.s, tr.s));
+        capMesh.setMatrixAt(i, m);
+      });
+      group.add(crossMesh, capMesh);
     }
-    // sunlit crown
-    q.setFromAxisAngle(YUP, tr.seed * 3);
-    m.compose(
-      v.set(tr.x + (tr.seed - 0.5) * 0.4, tr.y + tr.tall * 1.42, tr.z + (((tr.seed * 7) % 1) - 0.5) * 0.4),
-      q, sc.set(0.95 * spread, 0.75 * spread, 0.95 * spread),
-    );
-    bi = i * blobsPerTree + 4;
-    canopyMesh.setMatrixAt(bi, m);
-    canopyMesh.setColorAt(bi, leafLight);
-  });
-  if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
-  group.add(trunkMesh, canopyMesh);
+  }
 
   // --- rocks: faceted lumps ---
   if (rocks.length) {

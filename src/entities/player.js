@@ -539,6 +539,17 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     const regen = buffVal('regen');
     if (regen > 0) state.hp = Math.min(state.maxHp, state.hp + regen * dt);
 
+    // natural recovery: every 5s out of combat, heal a chunk — no class
+    // should have to chug tonics just to explore
+    state.sinceHurt = (state.sinceHurt || 0) + dt;
+    state.healTick = (state.healTick || 0) + dt;
+    if (state.healTick >= 5) {
+      state.healTick = 0;
+      if (state.sinceHurt > 5 && state.hp < state.maxHp && !state.dead) {
+        state.hp = Math.min(state.maxHp, state.hp + Math.max(3, state.maxHp * 0.06));
+      }
+    }
+
     const mv = (state.rolling <= 0 && !state.busy) ? moveVec(input, camYaw) : null;
     const moving = !!mv;
     state.isMoving = moving;
@@ -884,6 +895,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     dmg = Math.max(1, Math.round(dmg));
     state.hp = Math.max(0, state.hp - dmg);
     state.hurtT = 0.5;
+    state.sinceHurt = 0;
     if (state.hp <= 0) state.dead = true;
     return dmg;
   }

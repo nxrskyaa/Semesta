@@ -83,7 +83,7 @@ export const TILE = {
   GRASS_A: 0, GRASS_B: 1, GRASS_C: 2, PATH: 3,
   DIRT: 4, STONE: 5, GRASS_SIDE: 6, DIRT_SIDE: 7,
   STONE_SIDE: 8, PATH_SIDE: 9, MOSS: 10, SHORE: 11,
-  FLOWER_A: 12, FLOWER_B: 13,
+  FLOWER_A: 12, FLOWER_B: 13, PATH_EDGE: 14,
 };
 const ATLAS_GRID = 4, TILE_PX = 16;
 
@@ -94,21 +94,46 @@ export function makeTerrainAtlas() {
 
   const at = (i) => [(i % ATLAS_GRID) * TILE_PX, Math.floor(i / ATLAS_GRID) * TILE_PX];
 
-  // 3 grass variants
+  // 3 grass variants — calm base with sparse blade details (flat Stardew read)
   for (const [ti, base] of [[TILE.GRASS_A, 0], [TILE.GRASS_B, 1], [TILE.GRASS_C, 2]]) {
     const [x, y] = at(ti);
-    noisyFill(ctx, x, y, 16, 16, [PALETTE.grass[base], ...PALETTE.grass, PALETTE.moss], rng, 0.5);
-    for (let i = 0; i < 7; i++) {
+    noisyFill(ctx, x, y, 16, 16, [PALETTE.grass[base], PALETTE.grass[(base + 1) % 4], PALETTE.grass[(base + 2) % 4]], rng, 0.22);
+    for (let i = 0; i < 4; i++) { // little 2px blades
       ctx.fillStyle = PALETTE.grassBright;
+      const gx = x + Math.floor(rng() * 15), gy = y + 1 + Math.floor(rng() * 14);
+      ctx.fillRect(gx, gy, 1, 2);
+    }
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = PALETTE.moss;
       ctx.fillRect(x + Math.floor(rng() * 16), y + Math.floor(rng() * 16), 1, 1);
     }
   }
-  { // footpath
+  { // footpath — calm warm sand, sparse pebbles (Stardew-ish, not noisy)
     const [x, y] = at(TILE.PATH);
-    noisyFill(ctx, x, y, 16, 16, [PALETTE.path[0], ...PALETTE.path, PALETTE.dirtDark], rng, 0.45);
-    for (let i = 0; i < 5; i++) { // pebbles
-      ctx.fillStyle = PALETTE.stone[1];
-      ctx.fillRect(x + Math.floor(rng() * 15), y + Math.floor(rng() * 15), 2, 1);
+    noisyFill(ctx, x, y, 16, 16, [PALETTE.path[0], PALETTE.path[1], PALETTE.path[2]], rng, 0.22);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i % 2 ? PALETTE.stone[1] : PALETTE.path[2];
+      ctx.fillRect(x + 1 + Math.floor(rng() * 13), y + 1 + Math.floor(rng() * 13), 2, 1);
+    }
+  }
+  { // path edge — sandy middle melting into grass fringe (soft border ring)
+    const [x, y] = at(TILE.PATH_EDGE);
+    noisyFill(ctx, x, y, 16, 16, [PALETTE.path[0], PALETTE.path[1], PALETTE.path[2]], rng, 0.2);
+    // grass creeping in from the rim
+    for (let i = 0; i < 16; i++) {
+      ctx.fillStyle = PALETTE.grass[Math.floor(rng() * 3)];
+      const edge = Math.floor(rng() * 4);
+      const t = Math.floor(rng() * 16);
+      const d = rng() < 0.55 ? 0 : 1;
+      if (edge === 0) ctx.fillRect(x + t, y + d, 1, 1 + Math.floor(rng() * 2));
+      else if (edge === 1) ctx.fillRect(x + t, y + 15 - d, 1, 1);
+      else if (edge === 2) ctx.fillRect(x + d, y + t, 1 + Math.floor(rng() * 2), 1);
+      else ctx.fillRect(x + 15 - d, y + t, 1, 1);
+    }
+    // rounded corner nibbles
+    for (const [cx2, cy2] of [[0, 0], [15, 0], [0, 15], [15, 15]]) {
+      ctx.fillStyle = PALETTE.grass[0];
+      ctx.fillRect(x + cx2, y + cy2, 1, 1);
     }
   }
   { const [x, y] = at(TILE.DIRT);
@@ -613,6 +638,109 @@ const ICON_MAPS = {
     ],
     legend: { o: '#c87840', O: '#f0a868', e: '#26221e' },
   },
+  iron_ore: {
+    map: [
+      '................',
+      '.....ssss.......',
+      '...ssSSSSss.....',
+      '..sSSiiSSSSs....',
+      '..sSiISSiiSs....',
+      '..sSSSiISSSs....',
+      '..sSiiSSSiSs....',
+      '...ssSSSSss.....',
+      '.....ssss.......',
+      '................',
+    ],
+    legend: { s: '#4a4e52', S: '#6a6e72', i: '#a8b8c8', I: '#d8e4ec' },
+  },
+  crop_wheat: {
+    map: [
+      '................',
+      '....y..Y..y.....',
+      '...yYy.yY.yYy...',
+      '...yYy.Yy.yYy...',
+      '....Y..yY..Y....',
+      '....y..Y...y....',
+      '.....s.s..s.....',
+      '.....s.s.s......',
+      '......sss.......',
+      '.......s........',
+      '......sss.......',
+    ],
+    legend: { y: '#d8b23a', Y: '#f0d05a', s: '#a8862f' },
+  },
+  crop_berry: {
+    map: [
+      '................',
+      '......gg........',
+      '.....gGg........',
+      '....rr.gg.rr....',
+      '...rRRr..rRRr...',
+      '...rRrr..rRrr...',
+      '....rr.rr.rr....',
+      '......rRRr......',
+      '......rRrr......',
+      '.......rr.......',
+      '................',
+    ],
+    legend: { r: '#c83a4a', R: '#f06a7a', g: '#4f9857', G: '#6fbf55' },
+  },
+  crop_pumpkin: {
+    map: [
+      '................',
+      '.......ss.......',
+      '......sgs.......',
+      '....ooOOoo......',
+      '..ooOOOOOOoo....',
+      '..oOOoOOoOOo....',
+      '..oOOoOOoOOo....',
+      '..ooOOOOOOoo....',
+      '...ooooooo......',
+      '................',
+    ],
+    legend: { o: '#c86a2a', O: '#f0923a', s: '#6a4a30', g: '#4f9857' },
+  },
+  grilled_minnow: {
+    map: [
+      '................',
+      '..w.............',
+      '...w....bbbb....',
+      '....w..bBBBBb...',
+      '.....wbBeBBBb...',
+      '.....wBBBBBb....',
+      '....w..bBBb.....',
+      '...w....bb......',
+      '................',
+    ],
+    legend: { b: '#8a5a3a', B: '#c8863a', e: '#26221e', w: '#8a6a48' },
+  },
+  perch_dinner: {
+    map: [
+      '................',
+      '....pppppppp....',
+      '..pPPPPPPPPPPp..',
+      '.pPooOOooGGgPp..',
+      '.pPoOOOOoGggPp..',
+      '..pPPPPPPPPPPp..',
+      '....pppppppp....',
+      '................',
+    ],
+    legend: { p: '#c9c2ae', P: '#efe9d6', o: '#c8863a', O: '#f0a868', G: '#6fbf55', g: '#4f9857' },
+  },
+  koi_feast: {
+    map: [
+      '................',
+      '......yy.yy.....',
+      '...bbbbbbbbbb...',
+      '..bBgGGoOOgGBb..',
+      '..bBGgOOOoGgBb..',
+      '..bBBBBBBBBBBb..',
+      '...bbbbbbbbbb...',
+      '.....bbbbbb.....',
+      '................',
+    ],
+    legend: { b: '#8a5a3a', B: '#b0794a', o: '#f0c05a', O: '#f5d88a', G: '#6fbf55', g: '#4f9857', y: '#ffe27a' },
+  },
   fish_koi: {
     map: [
       '................',
@@ -644,11 +772,44 @@ export const CHARM_COLORS = {
 };
 
 export const MOUNT_ICON_COLORS = {
+  mount_sprig: '#8ac86a',
   mount_trotter: '#b0704a',
   mount_clucky: '#f0e8d0',
   mount_shellsworth: '#6aa86a',
   mount_nimbus: '#b8d0f0',
+  mount_blossom: '#f0a8c8',
 };
+
+const SEED_COLORS = {
+  seed_wheat: '#f0d05a',
+  seed_berry: '#f06a7a',
+  seed_pumpkin: '#f0923a',
+};
+
+function paintSeedIcon(ctx, id) {
+  const col = SEED_COLORS[id] || '#f0d05a';
+  const px = (x, y, w = 1, h = 1, cc) => { ctx.fillStyle = cc; ctx.fillRect(x, y, w, h); };
+  // little seed pouch with colored seeds spilling out
+  px(4, 5, 8, 8, '#a8805a');
+  px(5, 6, 6, 6, '#c8a06a');
+  px(5, 4, 6, 2, '#8a6a48');
+  px(7, 2, 2, 2, '#6a4a30'); // tie
+  for (const [sx, sy] of [[6, 8], [9, 9], [7, 10], [12, 12], [3, 13], [13, 8]]) {
+    px(sx, sy, 2, 1, col);
+    px(sx, sy - 1, 1, 1, col);
+  }
+}
+
+function paintCoinIcon(ctx) {
+  const px = (x, y, w = 1, h = 1, cc) => { ctx.fillStyle = cc; ctx.fillRect(x, y, w, h); };
+  px(4, 3, 8, 10, '#c8963a');
+  px(3, 4, 10, 8, '#c8963a');
+  px(5, 4, 6, 8, '#f0c455');
+  px(4, 5, 8, 6, '#f0c455');
+  px(6, 5, 2, 2, '#ffe9a8');
+  px(7, 6, 2, 4, '#c8963a'); // "c" mark
+  px(6, 7, 1, 2, '#a87a2a');
+}
 
 function paintWhistleIcon(ctx, id) {
   const col = MOUNT_ICON_COLORS[id] || '#b0704a';
@@ -817,6 +978,10 @@ export function makeItemIconCanvas(id) {
     paintCharmIcon(ctx, id);
   } else if (id.startsWith('mount_')) {
     paintWhistleIcon(ctx, id);
+  } else if (id.startsWith('seed_')) {
+    paintSeedIcon(ctx, id);
+  } else if (id === 'coin') {
+    paintCoinIcon(ctx);
   } else if (ITEMS[id]?.weapon) {
     paintWeaponIcon(ctx, ITEMS[id]);
   } else {

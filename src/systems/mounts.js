@@ -6,6 +6,11 @@ import { makeCritterFaceTexture } from '../gfx/textures.js';
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 
 export const MOUNT_DEFS = {
+  sprig: {
+    name: 'Sprig', item: 'mount_sprig', color: '#8ac86a',
+    desc: 'A gentle leaf-fawn every adventurer starts with. Not fast — but faithful.',
+    speedMult: 1.25, jumpMult: 1.05, seatH: 0.56,
+  },
   trotter: {
     name: 'Trotter', item: 'mount_trotter', color: '#b0704a',
     desc: 'A round, huffy little boar-pony. Unstoppable at snack time.',
@@ -26,6 +31,11 @@ export const MOUNT_DEFS = {
     desc: 'A cloud-cat that drifts above the grass. The dream mount.',
     speedMult: 1.8, jumpMult: 1.3, seatH: 0.7, floats: true,
   },
+  blossom: {
+    name: 'Blossom', item: 'mount_blossom', color: '#f0a8c8',
+    desc: 'GACHA EXCLUSIVE — a sakura-fawn that sheds petals as she runs.',
+    speedMult: 1.7, jumpMult: 1.35, seatH: 0.58, petals: true,
+  },
 };
 
 const faceCache = new Map();
@@ -42,6 +52,72 @@ function addFace(parent, key, opts, w, h, x, y, z) {
 }
 
 const BUILDERS = {
+  sprig() {
+    const g = new THREE.Group();
+    const fur = lam('#8ac86a');
+    const furLight = lam('#b8e8a8');
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.38, 0.75), fur);
+    body.position.y = 0.42;
+    body.castShadow = true;
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.5), furLight);
+    belly.position.y = 0.3;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.3), fur);
+    head.position.set(0, 0.68, 0.44);
+    addFace(head, 'sprig', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'smile', cheeks: 'rgba(240,150,140,0.5)' }, 0.32, 0.24, 0, 0.02, 0.16);
+    // fawn ears + a sprout between them
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.05), fur);
+      ear.position.set(sx * 0.14, 0.22, -0.02);
+      ear.rotation.z = -sx * 0.35;
+      head.add(ear);
+      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.02), furLight);
+      inner.position.set(0, 0, 0.03); ear.add(inner);
+    }
+    const stem = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.04), lam('#4f9857'));
+    stem.position.set(0, 0.23, 0.05);
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.08), lam('#66b06a'));
+    leaf.position.set(0.05, 0.29, 0.05);
+    leaf.rotation.z = 0.3;
+    head.add(stem, leaf);
+    // white fawn spots
+    for (const [dx, dz] of [[-0.14, -0.1], [0.12, 0.08], [0.02, -0.25]]) {
+      const spot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.02, 0.07), furLight);
+      spot.position.set(dx, 0.62, dz);
+      g.add(spot);
+    }
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.07, 0.3), lam('#8a6a48'));
+    saddle.position.y = 0.62;
+    const legs = [];
+    for (const [dx, dz] of [[-0.15, 0.24], [0.15, 0.24], [-0.15, -0.24], [0.15, -0.24]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.28, 0.1), fur);
+      leg.position.set(dx, 0.14, dz);
+      g.add(leg); legs.push(leg);
+    }
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.06), furLight);
+    tail.position.set(0, 0.5, -0.42);
+    g.add(body, belly, head, saddle, tail);
+    g.userData.legs = legs;
+    return g;
+  },
+  blossom() {
+    // sakura recolor of the fawn, crowned with flowers
+    const g = BUILDERS.sprig();
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      const hex = o.material?.color?.getHexString?.();
+      if (hex === '8ac86a') o.material = lam('#f0a8c8');
+      else if (hex === 'b8e8a8') o.material = lam('#f8d8e8');
+      else if (hex === '66b06a') o.material = lam('#f06a9a');
+      else if (hex === '4f9857') o.material = lam('#c85a8a');
+    });
+    // flower crown
+    for (let i = 0; i < 3; i++) {
+      const fl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.08), lam(i === 1 ? '#f5e88a' : '#f06a9a'));
+      fl.position.set(-0.12 + i * 0.12, 0.86, 0.42);
+      g.add(fl);
+    }
+    return g;
+  },
   trotter() {
     const g = new THREE.Group();
     const fur = lam('#b0704a');
@@ -226,9 +302,10 @@ export function createMounts(particles) {
         p.scale.setScalar(1 + Math.sin(state.anim * 3 + i) * 0.08);
       });
     }
-    // dust trail while galloping
+    // dust trail while galloping (petals for Blossom)
     if (moving && !def.floats && Math.random() < dt * 8 && player.state.grounded) {
-      particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.08, 0)), '#c8b494', 2, 1.4, 5, 0.35);
+      particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, def.petals ? 0.5 : 0.08, 0)),
+        def.petals ? '#f0a8c8' : '#c8b494', 2, 1.4, def.petals ? 1.5 : 5, def.petals ? 0.7 : 0.35);
     }
   }
 

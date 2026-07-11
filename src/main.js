@@ -6,6 +6,8 @@ import { buildDecor } from './world/decor.js';
 import { buildWater } from './world/water.js';
 import { createChests } from './world/chests.js';
 import { createWeather } from './world/weather.js';
+import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
+import { createGathering } from './world/gather.js';
 import { setupLighting } from './gfx/lighting.js';
 import { createParticles } from './gfx/particles.js';
 import { makeTerrainAtlas } from './gfx/textures.js';
@@ -24,12 +26,16 @@ import { createQuests } from './systems/quests.js';
 import { createPets, PET_DEFS } from './systems/pets.js';
 import { createMounts, MOUNT_DEFS } from './systems/mounts.js';
 import { createFishing } from './systems/fishing.js';
-import { CLASSES } from './systems/classes.js';
+import { createFarming, PLOT_PRICE } from './systems/farming.js';
+import { createHousing, LAND_PRICE, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
+import { CLASSES, defaultCharacter } from './systems/classes.js';
 import { ITEMS } from './systems/items.js';
 import { createAudio } from './audio/audio.js';
 import { showCharacterCreation } from './ui/charcreate.js';
+import { showOpening, logoUrl } from './ui/menu.js';
 import { createHUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
+import { createWorldMap } from './ui/worldmap.js';
 import { createPanels } from './ui/panels.js';
 import { createDialog } from './ui/dialog.js';
 import { createTouchControls, isTouchDevice } from './ui/mobile.js';
@@ -55,13 +61,31 @@ const schedule = (fn) => {
 const frame = () => new Promise((r) => schedule(r));
 
 async function main() {
-  // character creation first (boot screen hidden meanwhile)
   bootEl.style.display = 'none';
   const saved = loadSave();
   const audio = createAudio();
-  const { config, continued } = await showCharacterCreation(saved);
-  audio.start(); // button click = first gesture, safe for autoplay
+
+  // the world-building boot screen shows the real logo art
+  const bootH1 = document.querySelector('#boot h1');
+  if (bootH1) {
+    bootH1.outerHTML =
+      `<img src="${logoUrl}" alt="SEMESTA" style="width:min(420px,80vw);image-rendering:pixelated;filter:drop-shadow(0 6px 18px #000a)">`;
+  }
+
+  // opening: loading splash -> main menu (New / Continue / About)
+  const { action } = await showOpening(saved);
+  audio.start(); // menu click = first gesture, safe for autoplay
   audio.sfx('ui');
+
+  let config, continued;
+  if (action === 'continue' && saved) {
+    config = { ...defaultCharacter(), ...saved.character };
+    continued = true;
+  } else {
+    const res = await showCharacterCreation(null); // fresh hero
+    config = res.config;
+    continued = false;
+  }
 
   bootEl.style.display = '';
   await init(config, continued ? saved : null, audio);
@@ -99,6 +123,24 @@ async function init(character, saved, audio) {
   const weather = createWeather(scene, terrain, particles);
   const npcs = createNPCs(scene, terrain, decor.blocked, particles);
   const chests = createChests(scene, terrain, decor.blocked, particles);
+  const camps = createCamps(scene, terrain, decor.blocked, particles);
+  const gathering = createGathering(scene, terrain, decor.blocked, particles);
+  const farming = createFarming(scene, terrain, decor.blocked, particles);
+  const housing = createHousing(scene, terrain, decor.blocked, particles);
+
+  // --- safe zones: the village, rest camps and your homes repel monsters ---
+  const VILLAGE_SAFE_R = 13;
+  function inSafeZone(x, z) {
+    const dv = (x - terrain.spawn.x) ** 2 + (z - terrain.spawn.z) ** 2;
+    if (dv < VILLAGE_SAFE_R * VILLAGE_SAFE_R) return { x: terrain.spawn.x, z: terrain.spawn.z, r: VILLAGE_SAFE_R };
+    for (const c of camps.camps) {
+      if ((x - c.x) ** 2 + (z - c.z) ** 2 < CAMP_SAFE_R * CAMP_SAFE_R) return { x: c.x, z: c.z, r: CAMP_SAFE_R };
+    }
+    for (const l of housing.lands) {
+      if (l.built && (x - l.x) ** 2 + (z - l.z) ** 2 < HOUSE_SAFE_R * HOUSE_SAFE_R) return { x: l.x, z: l.z, r: HOUSE_SAFE_R };
+    }
+    return null;
+  }
   setBoot(0.78); await frame();
 
   // --- systems & entities ---
@@ -120,9 +162,16 @@ async function init(character, saved, audio) {
     leveling.state.xp = saved.xp || 0;
     inventory.load(saved.inventory);
     quests.load(saved.quests);
+    farming.load(saved.farm);
+    housing.load(saved.houses);
     if (saved.pos) {
       player.state.pos.set(saved.pos[0], saved.pos[1], saved.pos[2]);
     }
+  } else {
+    // starter kit: a faithful mount, a couple of seeds and pocket change
+    inventory.add('mount_sprig', 1);
+    inventory.add('seed_wheat', 2);
+    inventory.addCoins(15);
   }
 
   const enemyMgr = createEnemyManager(terrain, decor.blocked, scene, particles, projectiles, {
@@ -142,6 +191,7 @@ async function init(character, saved, audio) {
       }
     },
     sfx: (n) => audio.sfx(n),
+    inSafeZone,
   });
   for (let i = 0; i < 14; i++) enemyMgr.spawnOne(player.state.pos);
 
@@ -168,8 +218,145 @@ async function init(character, saved, audio) {
     },
   };
 
+  // --- economy / cooking / estate APIs for the panels ---
+  const COOK_RECIPES = [
+    { out: 'grilled_minnow', cost: { fish_minnow: 1 } },
+    { out: 'perch_dinner', cost: { fish_perch: 1, green_herb: 1 } },
+    { out: 'koi_feast', cost: { fish_koi: 1, green_herb: 2 } },
+  ];
+  const economy = {
+    eat(id) {
+      const food = inventory.useConsumable(id);
+      if (!food) { audio.sfx('deny'); return; }
+      player.state.hp = Math.min(player.state.maxHp, player.state.hp + food.heal);
+      dmgNums.spawn(player.state.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), `+${food.heal}`, 'heal');
+      particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#7dff8a', 10);
+      audio.sfx('potion');
+    },
+    goods() {
+      const plotPrice = farming.nextPlotPrice();
+      return [
+        { id: 'seed_wheat', name: 'Wheat Seeds', desc: 'Grows fast. Honest work.', price: ITEMS.seed_wheat.buy },
+        { id: 'seed_berry', name: 'Berry Seeds', desc: 'Sweet profit in ~90 seconds.', price: ITEMS.seed_berry.buy },
+        { id: 'seed_pumpkin', name: 'Pumpkin Seeds', desc: 'Slow, plump, premium.', price: ITEMS.seed_pumpkin.buy },
+        { id: 'tonic', name: 'Health Tonic', desc: 'Restores 40 HP.', price: 15 },
+        { id: 'plot', name: 'Extra Farm Plot', desc: 'Expand your field by one plot.', icon: 'crop_wheat', price: plotPrice ?? PLOT_PRICE, soldout: plotPrice === null },
+      ];
+    },
+    buy(id) {
+      const good = this.goods().find((g) => g.id === id);
+      if (!good || good.soldout || !inventory.spendCoins(good.price)) { audio.sfx('deny'); return; }
+      if (id === 'plot') farming.buyNextPlot();
+      else inventory.add(id, 1);
+      audio.sfx('craft');
+      hud.toastText(`Bought ${good.name}!`);
+    },
+    sell(id, n) {
+      const have = inventory.count(id);
+      const count = Math.min(have, n === Infinity ? have : n);
+      const price = ITEMS[id]?.sell || 0;
+      if (count <= 0 || !price) return;
+      inventory.remove(id, count);
+      inventory.addCoins(price * count);
+      audio.sfx('pickup');
+    },
+  };
+  const cooking = {
+    recipes: () => COOK_RECIPES,
+    cook(out) {
+      const r = COOK_RECIPES.find((x) => x.out === out);
+      if (!r) return;
+      for (const [id, n] of Object.entries(r.cost)) {
+        if (inventory.count(id) < n) { audio.sfx('deny'); return; }
+      }
+      for (const [id, n] of Object.entries(r.cost)) inventory.remove(id, n);
+      inventory.add(out, 1);
+      audio.sfx('craft');
+      particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffb055', 8, 2);
+      hud.toast(out, 1);
+    },
+  };
+  const estate = {
+    landPrice: LAND_PRICE,
+    designs: housing.HOUSE_DESIGNS,
+    currentLand: () => housing.nearest(player.state.pos, 4),
+    buyLand() {
+      const land = this.currentLand();
+      if (!land || land.owned || !inventory.spendCoins(LAND_PRICE)) { audio.sfx('deny'); return; }
+      housing.buyLand(land);
+      audio.sfx('quest_done');
+      hud.banner('LAND PURCHASED!');
+    },
+    build(designId) {
+      const land = this.currentLand();
+      const d = housing.HOUSE_DESIGNS[designId];
+      if (!land || !land.owned || land.built || !d) return;
+      for (const [id, n] of Object.entries(d.cost)) {
+        if (inventory.count(id) < n) { audio.sfx('deny'); return; }
+      }
+      if (d.coins && inventory.state.coins < d.coins) { audio.sfx('deny'); return; }
+      for (const [id, n] of Object.entries(d.cost)) inventory.remove(id, n);
+      if (d.coins) inventory.spendCoins(d.coins);
+      housing.build(land, designId);
+      audio.sfx('quest_done');
+      addShake(0.3);
+      hud.banner(`${d.name.toUpperCase()} BUILT!`);
+    },
+  };
+
+  // --- Master NXR's gacha: coins in, wonders out ---
+  const gacha = {
+    price: 100,
+    roll() {
+      if (!inventory.spendCoins(this.price)) return null;
+      const r = Math.random();
+      if (r < 0.60) { // common: supply bundle
+        const bundles = [
+          { id: 'forge_stone', count: 3 }, { id: 'tonic', count: 2 },
+          { id: 'seed_berry', count: 3 }, { id: 'iron_ore', count: 2 },
+          { id: 'seed_pumpkin', count: 2 },
+        ];
+        const b = bundles[Math.floor(Math.random() * bundles.length)];
+        inventory.add(b.id, b.count);
+        return { rarity: 'common', iconId: b.id, name: `${ITEMS[b.id].name} x${b.count}` };
+      }
+      if (r < 0.85) { // rare: pet charm (dupes impossible — refunds instead)
+        const charms = Object.values(PET_DEFS).map((d) => d.charm);
+        const missing = charms.filter((c) => inventory.count(c) === 0);
+        if (!missing.length) {
+          inventory.addCoins(60);
+          return { rarity: 'rare', iconId: 'coin', name: '+60 coins', note: 'Every pet collected — refunded!' };
+        }
+        const c = missing[Math.floor(Math.random() * missing.length)];
+        inventory.add(c, 1);
+        return { rarity: 'rare', iconId: c, name: ITEMS[c].name, note: 'New pet unlocked! Summon with [P]' };
+      }
+      if (r < 0.97) { // epic: mount whistle
+        const pool = ['mount_trotter', 'mount_clucky', 'mount_shellsworth'].filter((m) => inventory.count(m) === 0);
+        if (!pool.length) {
+          inventory.addCoins(90);
+          return { rarity: 'epic', iconId: 'coin', name: '+90 coins', note: 'Duplicate mount — refunded!' };
+        }
+        const mnt = pool[Math.floor(Math.random() * pool.length)];
+        inventory.add(mnt, 1);
+        return { rarity: 'epic', iconId: mnt, name: ITEMS[mnt].name, note: 'New mount! Ride with [M]' };
+      }
+      // legendary: Nimbus or the gacha-exclusive Blossom
+      const pool = ['mount_nimbus', 'mount_blossom'].filter((m) => inventory.count(m) === 0);
+      if (!pool.length) {
+        inventory.addCoins(250);
+        return { rarity: 'legendary', iconId: 'coin', name: '+250 coins', note: 'Every legend collected — refunded!' };
+      }
+      const mnt = pool[Math.floor(Math.random() * pool.length)];
+      inventory.add(mnt, 1);
+      addShake(0.3);
+      return { rarity: 'legendary', iconId: mnt, name: ITEMS[mnt].name, note: '✨ LEGENDARY MOUNT ✨' };
+    },
+  };
+
   const panels = createPanels(hudRoot, {
     inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
+    economy, cooking, estate, gacha,
     onCraft(recipe) {
       hud.banner(`${ITEMS[recipe.out].name.toUpperCase()} CRAFTED!`);
       particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffd23e', 16);
@@ -557,17 +744,48 @@ async function init(character, saved, audio) {
     dialog.show({
       name: def.name, role: def.role,
       text: def.dialog[npc.dialogIdx++ % def.dialog.length],
+      // Pip runs the village shop; Master NXR spins the wonder capsules
+      extra: def.id === 'merchant'
+        ? { label: '◆ OPEN SHOP', onClick: () => { close(); panels.toggle('shop'); } }
+        : def.id === 'nxr'
+          ? { label: '🎰 WONDER CAPSULES', onClick: () => { close(); panels.toggle('gacha'); } }
+          : null,
       onClose: close,
     });
+  }
+
+  // --- gathering: chop birches / mine ore nodes with your weapon ---
+  function gatherHit(node) {
+    player.playSwing(0.9);
+    audio.sfx(node.kind === 'birch' ? 'swing' : 'forge_hit');
+    addShake(0.08);
+    setTimeout(() => {
+      const drops = gathering.hit(node);
+      if (drops === null) return;
+      audio.sfx('hit');
+      for (const d of drops) pickups.spawn(d.id, d.count, node.mesh.position);
+      if (drops.length) audio.sfx(node.kind === 'birch' ? 'death_thud' : 'forge_ok');
+    }, 180);
+  }
+
+  // seed priority when planting: whichever you own, cheapest first
+  function seedToPlant() {
+    for (const id of ['seed_wheat', 'seed_berry', 'seed_pumpkin']) {
+      if (inventory.count(id) > 0) return id;
+    }
+    return null;
   }
 
   // --- interact system: one context-sensitive action (F / mobile ★ button) ---
   function currentInteraction() {
     if (player.state.dead || panels.anyOpen() || dialog.isOpen()) return null;
+    if (fishing.state.afk) return { label: 'Stop AFK fishing', run: () => fishing.cancel() };
     if (fishing.state.phase === 'bite') return { label: 'Reel in!', run: () => fishing.strike() };
     if (fishing.state.phase === 'waiting') return { label: 'Wait for it...', run: () => fishing.strike() };
+
     const npc = npcs.nearest(player.state.pos, 2.3);
     if (npc) return { label: `Talk to ${npc.def.name}`, run: () => openDialog(npc) };
+
     const chest = chests.nearest(player.state.pos, 2.1);
     if (chest) {
       return {
@@ -582,7 +800,56 @@ async function init(character, saved, audio) {
         },
       };
     }
-    if (fishing.canFish()) return { label: 'Fish', run: () => fishing.cast() };
+
+    // farm plots: harvest ready crops / plant seeds
+    const plot = farming.nearest(player.state.pos, 1.9);
+    if (plot) {
+      if (plot.owned && plot.seed && plot.stage >= 2) {
+        return {
+          label: 'Harvest',
+          run: () => {
+            const crop = farming.harvest(plot);
+            if (crop) { pickups.spawn(crop.id, crop.count, new THREE.Vector3(plot.x, plot.y, plot.z)); audio.sfx('catch'); }
+          },
+        };
+      }
+      if (plot.owned && !plot.seed) {
+        const seed = seedToPlant();
+        if (seed) {
+          return {
+            label: `Plant ${ITEMS[seed].name}`,
+            run: () => {
+              if (farming.plant(plot, seed)) { inventory.remove(seed, 1); audio.sfx('ui'); }
+            },
+          };
+        }
+      }
+    }
+
+    // your estates: buy land / open the build menu
+    const land = housing.nearest(player.state.pos, 3.5);
+    if (land && !land.built) {
+      return {
+        label: land.owned ? 'Build your house' : `Land for sale (${LAND_PRICE}c)`,
+        run: () => { audio.sfx('ui'); panels.toggle('estate'); },
+      };
+    }
+
+    // gathering nodes
+    const node = gathering.nearest(player.state.pos, 2.2);
+    if (node) {
+      return {
+        label: node.kind === 'birch' ? `Chop birch (${node.hits})` : `Mine ore (${node.hits})`,
+        run: () => gatherHit(node),
+      };
+    }
+
+    // campfires: cook the catch of the day
+    const fire = camps.nearestFire(player.state.pos, 2.6)
+      || (((npcs.cookfire.x - player.state.pos.x) ** 2 + (npcs.cookfire.z - player.state.pos.z) ** 2 < 2.6 * 2.6) ? npcs.cookfire : null);
+    if (fire) return { label: 'Cook', run: () => { audio.sfx('ui'); panels.toggle('cook'); } };
+
+    if (fishing.canFish()) return { label: 'Fish', afk: true, run: () => fishing.cast() };
     return null;
   }
   function ownedPetSet() {
@@ -610,7 +877,11 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyF') doInteract();
     if (e.code === 'Space') { e.preventDefault(); doJump(); }
     if (e.code === 'KeyM') toggleMount();
-    if (e.code === 'Escape') { panels.closeAll(); dialog.hide(); fishing.cancel(); }
+    if (e.code === 'KeyN') toggleWorldMap();
+    if (e.code === 'KeyG') { // AFK fishing toggle
+      if (fishing.toggleAfk()) hud.toastText('AFK fishing on — common fish only. Move to stop.');
+    }
+    if (e.code === 'Escape') { panels.closeAll(); dialog.hide(); fishing.cancel(); worldmap.hide(); }
     if (e.code === 'Digit1') castSkill(skillIds[0]);
     if (e.code === 'Digit2') castSkill(skillIds[1]);
     if (e.code === 'Digit3') castSkill(skillIds[2]);
@@ -630,6 +901,16 @@ async function init(character, saved, audio) {
   renderer.domElement.addEventListener('wheel', (e) => {
     cam.dist = Math.max(9, Math.min(30, cam.dist + Math.sign(e.deltaY) * 1.6));
   }, { passive: true });
+
+  // --- world map overlay (N / tap the minimap) ---
+  const worldmap = createWorldMap({ minimap, terrain });
+  function toggleWorldMap() {
+    audio.sfx('ui');
+    worldmap.toggle({ player, npcs, camps, lands: housing, enemies: enemyMgr.enemies, quests });
+  }
+  hud.els.minimapCanvas.style.pointerEvents = 'auto';
+  hud.els.minimapCanvas.style.cursor = 'pointer';
+  hud.els.minimapCanvas.addEventListener('click', toggleWorldMap);
 
   hud.bind({
     onSkill: castSkill,
@@ -652,6 +933,9 @@ async function init(character, saved, audio) {
       onPotion: usePotion,
       onSkill: castSkill,
       onInteract: doInteract,
+      onAfkFish: () => {
+        if (fishing.toggleAfk()) hud.toastText('AFK fishing on — common fish only. Move to stop.');
+      },
       onCameraDrag: (d) => { cam.yaw -= d; },
     });
   }
@@ -675,6 +959,8 @@ async function init(character, saved, audio) {
         quests: quests.serialize(),
         skills: skillSys.serialize(),
         skillPoints,
+        farm: farming.serialize(),
+        houses: housing.serialize(),
         pet: pets.state.active,
         mount: mounts.state.active,
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
@@ -688,7 +974,8 @@ async function init(character, saved, audio) {
   window.__semesta = {
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
-    summonMount, summonPet,
+    camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
+    summonMount, summonPet, inSafeZone,
   };
 
   setBoot(1); await frame();
@@ -766,10 +1053,33 @@ async function init(character, saved, audio) {
     skillSys.update(dt);
     npcs.update(dt, player.state.pos, time);
     chests.update(dt, player.state.pos);
+    camps.update(dt, player.state.pos, time);
+    gathering.update(dt);
+    farming.update(dt);
     pets.update(dt, player.state, time);
     mounts.update(dt, player, terrain);
     fishing.update(dt, time);
     updateCamera(dt);
+
+    // resting: campfires and your own homes heal quickly
+    if (!player.state.dead && player.state.hp < player.state.maxHp) {
+      let resting = false;
+      const fire = camps.nearestFire(player.state.pos, CAMP_HEAL_R);
+      if (fire) resting = true;
+      if (!resting) {
+        for (const l of housing.lands) {
+          if (l.built && (l.x - player.state.pos.x) ** 2 + (l.z - player.state.pos.z) ** 2 < HOUSE_HEAL_R * HOUSE_HEAL_R) {
+            resting = true; break;
+          }
+        }
+      }
+      if (resting) {
+        player.state.hp = Math.min(player.state.maxHp, player.state.hp + player.state.maxHp * 0.06 * dt);
+        if (Math.random() < dt * 1.2) {
+          particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#7dff8a', 2);
+        }
+      }
+    }
 
     // occasional distant thunder while raining
     if (weather.state.intensity > 0.5) {
@@ -801,7 +1111,7 @@ async function init(character, saved, audio) {
       // interact prompt
       const it = currentInteraction();
       hud.setPrompt(it ? { key: 'F', label: it.label } : null);
-      touchUI?.setPrompt(it ? { label: it.label } : null);
+      touchUI?.setPrompt(it ? { label: it.label, afk: it.afk } : null);
     }
 
     renderer.render(scene, camera);

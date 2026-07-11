@@ -19,6 +19,8 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     phase: 'idle', // idle | waiting | bite | catching
     t: 0,
     spot: null,
+    afk: false,   // auto-fishing: hands-free, but worse rarity odds
+    afkT: 0,
   };
 
   // --- fishing rod (attached to the player's right hand while fishing) ---
@@ -95,6 +97,17 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
   scene.add(fishSpr);
   const fishTexCache = new Map();
 
+  // fish shadow — a dark shape circles in, then strikes the bobber
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.26, 10),
+    new THREE.MeshBasicMaterial({ color: 0x16242e, transparent: true, opacity: 0.4, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.scale.set(1, 1.7, 1); // fish-shaped ellipse
+  shadow.visible = false;
+  scene.add(shadow);
+  let shadowAng = 0;
+
+  const ROD_REST = -0.5;
   let bobT = 0, rippleT = 0;
   let catchAnim = null; // { from, t, id, xp }
   const _tipWorld = new THREE.Vector3();
@@ -138,6 +151,12 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     bobber.position.copy(spot);
     bobber.position.y += 0.8; // drops in
     bobber.visible = true;
+    // a fish takes notice somewhere nearby and starts circling in
+    shadowAng = Math.random() * Math.PI * 2;
+    shadow.position.set(
+      spot.x + Math.cos(shadowAng) * 2.4, WATER_Y - 0.02, spot.z + Math.sin(shadowAng) * 2.4);
+    shadow.rotation.z = -shadowAng;
+    shadow.visible = true;
     audio.sfx('cast');
     particles.burst(spot.clone(), '#aac8e0', 5, 1, 4, 0.35);
     return true;
@@ -147,10 +166,16 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     if (state.phase === 'bite') {
       let r = Math.random(), acc = 0, caught = CATCH_TABLE[0];
       const luck = player.buffVal?.('fish') || 0;
-      // koko also nudges rare odds up a little
-      const table = luck > 0
-        ? [{ id: 'fish_minnow', w: 0.45, xp: 6 }, { id: 'fish_perch', w: 0.38, xp: 12 }, { id: 'fish_koi', w: 0.17, xp: 40 }]
-        : CATCH_TABLE;
+      // manual fishing rewards attention with better rarity; AFK mode is
+      // hands-free but heavily skewed toward common fish
+      let table;
+      if (state.afk) {
+        table = [{ id: 'fish_minnow', w: 0.82, xp: 4 }, { id: 'fish_perch', w: 0.17, xp: 9 }, { id: 'fish_koi', w: 0.01, xp: 30 }];
+      } else if (luck > 0) {
+        table = [{ id: 'fish_minnow', w: 0.45, xp: 6 }, { id: 'fish_perch', w: 0.38, xp: 12 }, { id: 'fish_koi', w: 0.17, xp: 40 }];
+      } else {
+        table = CATCH_TABLE;
+      }
       for (const c of table) { acc += c.w; if (r <= acc) { caught = c; break; } }
       // play the catch arc, deliver the fish when it lands
       state.phase = 'catching';
@@ -161,6 +186,8 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       fishSpr.material.needsUpdate = true;
       fishSpr.visible = true;
       bobber.visible = false;
+      shadow.visible = false;
+      rod.rotation.x = ROD_REST;
       audio.sfx('catch');
       particles.burst(catchAnim.from, '#7ab8e8', 16, 3, 4, 0.5);
       particles.shockwave?.(new THREE.Vector3(catchAnim.from.x, WATER_Y + 0.05, catchAnim.from.z), '#d8f0f4', 1.4, 0.4);
@@ -176,7 +203,17 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
   }
 
   function cancel() {
+    state.afk = false;
     if (state.phase !== 'idle' && state.phase !== 'catching') end();
+  }
+
+  // toggle hands-free fishing (auto casts & auto reels with worse odds)
+  function toggleAfk() {
+    if (state.afk) { cancel(); return false; }
+    if (!canFish()) return false;
+    state.afk = true;
+    cast();
+    return true;
   }
 
   function end() {
@@ -186,6 +223,8 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     alert.visible = false;
     rod.visible = false;
     line.visible = false;
+    shadow.visible = false;
+    rod.rotation.x = ROD_REST;
     if (rod.parent) rod.parent.remove(rod);
     player.state.busy = false;
   }
@@ -205,6 +244,22 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
   }
 
   function update(dt, time) {
+    // AFK loop: auto-strike bites (slowly), auto-recast after each catch
+    if (state.afk) {
+      if (state.phase === 'bite') {
+        state.afkT += dt;
+        if (state.afkT > 0.5) { state.afkT = 0; strike(); }
+      } else if (state.phase === 'idle' && !catchAnim) {
+        state.afkT += dt;
+        if (state.afkT > 1.6) {
+          state.afkT = 0;
+          if (!cast()) state.afk = false; // water gone / mounted etc.
+        }
+      } else {
+        state.afkT = 0;
+      }
+    }
+
     // catch arc plays even after "busy" ends
     if (catchAnim) {
       catchAnim.t += dt * 1.8;
@@ -241,6 +296,24 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       } else {
         bobber.position.y = WATER_Y + 0.03 + Math.sin(bobT * 2.4) * 0.03;
       }
+      // the fish shadow spirals in, timed to arrive right at the bite
+      if (shadow.visible) {
+        const dx = bobber.position.x - shadow.position.x;
+        const dz = bobber.position.z - shadow.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.35) {
+          const sp = Math.max(0.25, d / Math.max(0.4, state.t));
+          shadow.position.x += (dx / d) * sp * dt + Math.cos(bobT * 5) * 0.15 * dt;
+          shadow.position.z += (dz / d) * sp * dt + Math.sin(bobT * 5) * 0.15 * dt;
+          shadow.rotation.z = -Math.atan2(dx, dz);
+        } else {
+          // lurking under the bobber — slow menacing circle
+          shadowAng += dt * 1.6;
+          shadow.position.x = bobber.position.x + Math.cos(shadowAng) * 0.3;
+          shadow.position.z = bobber.position.z + Math.sin(shadowAng) * 0.3;
+          shadow.rotation.z = -(shadowAng + Math.PI / 2);
+        }
+      }
       // ripple rings spreading from the bobber
       rippleT -= dt;
       if (rippleT <= 0) {
@@ -262,6 +335,10 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       state.t -= dt;
       bobber.position.y = WATER_Y - 0.1 + Math.sin(time * 22) * 0.04; // struggling
       alert.scale.setScalar(0.5 + Math.sin(time * 18) * 0.07);
+      // the rod bends hard & the shadow thrashes under the float
+      rod.rotation.x = ROD_REST - 0.4 + Math.sin(time * 24) * 0.08;
+      shadow.position.x = bobber.position.x + Math.sin(time * 20) * 0.12;
+      shadow.position.z = bobber.position.z + Math.cos(time * 17) * 0.12;
       if (Math.random() < dt * 4) {
         particles.burst(bobber.position.clone(), '#d8f0f4', 2, 1.4, 5, 0.3);
       }
@@ -273,5 +350,5 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     }
   }
 
-  return { state, canFish, cast, strike, cancel, update };
+  return { state, canFish, cast, strike, cancel, toggleAfk, update };
 }
