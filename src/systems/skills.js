@@ -68,17 +68,34 @@ export const SKILLS = {
   },
 };
 
+export const MAX_SKILL_LEVEL = 5;
+const LVL_DMG = 0.22;   // +22% skill power per level
+const LVL_CD = 0.06;    // -6% cooldown per level
+const LVL_DUR = 0.15;   // +15% buff duration per level
+
 // deps: { player, enemyMgr, projectiles, particles, dmgNums, audio, terrain, aimPoint(), shake() }
 export function createSkillSystem(deps) {
   const cooldowns = {}; // id -> seconds remaining
+  const levels = {};    // id -> skill level (1..MAX_SKILL_LEVEL)
+  let castLvl = 1;      // level of the skill currently executing (for FX scaling)
+
+  function levelOf(id) { return levels[id] || 1; }
+  function upgrade(id) {
+    if (levelOf(id) >= MAX_SKILL_LEVEL) return false;
+    levels[id] = levelOf(id) + 1;
+    return true;
+  }
+  function effCd(id) { return SKILLS[id].cd * (1 - LVL_CD * (levelOf(id) - 1)); }
+  function durMult() { return 1 + LVL_DUR * (castLvl - 1); }
 
   function ready(id) { return (cooldowns[id] || 0) <= 0; }
-  function cdFrac(id) { return Math.max(0, (cooldowns[id] || 0)) / SKILLS[id].cd; }
+  function cdFrac(id) { return Math.max(0, (cooldowns[id] || 0)) / effCd(id); }
 
   function damageOf(mult, crit = false) {
     const p = deps.player.state;
     const w = deps.weaponDef();
-    const base = w.dmg * p.dmgMult * mult * deps.forgeMult();
+    const lvlMult = 1 + LVL_DMG * (castLvl - 1);
+    const base = w.dmg * p.dmgMult * mult * lvlMult * deps.forgeMult();
     const isCrit = crit || Math.random() < 0.12;
     return {
       dmg: Math.max(1, Math.round(base * (isCrit ? 1.6 : 1) * (0.9 + Math.random() * 0.2))),
@@ -131,7 +148,7 @@ export function createSkillSystem(deps) {
     },
     warcry() {
       const p = deps.player.state;
-      deps.player.addBuff({ id: 'warcry', t: 7, dmg: 0.35 });
+      deps.player.addBuff({ id: 'warcry', t: 7 * durMult(), dmg: 0.35 + 0.04 * (castLvl - 1) });
       deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#e8574a', 24);
       deps.particles.shockwave(p.pos, '#e8574a', 4.5, 0.5);
       deps.particles.flash(p.pos, '#e8574a', 6, 0.4);
@@ -168,7 +185,7 @@ export function createSkillSystem(deps) {
       deps.player.playBowDraw();
     },
     swiftness() {
-      deps.player.addBuff({ id: 'swiftness', t: 5, speed: 0.4, atkSpeed: 0.4 });
+      deps.player.addBuff({ id: 'swiftness', t: 5 * durMult(), speed: 0.4, atkSpeed: 0.4 });
       deps.particles.fountain(deps.player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#a8d8b8', 16);
       deps.particles.shockwave(deps.player.state.pos, '#a8d8b8', 2, 0.35);
       deps.audio.sfx('swiftness');
@@ -201,7 +218,8 @@ export function createSkillSystem(deps) {
       const p = deps.player.state;
       const target = deps.aimPoint() || p.pos.clone().add(facingDir().multiplyScalar(6));
       const dir = target.clone().sub(p.pos); dir.y = 0;
-      const dist = Math.min(6, dir.length());
+      const maxDist = 6 + (castLvl - 1) * 0.8; // blink reaches farther per level
+      const dist = Math.min(maxDist, dir.length());
       dir.normalize();
       deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#b89af0', 16, 2.5);
       deps.particles.shockwave(p.pos, '#b89af0', 1.6, 0.3);
@@ -317,7 +335,8 @@ export function createSkillSystem(deps) {
     if (!def || !ready(id) || p.dead || p.rolling > 0 || p.busy) return false;
     if (p.stamina < def.cost) { deps.audio.sfx('deny'); return false; }
     p.stamina -= def.cost;
-    cooldowns[id] = def.cd;
+    castLvl = levelOf(id);
+    cooldowns[id] = effCd(id);
     FX[id]();
     return true;
   }
@@ -328,5 +347,10 @@ export function createSkillSystem(deps) {
     }
   }
 
-  return { cast, update, ready, cdFrac, SKILLS };
+  function serialize() { return { levels: { ...levels } }; }
+  function load(data) {
+    if (data?.levels) Object.assign(levels, data.levels);
+  }
+
+  return { cast, update, ready, cdFrac, levelOf, upgrade, effCd, serialize, load, SKILLS };
 }

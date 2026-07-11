@@ -7,38 +7,40 @@ import { WATER_LEVEL, BLOCK_H } from '../world/terrain.js';
 import { makeCritterFaceTexture, toTexture } from '../gfx/textures.js';
 import { rollDrops } from '../systems/items.js';
 
+// Aggro ranges are deliberately modest — monsters shouldn't dogpile players
+// who are just exploring; you mostly fight what you walk up to.
 export const ENEMY_TYPES = {
   slime: {
-    name: 'Slime', hp: 14, dmg: 4, speed: 1.5, xp: 8, aggro: 5.5, attackRange: 1.0,
-    attackCd: 1.3, weight: 0.34, behavior: 'melee',
+    name: 'Slime', hp: 14, dmg: 4, speed: 1.5, xp: 8, aggro: 4.0, attackRange: 1.0,
+    attackCd: 1.5, weight: 0.34, behavior: 'melee',
   },
   nibbit: {
-    name: 'Nibbit', hp: 9, dmg: 3, speed: 2.7, xp: 7, aggro: 4.5, attackRange: 0.9,
-    attackCd: 1.0, weight: 0.14, behavior: 'melee',
+    name: 'Nibbit', hp: 9, dmg: 3, speed: 2.7, xp: 7, aggro: 3.4, attackRange: 0.9,
+    attackCd: 1.2, weight: 0.14, behavior: 'melee',
   },
   armorbug: {
-    name: 'Armorbug', hp: 34, dmg: 8, speed: 1.0, xp: 18, aggro: 4.0, attackRange: 1.1,
-    attackCd: 1.6, weight: 0.1, behavior: 'melee', water: true,
+    name: 'Armorbug', hp: 34, dmg: 8, speed: 1.0, xp: 18, aggro: 3.2, attackRange: 1.1,
+    attackCd: 1.8, weight: 0.1, behavior: 'melee', water: true,
   },
   fungling: {
-    name: 'Fungling', hp: 18, dmg: 6, speed: 1.2, xp: 14, aggro: 7.5, attackRange: 6.5,
-    attackCd: 2.2, weight: 0.14, behavior: 'ranged', keepDist: 4.5,
+    name: 'Fungling', hp: 18, dmg: 6, speed: 1.2, xp: 14, aggro: 5.5, attackRange: 6.0,
+    attackCd: 2.5, weight: 0.14, behavior: 'ranged', keepDist: 4.5,
   },
   boarling: {
-    name: 'Boarling', hp: 26, dmg: 9, speed: 1.8, xp: 16, aggro: 6.5, attackRange: 1.2,
-    attackCd: 1.4, weight: 0.13, behavior: 'charge',
+    name: 'Boarling', hp: 26, dmg: 9, speed: 1.8, xp: 16, aggro: 5.0, attackRange: 1.2,
+    attackCd: 1.6, weight: 0.13, behavior: 'charge',
   },
   wisp: {
-    name: 'Wisp', hp: 15, dmg: 7, speed: 1.9, xp: 20, aggro: 8.0, attackRange: 7.0,
-    attackCd: 1.9, weight: 0, behavior: 'ranged', keepDist: 5, nightOnly: true, floats: true,
+    name: 'Wisp', hp: 15, dmg: 7, speed: 1.9, xp: 20, aggro: 6.0, attackRange: 6.5,
+    attackCd: 2.1, weight: 0, behavior: 'ranged', keepDist: 5, nightOnly: true, floats: true,
   },
   treant: {
-    name: 'Treant', hp: 65, dmg: 13, speed: 0.75, xp: 32, aggro: 5.0, attackRange: 1.4,
-    attackCd: 1.9, weight: 0.08, behavior: 'melee',
+    name: 'Treant', hp: 65, dmg: 13, speed: 0.75, xp: 32, aggro: 4.0, attackRange: 1.4,
+    attackCd: 2.1, weight: 0.08, behavior: 'melee',
   },
   golem: {
-    name: 'Golem', hp: 160, dmg: 20, speed: 0.6, xp: 90, aggro: 6.0, attackRange: 1.7,
-    attackCd: 2.4, weight: 0.03, behavior: 'melee', minDist: 38, boss: true,
+    name: 'Golem', hp: 160, dmg: 20, speed: 0.6, xp: 90, aggro: 5.0, attackRange: 1.7,
+    attackCd: 2.6, weight: 0.03, behavior: 'melee', minDist: 38, boss: true,
   },
 };
 
@@ -380,7 +382,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
   function spawnOne(playerPos, isNight = false) {
     for (let tries = 0; tries < 24; tries++) {
       const ang = Math.random() * Math.PI * 2;
-      const dist = 13 + Math.random() * 30;
+      const dist = 17 + Math.random() * 28; // never right on top of the player
       const x = playerPos.x + Math.cos(ang) * dist;
       const z = playerPos.z + Math.sin(ang) * dist;
       const [ix, iz] = terrain.cellOf(x, z);

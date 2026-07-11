@@ -136,6 +136,9 @@ const CSS = `
 #hud .skill .cnt {
   position: absolute; bottom: 1px; right: 3px; font-size: 10px; color: #e8e8d8; text-shadow: 1px 1px 0 #000;
 }
+#hud .skill .slv {
+  position: absolute; bottom: 1px; left: 3px; font-size: 8px; color: var(--gold); text-shadow: 1px 1px 0 #000;
+}
 #hud .skill.empty { opacity: 0.45; }
 #hud .weapon-chip {
   position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
@@ -254,7 +257,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <div class="skillrow frame">
         ${skillIds.map((s, i) => `
           <div class="skill" data-skill="${s}" style="background-image:url(${skillIconUrl(s, SKILLS[s].icon)})" title="${SKILLS[s].name} — ${SKILLS[s].desc}">
-            <span class="key">${i + 1}</span><div class="cd"></div><span class="cdt"></span>
+            <span class="key">${i + 1}</span><span class="slv"></span><div class="cd"></div><span class="cdt"></span>
           </div>`).join('')}
         <div class="skill potion" data-potion="1" style="background-image:url(${itemIconUrl('tonic')})" title="Health Tonic">
           <span class="key">4</span><span class="cnt">0</span>
@@ -266,6 +269,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <button class="iconbtn" data-menu="cra">CRAFT <small>[C]</small></button>
       <button class="iconbtn" data-menu="forge">FORGE <small>[V]</small></button>
       <button class="iconbtn" data-menu="pets">PETS <small>[P]</small></button>
+      <button class="iconbtn" data-menu="skills">SKILLS <small>[K]</small></button>
       <button class="iconbtn" data-menu="help">?</button>
     </div>
     <div class="hint-desktop">
@@ -369,6 +373,12 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         el.querySelector('.cdt').textContent = Math.ceil(frac * SKILLS[id].cd);
       } else {
         el.classList.remove('oncd');
+      }
+      if (skillSys.levelOf) {
+        const lvl = skillSys.levelOf(id);
+        const chip = el.querySelector('.slv');
+        const txt = lvl > 1 ? `Lv${lvl}` : '';
+        if (chip.textContent !== txt) chip.textContent = txt;
       }
     }
     const n = inventory.count('tonic');

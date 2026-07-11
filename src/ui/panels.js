@@ -91,7 +91,7 @@ const CSS = `
 
 export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
-  onCraft, onForged, onSummonPet, onSummonMount, mountsRef,
+  onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
 }) {
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -102,6 +102,7 @@ export function createPanels(hudRoot, {
     cra: document.createElement('div'),
     forge: document.createElement('div'),
     pets: document.createElement('div'),
+    skills: document.createElement('div'),
     help: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
@@ -282,6 +283,51 @@ export function createPanels(hudRoot, {
     });
   }
 
+  function renderSkills() {
+    if (!skillsApi) return;
+    const { skillIds, skillSys, getPoints } = skillsApi;
+    const pts = getPoints();
+    let rows = `<div class="sp-banner">SKILL POINTS: <b>${pts}</b> <small>— earn one every character level</small></div>`;
+    for (const id of skillIds) {
+      const def = skillsApi.SKILLS[id];
+      const lvl = skillSys.levelOf(id);
+      const maxed = lvl >= skillsApi.MAX_SKILL_LEVEL;
+      let pips = '';
+      for (let i = 1; i <= skillsApi.MAX_SKILL_LEVEL; i++) {
+        pips += `<span class="${i <= lvl ? 'pip on' : 'pip'}">◆</span>`;
+      }
+      const power = Math.round((lvl - 1) * 22);
+      const cdCut = Math.round((lvl - 1) * 6);
+      rows += `<div class="pet-row">
+        <div class="dot" style="background:#141a12"><img src="${skillsApi.iconUrl(id, def.icon)}" style="width:26px;height:26px;image-rendering:pixelated"></div>
+        <div class="nm">${def.name} <span class="pips">${pips}</span>
+          <small>${def.desc}</small>
+          <small class="perk">${lvl > 1 ? `★ +${power}% power · -${cdCut}% cooldown` : 'Base level'}</small>
+        </div>
+        <button class="act" data-skillup="${id}" ${(maxed || pts <= 0) ? 'disabled' : ''}>${maxed ? 'MAX' : 'UPGRADE'}</button>
+      </div>`;
+    }
+    panels.skills.innerHTML = `<h3>SKILLS <small>[K] close</small></h3>
+      <style>
+        .sp-banner { font-size: 11px; color: var(--text); margin-bottom: 10px; padding: 7px 10px;
+          background: rgba(216,184,102,0.08); border: 1px solid var(--gold-dim); letter-spacing: 1px; }
+        .sp-banner b { color: var(--gold); font-size: 13px; }
+        .sp-banner small { color: var(--muted); letter-spacing: 0; }
+        .pips { margin-left: 6px; font-size: 9px; letter-spacing: 2px; }
+        .pip { color: #3a4436; } .pip.on { color: var(--gold); text-shadow: 0 0 5px var(--gold-glow); }
+      </style>${rows}`;
+    panels.skills.querySelectorAll('[data-skillup]').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (skillsApi.spendPoint(b.dataset.skillup)) {
+          audio.sfx('levelup');
+          renderSkills();
+        } else {
+          audio.sfx('deny');
+        }
+      });
+    });
+  }
+
   function renderHelp() {
     const touch = isTouch;
     panels.help.innerHTML = `
@@ -296,6 +342,7 @@ export function createPanels(hudRoot, {
         1. Hunt monsters for XP and materials — tougher ones live far from the village.<br>
         2. <b>CRAFT</b> better weapons from monster parts (menu C).<br>
         3. <b>FORGE</b> your weapon up to +9 with Forge Stones (menu V).<br>
+        3½. Every level grants a <span class="tip">Skill Point</span> — spend them in the <b>SKILLS</b> menu (K) to level your skills up to Lv5 (more power, shorter cooldowns).<br>
         4. Open sparkling <span class="tip">treasure chests</span> — goodies and rare <span class="tip">pet charms</span>.<br>
         5. Take quests from the villagers (look for the <span style="color:#ffd23e">!</span> marks) — they pay well,
         and some reward <span class="tip">rideable mounts</span>!
@@ -313,7 +360,7 @@ export function createPanels(hudRoot, {
     `;
   }
 
-  const RENDER = { inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets, help: renderHelp };
+  const RENDER = { inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets, skills: renderSkills, help: renderHelp };
 
   function toggle(which) {
     const target = panels[which];

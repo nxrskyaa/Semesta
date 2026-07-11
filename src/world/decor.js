@@ -42,10 +42,10 @@ export function buildDecor(terrain, scene) {
       // keep the village clearing open
       const dSpawn = Math.hypot(wx - terrain.spawn.x, wz - terrain.spawn.z);
 
-      if (forest > 0.42 && r < 0.055 && dSpawn > 9 && !nearTree(trees, wx, wz, 2.6)) {
+      if (forest > 0.42 && r < 0.055 && dSpawn > 9 && !nearTree(trees, wx, wz, 2.8)) {
         trees.push({
           x: wx, y, z: wz,
-          tall: 3.2 + rng() * 2.4, girth: 0.2 + rng() * 0.12, seed: rng(),
+          tall: 2.6 + rng() * 1.8, girth: 0.18 + rng() * 0.1, seed: rng(),
         });
         blocked.add(`${ix},${iz}`);
         continue;
@@ -58,11 +58,18 @@ export function buildDecor(terrain, scene) {
       if ((t === 0 || t === 4) && r > 0.4 && r < 0.68) {
         tufts.push({ x: wx + (rng() - 0.5) * 0.5, y, z: wz + (rng() - 0.5) * 0.5, s: 0.5 + rng() * 0.5 });
       }
-      if ((t === 6 && r < 0.5) || (t === 0 && r > 0.965)) {
+      if ((t === 6 && r < 0.8) || (t === 0 && r > 0.94)) {
         flowers.push({
           x: wx + (rng() - 0.5) * 0.6, y, z: wz + (rng() - 0.5) * 0.6,
           s: 0.4 + rng() * 0.35, c: Math.floor(rng() * PALETTE.flowers.length),
         });
+        // meadow tiles often get a second bloom for lush clusters
+        if (t === 6 && rng() < 0.45) {
+          flowers.push({
+            x: wx + (rng() - 0.5) * 0.7, y, z: wz + (rng() - 0.5) * 0.7,
+            s: 0.35 + rng() * 0.3, c: Math.floor(rng() * PALETTE.flowers.length),
+          });
+        }
       }
       if (t === 0 && r > 0.68 && r < 0.695 && dSpawn > 6) {
         bushes.push({ x: wx, y, z: wz, s: 0.4 + rng() * 0.35, seed: rng() });
@@ -95,31 +102,53 @@ export function buildDecor(terrain, scene) {
   const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
   trunkMesh.castShadow = true; trunkMesh.receiveShadow = true;
 
-  const canopyGeo = new THREE.IcosahedronGeometry(1, 0); // faceted blob
+  // canopy: one fat core + a ring of side blobs + a bright crown blob —
+  // reads as a lush rounded treetop, nothing like stacked cubes
+  const canopyGeo = new THREE.IcosahedronGeometry(1, 1); // smoother blob
   const canopyMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-  const blobsPerTree = 3;
+  const blobsPerTree = 5;
   const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, trees.length * blobsPerTree);
   canopyMesh.castShadow = true;
-  const leafColors = ['#3e7d47', '#4a8a50', '#356e40', '#4f9857'].map((c) => new THREE.Color(c));
+  const leafBase = ['#3e7d47', '#458a4e', '#3a7343'].map((c) => new THREE.Color(c));
+  const leafDark = new THREE.Color('#2f6339');
+  const leafLight = new THREE.Color('#5fa860');
 
   trees.forEach((tr, i) => {
     q.setFromAxisAngle(YUP, tr.seed * Math.PI);
     m.compose(v.set(tr.x, tr.y + tr.tall * 0.5, tr.z), q, sc.set(tr.girth, tr.tall, tr.girth));
     trunkMesh.setMatrixAt(i, m);
-    for (let k = 0; k < blobsPerTree; k++) {
-      const f = k / (blobsPerTree - 1);
-      const rr = (1.5 - f * 0.75) * (0.85 + tr.seed * 0.3);
-      const ang = tr.seed * 9 + k * 2.2;
-      const ox = Math.cos(ang) * 0.3 * (1 - f), oz = Math.sin(ang) * 0.3 * (1 - f);
-      q.setFromAxisAngle(YUP, tr.seed * 7 + k * 1.3);
+
+    const baseCol = leafBase[i % leafBase.length];
+    const spread = 0.9 + tr.seed * 0.35;
+    // core blob
+    let bi = i * blobsPerTree;
+    q.setFromAxisAngle(YUP, tr.seed * 7);
+    m.compose(v.set(tr.x, tr.y + tr.tall * 1.02, tr.z), q,
+      sc.set(1.7 * spread, 1.35 * spread, 1.7 * spread));
+    canopyMesh.setMatrixAt(bi, m);
+    canopyMesh.setColorAt(bi, baseCol);
+    // 3 side blobs, slightly lower & darker (undercanopy shade)
+    for (let k = 0; k < 3; k++) {
+      const ang = tr.seed * 9 + k * (Math.PI * 2 / 3);
+      const rr = (1.05 + ((tr.seed * 13 + k) % 1) * 0.25) * spread;
+      q.setFromAxisAngle(YUP, tr.seed * 5 + k);
       m.compose(
-        v.set(tr.x + ox, tr.y + tr.tall * (0.8 + f * 0.42), tr.z + oz),
-        q, sc.set(rr, rr * 0.82, rr),
+        v.set(tr.x + Math.cos(ang) * 0.85 * spread, tr.y + tr.tall * (0.82 + k * 0.04), tr.z + Math.sin(ang) * 0.85 * spread),
+        q, sc.set(rr, rr * 0.8, rr),
       );
-      const bi = i * blobsPerTree + k;
+      bi = i * blobsPerTree + 1 + k;
       canopyMesh.setMatrixAt(bi, m);
-      canopyMesh.setColorAt(bi, leafColors[(i + k) % leafColors.length]);
+      canopyMesh.setColorAt(bi, k === 1 ? baseCol : leafDark);
     }
+    // sunlit crown
+    q.setFromAxisAngle(YUP, tr.seed * 3);
+    m.compose(
+      v.set(tr.x + (tr.seed - 0.5) * 0.4, tr.y + tr.tall * 1.42, tr.z + (((tr.seed * 7) % 1) - 0.5) * 0.4),
+      q, sc.set(0.95 * spread, 0.75 * spread, 0.95 * spread),
+    );
+    bi = i * blobsPerTree + 4;
+    canopyMesh.setMatrixAt(bi, m);
+    canopyMesh.setColorAt(bi, leafLight);
   });
   if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
   group.add(trunkMesh, canopyMesh);

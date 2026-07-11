@@ -210,7 +210,18 @@ function buildHut(scale = 1, wallColor = '#c8b090', roofColor = '#a85a48') {
     fl.position.set((0.6 + i * 0.15) * scale, 0.76 * scale, 1.16 * scale);
     g.add(fl);
   }
-  g.add(base, door, knob, win, winFrame, flowerBox);
+  // door step + a little lantern by the door
+  const step = new THREE.Mesh(new THREE.BoxGeometry(0.7 * scale, 0.08, 0.4 * scale), lam('#9aa0a2'));
+  step.position.set(0, 0.04, 1.3 * scale);
+  const lanternPost = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5 * scale, 0.06), beam);
+  lanternPost.position.set(-0.55 * scale, 0.25 * scale, 1.25 * scale);
+  const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.13),
+    new THREE.MeshBasicMaterial({ color: 0xffd88a }));
+  lantern.position.set(-0.55 * scale, 0.56 * scale, 1.25 * scale);
+  // roof ridge beam
+  const ridge = new THREE.Mesh(new THREE.BoxGeometry(1.5 * scale, 0.1, 0.18), lam('#6a4a30'));
+  ridge.position.y = 2.36 * scale;
+  g.add(base, door, knob, win, winFrame, flowerBox, step, lanternPost, lantern, ridge);
   return g;
 }
 
@@ -357,6 +368,37 @@ function buildLamp() {
   return g;
 }
 
+function buildFlowerBed(rng) {
+  const g = new THREE.Group();
+  // low stone border + a cluster of bright blooms
+  const bed = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 0.75), lam(PALETTE.dirt[1]));
+  bed.position.y = 0.04;
+  g.add(bed);
+  for (const [sx, sz] of [[-0.55, 0], [0.55, 0]]) {
+    const stone = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.75), lam('#9aa0a2'));
+    stone.position.set(sx, 0.07, sz);
+    g.add(stone);
+  }
+  for (const sz of [-0.38, 0.38]) {
+    const stone = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 0.1), lam('#8d9294'));
+    stone.position.set(0, 0.07, sz);
+    g.add(stone);
+  }
+  for (let i = 0; i < 6; i++) {
+    const col = PALETTE.flowers[Math.floor(rng() * PALETTE.flowers.length)];
+    const stem = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.04), lam('#4f9857'));
+    const px = -0.4 + (i % 3) * 0.4 + (rng() - 0.5) * 0.1;
+    const pz = -0.16 + Math.floor(i / 3) * 0.32 + (rng() - 0.5) * 0.08;
+    stem.position.set(px, 0.16, pz);
+    const bloom = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.09, 0.11), lam(col));
+    bloom.position.set(px, 0.27, pz);
+    const center = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.05), lam('#f5e88a'));
+    center.position.set(px, 0.28, pz);
+    g.add(stem, bloom, center);
+  }
+  return g;
+}
+
 function buildClutter(rng) {
   const g = new THREE.Group();
   // barrel
@@ -414,8 +456,8 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
   place(buildHut(0.8, '#d8c0a0', '#a85a48'), 7, 5.5);
   place(buildHut(0.75, '#c8b090', '#8a5a88'), 0.5, -8);
 
-  place(buildWell(), 0.8, 0.8, false, 1);
-  const stallSpot = place(buildStall(), 4.2, 2.2, true, 1);
+  place(buildWell(), 2.8, 2.8, false, 1);
+  const stallSpot = place(buildStall(), 4.6, 0.6, true, 1);
   const forgeSpot = place(buildForgeCorner(), -3.6, -2.2, true, 1);
   const gardenSpot = place(buildFencedGarden(), -4.2, 3.4, false, 1);
   place(buildClutter(rng), -5.2, -3.4, false, 0);
@@ -424,6 +466,20 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
 
   for (const [lx, lz] of [[2.5, -2.5], [-2.5, 2.6], [3.2, 4.6], [-3.2, -4.6]]) {
     place(buildLamp(), lx, lz, false, 0);
+  }
+
+  // cheerful flower beds by the huts
+  for (const [fx, fz] of [[-4.6, -5.8], [5, -5.4], [-6.6, 4.4], [5.6, 4], [2, -7.2], [-1.8, 4.8]]) {
+    place(buildFlowerBed(rng), fx, fz, false, -1);
+  }
+
+  // IMPORTANT: the spawn clearing must stay walkable — village props must
+  // never trap the freshly spawned player (3x3 cells around spawn are freed)
+  {
+    const [scx, scz] = terrain.cellOf(terrain.spawn.x, terrain.spawn.z);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) decorBlocked.delete(`${scx + dx},${scz + dz}`);
+    }
   }
 
   // find a fishing spot for Finn: nearest water within 30 of the village
@@ -447,16 +503,16 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
   const SCHEDULES = {
     elder: [
       { ox: -4.2, oz: 2.6, act: 'tend' },
-      { ox: 0.2, oz: 1.6, act: 'idle' },
+      { ox: 2.0, oz: 2.0, act: 'idle' },   // by the well
       { ox: -5.2, oz: -4.2, act: 'sit' },
     ],
     fisher: finnSpot
-      ? [{ abs: finnSpot, act: 'fish' }, { ox: 1.4, oz: 0.4, act: 'idle' }]
-      : [{ ox: 1.4, oz: 0.4, act: 'idle' }, { ox: 3, oz: -3, act: 'idle' }],
+      ? [{ abs: finnSpot, act: 'fish' }, { ox: 2.2, oz: 1.8, act: 'idle' }]
+      : [{ ox: 2.2, oz: 1.8, act: 'idle' }, { ox: 3, oz: -3, act: 'idle' }],
     smith: [
       { ox: -3.4, oz: -1.6, act: 'hammer' },
       { ox: -2.6, oz: -2.8, act: 'idle' },
-      { ox: 0.4, oz: 0.2, act: 'idle' },
+      { ox: 2.0, oz: 2.4, act: 'idle' },   // well break
     ],
     scout: [
       { ox: 8, oz: 0, act: 'idle' },
@@ -465,9 +521,9 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
       { ox: 0, oz: -8.5, act: 'idle' },
     ],
     merchant: [
-      { ox: 4.2, oz: 3.4, act: 'shop' },
-      { ox: 2.2, oz: 1.2, act: 'idle' },
-      { ox: 4.2, oz: 3.4, act: 'shop' },
+      { ox: 4.6, oz: 1.8, act: 'shop' },
+      { ox: 2.4, oz: 1.6, act: 'idle' },
+      { ox: 4.6, oz: 1.8, act: 'shop' },
     ],
   };
 

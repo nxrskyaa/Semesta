@@ -18,7 +18,8 @@ import { createDamageNumbers, resolveMeleeHit } from './systems/combat.js';
 import { createLeveling } from './systems/level.js';
 import { createInventory } from './systems/inventory.js';
 import { createForge, forgeMultiplier } from './systems/forge.js';
-import { createSkillSystem } from './systems/skills.js';
+import { createSkillSystem, SKILLS, MAX_SKILL_LEVEL } from './systems/skills.js';
+import { skillIconUrl } from './gfx/textures.js';
 import { createQuests } from './systems/quests.js';
 import { createPets, PET_DEFS } from './systems/pets.js';
 import { createMounts, MOUNT_DEFS } from './systems/mounts.js';
@@ -150,6 +151,23 @@ async function init(character, saved, audio) {
   const dmgNums = createDamageNumbers(hudRoot, camera);
   const minimap = createMinimap(hud.els.minimapCanvas, terrain, decor);
   const dialog = createDialog(audio);
+
+  // --- skill leveling: 1 point per character level, spent in the K panel ---
+  let skillPoints = saved?.skillPoints ?? 0;
+  const skillsApi = {
+    skillIds: cls.skills,
+    SKILLS, MAX_SKILL_LEVEL,
+    iconUrl: skillIconUrl,
+    skillSys: null, // filled right after createSkillSystem below
+    getPoints: () => skillPoints,
+    spendPoint: (id) => {
+      if (skillPoints <= 0 || !skillsApi.skillSys?.upgrade(id)) return false;
+      skillPoints--;
+      hud.banner(`${SKILLS[id].name.toUpperCase()} Lv${skillsApi.skillSys.levelOf(id)}!`);
+      return true;
+    },
+  };
+
   const panels = createPanels(hudRoot, {
     inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
     onCraft(recipe) {
@@ -169,6 +187,7 @@ async function init(character, saved, audio) {
     onSummonPet: summonPet,
     onSummonMount: (id) => summonMount(id),
     mountsRef: () => mounts,
+    skillsApi,
   });
 
   // --- pets: summon + passive perk ---
@@ -227,7 +246,9 @@ async function init(character, saved, audio) {
   leveling.state.onLevelUp = (lv) => {
     applyLevelStats();
     player.state.hp = player.state.maxHp;
+    skillPoints++;
     hud.banner(`LEVEL ${lv}!`);
+    hud.toastText('+1 Skill Point — press K to upgrade a skill');
     audio.sfx('levelup');
     particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#9fe86e', 24);
   };
@@ -435,6 +456,8 @@ async function init(character, saved, audio) {
     weaponDef: () => inventory.equippedDef(),
     forgeMult,
   });
+  skillsApi.skillSys = skillSys;
+  skillSys.load(saved?.skills);
   const skillIds = cls.skills;
 
   function castSkill(id) {
@@ -582,6 +605,7 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyC') { audio.sfx('ui'); panels.toggle('cra'); }
     if (e.code === 'KeyV') { audio.sfx('ui'); panels.toggle('forge'); }
     if (e.code === 'KeyP') { audio.sfx('ui'); panels.toggle('pets'); }
+    if (e.code === 'KeyK') { audio.sfx('ui'); panels.toggle('skills'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyF') doInteract();
     if (e.code === 'Space') { e.preventDefault(); doJump(); }
@@ -649,6 +673,8 @@ async function init(character, saved, audio) {
         hp: player.state.hp,
         inventory: inventory.serialize(),
         quests: quests.serialize(),
+        skills: skillSys.serialize(),
+        skillPoints,
         pet: pets.state.active,
         mount: mounts.state.active,
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
