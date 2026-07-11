@@ -275,6 +275,10 @@ export function createAudio() {
     quest_done: () => { [523, 659, 784, 988, 1175].forEach((f, i) => tone('triangle', f, f, 0.15, 0.13, ctx ? ctx.currentTime + i * 0.08 : null)); },
     pet_summon: () => { [660, 880, 990].forEach((f, i) => tone('sine', f, f * 1.2, 0.12, 0.1, ctx ? ctx.currentTime + i * 0.06 : null)); },
     thunder:    () => { noise(0.9, 0.2, 'lowpass', 300, 60); tone('sine', 80, 30, 0.7, 0.16); },
+    jump:       () => noise(0.12, 0.1, 'bandpass', 700, 1800),
+    land:       () => { tone('sine', 150, 60, 0.1, 0.1); noise(0.08, 0.08, 'lowpass', 600); },
+    roar:       () => { tone('sawtooth', 90, 40, 1.0, 0.22); tone('sawtooth', 130, 55, 0.9, 0.16, ctx ? ctx.currentTime + 0.1 : null); noise(0.8, 0.14, 'lowpass', 500, 120); },
+    mount:      () => { tone('square', 400, 700, 0.08, 0.1); tone('square', 700, 1000, 0.1, 0.1, ctx ? ctx.currentTime + 0.09 : null); },
   };
 
   function sfx(name) {

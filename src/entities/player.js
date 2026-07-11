@@ -1,12 +1,12 @@
-// Semesta player: cute chibi voxel character (big expressive head, small body —
-// Stardew-inspired, deliberately NOT minecraft-proportioned) with full
-// customization (gender, skin, hair style/color, eyes, outfit style/color, cape),
-// per-class weapons and juicy attack animations (windup + lunge + trail).
+// Semesta player: cute chibi voxel character (big expressive head, small body)
+// with deep customization (12 hair styles, face accessories, 4 outfit cuts,
+// capes), detailed per-class weapons, jump physics, mount support, and juicy
+// per-weapon attack animations.
 import * as THREE from 'three';
 import { makePlayerFaceTexture, makeBladeTexture, PALETTE } from '../gfx/textures.js';
 import { ITEMS } from '../systems/items.js';
 import {
-  CLASSES, SKIN_TONES, HAIR_COLORS, OUTFIT_COLORS, EYE_COLORS, CAPE_COLORS,
+  CLASSES, SKIN_TONES, HAIR_COLORS, OUTFIT_COLORS, EYE_COLORS, CAPE_COLORS, BALD_STYLE,
 } from '../systems/classes.js';
 
 const ROLL_TIME = 0.42;
@@ -15,6 +15,8 @@ const ROLL_COST = 22;
 const SHIELD_DRAIN = 9;
 const SHIELD_BLOCK = 0.8;
 const STAM_REGEN = 26;
+const GRAVITY = 16;
+const JUMP_V = 5.6;
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 function shadeHex(hex, amt) {
@@ -34,7 +36,8 @@ export function buildCharacterMesh(config) {
   const style = (config.outfitStyle ?? 0) % 4; // 0 tunic, 1 robe, 2 leather, 3 plate
   const female = config.gender === 'female';
   const hairStyle = config.hairStyle ?? 0;
-  const bald = hairStyle === 7;
+  const bald = hairStyle === BALD_STYLE;
+  const accessory = config.accessory ?? 0;
 
   const skinMat = lam(skin);
   const clothMat = lam(outfit);
@@ -44,9 +47,10 @@ export function buildCharacterMesh(config) {
   const hairDark = new THREE.MeshLambertMaterial({ color: shadeHex(hairC, -0.22) });
   const bootMat = lam('#4a3a2c');
   const leatherMat = lam('#6e5438');
+  const goldMat = lam('#c8a03a');
 
   const group = new THREE.Group();          // root (at the feet)
-  const vis = new THREE.Group();            // pivot at the waist -> rolls spin around center
+  const vis = new THREE.Group();            // pivot at the waist
   vis.position.y = 0.55;
   group.add(vis);
   const at = (obj, x, y, z) => { obj.position.set(x, y - 0.55, z); vis.add(obj); return obj; };
@@ -68,35 +72,57 @@ export function buildCharacterMesh(config) {
   at(body, 0, 0.49, 0);
   body.castShadow = true;
 
-  if (style === 0) { // tunic: belt + small skirt flare
+  if (style === 0) { // tunic: collar, belt w/ buckle, skirt flare, side trim
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.04, 0.05, 0.24), clothLight);
+    at(collar, 0, 0.66, 0);
     const belt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.06, 0.25), clothDark);
     at(belt, 0, 0.33, 0);
-    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.02), lam('#c8a03a'));
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.02), goldMat);
     buckle.position.set(0, 0, 0.13); belt.add(buckle);
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.06, 0.09, 0.27), clothMat);
-    at(skirt, 0, 0.28, 0);
-  } else if (style === 1) { // robe: long flowing skirt over the legs
-    const robe = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.08, 0.3, 0.28), clothMat);
-    at(robe, 0, 0.18, 0);
+    const skirt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.1, 0.28), clothMat);
+    at(skirt, 0, 0.27, 0);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.08, 0.03, 0.29), clothLight);
+    at(trim, 0, 0.22, 0);
+  } else if (style === 1) { // robe: long skirt, sash, hood resting behind the head
+    const robe = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.08, 0.32, 0.28), clothMat);
+    at(robe, 0, 0.17, 0);
     robe.castShadow = true;
+    const hem = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.1, 0.04, 0.3), clothLight);
+    at(hem, 0, 0.03, 0);
     const sash = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.05, 0.26), clothLight);
     at(sash, 0, 0.34, 0);
-  } else if (style === 2) { // leather: chest strap + shoulder straps
+    const sashKnot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.05), clothDark);
+    at(sashKnot, 0.1, 0.32, 0.12);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.14), clothDark);
+    at(hood, 0, 0.68, -0.16);
+  } else if (style === 2) { // leather: bandolier, belt pouches, knee pads
     const strap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.24), leatherMat);
     strap.rotation.z = 0.5;
     at(strap, 0, 0.5, 0.005);
+    const strapStud = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.02), goldMat);
+    at(strapStud, 0.06, 0.55, 0.12);
     const belt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.07, 0.25), leatherMat);
     at(belt, 0, 0.32, 0);
     const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 0.05), lam('#8a6a48'));
     pouch.position.set(0.12, -0.04, 0.11); belt.add(pouch);
-  } else { // plate: chestplate + gold trim
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.24, 0.26), clothLight);
-    at(chest, 0, 0.55, 0);
-    const trim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.06, 0.04, 0.27), lam('#c8a03a'));
-    at(trim, 0, 0.42, 0);
+    const pouch2 = pouch.clone(); pouch2.position.x = -0.12; belt.add(pouch2);
+    const kneeL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.07, 0.18), leatherMat);
+    kneeL.position.y = 0.02; legL.add(kneeL);
+    const kneeR = kneeL.clone(); legR.add(kneeR);
+  } else { // plate: layered chest plates, gold trim, tasset skirt
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.22, 0.26), clothLight);
+    at(chest, 0, 0.57, 0);
+    const chestLow = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.1, 0.25), clothMat);
+    at(chestLow, 0, 0.42, 0);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.06, 0.03, 0.27), goldMat);
+    at(trim, 0, 0.48, 0);
+    const emblem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.02), goldMat);
+    at(emblem, 0, 0.58, 0.135);
+    const tasset = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.09, 0.09, 0.28), clothDark);
+    at(tasset, 0, 0.28, 0);
   }
 
-  // --- arms (pivot at the shoulder for natural swings) ---
+  // --- arms (pivot at the shoulder) ---
   function makeArm(x) {
     const pivot = new THREE.Group();
     at(pivot, x, 0.64, 0);
@@ -108,16 +134,29 @@ export function buildCharacterMesh(config) {
       style === 3 ? clothLight : clothMat);
     sleeve.position.y = -0.04;
     pivot.add(sleeve);
+    if (style === 1) { // wide robe sleeves
+      const wide = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.17), clothMat);
+      wide.position.y = -0.14;
+      pivot.add(wide);
+    }
     return pivot;
   }
   const armL = makeArm(-(bw / 2 + 0.06));
   const armR = makeArm(bw / 2 + 0.06);
 
-  // plate shoulder pads
-  if (style === 3) {
+  if (style === 3) { // plate pauldrons
     for (const [pivot, sx] of [[armL, -1], [armR, 1]]) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.18), clothDark);
-      pad.position.set(sx * 0.02, 0.04, 0);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.19), clothDark);
+      pad.position.set(sx * 0.02, 0.05, 0);
+      pivot.add(pad);
+      const padTrim = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.2), goldMat);
+      padTrim.position.set(sx * 0.02, -0.01, 0);
+      pivot.add(padTrim);
+    }
+  } else if (style === 2) { // leather shoulder straps
+    for (const [pivot, sx] of [[armL, -1], [armR, 1]]) {
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.16), leatherMat);
+      pad.position.set(sx * 0.01, 0.07, 0);
       pivot.add(pad);
     }
   }
@@ -131,7 +170,7 @@ export function buildCharacterMesh(config) {
   armL.add(handL);
 
   // --- big chibi head ---
-  const faceTex = makePlayerFaceTexture(skin, hairC, eyeC, female, bald);
+  const faceTex = makePlayerFaceTexture(skin, hairC, eyeC, female, bald, accessory);
   const faceMat = new THREE.MeshLambertMaterial({ map: faceTex });
   const headSideMat = bald ? skinMat : hairMat;
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.48, 0.48),
@@ -139,24 +178,24 @@ export function buildCharacterMesh(config) {
   at(head, 0, 0.95, 0);
   head.castShadow = true;
 
-  // --- hair styles: extra geometry on the head so styles read clearly ---
+  // --- hair styles ---
   const hairParts = [];
-  const addHair = (geo, mat, x, y, z, rx = 0) => {
+  const addHair = (geo, mat, x, y, z, rx = 0, rz = 0) => {
     const p = new THREE.Mesh(geo, mat);
     p.position.set(x, y, z);
-    p.rotation.x = rx;
+    p.rotation.x = rx; p.rotation.z = rz;
     head.add(p);
     hairParts.push(p);
     return p;
   };
   if (!bald) {
-    if (hairStyle === 0) { // short: neat back volume
+    if (hairStyle === 0) { // short
       addHair(new THREE.BoxGeometry(0.54, 0.22, 0.14), hairMat, 0, 0.1, -0.22);
     } else if (hairStyle === 1) { // spiky
       for (const [dx, dz, s] of [[-0.14, 0.02, 0.13], [0.02, 0.1, 0.15], [0.14, -0.04, 0.12], [-0.02, -0.12, 0.14], [0.1, 0.12, 0.11]]) {
         addHair(new THREE.BoxGeometry(s, 0.16, s), hairMat, dx, 0.28, dz);
       }
-    } else if (hairStyle === 2) { // long: flowing back panel
+    } else if (hairStyle === 2) { // long
       addHair(new THREE.BoxGeometry(0.5, 0.62, 0.14), hairMat, 0, -0.14, -0.26);
       addHair(new THREE.BoxGeometry(0.12, 0.4, 0.1), hairDark, -0.26, -0.04, -0.1);
       addHair(new THREE.BoxGeometry(0.12, 0.4, 0.1), hairDark, 0.26, -0.04, -0.1);
@@ -175,6 +214,25 @@ export function buildCharacterMesh(config) {
     } else if (hairStyle === 6) { // topknot
       addHair(new THREE.BoxGeometry(0.14, 0.14, 0.14), hairMat, 0, 0.3, -0.02);
       addHair(new THREE.BoxGeometry(0.08, 0.1, 0.08), hairDark, 0, 0.38, -0.02);
+    } else if (hairStyle === 7) { // buns
+      addHair(new THREE.BoxGeometry(0.14, 0.14, 0.14), hairMat, -0.2, 0.26, -0.06);
+      addHair(new THREE.BoxGeometry(0.14, 0.14, 0.14), hairMat, 0.2, 0.26, -0.06);
+      addHair(new THREE.BoxGeometry(0.08, 0.06, 0.08), hairDark, -0.2, 0.34, -0.06);
+      addHair(new THREE.BoxGeometry(0.08, 0.06, 0.08), hairDark, 0.2, 0.34, -0.06);
+    } else if (hairStyle === 8) { // braid
+      addHair(new THREE.BoxGeometry(0.13, 0.2, 0.12), hairMat, 0, 0.05, -0.28, 0.25);
+      addHair(new THREE.BoxGeometry(0.11, 0.18, 0.1), hairDark, 0, -0.14, -0.33, 0.3);
+      addHair(new THREE.BoxGeometry(0.09, 0.16, 0.09), hairMat, 0, -0.3, -0.36, 0.32);
+      addHair(new THREE.BoxGeometry(0.06, 0.08, 0.06), hairDark, 0, -0.42, -0.38, 0.32);
+    } else if (hairStyle === 9) { // mohawk
+      for (let k = 0; k < 4; k++) {
+        addHair(new THREE.BoxGeometry(0.1, 0.2 - k * 0.02, 0.12), k % 2 ? hairDark : hairMat, 0, 0.3, 0.14 - k * 0.13);
+      }
+    } else if (hairStyle === 10) { // waves
+      addHair(new THREE.BoxGeometry(0.56, 0.3, 0.18), hairMat, 0, -0.06, -0.2);
+      addHair(new THREE.BoxGeometry(0.12, 0.24, 0.14), hairMat, -0.26, -0.16, -0.12, 0, 0.3);
+      addHair(new THREE.BoxGeometry(0.12, 0.24, 0.14), hairMat, 0.26, -0.16, -0.12, 0, -0.3);
+      addHair(new THREE.BoxGeometry(0.5, 0.1, 0.12), hairDark, 0, -0.3, -0.24);
     }
   }
 
@@ -182,11 +240,15 @@ export function buildCharacterMesh(config) {
   let capeMesh = null;
   if ((config.cape ?? -1) >= 0) {
     const capeC = CAPE_COLORS[config.cape % CAPE_COLORS.length];
-    capeMesh = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.52, 0.04), lam(capeC));
-    capeMesh.position.set(0, -0.26, -0.15);
+    const capeCloth = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.52, 0.04), lam(capeC));
+    capeCloth.position.set(0, -0.26, -0.15);
+    const capeTrim = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.05, 0.045), lam(shadeHex(capeC, -0.35)));
+    capeTrim.position.set(0, -0.5, -0.15);
     const capePivot = new THREE.Group();
     at(capePivot, 0, 0.66, -0.02);
-    capePivot.add(capeMesh);
+    capePivot.add(capeCloth, capeTrim);
+    const clasp = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.04), goldMat);
+    at(clasp, 0, 0.67, 0.12);
     capeMesh = capePivot;
   }
 
@@ -202,78 +264,141 @@ export function buildCharacterMesh(config) {
   shieldMesh.visible = false;
   handL.add(shieldMesh);
 
-  // --- weapons ---
+  // --- weapons (detailed, tiered) ---
   let weaponGroup = null;
   let bowArrow = null;
   let staffOrb = null;
 
   function setWeapon(id) {
     if (weaponGroup) { weaponGroup.parent.remove(weaponGroup); weaponGroup = null; }
+    // clear any old offhand dagger
+    for (const h of [handL]) {
+      for (let i = h.children.length - 1; i >= 0; i--) {
+        if (h.children[i].userData.isWeapon) h.remove(h.children[i]);
+      }
+    }
     bowArrow = null; staffOrb = null;
     const def = ITEMS[id];
     if (!def) return;
     const s = def.scale || 1;
+    const tier = def.tier || 0;
     const g = new THREE.Group();
+    g.userData.isWeapon = true;
+    const [darkC, lightC] = def.blade;
 
     if (def.type === 'sword' || !def.type) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 1.0 * s, 0.26 * s),
-        new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) }));
-      blade.position.y = 0.66 * s;
-      blade.castShadow = true;
-      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.15 * s, 0.06, 0.34 * s), lam('#5a4630'));
-      guard.position.y = 0.14;
-      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.08), lam(PALETTE.torchWood));
+      // tapered blade: wide base, narrow top, pyramid tip + fuller line
+      const bladeMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.55 * s, 0.24 * s), bladeMat);
+      lower.position.y = 0.42 * s;
+      lower.castShadow = true;
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.07 * s, 0.4 * s, 0.18 * s), bladeMat);
+      upper.position.y = 0.88 * s;
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.06 * s, 0.14 * s, 0.1 * s), lam(lightC));
+      tip.position.y = 1.14 * s;
+      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.085 * s, 0.7 * s, 0.03 * s), lam(shadeHex(darkC, -0.25)));
+      fuller.position.y = 0.55 * s;
+      // curved guard (3 pieces) + gold pommel
+      const guardMid = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.06, 0.3 * s), lam('#5a4630'));
+      guardMid.position.y = 0.15;
+      const guardL = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.05, 0.08 * s), goldMat);
+      guardL.position.set(0, 0.18, 0.16 * s);
+      const guardR = guardL.clone(); guardR.position.z = -0.16 * s;
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.2, 0.07), lam(PALETTE.torchWood));
       grip.position.y = 0.02;
-      g.add(blade, guard, grip);
+      const pommel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.09), goldMat);
+      pommel.position.y = -0.09;
+      g.add(lower, upper, tip, fuller, guardMid, guardL, guardR, grip, pommel);
+      if (tier >= 2) { // rune glow stripe
+        const rune = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.5 * s, 0.02),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
+        rune.position.set(0, 0.6 * s, 0);
+        g.add(rune);
+      }
       handR.add(g);
     } else if (def.type === 'dagger') {
-      const mk = () => {
+      const mk = (isOff) => {
         const d = new THREE.Group();
-        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.46 * (s / 0.72), 0.12),
-          new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) }));
-        blade.position.y = 0.3;
-        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.07), lam('#5a4630'));
-        d.add(blade, grip);
+        d.userData.isWeapon = true;
+        const bladeMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
+        // curved blade: two offset segments
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28 * (s / 0.72), 0.11), bladeMat);
+        b1.position.y = 0.22;
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.2 * (s / 0.72), 0.08), bladeMat);
+        b2.position.set(0, 0.42, 0.03);
+        b2.rotation.x = -0.3;
+        const tip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.05), lam(lightC));
+        tip.position.set(0, 0.54, 0.06);
+        tip.rotation.x = -0.4;
+        const guard = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.04, 0.13), goldMat);
+        guard.position.y = 0.08;
+        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.07), lam('#4a3626'));
+        d.add(b1, b2, tip, guard, grip);
+        if (tier >= 2 && !isOff) {
+          const rune = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.2, 0.02),
+            new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
+          rune.position.set(0, 0.24, 0.055);
+          d.add(rune);
+        }
         return d;
       };
-      g.add(mk());
+      g.add(mk(false));
       handR.add(g);
-      const off = mk();
+      const off = mk(true);
       off.rotation.z = 0.15;
       handL.add(off);
       g.userData.offhand = off;
     } else if (def.type === 'bow') {
-      const [dark, light] = def.blade;
-      const limbMat = lam(dark);
-      // bow made from curved box segments
-      for (let i = 0; i < 7; i++) {
-        const t = i / 6 - 0.5;
-        const seg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.15 * s, 0.06), i === 3 ? lam(light) : limbMat);
-        seg.position.set(Math.cos(t * Math.PI) * 0.15 * s, t * 0.82 * s, 0);
-        seg.rotation.z = -t * 1.0;
+      const limbMat = lam(darkC);
+      // smooth curved limbs (9 segments) with curled tips
+      for (let i = 0; i < 9; i++) {
+        const t = i / 8 - 0.5;
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.13 * s, 0.055), i === 4 ? lam(lightC) : limbMat);
+        seg.position.set(Math.cos(t * Math.PI) * 0.16 * s, t * 0.86 * s, 0);
+        seg.rotation.z = -t * 1.1;
         g.add(seg);
       }
+      for (const sy of [-1, 1]) {
+        const tip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.04), goldMat);
+        tip.position.set(-0.06 * s, sy * 0.47 * s, 0);
+        g.add(tip);
+      }
+      const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14 * s, 0.075), lam('#8a6a48'));
+      wrap.position.set(0.16 * s, 0, 0);
+      g.add(wrap);
       const stringGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-0.05, 0.42 * s, 0), new THREE.Vector3(-0.13 * s, 0, 0), new THREE.Vector3(-0.05, -0.42 * s, 0),
+        new THREE.Vector3(-0.06 * s, 0.47 * s, 0), new THREE.Vector3(-0.13 * s, 0, 0), new THREE.Vector3(-0.06 * s, -0.47 * s, 0),
       ]);
       g.add(new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: 0xd8d8c8 })));
       bowArrow = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.55),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(light) }));
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
       bowArrow.position.set(-0.06, 0, 0.12);
       bowArrow.visible = false;
       g.add(bowArrow);
       g.rotation.y = Math.PI / 2;
       handL.add(g);
     } else if (def.type === 'staff') {
-      const [dark, light] = def.blade;
-      const rod = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.35 * s, 0.06), lam('#5a4630'));
-      rod.position.y = 0.4;
-      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.09, 0.11), lam(dark));
-      collar.position.y = 1.0;
-      staffOrb = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(light) }));
-      staffOrb.position.y = 1.14;
-      g.add(rod, collar, staffOrb);
+      const rod = new THREE.Mesh(new THREE.BoxGeometry(0.055, 1.3 * s, 0.055), lam('#5a4630'));
+      rod.position.y = 0.38;
+      const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.07), leatherMat);
+      wrap.position.y = 0.05;
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.1), goldMat);
+      collar.position.y = 0.96;
+      // twin prongs cradling the orb
+      const prongL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.04), lam(darkC));
+      prongL.position.set(-0.08, 1.1, 0); prongL.rotation.z = 0.35;
+      const prongR = prongL.clone(); prongR.position.x = 0.08; prongR.rotation.z = -0.35;
+      staffOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11 * s, 0),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
+      staffOrb.position.y = 1.18;
+      g.add(rod, wrap, collar, prongL, prongR, staffOrb);
+      if (tier >= 2) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16 * s, 0.015, 4, 10),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.7 }));
+        ring.position.y = 1.18;
+        ring.rotation.x = Math.PI / 2;
+        g.add(ring);
+      }
       handR.add(g);
     }
     weaponGroup = g;
@@ -307,6 +432,8 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
   trail.position.y = 0.55;
   group.add(trail);
 
+  let visBase = 0.55; // waist height; raised while mounted
+
   const state = {
     group,
     pos: group.position,
@@ -328,7 +455,12 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     idleT: Math.random() * 10,
     equipped: cls.startWeapon,
     buffs: [],
-    busy: false, // true while fishing / in dialog — blocks combat input
+    busy: false,
+    isMoving: false,
+    // vertical physics
+    vy: 0, grounded: true, landSquash: 0,
+    // mount
+    mount: null, // { speedMult, jumpMult, seatH }
     equipWeapon: (id) => {
       state.equipped = id;
       rig.setWeapon(id);
@@ -361,8 +493,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
   };
 
   // camera-relative input -> world direction.
-  // forward (W) must move AWAY from the camera: fwd = (-sin(yaw), -cos(yaw)),
-  // right (D) = (cos(yaw), -sin(yaw)).
+  // forward (W) moves AWAY from the camera: fwd = (-sin yaw, -cos yaw).
   function moveVec(input, camYaw) {
     let mx = 0, mz = 0;
     if (input.joy?.active) {
@@ -382,6 +513,19 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     };
   }
 
+  // mount hook — mounts.js attaches its mesh to group, then calls this
+  function setMountState(mountDef) {
+    state.mount = mountDef;
+    visBase = 0.55 + (mountDef?.seatH || 0);
+  }
+
+  function tryJump() {
+    if (!state.grounded || state.dead || state.busy || state.rolling > 0) return false;
+    state.vy = JUMP_V * (state.mount?.jumpMult || 1);
+    state.grounded = false;
+    return true;
+  }
+
   function update(dt, input, camYaw) {
     if (state.dead) return;
 
@@ -392,12 +536,12 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     }
     state.dmgBonusBuff = buffVal('dmg');
 
-    // hp regen buff (pets)
     const regen = buffVal('regen');
     if (regen > 0) state.hp = Math.min(state.maxHp, state.hp + regen * dt);
 
     const mv = (state.rolling <= 0 && !state.busy) ? moveVec(input, camYaw) : null;
     const moving = !!mv;
+    state.isMoving = moving;
 
     let vx = 0, vz = 0;
     if (state.rolling > 0) {
@@ -405,7 +549,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
       vx = state.rollDir.x * ROLL_SPEED;
       vz = state.rollDir.y * ROLL_SPEED;
     } else if (moving) {
-      let sp = cls.speed * (1 + buffVal('speed'));
+      let sp = cls.speed * (1 + buffVal('speed')) * (state.mount?.speedMult || 1);
       if (state.shielding) sp *= 0.45;
       if (state.attackT > 0) sp *= 0.55;
       vx = mv.x * sp; vz = mv.z * sp;
@@ -419,96 +563,138 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
       else if (tryMove(state.pos.x, nz)) { state.pos.z = nz; }
     }
 
+    // --- vertical: jump / gravity / ground follow ---
     const targetY = terrain.surfaceY(state.pos.x, state.pos.z);
-    state.pos.y += (targetY - state.pos.y) * Math.min(1, dt * 14);
+    if (state.grounded) {
+      if (state.pos.y - targetY > 0.4) {
+        state.grounded = false; // walked off a ledge
+        state.vy = 0;
+      } else {
+        state.pos.y += (targetY - state.pos.y) * Math.min(1, dt * 14);
+      }
+    }
+    if (!state.grounded) {
+      state.vy -= GRAVITY * dt;
+      state.pos.y += state.vy * dt;
+      if (state.vy <= 0 && state.pos.y <= targetY) {
+        state.pos.y = targetY;
+        state.grounded = true;
+        state.vy = 0;
+        state.landSquash = 0.16;
+        particles?.burst(state.pos.clone().add(new THREE.Vector3(0, 0.05, 0)), '#b8a888', 5, 1.6, 5, 0.3);
+      }
+    }
 
-    // shield (only classes with one)
-    state.shielding = cls.hasShield && input.keys.has('ShiftLeft') && state.stamina > 1 && state.rolling <= 0;
+    // shield
+    state.shielding = cls.hasShield && input.keys.has('ShiftLeft') && state.stamina > 1
+      && state.rolling <= 0 && !state.mount;
     parts.shieldMesh.visible = state.shielding;
     if (state.shielding) {
       state.stamina = Math.max(0, state.stamina - SHIELD_DRAIN * dt);
       parts.armL.rotation.x = -1.2;
     }
-    if (!state.shielding) state.stamina = Math.min(state.maxStamina, state.stamina + STAM_REGEN * dt);
+    if (!state.shielding) {
+      state.stamina = Math.min(state.maxStamina, state.stamina + STAM_REGEN * (1 + buffVal('stamRegen')) * dt);
+    }
 
     // === ANIMATION ===
     group.rotation.y = state.facing;
     state.idleT += dt;
+    if (state.landSquash > 0) state.landSquash = Math.max(0, state.landSquash - dt * 0.8);
 
     if (state.rolling > 0) {
-      // flip around the waist pivot + a little hop
       const t = 1 - state.rolling / ROLL_TIME;
       vis.rotation.x = t * Math.PI * 2;
-      vis.position.y = 0.55 + Math.sin(t * Math.PI) * 0.22;
+      vis.position.y = visBase + Math.sin(t * Math.PI) * 0.22;
       vis.scale.setScalar(1 - Math.sin(t * Math.PI) * 0.12);
       if (t < 0.15 && Math.random() < 0.5) {
         particles?.burst(state.pos.clone().add(new THREE.Vector3(0, 0.1, 0)), '#a08a6a', 2, 1.2, 4, 0.4);
       }
     } else {
       vis.rotation.x = 0;
-      vis.position.y = 0.55;
-      vis.scale.setScalar(1);
+      vis.position.y = visBase;
+      const squash = state.landSquash > 0 ? Math.sin((state.landSquash / 0.16) * Math.PI) * 0.14 : 0;
+      vis.scale.set(1 + squash * 0.5, 1 - squash, 1 + squash * 0.5);
     }
 
-    if (moving && state.rolling <= 0) {
-      state.walkPhase += dt * 11;
-      const sw = Math.sin(state.walkPhase) * 0.6;
-      parts.legL.rotation.x = sw;
-      parts.legR.rotation.x = -sw;
+    const mounted = !!state.mount;
+
+    if (!state.grounded && state.rolling <= 0) {
+      // airborne pose: legs tucked, arms out
+      parts.legL.rotation.x = mounted ? 1.25 : -0.55;
+      parts.legR.rotation.x = mounted ? 1.25 : -0.75;
       if (state.attackT <= 0) {
-        parts.armL.rotation.x = state.shielding ? -1.2 : -sw * 0.8;
-        parts.armR.rotation.x = sw * 0.8;
+        parts.armL.rotation.x = -0.5;
+        parts.armR.rotation.x = -0.5;
+        parts.armL.rotation.z = 0.35;
+        parts.armR.rotation.z = -0.35;
       }
-      vis.position.y = 0.55 + Math.abs(Math.sin(state.walkPhase)) * 0.045;
+    } else if (moving && state.rolling <= 0) {
+      state.walkPhase += dt * (mounted ? 13 : 11);
+      const sw = Math.sin(state.walkPhase) * 0.6;
+      if (mounted) {
+        parts.legL.rotation.x = 1.25; parts.legR.rotation.x = 1.25; // saddle pose
+        if (state.attackT <= 0) {
+          parts.armL.rotation.x = -0.4; parts.armR.rotation.x = -0.4; // holding reins
+          parts.armL.rotation.z = 0; parts.armR.rotation.z = 0;
+        }
+        vis.position.y = visBase + Math.abs(Math.sin(state.walkPhase)) * 0.06;
+      } else {
+        parts.legL.rotation.x = sw;
+        parts.legR.rotation.x = -sw;
+        if (state.attackT <= 0) {
+          parts.armL.rotation.x = state.shielding ? -1.2 : -sw * 0.8;
+          parts.armR.rotation.x = sw * 0.8;
+          parts.armL.rotation.z = 0; parts.armR.rotation.z = 0;
+        }
+        vis.position.y = visBase + Math.abs(Math.sin(state.walkPhase)) * 0.045;
+      }
       parts.head.rotation.z = Math.sin(state.walkPhase) * 0.03;
       if (parts.capeMesh) parts.capeMesh.rotation.x = 0.35 + Math.sin(state.walkPhase * 0.5) * 0.08;
     } else if (state.rolling <= 0) {
-      parts.legL.rotation.x = parts.legR.rotation.x = 0;
+      parts.legL.rotation.x = mounted ? 1.25 : 0;
+      parts.legR.rotation.x = mounted ? 1.25 : 0;
       if (state.attackT <= 0) {
-        // idle: gentle breathing + arm sway + head tilt
         const br = Math.sin(state.idleT * 2.2) * 0.03;
-        parts.armL.rotation.x = state.shielding ? -1.2 : br;
-        parts.armR.rotation.x = -br;
+        parts.armL.rotation.x = state.shielding ? -1.2 : (mounted ? -0.4 : br);
+        parts.armR.rotation.x = mounted ? -0.4 : -br;
+        parts.armL.rotation.z = 0; parts.armR.rotation.z = 0;
         parts.body.scale.y = 1 + br * 0.5;
         parts.head.rotation.z = Math.sin(state.idleT * 0.9) * 0.02;
       }
       if (parts.capeMesh) parts.capeMesh.rotation.x = 0.12 + Math.sin(state.idleT * 1.4) * 0.03;
     }
 
-    // per-weapon attack animation
     if (state.attackT > 0) {
       state.attackT -= dt;
-      const t = Math.min(1, Math.max(0, 1 - state.attackT / state.attackDur)); // 0..1
+      const t = Math.min(1, Math.max(0, 1 - state.attackT / state.attackDur));
       animateAttack(t);
       if (state.attackT <= 0) endAttackPose();
     }
 
-    // trail fade
     if (trailMat.opacity > 0) {
       trailMat.opacity = Math.max(0, trailMat.opacity - dt * 5);
       trail.scale.setScalar(trail.scale.x + dt * 2.4);
     }
 
-    // blink while hurt
     if (state.hurtT > 0) {
       state.hurtT -= dt;
       vis.visible = Math.sin(state.hurtT * 40) > 0 || state.hurtT <= 0;
     } else vis.visible = true;
   }
 
-  // Attack anims: windup -> strike WITH a forward lunge -> recover.
-  // vis.position.z is local forward (the group itself is rotated to `facing`).
+  // Attack anims: anticipation -> strike with forward lunge -> recover.
   function animateAttack(t) {
     const kind = state.attackKind;
     if (kind === 'sword') {
-      if (t < 0.28) { // windup: raise high, coil body back
+      if (t < 0.28) {
         const w = t / 0.28;
         parts.armR.rotation.x = -2.0 * w;
         parts.armR.rotation.z = -0.55 * w;
         vis.rotation.y = 0.5 * w;
         vis.position.z = -0.06 * w;
         parts.head.rotation.x = -0.12 * w;
-      } else if (t < 0.62) { // slash: fast arc + lunge forward
+      } else if (t < 0.62) {
         const w = (t - 0.28) / 0.34;
         parts.armR.rotation.x = -2.0 + 3.2 * w;
         parts.armR.rotation.z = -0.55 + 1.2 * w;
@@ -516,7 +702,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
         vis.position.z = -0.06 + 0.3 * Math.sin(w * Math.PI);
         parts.head.rotation.x = -0.12 + 0.2 * w;
         if (w > 0.15 && trailMat.opacity <= 0.01) flashTrail();
-      } else { // recover
+      } else {
         const w = (t - 0.62) / 0.38;
         parts.armR.rotation.x = 1.2 * (1 - w);
         parts.armR.rotation.z = 0.65 * (1 - w);
@@ -525,30 +711,55 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
         parts.head.rotation.x = 0.08 * (1 - w);
       }
     } else if (kind === 'dagger') {
-      // two alternating stabs, whole body darting forward on each
-      const stab = (w) => 2.1 * Math.sin(w * Math.PI);
-      const dart = (w) => 0.22 * Math.sin(w * Math.PI);
-      if (t < 0.5) {
-        const w = t / 0.5;
-        parts.armR.rotation.x = -stab(w);
-        vis.rotation.y = 0.25 * Math.sin(w * Math.PI);
-        vis.position.z = dart(w);
-      } else {
-        const w = (t - 0.5) / 0.5;
-        parts.armL.rotation.x = -stab(w);
-        vis.rotation.y = -0.25 * Math.sin(w * Math.PI);
-        vis.position.z = dart(w);
+      // fluid cross-slash: crouch -> diagonal right slash -> diagonal left
+      // slash -> flourish. Body leans and darts with every cut.
+      const ease = (w) => 1 - (1 - w) * (1 - w); // ease-out
+      if (t < 0.18) { // coil: crouch low, blades crossed behind
+        const w = t / 0.18;
+        vis.position.y = visBase - 0.07 * w;
+        vis.rotation.y = 0.45 * w;
+        vis.rotation.x = 0.1 * w;
+        parts.armR.rotation.x = -0.4 * w; parts.armR.rotation.z = -0.9 * w;
+        parts.armL.rotation.x = -0.4 * w; parts.armL.rotation.z = 0.9 * w;
+      } else if (t < 0.45) { // slash 1: right blade sweeps down-left, dart in
+        const w = ease((t - 0.18) / 0.27);
+        vis.position.y = visBase - 0.07 + 0.03 * w;
+        vis.rotation.y = 0.45 - 1.0 * w;
+        vis.rotation.x = 0.1 - 0.06 * w;
+        vis.position.z = 0.3 * Math.sin(w * Math.PI);
+        parts.armR.rotation.x = -0.4 - 1.5 * w + 2.6 * w * w;
+        parts.armR.rotation.z = -0.9 + 1.6 * w;
+        if (w > 0.2 && trailMat.opacity <= 0.01) flashTrail();
+      } else if (t < 0.72) { // slash 2: left blade mirrors, second dart
+        const w = ease((t - 0.45) / 0.27);
+        vis.rotation.y = -0.55 + 1.05 * w;
+        vis.position.z = 0.3 * Math.sin(w * Math.PI);
+        parts.armL.rotation.x = -0.4 - 1.5 * w + 2.6 * w * w;
+        parts.armL.rotation.z = 0.9 - 1.6 * w;
+        parts.armR.rotation.x = 0.3 * (1 - w);
+        parts.armR.rotation.z = 0.7 * (1 - w) - 0.7;
+        if (w > 0.2 && trailMat.opacity <= 0.3) flashTrail();
+      } else { // flourish: spin blades back to reverse guard
+        const w = (t - 0.72) / 0.28;
+        vis.position.y = visBase - 0.04 * (1 - w);
+        vis.rotation.y = 0.5 * (1 - w) * Math.sin(w * Math.PI * 2) * 0.4;
+        vis.rotation.x = 0;
+        vis.position.z = 0.05 * (1 - w);
+        parts.armL.rotation.x = (1.1 - 1.1 * w) - 1.1 + 1.1 * w;
+        parts.armL.rotation.z = -0.3 * (1 - w);
+        parts.armR.rotation.x = -0.5 * (1 - w) * Math.sin(w * Math.PI);
+        parts.armR.rotation.z = -0.3 * (1 - w);
       }
     } else if (kind === 'bow') {
       const arrow = rig.getBowArrow();
-      if (t < 0.55) { // draw
+      if (t < 0.55) {
         const w = t / 0.55;
         parts.armL.rotation.x = -1.5;
         parts.armR.rotation.x = -1.5 + 0.001;
         parts.armR.rotation.z = 0.7 * w;
-        vis.rotation.y = -0.25 * w; // turn side-on like a real archer
+        vis.rotation.y = -0.25 * w;
         if (arrow) arrow.visible = true;
-      } else { // release: snap + slight recoil
+      } else {
         const w = (t - 0.55) / 0.45;
         parts.armR.rotation.z = 0;
         if (arrow) arrow.visible = false;
@@ -559,12 +770,12 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
       }
     } else if (kind === 'staff') {
       const orb = rig.getStaffOrb();
-      if (t < 0.4) { // charge: orb swells, body coils
+      if (t < 0.4) {
         const w = t / 0.4;
         parts.armR.rotation.x = -1.9 * w;
         vis.rotation.y = 0.3 * w;
         if (orb) orb.scale.setScalar(1 + w * 1.1);
-      } else { // thrust forward
+      } else {
         const w = (t - 0.4) / 0.6;
         parts.armR.rotation.x = -1.9 + 1.2 * w;
         vis.rotation.y = 0.3 - 0.5 * w;
@@ -575,7 +786,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
       vis.rotation.y = t * Math.PI * 2;
       parts.armR.rotation.x = -1.4;
       parts.armL.rotation.x = -1.4;
-      vis.position.y = 0.55 + Math.sin(t * Math.PI) * 0.1;
+      vis.position.y = visBase + Math.sin(t * Math.PI) * 0.1;
       if (t > 0.15 && trailMat.opacity <= 0.01) flashTrail(Math.PI * 2);
     } else if (kind === 'cast') { // fishing rod cast
       if (t < 0.4) {
@@ -590,6 +801,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     parts.armR.rotation.set(0, 0, 0);
     parts.armL.rotation.set(0, 0, 0);
     vis.rotation.y = 0;
+    vis.rotation.x = 0;
     vis.position.z = 0;
     parts.head.rotation.x = 0;
     const arrow = rig.getBowArrow();
@@ -604,12 +816,13 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     const range = Math.min(3, def.range || 2.2);
     trail.geometry = new THREE.RingGeometry(range * 0.35, range * 0.85, 16, 1,
       0, arc || (def.arc || 2.0));
-    trail.rotation.z = -(arc ? 0 : (def.arc || 2) / 2) + Math.PI / 2;
+    // ring local +Y maps to world -Z after the x-rotation, so center the
+    // sector on local -Y to make the arc appear IN FRONT of the character
+    trail.rotation.z = -(arc ? Math.PI * 2 : (def.arc || 2)) / 2 - Math.PI / 2;
     trailMat.opacity = 0.55;
     trail.scale.setScalar(1);
   }
 
-  // start the attack animation; damage itself is applied by main via timeouts
   function tryAttack(def) {
     if (state.attackT > 0 || state.rolling > 0 || state.dead || state.busy) return false;
     const atkSpd = 1 + buffVal('atkSpeed');
@@ -619,7 +832,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     return true;
   }
 
-  // helpers for skills
+  // helpers for skills & fishing
   function playSwing(mult = 1) {
     state.attackKind = ITEMS[state.equipped].type || 'sword';
     state.attackDur = 0.32 * mult;
@@ -647,7 +860,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
   }
 
   function tryRoll(input, camYaw) {
-    if (state.rolling > 0 || state.stamina < ROLL_COST || state.dead || state.busy) return false;
+    if (state.rolling > 0 || state.stamina < ROLL_COST || state.dead || state.busy || state.mount) return false;
     const mv = moveVec(input, camYaw);
     let dx, dz;
     if (mv) { dx = mv.x; dz = mv.z; }
@@ -663,11 +876,12 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
 
   function takeDamage(amount) {
     if (state.rolling > 0 || state.dead) return 0;
-    let dmg = amount;
+    let dmg = amount * (1 - Math.min(0.6, buffVal('armor')));
     if (state.shielding && state.stamina > 0) {
-      dmg = Math.max(1, Math.round(amount * (1 - SHIELD_BLOCK)));
+      dmg = dmg * (1 - SHIELD_BLOCK);
       state.stamina = Math.max(0, state.stamina - amount * 1.2);
     }
+    dmg = Math.max(1, Math.round(dmg));
     state.hp = Math.max(0, state.hp - dmg);
     state.hurtT = 0.5;
     if (state.hp <= 0) state.dead = true;
@@ -679,13 +893,14 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     state.stamina = state.maxStamina;
     state.dead = false;
     state.busy = false;
-    state.buffs = [];
+    state.buffs = state.buffs.filter((b) => b.id === 'petperk');
     state.pos.copy(terrain.spawn);
+    state.vy = 0; state.grounded = true;
   }
 
   return {
-    state, update, tryAttack, tryRoll, takeDamage, respawn,
-    addBuff, consumeCritBuff, buffVal,
+    state, parts, update, tryAttack, tryRoll, tryJump, takeDamage, respawn,
+    addBuff, consumeCritBuff, buffVal, setMountState,
     playSwing, playSpin, playBowDraw, playStaffCast, playCast,
   };
 }

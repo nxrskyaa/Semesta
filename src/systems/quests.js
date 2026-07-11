@@ -52,7 +52,43 @@ export const QUESTS = {
     objective: { type: 'kill', target: 'golem', n: 1, label: 'Defeat the Golem' },
     reward: { xp: 250, items: [{ id: 'charm_moku', count: 1 }, { id: 'forge_stone', count: 3 }] },
   },
+  // --- mount quests: from simple deliveries to boss hunts ---
+  saddle_up: {
+    giver: 'scout', name: 'Saddle Up', requires: ['treasure_hunt'],
+    offer: 'I found a boar-pony foal on patrol — Trotter. He will carry you if you feed him. Bring 4 Boar Tusks to prove you can handle him!',
+    done: 'Ha! Trotter likes you already. Blow this whistle whenever you want to ride.',
+    objective: { type: 'deliver', item: 'boar_tusk', n: 4, label: 'Deliver 4 Boar Tusks' },
+    reward: { xp: 80, items: [{ id: 'mount_trotter', count: 1 }] },
+  },
+  egg_rider: {
+    giver: 'fisher', name: 'The Big Cluck', requires: ['first_catch'],
+    offer: 'You will not believe this — a hen the size of a pony keeps stealing my catch! Bring me 5 fresh fish to lure her, and she is yours.',
+    done: 'She took the bait — and took a liking to you! Meet Clucky. She jumps like a champion.',
+    objective: { type: 'fish', n: 5, label: 'Catch 5 fish' },
+    reward: { xp: 120, items: [{ id: 'mount_clucky', count: 1 }] },
+  },
+  steady_shell: {
+    giver: 'smith', name: 'Steady as a Shell', requires: ['gear_up'],
+    offer: 'Old Shellsworth the great-turtle needs new shell plating. Bring me 6 Chitin Shells and I will rivet him a saddle while I am at it.',
+    done: 'Plated and saddled! Shellsworth is slow to anger and slower to fall. Ride safe.',
+    objective: { type: 'deliver', item: 'chitin_shell', n: 6, label: 'Deliver 6 Chitin Shells' },
+    reward: { xp: 140, items: [{ id: 'mount_shellsworth', count: 1 }] },
+  },
+  sky_rider: {
+    giver: 'elder', name: 'Rider of the Sky', requires: ['golem_menace'],
+    offer: 'Legends speak of Nimbus, a cloud-cat that only bonds with true champions. Defeat 2 world bosses and the skies themselves will take notice.',
+    done: 'The clouds part... Nimbus has chosen you. No hero has earned this in a hundred years.',
+    objective: { type: 'kill', target: 'worldboss', n: 2, label: 'Defeat 2 World Bosses' },
+    reward: { xp: 400, items: [{ id: 'mount_nimbus', count: 1 }] },
+  },
   // --- repeatable grind quests ---
+  boss_hunter: {
+    giver: 'elder', name: 'Boss Hunter', requires: ['golem_menace'], repeatable: true,
+    offer: 'A great beast stirs again — they rise every few minutes now. Bring one down for Riverbrook!',
+    done: 'The ground shakes no more. You are the wall between us and the wilds.',
+    objective: { type: 'kill', target: 'worldboss', n: 1, label: 'Defeat 1 World Boss' },
+    reward: { xp: 200, items: [{ id: 'forge_stone', count: 3 }, { id: 'tonic', count: 2 }] },
+  },
   cull: {
     giver: 'scout', name: 'Cull the Wilds', requires: ['treasure_hunt'], repeatable: true,
     offer: 'The wilds are overflowing again. Thin out 10 monsters — any kind will do.',
@@ -146,7 +182,8 @@ export function createQuests({ inventory, leveling }) {
       const p = state.active[id];
       if (p >= o.n) continue;
       const match =
-        (o.type === 'kill' && kind === 'kill' && data.type === o.target) ||
+        (o.type === 'kill' && kind === 'kill' &&
+          (o.target === 'worldboss' ? !!data.worldBoss : data.type === o.target)) ||
         (o.type === 'kill_any' && kind === 'kill') ||
         (o.type === 'fish' && kind === 'fish') ||
         (o.type === 'chest' && kind === 'chest') ||

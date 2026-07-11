@@ -6,9 +6,11 @@ const CSS = `
 #dialog {
   position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%);
   width: min(560px, calc(100vw - 24px)); z-index: 40; display: none;
-  background: linear-gradient(180deg, rgba(24,28,20,0.96), rgba(14,18,12,0.96));
-  border: 3px solid #4a5a42; box-shadow: 0 0 0 1px #0a0f0a, 0 10px 30px #000c;
-  padding: 14px 16px; pointer-events: auto;
+  background: linear-gradient(180deg, var(--panel-1), var(--panel-2));
+  border: 2px solid var(--line);
+  box-shadow: inset 0 0 0 1px var(--gold-glow), 0 0 0 1px var(--ink);
+  clip-path: var(--cut);
+  padding: 14px 18px; pointer-events: auto;
 }
 #dialog.show { display: block; animation: dlg-in 0.15s; }
 @keyframes dlg-in { from { transform: translateX(-50%) translateY(8px); opacity: 0; } }
@@ -27,10 +29,11 @@ const CSS = `
 #dialog .btns { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
 #dialog button {
   font-family: inherit; font-size: 12px; padding: 8px 18px; cursor: pointer;
-  background: #232d23; color: #cfd8c8; border: 2px solid #46534a; letter-spacing: 1px;
+  background: linear-gradient(180deg, #2a3522, #1a2215); color: #c2cbb0;
+  border: 1px solid #5a6a4a; box-shadow: 0 0 0 1px var(--ink); letter-spacing: 1px;
 }
 #dialog button.primary {
-  background: linear-gradient(180deg, #3d5c35, #2c4527); color: #e5f0d5; border-color: #5a7a4a;
+  background: linear-gradient(180deg, #57452a, #3a2e18); color: #ffe9b0; border-color: var(--gold-dim);
 }
 #dialog button:hover { filter: brightness(1.2); }
 `;

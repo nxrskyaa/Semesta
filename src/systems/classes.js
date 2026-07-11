@@ -67,8 +67,12 @@ export const SKIN_TONES = [
 ];
 
 export const HAIR_STYLES = [
-  'Short', 'Spiky', 'Long', 'Ponytail', 'Twin Tails', 'Bob', 'Topknot', 'Bald',
+  'Short', 'Spiky', 'Long', 'Ponytail', 'Twin Tails', 'Bob',
+  'Topknot', 'Buns', 'Braid', 'Mohawk', 'Waves', 'Bald',
 ];
+export const BALD_STYLE = 11;
+
+export const ACCESSORIES = ['None', 'Freckles', 'Blush', 'Scar', 'Glasses', 'Eyepatch'];
 
 export const HAIR_COLORS = [
   '#3a2a20', '#1c1c22', '#7a4a22', '#c8963a', '#e8d8a8',
@@ -98,6 +102,7 @@ export function defaultCharacter() {
     hairStyle: 0,
     hairColor: 0,
     eyes: 0,
+    accessory: 0,
     outfitStyle: 0,
     outfit: 0,
     cape: -1, // -1 = no cape

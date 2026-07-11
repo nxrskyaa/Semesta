@@ -46,14 +46,30 @@ export function createMinimap(canvas, terrain, decor) {
     ctx.drawImage(base, sx, sz, VIEW, VIEW, 0, 0, canvas.width, canvas.height);
 
     const k = canvas.width / VIEW;
-    // titik musuh
+    // enemy dots
     ctx.fillStyle = '#d1372c';
     for (const e of enemies) {
-      if (e.dead) continue;
+      if (e.dead || e.isWorldBoss) continue;
       const ex = (e.mesh.position.x + S / 2 - sx) * k;
       const ez = (e.mesh.position.z + S / 2 - sz) * k;
       if (ex < 0 || ez < 0 || ex > canvas.width || ez > canvas.height) continue;
       ctx.fillRect(ex - 1.5, ez - 1.5, 3, 3);
+    }
+    // world boss: big pulsing gold marker, clamped to the map edge if far
+    for (const e of enemies) {
+      if (e.dead || !e.isWorldBoss) continue;
+      let ex = (e.mesh.position.x + S / 2 - sx) * k;
+      let ez = (e.mesh.position.z + S / 2 - sz) * k;
+      ex = Math.max(6, Math.min(canvas.width - 6, ex));
+      ez = Math.max(6, Math.min(canvas.height - 6, ez));
+      const pulse = 4 + Math.sin(performance.now() / 180) * 1.5;
+      ctx.fillStyle = '#ffd23e';
+      ctx.beginPath();
+      ctx.moveTo(ex, ez - pulse); ctx.lineTo(ex + pulse, ez);
+      ctx.lineTo(ex, ez + pulse); ctx.lineTo(ex - pulse, ez);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#5e3c10';
+      ctx.stroke();
     }
     // panah player
     const cx = (px - sx) * k, cz = (pz - sz) * k;

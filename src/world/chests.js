@@ -7,7 +7,10 @@ import { WATER_LEVEL } from './terrain.js';
 const CHEST_COUNT = 16;
 const RESPAWN_S = 200;
 
-const PET_CHARMS = ['charm_moku', 'charm_piko', 'charm_bubbles', 'charm_cinder', 'charm_luma'];
+const PET_CHARMS = [
+  'charm_moku', 'charm_piko', 'charm_bubbles', 'charm_cinder', 'charm_luma',
+  'charm_tuff', 'charm_flap', 'charm_hopps', 'charm_wooly', 'charm_koko',
+];
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 

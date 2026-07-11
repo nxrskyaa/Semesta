@@ -4,13 +4,15 @@
 import { ITEMS } from '../systems/items.js';
 import { itemIconUrl, skillIconUrl, makePlayerFaceTexture } from '../gfx/textures.js';
 import { SKILLS } from '../systems/skills.js';
-import { CLASSES, SKIN_TONES, HAIR_COLORS, EYE_COLORS } from '../systems/classes.js';
+import { CLASSES, SKIN_TONES, HAIR_COLORS, EYE_COLORS, BALD_STYLE } from '../systems/classes.js';
 
 const CSS = `
 #hud { font-family: inherit; }
 #hud .frame {
-  background: linear-gradient(180deg, rgba(20,24,17,0.88), rgba(12,16,11,0.88));
-  border: 2px solid #4a5a42; box-shadow: 0 0 0 1px #0a0f0a, 0 4px 14px #000a;
+  background: linear-gradient(180deg, var(--panel-1), var(--panel-2));
+  border: 2px solid var(--line);
+  box-shadow: inset 0 0 0 1px var(--gold-glow), 0 0 0 1px var(--ink);
+  clip-path: var(--cut);
 }
 
 /* ---- character plate (top left) ---- */
@@ -62,21 +64,30 @@ const CSS = `
 #hud .mapbox .clock { font-size: 13px; color: #e5ead8; }
 #hud .mapbox .daynight { font-size: 11px; }
 #hud .iconbtn {
-  pointer-events: auto; cursor: pointer; background: #1a231a; border: 2px solid #35422f;
-  color: #aab5a0; font-family: inherit; font-size: 11px; padding: 3px 8px;
+  pointer-events: auto; cursor: pointer;
+  background: linear-gradient(180deg, #2a3522, #1a2215);
+  border: 1px solid #5a6a4a; box-shadow: 0 0 0 1px var(--ink);
+  color: #c2cbb0; font-family: inherit; font-size: 11px; padding: 4px 9px;
 }
-#hud .iconbtn:hover { border-color: #9ab86a; color: #dcedc8; }
+#hud .iconbtn:hover { border-color: var(--gold); color: #f0e9cc; }
+#hud .iconbtn small { color: var(--gold-dim); }
 
 /* ---- quest tracker (right, under minimap) ---- */
 #hud .quests {
   position: absolute; top: 196px; right: 10px; width: 168px; display: flex;
   flex-direction: column; gap: 4px; pointer-events: none;
 }
+#hud .quests::before {
+  content: '◆ QUESTS'; display: block; font-size: 8px; letter-spacing: 3px;
+  color: var(--gold-dim); margin-bottom: 2px; text-shadow: 1px 1px 0 var(--ink);
+}
+#hud .quests:empty::before { display: none; }
 #hud .quests .q {
   padding: 5px 8px; font-size: 9px; line-height: 1.6;
-  background: rgba(14,18,12,0.78); border-left: 3px solid #7da05e; color: #cfd8c8;
+  background: linear-gradient(90deg, rgba(20,25,15,0.9), rgba(14,18,12,0.6));
+  border-left: 3px solid #7da05e; color: #cfd8c8;
 }
-#hud .quests .q .qn { color: #ffe9a8; font-size: 10px; display: block; }
+#hud .quests .q .qn { color: var(--gold); font-size: 10px; display: block; }
 #hud .quests .q.done { border-left-color: #ffd23e; }
 #hud .quests .q.done .qp { color: #ffd23e; }
 #hud .quests .q .qp { color: #b8d89a; }
@@ -162,8 +173,11 @@ const CSS = `
 @keyframes lowhp-pulse { 50% { opacity: 0.9; } }
 #hud .banner {
   position: absolute; left: 50%; top: 24%; transform: translateX(-50%);
-  font-size: 26px; color: #ffe27a; text-shadow: 0 2px 0 #5e3c10, 0 4px 10px #000;
+  font-size: 26px; color: #ffe27a; text-shadow: 0 2px 0 #5e3c10, 0 4px 10px #000, 0 0 24px var(--gold-glow);
   letter-spacing: 3px; opacity: 0; transition: opacity 0.3s; white-space: nowrap;
+}
+#hud .banner::before, #hud .banner::after {
+  content: '◆'; font-size: 14px; color: var(--gold-dim); vertical-align: 4px; margin: 0 12px;
 }
 #hud .deadwrap {
   position: absolute; inset: 0;
@@ -255,8 +269,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <button class="iconbtn" data-menu="help">?</button>
     </div>
     <div class="hint-desktop">
-      <b>LMB</b> Attack · <b>RMB</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>F</b> Interact / Fish<br>
-      <b>1-3</b> Skills · <b>4</b> Tonic · <b>Q/E</b> Camera · <b>Scroll</b> Zoom
+      <b>LMB</b> Attack (auto-aim) · <b>RMB</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact / Fish<br>
+      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>Q/E</b> Camera · <b>Scroll</b> Zoom
     </div>
     <div class="toasts"></div>
     <div class="banner"></div>
@@ -293,7 +307,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     const skin = SKIN_TONES[(character.skin ?? 0) % SKIN_TONES.length];
     const hairC = HAIR_COLORS[(character.hairColor ?? 0) % HAIR_COLORS.length];
     const eyeC = EYE_COLORS[(character.eyes ?? 0) % EYE_COLORS.length];
-    const faceTex = makePlayerFaceTexture(skin, hairC, eyeC, character.gender === 'female', character.hairStyle === 7);
+    const faceTex = makePlayerFaceTexture(skin, hairC, eyeC, character.gender === 'female',
+      character.hairStyle === BALD_STYLE, character.accessory ?? 0);
     const pc = root.querySelector('.portrait canvas');
     pc.getContext('2d').drawImage(faceTex.image, 0, 0);
   }

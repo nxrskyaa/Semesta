@@ -21,12 +21,23 @@ export const ITEMS = {
   fish_perch:  { name: 'Sunset Perch', fish: true },
   fish_koi:    { name: 'Golden Koi', fish: true, rare: true },
 
-  // pet charms — using one summons that pet
+  // pet charms — owning one unlocks that pet (chests, world bosses, quests)
   charm_moku:    { name: 'Moku Charm', petCharm: 'moku' },
   charm_piko:    { name: 'Piko Charm', petCharm: 'piko' },
   charm_bubbles: { name: 'Bubbles Charm', petCharm: 'bubbles' },
   charm_cinder:  { name: 'Cinder Charm', petCharm: 'cinder' },
   charm_luma:    { name: 'Luma Charm', petCharm: 'luma' },
+  charm_tuff:    { name: 'Tuff Charm', petCharm: 'tuff' },
+  charm_flap:    { name: 'Flap Charm', petCharm: 'flap' },
+  charm_hopps:   { name: 'Hopps Charm', petCharm: 'hopps' },
+  charm_wooly:   { name: 'Wooly Charm', petCharm: 'wooly' },
+  charm_koko:    { name: 'Koko Charm', petCharm: 'koko' },
+
+  // mount whistles — earned from villager quests
+  mount_trotter:    { name: 'Trotter Whistle', mountId: 'trotter' },
+  mount_clucky:     { name: 'Clucky Whistle', mountId: 'clucky' },
+  mount_shellsworth:{ name: 'Shellsworth Whistle', mountId: 'shellsworth' },
+  mount_nimbus:     { name: 'Nimbus Whistle', mountId: 'nimbus' },
 
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },

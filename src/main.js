@@ -21,6 +21,7 @@ import { createForge, forgeMultiplier } from './systems/forge.js';
 import { createSkillSystem } from './systems/skills.js';
 import { createQuests } from './systems/quests.js';
 import { createPets, PET_DEFS } from './systems/pets.js';
+import { createMounts, MOUNT_DEFS } from './systems/mounts.js';
 import { createFishing } from './systems/fishing.js';
 import { CLASSES } from './systems/classes.js';
 import { ITEMS } from './systems/items.js';
@@ -95,7 +96,7 @@ async function init(character, saved, audio) {
   const lighting = setupLighting(scene);
   const particles = createParticles(scene);
   const weather = createWeather(scene, terrain, particles);
-  const npcs = createNPCs(scene, terrain, decor.blocked);
+  const npcs = createNPCs(scene, terrain, decor.blocked, particles);
   const chests = createChests(scene, terrain, decor.blocked, particles);
   setBoot(0.78); await frame();
 
@@ -109,6 +110,7 @@ async function init(character, saved, audio) {
   const projectiles = createProjectiles(scene, terrain);
   const pickups = createPickups(scene, terrain);
   const pets = createPets(scene, terrain, particles);
+  const mounts = createMounts(particles);
   const touch = isTouchDevice();
 
   // load save
@@ -165,6 +167,8 @@ async function init(character, saved, audio) {
       }
     },
     onSummonPet: summonPet,
+    onSummonMount: (id) => summonMount(id),
+    mountsRef: () => mounts,
   });
 
   // --- pets: summon + passive perk ---
@@ -180,12 +184,34 @@ async function init(character, saved, audio) {
     }
     hud.toastText(`${PET_DEFS[petId].name} joins you! ${perk.label}`);
   }
+
+  // --- mounts: summon / dismiss (M key or Companions panel) ---
+  function summonMount(mountId) {
+    if (!mountId) { mounts.dismiss(player); return; }
+    if (inventory.count(MOUNT_DEFS[mountId].item) <= 0) return;
+    mounts.summon(mountId, player);
+    audio.sfx('mount');
+    hud.toastText(`Riding ${MOUNT_DEFS[mountId].name}!`);
+  }
+  function dismountIfRiding() {
+    if (mounts.state.active) mounts.dismiss(player);
+  }
+  function toggleMount() {
+    if (mounts.state.active) { dismountIfRiding(); return; }
+    // ride the best owned mount (last defined = most advanced)
+    const owned = Object.keys(MOUNT_DEFS).filter((id) => inventory.count(MOUNT_DEFS[id].item) > 0);
+    if (owned.length) summonMount(owned[owned.length - 1]);
+    else hud.toastText('No mount yet — villagers offer mount quests!');
+  }
   function xpMult() {
     const petId = pets.state.active;
     return petId && PET_DEFS[petId].perk.key === 'xp' ? 1 + PET_DEFS[petId].perk.value : 1;
   }
   if (saved?.pet && PET_DEFS[saved.pet] && inventory.count(PET_DEFS[saved.pet].charm) > 0) {
     summonPet(saved.pet);
+  }
+  if (saved?.mount && MOUNT_DEFS[saved.mount] && inventory.count(MOUNT_DEFS[saved.mount].item) > 0) {
+    summonMount(saved.mount);
   }
 
   // --- stats from level & class ---
@@ -278,13 +304,24 @@ async function init(character, saved, audio) {
     const xp = Math.round(e.xp * xpMult());
     leveling.addXp(xp);
     dmgNums.spawn(e.mesh.position.clone().add(new THREE.Vector3(0, 1.3, 0)), `+${xp} XP`, 'xp');
+    if (e.isWorldBoss) {
+      // bonus haul: forge stones + a charm you don't own yet if possible
+      drops = [...drops, { id: 'forge_stone', count: 4 + Math.floor(Math.random() * 4) }];
+      const missing = Object.values(PET_DEFS).map((d) => d.charm).filter((c) => inventory.count(c) === 0);
+      const pool = missing.length ? missing : Object.values(PET_DEFS).map((d) => d.charm);
+      drops.push({ id: pool[Math.floor(Math.random() * pool.length)], count: 1 });
+      hud.banner(`⚔ ${e.bossName.toUpperCase()} DEFEATED! ⚔`);
+      audio.sfx('quest_done');
+      addShake(0.5);
+      bossState.killed = true;
+    }
     for (const d of drops) pickups.spawn(d.id, d.count, e.mesh.position);
-    quests.event('kill', { type: e.type });
+    quests.event('kill', { type: e.type, worldBoss: !!e.isWorldBoss });
   }
 
   function dealHit(e, mult = 1) {
     const def = inventory.equippedDef();
-    const crit = player.consumeCritBuff() || Math.random() < 0.12;
+    const crit = player.consumeCritBuff() || Math.random() < 0.12 + player.buffVal('crit');
     const dmg = Math.max(1, Math.round(def.dmg * totalMult() * forgeMult() * mult * (crit ? 1.6 : 1) * (0.9 + Math.random() * 0.2)));
     dmgNums.spawn(e.mesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)), dmg, crit ? 'crit' : '');
     if (crit) { audio.sfx('crit'); addShake(0.18); }
@@ -293,18 +330,22 @@ async function init(character, saved, audio) {
   }
 
   // --- basic attack per weapon type (auto-aims at the nearest enemy) ---
-  function doAttack() {
-    if (panels.anyOpen() || dialog.isOpen() || player.state.dead) return;
-    if (player.state.busy) { doInteract(); return; } // busy fishing -> attack acts as strike
-    const def = inventory.equippedDef();
-    if (!def?.weapon) return;
-    if (!player.tryAttack(def)) return;
-
+  function autoFace() {
     const target = aimPoint();
     if (target) {
       const dx = target.x - player.state.pos.x, dz = target.z - player.state.pos.z;
       if (dx * dx + dz * dz > 0.04) player.state.facing = Math.atan2(dx, dz);
     }
+  }
+  function doAttack() {
+    if (panels.anyOpen() || dialog.isOpen() || player.state.dead) return;
+    if (player.state.busy) { doInteract(); return; } // busy fishing -> attack acts as strike
+    dismountIfRiding();
+    const def = inventory.equippedDef();
+    if (!def?.weapon) return;
+    if (!player.tryAttack(def)) return;
+
+    autoFace();
 
     const dur = player.state.attackDur * 1000;
     const p = player.state;
@@ -313,6 +354,7 @@ async function init(character, saved, audio) {
       audio.sfx('swing_bow');
       setTimeout(() => {
         if (p.dead) return;
+        autoFace(); // re-acquire the nearest enemy at release
         projectiles.spawn({
           pos: p.pos.clone().add(new THREE.Vector3(0, 0.75, 0)),
           dir: new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing)),
@@ -325,6 +367,7 @@ async function init(character, saved, audio) {
       audio.sfx('swing_staff');
       setTimeout(() => {
         if (p.dead) return;
+        autoFace();
         projectiles.spawn({
           pos: p.pos.clone().add(new THREE.Vector3(0, 0.85, 0)),
           dir: new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing)),
@@ -347,6 +390,7 @@ async function init(character, saved, audio) {
       audio.sfx('swing');
       const stab = () => {
         if (p.dead) return;
+        autoFace(); // track the target through both stabs
         const hits = resolveMeleeHit(p, def, enemyMgr.enemies, 1);
         for (const h of hits) dealHit(h.enemy, 1);
       };
@@ -356,6 +400,7 @@ async function init(character, saved, audio) {
       audio.sfx('swing');
       setTimeout(() => {
         if (p.dead) return;
+        autoFace();
         const hits = resolveMeleeHit(p, def, enemyMgr.enemies, 1);
         for (const h of hits) dealHit(h.enemy, 1);
       }, dur * 0.45);
@@ -365,7 +410,13 @@ async function init(character, saved, audio) {
   function doRoll() {
     if (panels.anyOpen() || dialog.isOpen()) return;
     fishing.cancel();
+    dismountIfRiding();
     if (player.tryRoll(input, cam.yaw)) audio.sfx('roll');
+  }
+
+  function doJump() {
+    if (panels.anyOpen() || dialog.isOpen()) return;
+    if (player.tryJump()) audio.sfx('jump');
   }
 
   function usePotion() {
@@ -388,6 +439,7 @@ async function init(character, saved, audio) {
 
   function castSkill(id) {
     if (panels.anyOpen() || dialog.isOpen() || player.state.dead) return;
+    dismountIfRiding();
     player.state.dmgMult = totalMult();
     skillSys.cast(id);
   }
@@ -532,6 +584,8 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyP') { audio.sfx('ui'); panels.toggle('pets'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyF') doInteract();
+    if (e.code === 'Space') { e.preventDefault(); doJump(); }
+    if (e.code === 'KeyM') toggleMount();
     if (e.code === 'Escape') { panels.closeAll(); dialog.hide(); fishing.cancel(); }
     if (e.code === 'Digit1') castSkill(skillIds[0]);
     if (e.code === 'Digit2') castSkill(skillIds[1]);
@@ -570,6 +624,7 @@ async function init(character, saved, audio) {
     touchUI = createTouchControls(input, skillIds, {
       onAttack: doAttack,
       onRoll: doRoll,
+      onJump: doJump,
       onPotion: usePotion,
       onSkill: castSkill,
       onInteract: doInteract,
@@ -595,6 +650,7 @@ async function init(character, saved, audio) {
         inventory: inventory.serialize(),
         quests: quests.serialize(),
         pet: pets.state.active,
+        mount: mounts.state.active,
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
       }));
     } catch { /* storage full/blocked: ignore */ }
@@ -605,7 +661,8 @@ async function init(character, saved, audio) {
   // debug/testing handle (used by automated verification)
   window.__semesta = {
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
-    projectiles, character, quests, pets, chests, weather, fishing, npcs, lighting,
+    projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
+    summonMount, summonPet,
   };
 
   setBoot(1); await frame();
@@ -614,6 +671,35 @@ async function init(character, saved, audio) {
   hud.banner(`WELCOME TO RIVERBROOK, ${character.name.toUpperCase()}`);
   if (!saved) {
     setTimeout(() => hud.toastText('Villagers with a "!" have quests for you. Press H for the guide.'), 2600);
+  }
+
+  // --- world boss scheduler: one rises every 3 minutes ---
+  const bossState = { timer: 180, current: null, killed: false };
+  const BOSS_KINDS = ['king_slime', 'elder_treant', 'stone_colossus'];
+  function tickWorldBoss(dt) {
+    const alive = bossState.current && !bossState.current.dead;
+    if (!alive && bossState.current) {
+      // it either died (banner handled in onKill) or wandered off
+      if (!bossState.killed && bossState.current.expired) {
+        hud.toastText('The world boss has left...');
+      }
+      bossState.current = null;
+    }
+    if (alive) return;
+    bossState.timer -= dt;
+    if (bossState.timer <= 0) {
+      bossState.timer = 180;
+      const kind = BOSS_KINDS[Math.floor(Math.random() * BOSS_KINDS.length)];
+      const boss = enemyMgr.spawnWorldBoss(player.state.pos, kind);
+      if (boss) {
+        bossState.current = boss;
+        bossState.killed = false;
+        hud.banner(`⚠ WORLD BOSS: ${boss.bossName.toUpperCase()} HAS RISEN! ⚠`);
+        hud.toastText('Follow the gold marker on the minimap!');
+        audio.sfx('roar');
+        addShake(0.45);
+      }
+    }
   }
 
   // --- game loop ---
@@ -636,14 +722,15 @@ async function init(character, saved, audio) {
     const hr = lighting.state.minutes / 60;
     const isNight = hr >= 19.5 || hr < 5.5;
 
+    tickWorldBoss(dt);
     enemyMgr.update(dt, player.state, time, isNight);
     projectiles.update(dt, enemyMgr.enemies, player.state, particles);
     pickups.update(dt, player.state.pos, (id, count) => {
       inventory.add(id, count);
       hud.toast(id, count);
       audio.sfx('pickup');
-    });
-    decor.update(dt, player.state.pos, time);
+    }, 1 + player.buffVal('magnet'));
+    decor.update(dt, player.state.pos, time, isNight);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
     lighting.state.weatherDim = weather.state.intensity;
@@ -654,6 +741,7 @@ async function init(character, saved, audio) {
     npcs.update(dt, player.state.pos, time);
     chests.update(dt, player.state.pos);
     pets.update(dt, player.state, time);
+    mounts.update(dt, player, terrain);
     fishing.update(dt, time);
     updateCamera(dt);
 

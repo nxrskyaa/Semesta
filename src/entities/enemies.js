@@ -298,6 +298,24 @@ const BUILDERS = {
   treant: buildTreantMesh, golem: buildGolemMesh,
 };
 
+// --- world bosses: giant variants that appear on a timer ---
+export const WORLD_BOSSES = {
+  king_slime: {
+    name: 'King Slime', base: 'slime', scale: 2.8,
+    hp: 520, dmg: 22, xp: 420, speed: 1.2, attackRange: 2.2, attackCd: 1.8, aggro: 14,
+    crown: true,
+  },
+  elder_treant: {
+    name: 'Elder Treant', base: 'treant', scale: 2.0,
+    hp: 650, dmg: 26, xp: 500, speed: 0.9, attackRange: 2.6, attackCd: 2.0, aggro: 14,
+  },
+  stone_colossus: {
+    name: 'Stone Colossus', base: 'golem', scale: 1.7,
+    hp: 800, dmg: 30, xp: 620, speed: 0.75, attackRange: 2.8, attackCd: 2.4, aggro: 14,
+  },
+};
+const BOSS_LIFETIME = 150; // seconds before it wanders away
+
 // ---------------------------------------------------------------------------
 // nameplate (canvas sprite): name + level + HP bar
 // ---------------------------------------------------------------------------
@@ -408,6 +426,60 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     }
   }
 
+  // spawn a world boss at a random spot 20-32 away from the player
+  function spawnWorldBoss(playerPos, kindId) {
+    const kind = WORLD_BOSSES[kindId];
+    if (!kind) return null;
+    for (let tries = 0; tries < 40; tries++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 20 + Math.random() * 12;
+      const x = playerPos.x + Math.cos(ang) * dist;
+      const z = playerPos.z + Math.sin(ang) * dist;
+      const [ix, iz] = terrain.cellOf(x, z);
+      if (!terrain.inBounds(ix, iz)) continue;
+      if (terrain.heightCell(ix, iz) <= WATER_LEVEL) continue;
+      if (decorBlocked.has(`${ix},${iz}`)) continue;
+
+      const mesh = BUILDERS[kind.base]();
+      mesh.scale.setScalar(kind.scale);
+      if (kind.crown) { // gold crown for the King Slime
+        const gold = new THREE.MeshLambertMaterial({ color: new THREE.Color('#e8c24a') });
+        const band = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.09, 0.4), gold);
+        band.position.y = 0.66;
+        mesh.add(band);
+        for (let k = 0; k < 4; k++) {
+          const spike = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.07), gold);
+          spike.position.set(-0.14 + k * 0.095, 0.75, 0.14);
+          mesh.add(spike);
+        }
+      }
+      const np = makeNameplate(kind.name, '★', true);
+      np.sprite.position.y = 2.6 / kind.scale + 0.6;
+      np.sprite.scale.multiplyScalar(1 / kind.scale);
+      np.sprite.visible = true;
+      mesh.add(np.sprite);
+      mesh.position.set(x, terrain.surfaceY(x, z), z);
+      scene.add(mesh);
+
+      const boss = {
+        type: kind.base, def: { ...ENEMY_TYPES[kind.base], ...kind, behavior: 'melee', boss: true },
+        level: '★', mesh, np,
+        hp: kind.hp, hpMax: kind.hp,
+        dmg: kind.dmg, xp: kind.xp,
+        state: 'aggro', wanderT: 0, dir: 0,
+        attackCd: 1, hurtFlash: 0, anim: 0,
+        knock: new THREE.Vector2(0, 0),
+        stunT: 0, frozenT: 0,
+        chargeT: 0, windupT: 0, chargeDir: new THREE.Vector2(), chargeHit: false,
+        dead: false,
+        isWorldBoss: true, bossKind: kindId, bossName: kind.name, bossT: BOSS_LIFETIME,
+      };
+      enemies.push(boss);
+      return boss;
+    }
+    return null;
+  }
+
   function damage(e, amount, fromPos, onKill) {
     if (e.dead) return;
     e.hp -= amount;
@@ -446,7 +518,13 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       const p = e.mesh.position;
       const distP = Math.hypot(p.x - playerPos.x, p.z - playerPos.z);
 
-      if (distP > 60 || (e.def.nightOnly && !isNight)) {
+      if (e.isWorldBoss) {
+        e.bossT -= dt;
+        if (e.bossT <= 0) { // lumbers back into the wilds
+          particles.burst(p.clone().add(new THREE.Vector3(0, 0.8, 0)), '#8a8a8a', 20, 3);
+          e.dead = true; e.expired = true; scene.remove(e.mesh); continue;
+        }
+      } else if (distP > 60 || (e.def.nightOnly && !isNight)) {
         if (e.def.nightOnly && !isNight) {
           particles.burst(p.clone().add(new THREE.Vector3(0, 0.5, 0)), '#9adcf0', 10, 2);
         }
@@ -623,7 +701,6 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     const [ix, iz] = terrain.cellOf(nx, nz);
     if (!terrain.inBounds(ix, iz) || decorBlocked.has(`${ix},${iz}`)) { e.dir += 1.7; e.chargeT = 0; return; }
     const h = terrain.heightCell(ix, iz);
-    if (h <= WATER_LEVEL - 1 && !e.def.water && !e.def.floats) { e.dir += 1.7; e.chargeT = 0; return; }
     if (h <= WATER_LEVEL && !e.def.water && !e.def.floats) { e.dir += 1.7; e.chargeT = 0; return; }
     const ny = terrain.surfaceY(nx, nz);
     if (ny - p.y > BLOCK_H * 1.6) { e.dir += 1.7; e.chargeT = 0; return; }
@@ -631,5 +708,5 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     if (!e.def.floats) p.y += (ny - p.y) * Math.min(1, dt * 10);
   }
 
-  return { enemies, update, damage, spawnOne };
+  return { enemies, update, damage, spawnOne, spawnWorldBoss };
 }

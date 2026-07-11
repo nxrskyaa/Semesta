@@ -256,7 +256,7 @@ export function makeWaterNoiseTexture() {
 // ---------------------------------------------------------------------------
 // CHARACTER FACE — 16x16, big expressive pixel eyes (Stardew-ish, not blocky)
 // ---------------------------------------------------------------------------
-export function makePlayerFaceTexture(skin, hair, eyeColor, female = false, bald = false) {
+export function makePlayerFaceTexture(skin, hair, eyeColor, female = false, bald = false, accessory = 0) {
   const c = canvas(16, 16);
   const ctx = c.getContext('2d');
   const px = (x, y, w = 1, h = 1, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
@@ -301,6 +301,21 @@ export function makePlayerFaceTexture(skin, hair, eyeColor, female = false, bald
 
   // blush
   if (female) { px(1, 11, 2, 1, 'rgba(232,120,120,0.55)'); px(13, 11, 2, 1, 'rgba(232,120,120,0.55)'); }
+
+  // face accessories: 1 freckles, 2 blush, 3 scar, 4 glasses, 5 eyepatch
+  if (accessory === 1) {
+    for (const [fx, fy] of [[2, 11], [4, 12], [12, 12], [14, 11], [7, 11]]) px(fx, fy, 1, 1, shade(skin, -0.25));
+  } else if (accessory === 2) {
+    px(1, 11, 3, 2, 'rgba(238,120,120,0.6)'); px(12, 11, 3, 2, 'rgba(238,120,120,0.6)');
+  } else if (accessory === 3) {
+    px(11, 5, 1, 1, '#a05a4a'); px(12, 6, 1, 3, '#a05a4a'); px(11, 9, 1, 2, '#a05a4a');
+  } else if (accessory === 4) {
+    px(2, 7, 5, 1, '#3a3630'); px(9, 7, 5, 1, '#3a3630');
+    px(2, 7, 1, 4, '#3a3630'); px(6, 7, 1, 4, '#3a3630'); px(9, 7, 1, 4, '#3a3630'); px(13, 7, 1, 4, '#3a3630');
+    px(2, 10, 5, 1, '#3a3630'); px(9, 10, 5, 1, '#3a3630'); px(7, 8, 2, 1, '#3a3630');
+  } else if (accessory === 5) {
+    px(9, 6, 5, 1, '#2a2620'); px(9, 7, 5, 4, '#2a2620'); px(0, 5, 10, 1, '#2a2620');
+  }
 
   return toTexture(c);
 }
@@ -621,7 +636,31 @@ export const CHARM_COLORS = {
   charm_bubbles: '#7ab8e8',
   charm_cinder: '#f08a5a',
   charm_luma: '#c8a8f0',
+  charm_tuff: '#a8a29a',
+  charm_flap: '#8a7ab8',
+  charm_hopps: '#8ac86a',
+  charm_wooly: '#f0eae0',
+  charm_koko: '#f0c05a',
 };
+
+export const MOUNT_ICON_COLORS = {
+  mount_trotter: '#b0704a',
+  mount_clucky: '#f0e8d0',
+  mount_shellsworth: '#6aa86a',
+  mount_nimbus: '#b8d0f0',
+};
+
+function paintWhistleIcon(ctx, id) {
+  const col = MOUNT_ICON_COLORS[id] || '#b0704a';
+  const px = (x, y, w = 1, h = 1, cc = col) => { ctx.fillStyle = cc; ctx.fillRect(x, y, w, h); };
+  // little horn-whistle with a colored band
+  px(3, 8, 8, 3, '#c8a03a');
+  px(10, 6, 4, 6, '#d8b866');
+  px(3, 7, 3, 1, '#8a744a'); px(3, 11, 3, 1, '#8a744a');
+  px(5, 8, 3, 3, col); // band = mount color
+  px(1, 8, 2, 3, '#8a744a');
+  px(11, 7, 2, 1, '#fff8');
+}
 
 function paintCharmIcon(ctx, id) {
   const col = CHARM_COLORS[id] || '#c8a8f0';
@@ -776,6 +815,8 @@ export function makeItemIconCanvas(id) {
     drawMap(ctx, def.map, def.legend, 0, Math.floor((16 - def.map.length) / 2));
   } else if (id.startsWith('charm_')) {
     paintCharmIcon(ctx, id);
+  } else if (id.startsWith('mount_')) {
+    paintWhistleIcon(ctx, id);
   } else if (ITEMS[id]?.weapon) {
     paintWeaponIcon(ctx, ITEMS[id]);
   } else {

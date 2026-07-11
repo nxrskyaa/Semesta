@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { buildCharacterMesh } from '../entities/player.js';
 import {
   CLASSES, GENDERS, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS,
-  OUTFIT_STYLES, OUTFIT_COLORS, CAPE_COLORS, defaultCharacter,
+  OUTFIT_STYLES, OUTFIT_COLORS, CAPE_COLORS, ACCESSORIES, defaultCharacter,
 } from '../systems/classes.js';
 import { SKILLS } from '../systems/skills.js';
 import { skillIconUrl, itemIconUrl } from '../gfx/textures.js';
@@ -42,14 +42,17 @@ const CSS = `
 #charcreate .col.right { flex: 1.05; min-width: 250px; }
 
 #charcreate .box {
-  background: linear-gradient(180deg, rgba(22,28,18,0.92), rgba(13,17,11,0.92));
-  border: 2px solid #3a4633; box-shadow: 0 0 0 1px #060906, 0 6px 18px #000a;
-  padding: 12px;
+  background: linear-gradient(180deg, var(--panel-1, rgba(22,28,18,0.92)), var(--panel-2, rgba(13,17,11,0.92)));
+  border: 2px solid var(--line, #3a4633);
+  box-shadow: inset 0 0 0 1px var(--gold-glow, #c8b06033), 0 0 0 1px var(--ink, #060906);
+  clip-path: var(--cut);
+  padding: 13px;
 }
 #charcreate .box .bt {
-  font-size: 10px; letter-spacing: 3px; color: #c8b060; margin-bottom: 10px;
-  border-bottom: 1px solid #3a4633; padding-bottom: 6px;
+  font-size: 10px; letter-spacing: 3px; color: var(--gold, #c8b060); margin-bottom: 10px;
+  border-bottom: 1px solid var(--gold-dim, #3a4633); padding-bottom: 6px;
 }
+#charcreate .box .bt::before { content: '◆ '; font-size: 8px; color: var(--gold-dim); vertical-align: 1px; }
 #charcreate .row { margin-bottom: 10px; }
 #charcreate .row:last-child { margin-bottom: 0; }
 #charcreate .row label { display: block; font-size: 9px; color: #8a967f; letter-spacing: 2px; margin-bottom: 5px; }
@@ -167,6 +170,7 @@ export function showCharacterCreation(savedGame) {
               <div class="row"><label>HAIR STYLE</label><div class="segs hairstyle"></div></div>
               <div class="row"><label>HAIR COLOR</label><div class="swatches hairc"></div></div>
               <div class="row"><label>EYE COLOR</label><div class="swatches eyes"></div></div>
+              <div class="row"><label>FACE</label><div class="segs accessory"></div></div>
               <div class="row"><label>OUTFIT</label><div class="segs outfitstyle"></div></div>
               <div class="row"><label>OUTFIT COLOR</label><div class="swatches outfit"></div></div>
               <div class="row"><label>CAPE</label><div class="swatches cape"></div></div>
@@ -269,6 +273,7 @@ export function showCharacterCreation(savedGame) {
       skin: root.querySelector('.swatches.skin'),
       hairc: root.querySelector('.swatches.hairc'),
       eyes: root.querySelector('.swatches.eyes'),
+      accessory: root.querySelector('.segs.accessory'),
       outfit: root.querySelector('.swatches.outfit'),
       cape: root.querySelector('.swatches.cape'),
       hairstyle: root.querySelector('.segs.hairstyle'),
@@ -290,6 +295,8 @@ export function showCharacterCreation(savedGame) {
         .map((nm, i) => `<button data-hs="${i}" class="${config.hairStyle === i ? 'sel' : ''}">${nm}</button>`).join('');
       els.outfitstyle.innerHTML = OUTFIT_STYLES
         .map((nm, i) => `<button data-os="${i}" class="${config.outfitStyle === i ? 'sel' : ''}">${nm}</button>`).join('');
+      els.accessory.innerHTML = ACCESSORIES
+        .map((nm, i) => `<button data-ac="${i}" class="${(config.accessory ?? 0) === i ? 'sel' : ''}">${nm}</button>`).join('');
       swatchRow(els.skin, SKIN_TONES, config.skin);
       swatchRow(els.hairc, HAIR_COLORS, config.hairColor);
       swatchRow(els.eyes, EYE_COLORS, config.eyes);
@@ -321,6 +328,8 @@ export function showCharacterCreation(savedGame) {
       if (hs) { config.hairStyle = +hs.dataset.hs; renderForm(); rebuild(); return; }
       const os = e.target.closest('[data-os]');
       if (os) { config.outfitStyle = +os.dataset.os; renderForm(); rebuild(); return; }
+      const ac = e.target.closest('[data-ac]');
+      if (ac) { config.accessory = +ac.dataset.ac; renderForm(); rebuild(); return; }
       const sw = e.target.closest('.sw');
       if (sw) {
         const i = +sw.dataset.i;
@@ -338,6 +347,7 @@ export function showCharacterCreation(savedGame) {
         config.hairStyle = ri(HAIR_STYLES.length);
         config.hairColor = ri(HAIR_COLORS.length);
         config.eyes = ri(EYE_COLORS.length);
+        config.accessory = ri(ACCESSORIES.length);
         config.outfitStyle = ri(OUTFIT_STYLES.length);
         config.outfit = ri(OUTFIT_COLORS.length);
         config.cape = ri(CAPE_COLORS.length + 1) - 1;

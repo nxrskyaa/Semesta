@@ -32,6 +32,31 @@ export const PET_DEFS = {
     desc: 'A star-bunny that glows faintly at night. Naps 20 hours a day.',
     perk: { key: 'xp', value: 0.15, label: '+15% XP' },
   },
+  tuff: {
+    name: 'Tuff', charm: 'charm_tuff', color: '#a8a29a',
+    desc: 'A pebble-turtle with a mossy shell. Slow, loyal, indestructible.',
+    perk: { key: 'armor', value: 0.12, label: '-12% damage taken' },
+  },
+  flap: {
+    name: 'Flap', charm: 'charm_flap', color: '#8a7ab8',
+    desc: 'A dusk-owl who judges your aim silently. It helps anyway.',
+    perk: { key: 'crit', value: 0.06, label: '+6% crit chance' },
+  },
+  hopps: {
+    name: 'Hopps', charm: 'charm_hopps', color: '#8ac86a',
+    desc: 'A meadow-frog with boundless energy. Boing. Boing. Boing.',
+    perk: { key: 'stamRegen', value: 0.25, label: '+25% stamina regen' },
+  },
+  wooly: {
+    name: 'Wooly', charm: 'charm_wooly', color: '#f0eae0',
+    desc: 'A cloud-sheep, softer than any pillow. Loot drifts toward it.',
+    perk: { key: 'magnet', value: 1.0, label: 'Pickup magnet x2' },
+  },
+  koko: {
+    name: 'Koko', charm: 'charm_koko', color: '#f0c05a',
+    desc: 'A coconut-chick that smells faintly of the beach. Fish adore it.',
+    perk: { key: 'fish', value: 1.0, label: 'Faster fishing bites' },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -179,6 +204,88 @@ const BUILDERS = {
     const glow = new THREE.PointLight(0xc8a8f0, 0.8, 3, 2);
     glow.position.y = 0.4;
     g.add(glow);
+    return g;
+  },
+  tuff() {
+    const { g, head } = basePet('#a8a29a', '#c8c2ba', 'tuff',
+      { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'smile' });
+    // mossy dome shell
+    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.24, 0), lam('#8a8a7a'));
+    shell.position.set(0, 0.3, -0.08);
+    shell.scale.set(1, 0.7, 1.1);
+    const moss = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.14), lam('#568a42'));
+    moss.position.set(0.04, 0.42, -0.1);
+    g.add(shell, moss);
+    head.position.z = 0.12;
+    return g;
+  },
+  flap() {
+    const { g, head } = basePet('#8a7ab8', '#b8aad8', 'flap',
+      { eyeW: 4, eyeH: 5, gap: 3, eyeY: 1, mouth: 'none' });
+    // ear tufts + tiny beak + folded wings
+    for (const sx of [-1, 1]) {
+      const tuft = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.05), lam('#6a5a98'));
+      tuft.position.set(sx * 0.13, 0.2, 0);
+      tuft.rotation.z = -sx * 0.35;
+      head.add(tuft);
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.22), lam('#6a5a98'));
+      wing.position.set(sx * 0.18, 0.22, -0.02);
+      g.add(wing);
+    }
+    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.07), lam('#e8a33d'));
+    beak.position.set(0, -0.06, 0.17);
+    head.add(beak);
+    return g;
+  },
+  hopps() {
+    const { g, head } = basePet('#8ac86a', '#c8e8a8', 'hopps',
+      { eyeW: 3, eyeH: 4, gap: 6, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,150,140,0.5)' });
+    // bulgy eye bumps on top + big springy back legs
+    for (const sx of [-1, 1]) {
+      const bump = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.1), lam('#8ac86a'));
+      bump.position.set(sx * 0.11, 0.17, 0.04);
+      head.add(bump);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.1, 0.2), lam('#6aa84f'));
+      leg.position.set(sx * 0.16, 0.08, -0.08);
+      g.add(leg);
+    }
+    return g;
+  },
+  wooly() {
+    const { g, head } = basePet('#f0eae0', '#ffffff', 'wooly',
+      { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'smile', cheeks: 'rgba(240,150,160,0.5)' });
+    // fluffy cloud lumps all over
+    for (const [dx, dy, dz, s] of [[-0.12, 0.32, -0.1, 0.14], [0.12, 0.3, -0.05, 0.13], [0, 0.36, -0.15, 0.15], [-0.08, 0.26, 0.1, 0.11], [0.1, 0.26, 0.08, 0.1]]) {
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), lam('#ffffff'));
+      puff.position.set(dx, dy, dz);
+      g.add(puff);
+    }
+    // wool cap on the head
+    const cap = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), lam('#ffffff'));
+    cap.position.set(0, 0.16, -0.02);
+    head.add(cap);
+    const earL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.05), lam('#d8c8b8'));
+    earL.position.set(-0.18, 0.04, 0); head.add(earL);
+    const earR = earL.clone(); earR.position.x = 0.18; head.add(earR);
+    return g;
+  },
+  koko() {
+    const { g, head } = basePet('#f0c05a', '#f8e0a8', 'koko',
+      { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'none', cheeks: 'rgba(240,130,90,0.6)' });
+    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.09), lam('#e8834a'));
+    beak.position.set(0, -0.04, 0.17);
+    head.add(beak);
+    // coconut-husk cap
+    const capBase = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.24), lam('#8a6a48'));
+    capBase.position.set(0, 0.17, 0);
+    const capTop = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.15), lam('#6e5438'));
+    capTop.position.set(0, 0.24, 0);
+    head.add(capBase, capTop);
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.18), lam('#f8e0a8'));
+      wing.position.set(sx * 0.17, 0.2, 0);
+      g.add(wing);
+    }
     return g;
   },
 };

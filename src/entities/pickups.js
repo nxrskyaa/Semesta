@@ -28,7 +28,8 @@ export function createPickups(scene, terrain) {
     items.push({ id, count, spr, t: Math.random() * 10, vy: 2.2 });
   }
 
-  function update(dt, playerPos, onPickup) {
+  function update(dt, playerPos, onPickup, magnetMult = 1) {
+    const magnetR = MAGNET_R * magnetMult;
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
       it.t += dt;
@@ -46,8 +47,8 @@ export function createPickups(scene, terrain) {
 
       const dx = playerPos.x - p.x, dz = playerPos.z - p.z;
       const d = Math.hypot(dx, dz);
-      if (d < MAGNET_R && d > 0.01) {
-        const pull = (1 - d / MAGNET_R) * 7;
+      if (d < magnetR && d > 0.01) {
+        const pull = (1 - d / magnetR) * 7;
         p.x += (dx / d) * pull * dt;
         p.z += (dz / d) * pull * dt;
       }

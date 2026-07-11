@@ -43,6 +43,7 @@ const CSS = `
 #touchui .attack { width: 74px; height: 74px; right: 4px; bottom: 4px; font-size: 27px;
   border-color: rgba(230,200,140,0.5); }
 #touchui .roll { width: 50px; height: 50px; right: 86px; bottom: 0; font-size: 18px; }
+#touchui .jump { width: 46px; height: 46px; right: 140px; bottom: 52px; font-size: 17px; }
 #touchui .sk { width: 46px; height: 46px; }
 #touchui .sk1 { right: 92px; bottom: 58px; }
 #touchui .sk2 { right: 62px; bottom: 104px; }
@@ -86,6 +87,7 @@ export function createTouchControls(input, skillIds, callbacks) {
     <div class="btns">
       <button class="abtn attack">⚔</button>
       <button class="abtn roll">↺</button>
+      <button class="abtn jump">⤒</button>
       ${skillIds.map((s, i) => `<button class="abtn sk sk${i + 1}" data-skill="${s}"
         style="background-image:url(${skillIconUrl(s, SKILLS[s].icon)})"><span class="cdo"></span></button>`).join('')}
       <button class="abtn pot" style="background-image:url(${itemIconUrl('tonic')})"><span class="cnt">0</span></button>
@@ -160,6 +162,7 @@ export function createTouchControls(input, skillIds, callbacks) {
   };
   on('.attack', callbacks.onAttack);
   on('.roll', callbacks.onRoll);
+  on('.jump', () => callbacks.onJump?.());
   on('.pot', callbacks.onPotion);
   on('.ctx', () => callbacks.onInteract?.());
   root.querySelectorAll('[data-skill]').forEach((b) => {
