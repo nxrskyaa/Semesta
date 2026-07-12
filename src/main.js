@@ -1066,6 +1066,7 @@ async function init(character, saved, audio) {
     setTimeout(() => hud.toastText(`Talk to Pip at the market stall to buy & sell (${hintKey}).`), 6200);
     setTimeout(() => hud.toastText(`Master NXR the koala runs the gacha capsule machine — try your luck!`), 9800);
     setTimeout(() => hud.toastText(`${touch ? 'Tap the minimap' : 'Press N'} for the world map: village, camps & land.`), 13400);
+    setTimeout(() => hud.toastText(`Mine glowing-orange ore rocks & chop birch trees (${hintKey} ×3) for building materials.`), 17000);
   }
 
   // --- world boss scheduler: one rises every 3 minutes ---

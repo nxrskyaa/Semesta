@@ -589,10 +589,15 @@ export function createPanels(hudRoot, {
         hero hunts nearby monsters on its own, casts skills and sips tonics. Great for idle XP & loot.<br>
         <span class="tip">AFK Fishing</span>: at a shore press ${touch ? 'the 💤 button' : '<b>G</b>'} to auto-fish
         (common fish only — manual fishing keeps the good rarity).
-        <h4>GATHERING</h4>
-        <span class="tip">Pale birch trees</span> (golden-green tops) can be chopped for Hardwood.
-        <span class="tip">Dark boulders with glowing orange veins</span> can be mined for Iron Ore & Forge Stones.
-        Walk up and press <b>F</b> three times. Nodes regrow after a couple of minutes.
+        <h4>GATHERING — WOOD & ORE ⛏️</h4>
+        Two resource nodes are scattered across the wilds (they look different from scenery):<br>
+        • <span class="tip">Iron Ore boulders</span> — <b>dark grey rocks with glowing orange veins</b>. Easiest to
+        spot at night by the orange glow. Walk up and press ${touch ? 'the ★ button' : '<b>F</b>'} <b>3 times</b> to
+        mine → <span class="tip">Iron Ore</span> (+ sometimes Forge Stones).<br>
+        • <span class="tip">Birch trees</span> — pale white bark with dark bands & golden-green tops. Chop with
+        ${touch ? '★' : '<b>F</b>'} ×3 → <span class="tip">Hardwood</span>.<br>
+        The prompt tells you which one you're facing ("Mine ore (3)" / "Chop birch (3)"). Nodes regrow after ~2 min.
+        <b>You need Iron Ore & Hardwood to BUILD A HOUSE</b>, to forge, and to sell for coins — so mine plenty!
         <h4>FISHING & AFK MODE</h4>
         Press <b>F</b> at a shore to fish manually (best rarity). Press <b>G</b> for
         <span class="tip">AFK fishing</span> — hands-free, but almost only common fish. Moving stops it.
