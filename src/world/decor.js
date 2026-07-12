@@ -102,8 +102,10 @@ export function buildDecor(terrain, scene) {
   const decid = trees.filter((t) => !t.pine);
   const pines = trees.filter((t) => t.pine);
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6a4a30 });
-  const leafMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const leafMatFlat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // white base + per-instance setColorAt (instanceColor) — NOT vertexColors,
+  // which would look for a missing geometry color attribute and render black
+  const leafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const leafMatFlat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
   const setInst = (mesh, i, px, py, pz, sx, sy, sz, ry, col) => {
     q.setFromAxisAngle(YUP, ry);
     m.compose(v.set(px, py, pz), q, sc.set(sx, sy, sz));

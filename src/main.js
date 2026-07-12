@@ -866,7 +866,9 @@ async function init(character, saved, audio) {
       || (((npcs.cookfire.x - player.state.pos.x) ** 2 + (npcs.cookfire.z - player.state.pos.z) ** 2 < 2.6 * 2.6) ? npcs.cookfire : null);
     if (fire) return { label: 'Cook', run: () => { audio.sfx('ui'); panels.toggle('cook'); } };
 
-    if (fishing.canFish()) return { label: 'Fish', afk: true, run: () => fishing.cast() };
+    if (fishing.canFish()) {
+      return { label: touch ? 'Fish  (💤 = AFK)' : 'Fish  ·  G = AFK mode', afk: true, run: () => fishing.cast() };
+    }
     return null;
   }
   function ownedPetSet() {
