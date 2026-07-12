@@ -44,11 +44,11 @@ export function buildDecor(terrain, scene) {
       const dSpawn = Math.hypot(wx - terrain.spawn.x, wz - terrain.spawn.z);
 
       // trees are spaced generously (4.4) so canopies never overlap into an
-      // ugly tangled mass; ~1 in 3 is a pine fir, the rest rounded deciduous
+      // ugly tangled mass; ~40% are pink SAKURA, the rest bright rounded green
       if (forest > 0.48 && r < 0.032 && dSpawn > 9 && !nearTree(trees, wx, wz, 4.4)) {
         trees.push({
           x: wx, y, z: wz,
-          s: 0.9 + rng() * 0.35, seed: rng(), pine: rng() < 0.34,
+          s: 0.9 + rng() * 0.35, seed: rng(), sakura: rng() < 0.42,
         });
         blocked.add(`${ix},${iz}`);
         continue;
@@ -98,84 +98,56 @@ export function buildDecor(terrain, scene) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
   const YUP = new THREE.Vector3(0, 1, 0);
 
-  // --- trees: lush rounded 3D canopies (deciduous) + layered firs (pine) ---
-  const decid = trees.filter((t) => !t.pine);
-  const pines = trees.filter((t) => t.pine);
-  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6a4a30 });
-  // white base + per-instance setColorAt (instanceColor) — NOT vertexColors,
-  // which would look for a missing geometry color attribute and render black
-  const leafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  const leafMatFlat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-  const setInst = (mesh, i, px, py, pz, sx, sy, sz, ry, col) => {
-    q.setFromAxisAngle(YUP, ry);
-    m.compose(v.set(px, py, pz), q, sc.set(sx, sy, sz));
-    mesh.setMatrixAt(i, m);
-    if (col) mesh.setColorAt(i, col);
-  };
+  // --- trees: bright rounded canopies — cheerful green & pink SAKURA, all in
+  // the same lush two-tier Pokopia shape (trunk + lower dome + rounded cap). A
+  // single set of instanced meshes; per-tree instance colors pick green/pink.
+  if (trees.length) {
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    // white base + per-instance setColorAt (instanceColor) — NOT vertexColors,
+    // which would look for a missing geometry color attribute and render black
+    const leafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const setInst = (mesh, i, px, py, pz, sx, sy, sz, ry, col) => {
+      q.setFromAxisAngle(YUP, ry);
+      m.compose(v.set(px, py, pz), q, sc.set(sx, sy, sz));
+      mesh.setMatrixAt(i, m);
+      if (col) mesh.setColorAt(i, col);
+    };
+    // bright, non-muddy palettes
+    const GREEN = { low: ['#6fc25e', '#7ac866', '#68bc57'], cap: ['#5cb050', '#63b858'], trunk: '#7a5638', accent: '#e8474e' };
+    const PINK = { low: ['#f4a8ce', '#f6b4d6', '#f09cc6'], cap: ['#f8c6de', '#f9d0e4'], trunk: '#8a6a5c', accent: '#ffffff' };
+    const C = (hex) => new THREE.Color(hex);
 
-  // deciduous: tapered trunk + two stacked rounded canopy tiers (lower lush
-  // dome + darker scalloped cap) — the classic Pokopia rounded-tree read
-  if (decid.length) {
     const tGeo = new THREE.CylinderGeometry(0.14, 0.22, 1, 6);
-    const trunk = new THREE.InstancedMesh(tGeo, trunkMat, decid.length);
+    const trunk = new THREE.InstancedMesh(tGeo, trunkMat, trees.length);
     trunk.castShadow = true; trunk.receiveShadow = true;
-    const lowGeo = new THREE.SphereGeometry(1, 10, 8);
-    const low = new THREE.InstancedMesh(lowGeo, leafMat, decid.length);
+    const low = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), leafMat, trees.length);
     low.castShadow = true;
-    const capGeo = new THREE.SphereGeometry(1, 9, 7);
-    const cap = new THREE.InstancedMesh(capGeo, leafMat, decid.length);
+    const cap = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 9, 7), leafMat, trees.length);
     cap.castShadow = true;
-    const lowCols = ['#5aa85a', '#66b25e', '#54a054', '#5eae56'].map((c) => new THREE.Color(c));
-    const capCols = ['#3f8a48', '#469253', '#3a8044'].map((c) => new THREE.Color(c));
-    // a few trees bear little red fruits (like the reference apple trees)
-    const fruited = decid.filter((t) => t.seed > 0.62);
-    const fruitGeo = new THREE.SphereGeometry(0.09, 5, 4);
-    const fruit = new THREE.InstancedMesh(fruitGeo, new THREE.MeshLambertMaterial({ color: 0xd83a44 }), Math.max(1, fruited.length * 3));
-    let fi = 0;
-    decid.forEach((tr, i) => {
+    const accented = trees.filter((t) => t.seed > 0.5);
+    const accGeo = new THREE.SphereGeometry(0.1, 5, 4);
+    const acc = new THREE.InstancedMesh(accGeo, leafMat, Math.max(1, accented.length * 3));
+    let ai = 0;
+
+    trees.forEach((tr, i) => {
+      const P = tr.sakura ? PINK : GREEN;
       const s = tr.s, th = 0.85 * s, ry = tr.seed * 6.28;
-      setInst(trunk, i, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry);
+      setInst(trunk, i, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry, C(P.trunk));
       const cy = tr.y + th * 0.9;
-      setInst(low, i, tr.x, cy + 0.55 * s, tr.z, 1.15 * s, 0.92 * s, 1.15 * s, ry, lowCols[i % lowCols.length]);
-      setInst(cap, i, tr.x, cy + 1.15 * s, tr.z, 0.8 * s, 0.72 * s, 0.8 * s, ry * 1.7, capCols[i % capCols.length]);
-      if (tr.seed > 0.62) {
+      setInst(low, i, tr.x, cy + 0.55 * s, tr.z, 1.18 * s, 0.94 * s, 1.18 * s, ry, C(P.low[i % P.low.length]));
+      setInst(cap, i, tr.x, cy + 1.16 * s, tr.z, 0.82 * s, 0.74 * s, 0.82 * s, ry * 1.7, C(P.cap[i % P.cap.length]));
+      if (tr.seed > 0.5) {
+        const acol = C(P.accent);
         for (let k = 0; k < 3; k++) {
           const a = tr.seed * 20 + k * 2.1;
-          setInst(fruit, fi++, tr.x + Math.cos(a) * 0.85 * s, cy + 0.6 * s + (k - 1) * 0.25 * s, tr.z + Math.sin(a) * 0.85 * s, 1, 1, 1, 0);
+          setInst(acc, ai++, tr.x + Math.cos(a) * 0.9 * s, cy + 0.62 * s + (k - 1) * 0.28 * s, tr.z + Math.sin(a) * 0.9 * s, 1, 1, 1, 0, acol);
         }
       }
     });
-    while (fi < fruited.length * 3) setInst(fruit, fi++, 0, -999, 0, 1, 1, 1, 0); // park unused
-    if (low.instanceColor) low.instanceColor.needsUpdate = true;
-    if (cap.instanceColor) cap.instanceColor.needsUpdate = true;
+    while (ai < accented.length * 3) setInst(acc, ai++, 0, -999, 0, 1, 1, 1, 0, C('#ffffff'));
+    [trunk, low, cap, acc].forEach((mesh) => { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; });
     group.add(trunk, low, cap);
-    if (fruited.length) group.add(fruit);
-  }
-
-  // pine firs: thin trunk + three stacked cones (dark evergreen)
-  if (pines.length) {
-    const tGeo = new THREE.CylinderGeometry(0.1, 0.15, 1, 6);
-    const trunk = new THREE.InstancedMesh(tGeo, trunkMat, pines.length);
-    trunk.castShadow = true;
-    const coneGeo = [
-      new THREE.ConeGeometry(0.9, 1.1, 8),
-      new THREE.ConeGeometry(0.66, 0.95, 8),
-      new THREE.ConeGeometry(0.42, 0.8, 8),
-    ];
-    const tiers = coneGeo.map((g) => new THREE.InstancedMesh(g, leafMatFlat, pines.length));
-    tiers.forEach((t) => { t.castShadow = true; });
-    const pineCols = ['#357a46', '#2e7040', '#3c824c'].map((c) => new THREE.Color(c));
-    pines.forEach((tr, i) => {
-      const s = tr.s, th = 0.55 * s, ry = tr.seed * 6.28;
-      setInst(trunk, i, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry);
-      const col = pineCols[i % pineCols.length];
-      const base = tr.y + th * 0.7;
-      setInst(tiers[0], i, tr.x, base + 0.55 * s, tr.z, s, s, s, ry, col);
-      setInst(tiers[1], i, tr.x, base + 1.15 * s, tr.z, s, s, s, ry, col);
-      setInst(tiers[2], i, tr.x, base + 1.7 * s, tr.z, s, s, s, ry, col);
-    });
-    tiers.forEach((t) => { if (t.instanceColor) t.instanceColor.needsUpdate = true; });
-    group.add(trunk, ...tiers);
+    if (accented.length) group.add(acc);
   }
 
   // --- rocks: faceted lumps ---

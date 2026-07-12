@@ -66,6 +66,54 @@ export const SKILLS = {
     desc: 'Appear behind the nearest enemy; next hit is a guaranteed crit.',
     icon: { shape: 'shadow', color: '#5a5a7a' },
   },
+  // --- Berserker ---
+  rage: {
+    name: 'Rage', cd: 14, cost: 18,
+    desc: '+45% damage & +30% attack speed for 8 seconds. Get angry.',
+    icon: { shape: 'shout', color: '#e8574a' },
+  },
+  cleave: {
+    name: 'Cleave', cd: 6, cost: 20,
+    desc: 'A savage wide swing: 220% damage to everything in front + knockback.',
+    icon: { shape: 'slash', color: '#c8ccd0' },
+  },
+  leapslam: {
+    name: 'Leap Slam', cd: 9, cost: 24,
+    desc: 'Leap to the nearest enemy and slam down: 260% damage + 1.4s stun.',
+    icon: { shape: 'burst', color: '#d0553a' },
+  },
+  // --- Hunter ---
+  volley: {
+    name: 'Volley', cd: 8, cost: 24,
+    desc: 'Loose a fan of 7 arrows, 120% damage each.',
+    icon: { shape: 'fan', color: '#8aac5a' },
+  },
+  snipe: {
+    name: 'Snipe', cd: 6, cost: 18,
+    desc: 'A piercing shot through everyone in a line, 320% damage.',
+    icon: { shape: 'arrow', color: '#a8d86a' },
+  },
+  beasttrap: {
+    name: 'Beast Trap', cd: 9, cost: 20,
+    desc: 'Snap-trap at the target: 180% damage + roots enemies for 2.5s.',
+    icon: { shape: 'star', color: '#b0894a' },
+  },
+  // --- Priest ---
+  heal: {
+    name: 'Heal', cd: 8, cost: 22,
+    desc: 'Restore 40% of your max HP in holy light.',
+    icon: { shape: 'orb', color: '#7dff8a' },
+  },
+  smite: {
+    name: 'Smite', cd: 5, cost: 16,
+    desc: 'Call down a holy bolt on the nearest foe: 260% damage.',
+    icon: { shape: 'burst', color: '#f8e8a8' },
+  },
+  bless: {
+    name: 'Bless', cd: 16, cost: 20,
+    desc: '+30% damage and steady regen for 9 seconds.',
+    icon: { shape: 'wind', color: '#f0e0a0' },
+  },
 };
 
 export const MAX_SKILL_LEVEL = 5;
@@ -303,6 +351,146 @@ export function createSkillSystem(deps) {
       }
       deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#8a7ad0', 16, 2);
       deps.particles.flash(p.pos, '#8a7ad0', 4, 0.25);
+    },
+
+    // --- Berserker ---
+    rage() {
+      const p = deps.player.state;
+      deps.player.addBuff({ id: 'rage', t: 8 * durMult(), dmg: 0.45, atkSpeed: 0.3 });
+      deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#e8574a', 26);
+      deps.particles.shockwave(p.pos, '#e8574a', 3.5, 0.5);
+      deps.particles.flash(p.pos, '#e8574a', 7, 0.4);
+      deps.audio.sfx('warcry');
+      deps.shake?.(0.3);
+    },
+    cleave() {
+      const p = deps.player.state;
+      const dir = new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing));
+      const at = p.pos.clone().add(dir.multiplyScalar(1.6));
+      deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.6, 0)), '#c8ccd0', 18, 3.6);
+      deps.particles.shockwave(at, '#c8ccd0', 3, 0.4);
+      deps.audio.sfx('whirl');
+      deps.shake?.(0.28);
+      for (const e of enemiesWithin(3.0)) {
+        const dx = e.mesh.position.x - p.pos.x, dz = e.mesh.position.z - p.pos.z;
+        const ang = Math.atan2(dx, dz);
+        let diff = ang - p.facing;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        if (Math.abs(diff) > 1.4) continue; // frontal arc only
+        hitEnemy(e, 2.2);
+        const l = Math.hypot(dx, dz) || 1;
+        e.knock.set((dx / l) * 9, (dz / l) * 9);
+      }
+      deps.player.playSwing(1.2);
+    },
+    leapslam() {
+      const p = deps.player.state;
+      let nearest = null, best = 12 * 12;
+      for (const e of deps.enemyMgr.enemies) {
+        if (e.dead) continue;
+        const d = (e.mesh.position.x - p.pos.x) ** 2 + (e.mesh.position.z - p.pos.z) ** 2;
+        if (d < best) { best = d; nearest = e; }
+      }
+      const target = nearest ? nearest.mesh.position : p.pos.clone().add(facingDir().multiplyScalar(5));
+      const dir = target.clone().sub(p.pos); dir.y = 0;
+      const dist = Math.min(6, dir.length()); dir.normalize();
+      for (let d = dist; d > 0.5; d -= 0.5) {
+        const nx = p.pos.x + dir.x * d, nz = p.pos.z + dir.z * d;
+        if (deps.terrain.walkable(nx, nz, deps.terrain.surfaceY(nx, nz))) {
+          p.pos.x = nx; p.pos.z = nz; p.pos.y = deps.terrain.surfaceY(nx, nz); break;
+        }
+      }
+      if (nearest) { p.facing = Math.atan2(nearest.mesh.position.x - p.pos.x, nearest.mesh.position.z - p.pos.z); }
+      deps.audio.sfx('bash');
+      deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#d0553a', 24, 4);
+      deps.particles.shockwave(p.pos, '#d0553a', 3.2, 0.45);
+      deps.particles.flash(p.pos, '#e8574a', 7, 0.3);
+      deps.shake?.(0.4);
+      for (const e of enemiesWithin(2.6)) hitEnemy(e, 2.6, { stun: 1.4 });
+      deps.player.playSwing(1.3);
+    },
+
+    // --- Hunter ---
+    volley() {
+      const p = deps.player.state;
+      aimAtCursor();
+      deps.audio.sfx('multishot');
+      for (let i = -3; i <= 3; i++) {
+        const a = p.facing + i * 0.14;
+        deps.projectiles.spawn({
+          pos: p.pos.clone().add(new THREE.Vector3(0, 0.75, 0)),
+          dir: new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), speed: 22, range: 15, radius: 0.55,
+          kind: 'arrow', color: '#a8d86a',
+          onHitEnemy: (e) => hitEnemy(e, 1.2),
+        });
+      }
+      deps.player.playBowDraw();
+    },
+    snipe() {
+      const p = deps.player.state;
+      aimAtCursor();
+      deps.audio.sfx('powershot');
+      deps.particles.flash(p.pos, '#a8d86a', 4, 0.2);
+      deps.projectiles.spawn({
+        pos: p.pos.clone().add(new THREE.Vector3(0, 0.75, 0)),
+        dir: facingDir(), speed: 34, range: 24, radius: 0.8,
+        kind: 'arrow', color: '#c8f090', scale: 1.7, pierce: true, trail: '#a8d86a',
+        onHitEnemy: (e) => hitEnemy(e, 3.2),
+      });
+      deps.player.playBowDraw();
+    },
+    beasttrap() {
+      const target = deps.aimPoint() || deps.player.state.pos.clone().add(facingDir().multiplyScalar(5));
+      deps.audio.sfx('fanknives');
+      deps.particles.shockwave(target, '#b0894a', 2.6, 0.5);
+      deps.particles.burst(target.clone().add(new THREE.Vector3(0, 0.3, 0)), '#b0894a', 20, 3, 3);
+      deps.particles.flash(target, '#e8c060', 5, 0.3);
+      deps.shake?.(0.2);
+      for (const e of enemiesWithin(2.6, target)) hitEnemy(e, 1.8, { freeze: 2.5 });
+    },
+
+    // --- Priest ---
+    heal() {
+      const p = deps.player.state;
+      const amt = Math.round(p.maxHp * 0.4);
+      p.hp = Math.min(p.maxHp, p.hp + amt);
+      p.sinceHurt = 999;
+      deps.dmgNums.spawn(p.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), `+${amt}`, 'heal');
+      deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#7dff8a', 24);
+      deps.particles.shockwave(p.pos, '#7dff8a', 2.4, 0.5);
+      deps.particles.flash(p.pos, '#aaffb0', 5, 0.35);
+      deps.audio.sfx('potion');
+      deps.player.playStaffCast();
+    },
+    smite() {
+      const p = deps.player.state;
+      let nearest = null, best = 16 * 16;
+      for (const e of deps.enemyMgr.enemies) {
+        if (e.dead) continue;
+        const d = (e.mesh.position.x - p.pos.x) ** 2 + (e.mesh.position.z - p.pos.z) ** 2;
+        if (d < best) { best = d; nearest = e; }
+      }
+      deps.audio.sfx('fireball');
+      if (nearest) {
+        const at = nearest.mesh.position;
+        p.facing = Math.atan2(at.x - p.pos.x, at.z - p.pos.z);
+        deps.particles.flash(at, '#fff2c0', 8, 0.35);
+        deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.8, 0)), '#f8e8a8', 26, 4, 5);
+        deps.particles.shockwave(at, '#f8e8a8', 2.2, 0.4);
+        deps.shake?.(0.25);
+        for (const e of enemiesWithin(1.8, at)) hitEnemy(e, 2.6);
+      }
+      deps.player.playStaffCast();
+    },
+    bless() {
+      const p = deps.player.state;
+      deps.player.addBuff({ id: 'bless', t: 9 * durMult(), dmg: 0.3, regen: 2 });
+      deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#f0e0a0', 22);
+      deps.particles.shockwave(p.pos, '#f0e0a0', 2.6, 0.5);
+      deps.particles.flash(p.pos, '#fff2c0', 5, 0.4);
+      deps.audio.sfx('swiftness');
+      deps.player.playStaffCast();
     },
   };
 

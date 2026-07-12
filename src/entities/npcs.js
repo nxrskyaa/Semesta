@@ -101,6 +101,25 @@ export const NPC_DEFS = [
       'If you find a bone out there... you know who to call. Woof.',
     ],
   },
+  {
+    id: 'nyanya', name: 'Nyanya', species: 'catgirl', role: 'Village Sweetheart', ambient: true,
+    fur: '#f7b6d2', furLight: '#ffd6e6', outfit: '#e85a9a',
+    dialog: [
+      'Nyaa~! Hello hello! Your outfit is SO cute, nya!',
+      'Pink is the best colour, obviously. Fight me. Gently. Nya~',
+      'If you bring me a Golden Koi someday I might just faint from joy!',
+      'Did you say hi to the big Barong yet? He looks scary but he is a softie, nya~',
+    ],
+  },
+  {
+    id: 'barong', name: 'Barong', species: 'barong', role: 'Village Guardian', ambient: true,
+    fur: '#c8302a', furLight: '#f0d24a', outfit: '#1a1a22',
+    dialog: [
+      'RRROAR... ahem. Greetings, little one. I am Barong, guardian of Riverbrook.',
+      'For ages I have kept the dark spirits beyond the treeline. Fear not while I stand.',
+      'The old dances of Bali gave me form. Honour, courage, and a very good mane.',
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -111,14 +130,87 @@ function villagerFace(species) {
   if (!faceCache.has(species)) {
     faceCache.set(species, makeCritterFaceTexture({
       eyeW: 3, eyeH: 5, gap: 5, eyeY: 2,
-      mouth: species === 'cat' ? 'w' : 'smile',
+      mouth: (species === 'cat' || species === 'catgirl') ? 'w' : 'smile',
       cheeks: 'rgba(240,150,140,0.6)',
     }));
   }
   return faceCache.get(species);
 }
 
+// Barong — a Balinese guardian lion. Ornate red/gold/white mask with bulging
+// eyes, a fanged grin, a crown, and a layered mane. A proud cultural landmark.
+function buildBarong(def) {
+  const g = new THREE.Group();
+  const red = lam('#c8302a'), gold = lam('#f0c840'), white = lam('#f4f0e4'), black = lam('#1a1a22');
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 0.36), lam('#8a1e1a'));
+  body.position.y = 0.42; body.castShadow = true;
+  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.1, 0.4), gold);
+  sash.position.y = 0.5; g.add(sash);
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.24, 0.16), black);
+  legL.position.set(-0.13, 0.12, 0);
+  const legR = legL.clone(); legR.position.x = 0.13;
+  for (const leg of [legL, legR]) {
+    const anklet = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.18), gold);
+    anklet.position.y = -0.09; leg.add(anklet);
+  }
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.13), red);
+  armL.position.set(-0.32, 0.44, 0);
+  const armR = armL.clone(); armR.position.x = 0.32;
+
+  // big ornate head
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.58, 0.5), red);
+  head.position.y = 0.9; head.castShadow = true;
+  // layered mane: rings of pointed tufts around the head (red -> gold -> white)
+  const maneRing = (radius, len, mat, ry0, count, y) => {
+    for (let i = 0; i < count; i++) {
+      const a = ry0 + (i / count) * Math.PI * 2;
+      const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.06, len, 5), mat);
+      tuft.position.set(Math.cos(a) * radius, y, Math.sin(a) * radius - 0.1);
+      tuft.rotation.z = -Math.cos(a) * 1.2;
+      tuft.rotation.x = Math.sin(a) * 1.2 - 0.3;
+      head.add(tuft);
+    }
+  };
+  maneRing(0.42, 0.34, white, 0.2, 14, 0.02);
+  maneRing(0.38, 0.28, gold, 0.0, 12, 0.05);
+  maneRing(0.3, 0.22, red, 0.3, 10, 0.08);
+  // bulging googly eyes
+  for (const sx of [-1, 1]) {
+    const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 7), white);
+    eyeWhite.position.set(sx * 0.16, 0.08, 0.25); head.add(eyeWhite);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), black);
+    pupil.position.set(sx * 0.16, 0.08, 0.33); head.add(pupil);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.02, 6, 12), gold);
+    rim.position.set(sx * 0.16, 0.08, 0.26); head.add(rim);
+    // bushy brow
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.06), white);
+    brow.position.set(sx * 0.16, 0.2, 0.24); brow.rotation.z = sx * 0.3; head.add(brow);
+  }
+  // fanged grin
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.06), black);
+  mouth.position.set(0, -0.16, 0.25); head.add(mouth);
+  const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.04), lam('#e05a6a'));
+  tongue.position.set(0, -0.17, 0.28); head.add(tongue);
+  for (const sx of [-1, 1]) {
+    const fang = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 4), white);
+    fang.position.set(sx * 0.12, -0.13, 0.27); fang.rotation.x = Math.PI; head.add(fang);
+  }
+  // gold crown
+  for (let i = -1; i <= 1; i++) {
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18 - Math.abs(i) * 0.04, 5), gold);
+    spike.position.set(i * 0.14, 0.34, 0.06); head.add(spike);
+  }
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.05), lam('#5ad0f0'));
+  gem.position.set(0, 0.28, 0.24); head.add(gem);
+
+  g.add(body, legL, legR, armL, armR, head);
+  g.userData = { head, armL, armR, legL, legR, body, headBaseY: head.position.y, stationary: true };
+  return g;
+}
+
 function buildVillagerMesh(def) {
+  if (def.species === 'barong') return buildBarong(def);
   const g = new THREE.Group();
   const fur = lam(def.fur);
   const furLight = lam(def.furLight);
@@ -158,6 +250,34 @@ function buildVillagerMesh(def) {
     tail.position.set(0.12, 0.3, -0.16);
     tail.rotation.x = -0.5;
     g.add(tail);
+  } else if (def.species === 'catgirl') {
+    // pink cat-girl: ears, tail, a hair bow and a soft fringe
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.08), fur);
+      ear.position.set(sx * 0.17, 0.28, 0);
+      ear.rotation.z = -sx * 0.25;
+      head.add(ear);
+      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.02), lam('#ffe0ec'));
+      inner.position.set(0, 0, 0.04); ear.add(inner);
+    }
+    // hair fringe across the brow + side locks (deeper pink)
+    const hairC = lam('#f28ab8');
+    const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.08), hairC);
+    fringe.position.set(0, 0.16, 0.2); head.add(fringe);
+    for (const sx of [-1, 1]) {
+      const lock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.34, 0.12), hairC);
+      lock.position.set(sx * 0.26, -0.02, 0.06); head.add(lock);
+    }
+    // a cute bow on one ear
+    const bow = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.06), lam('#ffd24a'));
+    bow.position.set(0.2, 0.4, 0.02); head.add(bow);
+    const bowKnot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), lam('#e8a83a'));
+    bowKnot.position.set(0.2, 0.4, 0.05); head.add(bowKnot);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.32, 0.08), fur);
+    tail.position.set(0.12, 0.3, -0.16); tail.rotation.x = -0.4;
+    const tailTip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), lam('#ffd6e6'));
+    tailTip.position.set(0.12, 0.46, -0.22);
+    g.add(tail, tailTip);
   } else if (def.species === 'bear') {
     for (const sx of [-1, 1]) {
       const ear = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.08), fur);
@@ -302,7 +422,7 @@ function buildVillagerMesh(def) {
   }
 
   g.add(body, legL, legR, armL, armR, head);
-  g.userData = { head, armL, armR, legL, legR, body };
+  g.userData = { head, armL, armR, legL, legR, body, headBaseY: head.position.y };
   return g;
 }
 
@@ -754,11 +874,19 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
       { ox: 6, oz: -6, act: 'idle' }, { ox: -6, oz: -6, act: 'idle' },
       { ox: -6, oz: 6, act: 'idle' }, { ox: 6, oz: 6, act: 'idle' },
     ],
+    nyanya: [
+      { ox: 3, oz: -1.5, act: 'idle' }, { ox: -2, oz: 3, act: 'idle' },
+      { ox: 5, oz: 3, act: 'idle' }, { ox: -3.5, oz: -3.5, act: 'idle' },
+    ],
+    barong: [ // stands guard at the village entrance, does not wander
+      { ox: 0, oz: -9.5, act: 'idle' },
+    ],
   };
 
   const npcStart = [
     [-3.5, -3], [2.5, 1.5], [-3.2, -1.8], [4, 5.5], [4.2, 3.2],
     [5.6, -2.2], [1, -4], [2.4, 3.2], [-3.2, 4.6], [6, -6],
+    [3, -1.5], [0, -9.5],
   ];
   NPC_DEFS.forEach((def, i) => {
     const [ox, oz] = npcStart[i % npcStart.length];
@@ -822,7 +950,7 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
         u.armR.rotation.x = -2.4 + Math.sin(n.anim * 8) * 0.3;
         u.armL.rotation.x = 0;
         u.legL.rotation.x = u.legR.rotation.x = 0;
-        u.head.position.y = 0.72 + Math.sin(n.anim * 2.4) * 0.04;
+        u.head.position.y = (u.headBaseY ?? 0.72) + Math.sin(n.anim * 2.4) * 0.04;
       } else if (n.mode === 'go') {
         const dx = target.x - p.x, dz = target.z - p.z;
         const d = Math.hypot(dx, dz);
@@ -854,7 +982,7 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
         }
         u.legL.rotation.x = u.legR.rotation.x = 0;
         const br = Math.sin(n.anim * 2.4) * 0.04;
-        u.head.position.y = 0.72 + br;
+        u.head.position.y = (u.headBaseY ?? 0.72) + br;
 
         if (st.act === 'hammer') {
           // face the anvil & swing; sparks on the downstroke
@@ -919,7 +1047,7 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     return best;
   }
 
-  return { npcs, update, nearest, cookfire };
+  return { npcs, update, nearest, cookfire, stallSpot, forgeSpot, gachaSpot };
 }
 
 // quest marker sprite ('!' available / '?' turn-in)

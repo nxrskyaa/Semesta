@@ -50,10 +50,13 @@ export function createWorldMap({ minimap, terrain }) {
       <canvas width="480" height="480"></canvas>
       <div class="legend">
         <span><b style="color:#ffe27a">⌂</b>Village</span>
+        <span><b style="color:#a8e06a">$</b>Shop</span>
+        <span><b style="color:#f0a8c8">◈</b>Gacha</span>
+        <span><b style="color:#e8a35d">⚒</b>Forge</span>
         <span><b style="color:#8ac86a">▲</b>Rest Camp</span>
         <span><b style="color:#f0c455">◎</b>Land / Home</span>
         <span><b style="color:#ffd23e">!</b>Quest</span>
-        <span><b style="color:#ffd23e">◆</b>World Boss</span>
+        <span><b style="color:#ffd23e">◆</b>Boss</span>
         <span><b style="color:#f0f0e0">▸</b>You</span>
       </div>
       <div class="hint">[N] OR TAP MAP TO CLOSE</div>
@@ -104,6 +107,17 @@ export function createWorldMap({ minimap, terrain }) {
         ctx.fillStyle = '#ffd23e'; ctx.fillText('!', x, y - 4);
       }
     }
+    // shop, gacha & forge landmarks in the village
+    ctx.font = 'bold 13px monospace';
+    const landmark = (spot, glyph, col) => {
+      if (!spot) return;
+      const [x, y] = toXY(spot.x, spot.z);
+      ctx.fillStyle = '#0a0f0a'; ctx.fillText(glyph, x + 1, y + 1);
+      ctx.fillStyle = col; ctx.fillText(glyph, x, y);
+    };
+    landmark(refs.npcs.stallSpot, '$', '#a8e06a');
+    landmark(refs.npcs.gachaSpot, '◈', '#f0a8c8');
+    landmark(refs.npcs.forgeSpot, '⚒', '#e8a35d');
     // village
     ctx.font = 'bold 20px monospace';
     const [vx, vy] = toXY(terrain.spawn.x, terrain.spawn.z);

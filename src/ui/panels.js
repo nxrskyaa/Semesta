@@ -549,12 +549,27 @@ export function createPanels(hudRoot, {
         4. Open sparkling <span class="tip">treasure chests</span> — goodies and rare <span class="tip">pet charms</span>.<br>
         5. Take quests from the villagers (look for the <span style="color:#ffd23e">!</span> marks) — they pay well,
         and some reward <span class="tip">rideable mounts</span>!
-        <h4>COINS & THE ECONOMY</h4>
-        Sell fish, crops and materials to <span class="tip">Pip's SHOP</span> (talk to Pip). Buy seeds,
-        plant them on the <span class="tip">farm plots</span> west of the village, harvest & sell.
-        Coins buy extra plots, <span class="tip">land parcels</span> for your own house, and
-        <span class="tip">Master NXR's Wonder Capsules</span> (gacha!) — pet charms, mount whistles,
-        even the legendary <span style="color:#f0a8c8">Blossom</span>.
+        <h4>HOW TO EARN COINS 💰</h4>
+        Walk up to <span class="tip">Pip's market stall</span> (the striped shop — $ on the map) and press
+        ${touch ? 'the ★ button' : '<b>F</b>'} to open the shop, then <b>SELL</b>:<br>
+        • <span class="tip">Fish</span> you catch (Golden Koi = 60c!) &nbsp; • <span class="tip">Crops</span> you grow &nbsp;
+        • <span class="tip">Monster drops</span> &nbsp; • <span class="tip">Wood & ore</span> you gather.<br>
+        Then <b>BUY</b> seeds, tonics and extra farm plots. Coins also buy <span class="tip">land</span> for a house
+        and <span class="tip">gacha spins</span>.
+        <h4>SHOP · GACHA · BUILD A HOUSE — where?</h4>
+        Everything is a landmark you walk up to and press ${touch ? '★' : '<b>F</b>'}:<br>
+        • <span class="tip">Shop</span> ($) — Pip's striped stall, east side of the village.<br>
+        • <span class="tip">Gacha</span> (◈) — the capsule machine by Master NXR the koala.<br>
+        • <span class="tip">Forge</span> (⚒) — the anvil (or press V anywhere).<br>
+        • <span class="tip">Build a house</span> — find a <span class="tip">Land parcel</span> (◎ on the map, out in the wilds),
+        press ${touch ? '★' : '<b>F</b>'} to buy it (250c), then again to pick a design and build it from
+        hardwood + iron ore. Rest camps (▲) let you build too — camps & homes are safe & heal you.
+        <br>Open the map with ${touch ? 'a tap on the minimap' : '<b>N</b>'} to see every marker.
+        <h4>AFK GRINDING 😴</h4>
+        <span class="tip">Auto-Battle</span>: press ${touch ? 'the AUTO button' : '<b>B</b>'} (or the ⚔AUTO button) — your
+        hero hunts nearby monsters on its own, casts skills and sips tonics. Great for idle XP & loot.<br>
+        <span class="tip">AFK Fishing</span>: at a shore press ${touch ? 'the 💤 button' : '<b>G</b>'} to auto-fish
+        (common fish only — manual fishing keeps the good rarity).
         <h4>GATHERING</h4>
         <span class="tip">Pale birch trees</span> (golden-green tops) can be chopped for Hardwood.
         <span class="tip">Dark boulders with glowing orange veins</span> can be mined for Iron Ore & Forge Stones.

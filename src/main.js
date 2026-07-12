@@ -8,6 +8,7 @@ import { createChests } from './world/chests.js';
 import { createWeather } from './world/weather.js';
 import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
+import { createLandmarks } from './world/landmarks.js';
 import { setupLighting } from './gfx/lighting.js';
 import { createParticles } from './gfx/particles.js';
 import { makeTerrainAtlas } from './gfx/textures.js';
@@ -127,6 +128,7 @@ async function init(character, saved, audio) {
   const chests = createChests(scene, terrain, decor.blocked, particles);
   const camps = createCamps(scene, terrain, decor.blocked, particles);
   const gathering = createGathering(scene, terrain, decor.blocked, particles);
+  const landmarks = createLandmarks(scene, terrain, decor.blocked);
   const farming = createFarming(scene, terrain, decor.blocked, particles);
   const housing = createHousing(scene, terrain, decor.blocked, particles);
 
@@ -629,6 +631,46 @@ async function init(character, saved, audio) {
     if (player.tryJump()) audio.sfx('jump');
   }
 
+  // --- AFK auto-battle: hands-free grinding. Approaches the nearest enemy,
+  // auto-attacks, auto-casts ready skills, and sips a tonic when low. ---
+  let autoBattle = false;
+  let autoSkillT = 0;
+  function toggleAutoBattle() {
+    autoBattle = !autoBattle;
+    dismountIfRiding();
+    hud.setAuto?.(autoBattle);
+    hud.toastText(autoBattle ? 'Auto-Battle ON — grinding hands-free. Press B to stop.' : 'Auto-Battle off.');
+    audio.sfx('ui');
+  }
+  function autoBattleTick(dt) {
+    if (!autoBattle || player.state.dead || player.state.busy || panels.anyOpen() || dialog.isOpen() || fishing.state.afk) return;
+    const e = nearestEnemy(26); // roam a bit to find prey
+    if (!e) return;
+    const dx = e.mesh.position.x - player.state.pos.x, dz = e.mesh.position.z - player.state.pos.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    player.state.facing = Math.atan2(dx, dz);
+    const def = inventory.equippedDef();
+    const reach = (def.type === 'bow' || def.type === 'staff') ? (def.range - 2) : (def.range || 2) + 0.2;
+    // walk into range for melee / kite distance for ranged
+    if (dist > reach) {
+      const sp = cls.speed * 0.85 * dt;
+      const nx = player.state.pos.x + (dx / dist) * sp, nz = player.state.pos.z + (dz / dist) * sp;
+      if (terrain.walkable(nx, nz, player.state.pos.y)) {
+        player.state.pos.x = nx; player.state.pos.z = nz;
+        player.state.pos.y += (terrain.surfaceY(nx, nz) - player.state.pos.y) * Math.min(1, dt * 14);
+      }
+    }
+    if (dist <= (def.range || 2) + 1.5) doAttack();
+    // rotate through ready skills
+    autoSkillT -= dt;
+    if (autoSkillT <= 0) {
+      autoSkillT = 2.2;
+      for (const sid of skillIds) { if (skillSys.ready(sid) && player.state.stamina > 20) { castSkill(sid); break; } }
+    }
+    // survival: sip a tonic when badly hurt
+    if (player.state.hp < player.state.maxHp * 0.3 && inventory.count('tonic') > 0) usePotion();
+  }
+
   function usePotion() {
     const t = inventory.usePotion();
     if (!t) { audio.sfx('deny'); return; }
@@ -785,8 +827,10 @@ async function init(character, saved, audio) {
     if (fishing.state.phase === 'bite') return { label: 'Reel in!', run: () => fishing.strike() };
     if (fishing.state.phase === 'waiting') return { label: 'Wait for it...', run: () => fishing.strike() };
 
+    // quest-giving NPCs take priority when you're near them (so you never
+    // miss a quest); ambient chatter is a fallback near the bottom
     const npc = npcs.nearest(player.state.pos, 2.3);
-    if (npc) return { label: `Talk to ${npc.def.name}`, run: () => openDialog(npc) };
+    if (npc && npc.questMark) return { label: `Talk to ${npc.def.name}`, run: () => openDialog(npc) };
 
     const chest = chests.nearest(player.state.pos, 2.1);
     if (chest) {
@@ -861,6 +905,13 @@ async function init(character, saved, audio) {
       };
     }
 
+    // village landmarks you can walk right up to (no chasing wandering NPCs):
+    // Pip's market stall = shop, the capsule machine = gacha, the anvil = forge
+    const near = (spot, r = 2.6) => spot && ((spot.x - player.state.pos.x) ** 2 + (spot.z - player.state.pos.z) ** 2 < r * r);
+    if (near(npcs.stallSpot)) return { label: 'Shop — buy & sell', run: () => { audio.sfx('ui'); panels.toggle('shop'); } };
+    if (near(npcs.gachaSpot)) return { label: 'Wonder Capsules (gacha)', run: () => { audio.sfx('ui'); panels.toggle('gacha'); } };
+    if (near(npcs.forgeSpot)) return { label: 'Forge your weapon', run: () => { audio.sfx('ui'); panels.toggle('forge'); } };
+
     // campfires: cook the catch of the day
     const fire = camps.nearestFire(player.state.pos, 2.6)
       || (((npcs.cookfire.x - player.state.pos.x) ** 2 + (npcs.cookfire.z - player.state.pos.z) ** 2 < 2.6 * 2.6) ? npcs.cookfire : null);
@@ -869,6 +920,8 @@ async function init(character, saved, audio) {
     if (fishing.canFish()) {
       return { label: touch ? 'Fish  (💤 = AFK)' : 'Fish  ·  G = AFK mode', afk: true, run: () => fishing.cast() };
     }
+    // ambient villagers (Nyanya, Barong, etc.) — chat as the lowest-priority action
+    if (npc) return { label: `Talk to ${npc.def.name}`, run: () => openDialog(npc) };
     return null;
   }
   function ownedPetSet() {
@@ -900,6 +953,7 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyG') { // AFK fishing toggle
       if (fishing.toggleAfk()) hud.toastText('AFK fishing on — common fish only. Move to stop.');
     }
+    if (e.code === 'KeyB') toggleAutoBattle(); // AFK auto-battle grinding
     if (e.code === 'Escape') { panels.closeAll(); dialog.hide(); fishing.cancel(); worldmap.hide(); }
     if (e.code === 'Digit1') castSkill(skillIds[0]);
     if (e.code === 'Digit2') castSkill(skillIds[1]);
@@ -934,7 +988,10 @@ async function init(character, saved, audio) {
   hud.bind({
     onSkill: castSkill,
     onPotion: usePotion,
-    onMenu: (which) => { audio.sfx('ui'); panels.toggle(which); },
+    onMenu: (which) => {
+      if (which === 'auto') { toggleAutoBattle(); return; }
+      audio.sfx('ui'); panels.toggle(which);
+    },
     onRespawn: () => {
       player.respawn();
       hud.showDead(false);
@@ -1049,6 +1106,7 @@ async function init(character, saved, audio) {
 
     player.state.dmgMult = totalMult();
     player.update(dt, input, cam.yaw);
+    autoBattleTick(dt);
 
     // moving cancels an in-progress fishing session
     if (fishing.state.phase !== 'idle' && (input.joy.active ||
@@ -1079,6 +1137,7 @@ async function init(character, saved, audio) {
     chests.update(dt, player.state.pos);
     camps.update(dt, player.state.pos, time);
     gathering.update(dt);
+    landmarks.update(dt, time);
     farming.update(dt);
     pets.update(dt, player.state, time);
     mounts.update(dt, player, terrain);

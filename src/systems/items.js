@@ -79,6 +79,12 @@ export const ITEMS = {
   crystal_staff:    { name: 'Crystal Staff',    weapon: true, type: 'staff', tier: 2, dmg: 19, speed: 1.55, range: 15, projSpeed: 15, aoe: 1.6, blade: ['#7a9ad8', '#bfe0ff'], scale: 1.06 },
   treant_staff:     { name: 'Treant Staff',     weapon: true, type: 'staff', tier: 3, dmg: 28, speed: 1.4, range: 16, projSpeed: 15, aoe: 1.9, blade: ['#3e5e46', '#9fe86e'], scale: 1.15 },
 
+  // extra starter weapons for the new classes (reuse existing weapon types so
+  // they share the sword/bow/staff crafting trees & attack animations)
+  battle_axe:   { name: 'Battle Axe',    weapon: true, type: 'sword', tier: 0, dmg: 10, speed: 1.6, range: 2.5, arc: 2.4, blade: ['#8a8e92', '#c8ccd0'], scale: 1.2 },
+  hunter_bow:   { name: 'Hunter Bow',    weapon: true, type: 'bow',   tier: 0, dmg: 7,  speed: 2.0, range: 16, projSpeed: 22, blade: ['#5a7a3a', '#8aac5a'], scale: 1.02 },
+  holy_staff:   { name: 'Acolyte Staff', weapon: true, type: 'staff', tier: 0, dmg: 8,  speed: 1.5, range: 14, projSpeed: 14, aoe: 1.3, blade: ['#c8b048', '#f8e8a8'], scale: 1.0 },
+
   // dagger (Assassin): 2 fast stabs per attack
   rusty_daggers: { name: 'Rusty Daggers', weapon: true, type: 'dagger', tier: 0, dmg: 4,  speed: 3.0, range: 1.8, arc: 1.6, hits: 2, blade: ['#7a6a5a', '#a89888'], scale: 0.72 },
   fang_daggers:  { name: 'Fang Daggers',  weapon: true, type: 'dagger', tier: 1, dmg: 7,  speed: 3.1, range: 1.9, arc: 1.6, hits: 2, blade: ['#b5ad95', '#efe9d6'], scale: 0.75 },

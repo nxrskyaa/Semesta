@@ -71,6 +71,11 @@ const CSS = `
 }
 #hud .iconbtn:hover { border-color: var(--gold); color: #f0e9cc; }
 #hud .iconbtn small { color: var(--gold-dim); }
+#hud .iconbtn.autobtn.on {
+  border-color: #e8574a; color: #ffd0c0;
+  background: linear-gradient(180deg, #5a2622, #3a1a16);
+  box-shadow: 0 0 8px rgba(232,87,74,0.5), 0 0 0 1px var(--ink);
+}
 
 /* ---- quest tracker (right, under minimap) ---- */
 #hud .quests {
@@ -270,11 +275,12 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <button class="iconbtn" data-menu="forge">FORGE <small>[V]</small></button>
       <button class="iconbtn" data-menu="pets">PETS <small>[P]</small></button>
       <button class="iconbtn" data-menu="skills">SKILLS <small>[K]</small></button>
+      <button class="iconbtn autobtn" data-menu="auto">⚔ AUTO <small>[B]</small></button>
       <button class="iconbtn" data-menu="help">?</button>
     </div>
     <div class="hint-desktop">
       <b>LMB</b> Attack (auto-aim) · <b>RMB</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
-      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>G</b> AFK Fish · <b>Q/E</b> Camera
+      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Camera
     </div>
     <div class="toasts"></div>
     <div class="banner"></div>
@@ -451,9 +457,11 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   }
   function setWeather(r) { raining = r; }
   function showDead(show) { els.dead.classList.toggle('show', show); }
+  const autoBtn = root.querySelector('.autobtn');
+  function setAuto(on) { autoBtn?.classList.toggle('on', !!on); }
 
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
-    showDead, showHurt, bind, els, updateQuests, setPrompt,
+    showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto,
   };
 }
