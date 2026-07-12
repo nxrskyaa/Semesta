@@ -302,6 +302,7 @@ async function init(character, saved, audio) {
       for (const [id, n] of Object.entries(d.cost)) inventory.remove(id, n);
       if (d.coins) inventory.spendCoins(d.coins);
       housing.build(land, designId);
+      quests.event('build');
       audio.sfx('quest_done');
       addShake(0.3);
       hud.banner(`${d.name.toUpperCase()} BUILT!`);
@@ -1189,7 +1190,7 @@ async function init(character, saved, audio) {
       hudT = 0;
       hud.setWeather(weather.state.intensity > 0.4);
       hud.setClock(lighting.clockText(), isNight);
-      minimap.update(player.state.pos, player.state.facing, enemyMgr.enemies);
+      minimap.update(player.state.pos, player.state.facing, enemyMgr.enemies, { lands: housing.lands });
       touchUI?.update(skillSys, inventory.count('tonic'));
       // interact prompt
       const it = currentInteraction();

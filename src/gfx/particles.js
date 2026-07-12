@@ -12,9 +12,21 @@ export function createParticles(scene) {
   const colors = new Float32Array(MAX * 3);
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  // soft round glow sprite for each particle (nicer than hard squares)
+  const dotCanvas = document.createElement('canvas');
+  dotCanvas.width = dotCanvas.height = 32;
+  {
+    const c = dotCanvas.getContext('2d');
+    const g2 = c.createRadialGradient(16, 16, 0, 16, 16, 16);
+    g2.addColorStop(0, 'rgba(255,255,255,1)');
+    g2.addColorStop(0.45, 'rgba(255,255,255,0.85)');
+    g2.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g2; c.fillRect(0, 0, 32, 32);
+  }
+  const dotTex = new THREE.CanvasTexture(dotCanvas);
   const mat = new THREE.PointsMaterial({
-    size: 0.14, vertexColors: true, transparent: true, opacity: 0.95,
-    depthWrite: false, sizeAttenuation: true,
+    size: 0.2, map: dotTex, vertexColors: true, transparent: true, opacity: 1,
+    depthWrite: false, sizeAttenuation: true, blending: THREE.AdditiveBlending,
   });
   const points = new THREE.Points(geo, mat);
   points.frustumCulled = false;

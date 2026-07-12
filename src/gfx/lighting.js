@@ -11,13 +11,15 @@ export function setupLighting(scene) {
 
   const sun = new THREE.DirectionalLight(new THREE.Color('#fff2dc'), 1.35);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(3072, 3072);   // sharper shadows
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 90;
-  const EXT = 34;
+  const EXT = 30;                        // tighter frustum = crisper shadows
   sun.shadow.camera.left = -EXT; sun.shadow.camera.right = EXT;
   sun.shadow.camera.top = EXT; sun.shadow.camera.bottom = -EXT;
-  sun.shadow.bias = -0.0006;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
+  sun.shadow.radius = 2.2;               // soft PCF edge
   scene.add(sun);
   scene.add(sun.target);
 
@@ -25,22 +27,23 @@ export function setupLighting(scene) {
   const state = { minutes: 10 * 60, weatherDim: 0 };
 
   // sky / fog / sun colors along the day
-  const nightSky = new THREE.Color('#28324a');
+  // brighter, moonlit night — a deep blue you can actually see & play in
+  const nightSky = new THREE.Color('#3a4c74');
   const dawnSky = new THREE.Color('#e8a86a');
   const daySky = new THREE.Color('#9ed4e8');
   const duskSky = new THREE.Color('#e8935a');
 
-  const nightFog = new THREE.Color('#232c3c');
+  const nightFog = new THREE.Color('#37456a');
   const dawnFog = new THREE.Color('#c49a74');
   const dayFog = new THREE.Color('#a8cca2');
   const duskFog = new THREE.Color('#c48a64');
 
-  const nightHemi = new THREE.Color('#4a5a78');
+  const nightHemi = new THREE.Color('#7286b4');
   const dayHemi = new THREE.Color('#bcd8b2');
 
   const daySun = new THREE.Color('#fff2dc');
   const warmSun = new THREE.Color('#ffb977');
-  const moonSun = new THREE.Color('#9ab0d8');
+  const moonSun = new THREE.Color('#b6ccf0');
 
   const _sky = new THREE.Color();
   const _fog = new THREE.Color();
@@ -66,8 +69,9 @@ export function setupLighting(scene) {
     const dayness = Math.max(0, Math.min(1, (Math.cos(((hr - 13) / 24) * Math.PI * 2) + 0.6) / 1.3));
     const dim = 1 - state.weatherDim * 0.45;
 
-    sun.intensity = (0.22 + dayness * 1.2) * dim;
-    hemi.intensity = (0.38 + dayness * 0.55) * (1 - state.weatherDim * 0.25);
+    // raised night floors so moonlit nights stay readable (was 0.22 / 0.38)
+    sun.intensity = (0.42 + dayness * 1.05) * dim;
+    hemi.intensity = (0.62 + dayness * 0.45) * (1 - state.weatherDim * 0.25);
 
     gradeColor(_sky, hr, nightSky, dawnSky, daySky, duskSky);
     gradeColor(_fog, hr, nightFog, dawnFog, dayFog, duskFog);

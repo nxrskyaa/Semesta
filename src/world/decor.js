@@ -87,7 +87,7 @@ export function buildDecor(terrain, scene) {
       const i = terrain.idx(ix, iz);
       if (terrain.type[i] !== 1) continue;
       pathCount++;
-      if (pathCount % 17 !== 0) continue;
+      if (pathCount % 10 !== 0) continue; // denser retro street lamps
       const wx = ix - S / 2 + 0.5 + (rng() - 0.5) * 0.4;
       const wz = iz - S / 2 + 0.5 + (rng() - 0.5) * 0.4;
       torches.push({ x: wx, y: terrain.surfaceY(wx, wz), z: wz });
@@ -98,9 +98,9 @@ export function buildDecor(terrain, scene) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
   const YUP = new THREE.Vector3(0, 1, 0);
 
-  // --- trees: bright rounded canopies — cheerful green & pink SAKURA, all in
-  // the same lush two-tier Pokopia shape (trunk + lower dome + rounded cap). A
-  // single set of instanced meshes; per-tree instance colors pick green/pink.
+  // --- trees: full, organic rounded crowns (a cluster of overlapping leaf
+  // blobs, not two stacked balls) — cheerful green or pink SAKURA, per-tree
+  // instance colors. Reads as lush foliage, still cheap (all instanced).
   if (trees.length) {
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     // white base + per-instance setColorAt (instanceColor) — NOT vertexColors,
@@ -112,41 +112,52 @@ export function buildDecor(terrain, scene) {
       mesh.setMatrixAt(i, m);
       if (col) mesh.setColorAt(i, col);
     };
-    // bright, non-muddy palettes
-    const GREEN = { low: ['#6fc25e', '#7ac866', '#68bc57'], cap: ['#5cb050', '#63b858'], trunk: '#7a5638', accent: '#e8474e' };
-    const PINK = { low: ['#f4a8ce', '#f6b4d6', '#f09cc6'], cap: ['#f8c6de', '#f9d0e4'], trunk: '#8a6a5c', accent: '#ffffff' };
     const C = (hex) => new THREE.Color(hex);
+    const shade = (col, f) => col.clone().multiplyScalar(f);
+    const GREEN = { base: '#6fc25e', hi: '#8ad86e', trunk: '#7a5638', accent: '#e8474e' };
+    const PINK = { base: '#f2a6cc', hi: '#fbcfe4', trunk: '#8a6a5c', accent: '#ffffff' };
+
+    // canopy blob layout (offset x,y,z, scale, colorRole) around the crown centre
+    const BLOBS = [
+      [0, 0.58, 0, 1.15, 'base'],
+      [0.66, 0.40, 0.22, 0.82, 'dark'],
+      [-0.58, 0.44, -0.30, 0.84, 'base'],
+      [0.22, 0.40, -0.64, 0.78, 'dark'],
+      [-0.30, 0.50, 0.60, 0.80, 'base'],
+      [0.06, 1.02, -0.06, 0.74, 'hi'],
+    ];
+    const BPT = BLOBS.length;
 
     const tGeo = new THREE.CylinderGeometry(0.14, 0.22, 1, 6);
     const trunk = new THREE.InstancedMesh(tGeo, trunkMat, trees.length);
     trunk.castShadow = true; trunk.receiveShadow = true;
-    const low = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), leafMat, trees.length);
-    low.castShadow = true;
-    const cap = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 9, 7), leafMat, trees.length);
-    cap.castShadow = true;
+    const canopy = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 9, 7), leafMat, trees.length * BPT);
+    canopy.castShadow = true;
     const accented = trees.filter((t) => t.seed > 0.5);
-    const accGeo = new THREE.SphereGeometry(0.1, 5, 4);
-    const acc = new THREE.InstancedMesh(accGeo, leafMat, Math.max(1, accented.length * 3));
-    let ai = 0;
+    const acc = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 5, 4), leafMat, Math.max(1, accented.length * 3));
+    let ai = 0, ci = 0;
 
-    trees.forEach((tr, i) => {
+    trees.forEach((tr, ti) => {
       const P = tr.sakura ? PINK : GREEN;
+      const base = C(P.base), hi = C(P.hi), dark = shade(base, 0.8);
       const s = tr.s, th = 0.85 * s, ry = tr.seed * 6.28;
-      setInst(trunk, i, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry, C(P.trunk));
-      const cy = tr.y + th * 0.9;
-      setInst(low, i, tr.x, cy + 0.55 * s, tr.z, 1.18 * s, 0.94 * s, 1.18 * s, ry, C(P.low[i % P.low.length]));
-      setInst(cap, i, tr.x, cy + 1.16 * s, tr.z, 0.82 * s, 0.74 * s, 0.82 * s, ry * 1.7, C(P.cap[i % P.cap.length]));
+      setInst(trunk, ti, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry, C(P.trunk));
+      const cy = tr.y + th * 0.95;
+      for (const [ox, oy, oz, bs, role] of BLOBS) {
+        const col = role === 'hi' ? hi : role === 'dark' ? dark : base;
+        setInst(canopy, ci++, tr.x + ox * s, cy + oy * s, tr.z + oz * s, bs * s * 1.02, bs * s * 0.92, bs * s * 1.02, ry + ox, col);
+      }
       if (tr.seed > 0.5) {
         const acol = C(P.accent);
         for (let k = 0; k < 3; k++) {
           const a = tr.seed * 20 + k * 2.1;
-          setInst(acc, ai++, tr.x + Math.cos(a) * 0.9 * s, cy + 0.62 * s + (k - 1) * 0.28 * s, tr.z + Math.sin(a) * 0.9 * s, 1, 1, 1, 0, acol);
+          setInst(acc, ai++, tr.x + Math.cos(a) * 0.95 * s, cy + 0.5 * s + (k - 1) * 0.3 * s, tr.z + Math.sin(a) * 0.95 * s, 1, 1, 1, 0, acol);
         }
       }
     });
     while (ai < accented.length * 3) setInst(acc, ai++, 0, -999, 0, 1, 1, 1, 0, C('#ffffff'));
-    [trunk, low, cap, acc].forEach((mesh) => { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; });
-    group.add(trunk, low, cap);
+    [trunk, canopy, acc].forEach((mesh) => { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; });
+    group.add(trunk, canopy);
     if (accented.length) group.add(acc);
   }
 
@@ -229,29 +240,56 @@ export function buildDecor(terrain, scene) {
     group.add(bMesh);
   }
 
-  // --- torches ---
+  // --- retro street lamps: iron post + glass lantern + flame + warm halo ---
   const flameTexA = makeFlameTexture(0), flameTexB = makeFlameTexture(1);
-  const poleGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.9, 5);
-  const poleMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(PALETTE.torchWood) });
+  const glowTex = canvasTex((ctx) => {
+    const g2 = ctx.createRadialGradient(16, 16, 1, 16, 16, 15);
+    g2.addColorStop(0, 'rgba(255,200,110,0.95)');
+    g2.addColorStop(0.4, 'rgba(255,170,70,0.5)');
+    g2.addColorStop(1, 'rgba(255,150,50,0)');
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, 32, 32);
+  }, 32, 32);
+  const poleGeo = new THREE.CylinderGeometry(0.045, 0.07, 1.15, 6);
+  const poleMat = new THREE.MeshLambertMaterial({ color: new THREE.Color('#2e2a2e') });
   const poleMesh = new THREE.InstancedMesh(poleGeo, poleMat, Math.max(1, torches.length));
   poleMesh.castShadow = true;
+  // glass lantern box atop each post
+  const lanternGeo = new THREE.BoxGeometry(0.2, 0.26, 0.2);
+  const lanternMat = new THREE.MeshLambertMaterial({ color: new THREE.Color('#3a3430') });
+  const lanternMesh = new THREE.InstancedMesh(lanternGeo, lanternMat, Math.max(1, torches.length));
+  // glowing pane inside the lantern (bright, reads as "lit")
+  const paneGeo = new THREE.BoxGeometry(0.15, 0.2, 0.15);
+  const paneMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffcf7a') });
+  const paneMesh = new THREE.InstancedMesh(paneGeo, paneMat, Math.max(1, torches.length));
   const flameMat = new THREE.SpriteMaterial({ map: flameTexA, transparent: true, depthWrite: false });
+  const glowMat = new THREE.SpriteMaterial({
+    map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.2,
+  });
+  const glowSprites = [];
   torches.forEach((tc, i) => {
     q.identity();
-    m.compose(v.set(tc.x, tc.y + 0.45, tc.z), q, sc.set(1, 1, 1));
+    m.compose(v.set(tc.x, tc.y + 0.58, tc.z), q, sc.set(1, 1, 1));
     poleMesh.setMatrixAt(i, m);
+    m.compose(v.set(tc.x, tc.y + 1.22, tc.z), q, sc.set(1, 1, 1));
+    lanternMesh.setMatrixAt(i, m);
+    paneMesh.setMatrixAt(i, m);
     const spr = new THREE.Sprite(flameMat);
-    spr.scale.set(0.34, 0.5, 1);
-    spr.position.set(tc.x, tc.y + 1.05, tc.z);
+    spr.scale.set(0.24, 0.34, 1);
+    spr.position.set(tc.x, tc.y + 1.26, tc.z);
     group.add(spr);
+    const glow = new THREE.Sprite(glowMat.clone());
+    glow.scale.set(2.4, 2.4, 1);
+    glow.position.set(tc.x, tc.y + 1.22, tc.z);
+    group.add(glow);
+    glowSprites.push(glow);
   });
-  if (torches.length) group.add(poleMesh);
+  if (torches.length) group.add(poleMesh, lanternMesh, paneMesh);
 
-  // torch light pool: only the N nearest torches actually glow
-  const LIGHTS = 6;
+  // torch light pool: the N nearest lamps cast real warm light
+  const LIGHTS = 10;
   const lights = [];
   for (let i = 0; i < LIGHTS; i++) {
-    const L = new THREE.PointLight(0xffaa44, 0, 7, 1.8);
+    const L = new THREE.PointLight(0xffb050, 0, 8, 1.7);
     group.add(L);
     lights.push(L);
   }
@@ -318,12 +356,17 @@ export function buildDecor(terrain, scene) {
     lights.forEach((L, i) => {
       if (i < sorted.length && sorted[i].d < 40 * 40) {
         const tc = sorted[i].tc;
-        L.position.set(tc.x, tc.y + 1.15, tc.z);
-        L.intensity = 4.2 + Math.sin(time * 9 + tc.x * 3.1) * 0.9;
+        L.position.set(tc.x, tc.y + 1.22, tc.z);
+        L.intensity = (isNight ? 6.5 : 3.0) + Math.sin(time * 9 + tc.x * 3.1) * 0.9;
       } else {
         L.intensity = 0;
       }
     });
+    // warm halo glow around every lamp — bright at night, faint by day
+    const glowBase = isNight ? 0.85 : 0.14;
+    for (const glow of glowSprites) {
+      glow.material.opacity = glowBase + Math.sin(time * 7 + glow.position.x * 2.3) * (isNight ? 0.12 : 0.03);
+    }
 
     // butterflies flutter in the day, roost at night
     const bflyVis = !isNight;

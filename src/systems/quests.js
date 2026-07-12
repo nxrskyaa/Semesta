@@ -60,6 +60,13 @@ export const QUESTS = {
     objective: { type: 'deliver', item: 'boar_tusk', n: 4, label: 'Deliver 4 Boar Tusks' },
     reward: { xp: 80, items: [{ id: 'mount_trotter', count: 1 }] },
   },
+  home_sweet_home: {
+    giver: 'scout', name: 'A Place to Call Home', requires: ['treasure_hunt'],
+    offer: 'Ready to settle down? Here is how: 1) find a LAND FOR SALE sign out in the wilds (◎ on your map, press N) and stand on it. 2) chop birch trees for Hardwood and mine ore boulders for Iron Ore. 3) stand on your land and press interact — buy it (250 coins) and pick a house design. Do it and I will chip in!',
+    done: 'Look at that — your very own home! It heals you and keeps the monsters out. Here, for the housewarming.',
+    objective: { type: 'build', n: 1, label: 'Buy land & build a house' },
+    reward: { xp: 120, items: [{ id: 'forge_stone', count: 3 }, { id: 'tonic', count: 3 }] },
+  },
   egg_rider: {
     giver: 'fisher', name: 'The Big Cluck', requires: ['first_catch'],
     offer: 'You will not believe this — a hen the size of a pony keeps stealing my catch! Bring me 5 fresh fish to lure her, and she is yours.',
@@ -188,6 +195,7 @@ export function createQuests({ inventory, leveling }) {
         (o.type === 'fish' && kind === 'fish') ||
         (o.type === 'chest' && kind === 'chest') ||
         (o.type === 'forge' && kind === 'forge') ||
+        (o.type === 'build' && kind === 'build') ||
         (o.type === 'talk' && kind === 'talk' && data.target === o.target);
       if (match) { state.active[id] = p + 1; changed = true; }
     }

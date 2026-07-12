@@ -37,7 +37,7 @@ export function createMinimap(canvas, terrain, decor) {
   ctx.imageSmoothingEnabled = false;
   const VIEW = 64; // sel yang terlihat
 
-  function update(playerPos, facing, enemies) {
+  function update(playerPos, facing, enemies, extras = null) {
     const px = playerPos.x + S / 2, pz = playerPos.z + S / 2;
     ctx.fillStyle = '#10160f';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -69,6 +69,29 @@ export function createMinimap(canvas, terrain, decor) {
       ctx.closePath(); ctx.fill();
       ctx.strokeStyle = '#5e3c10';
       ctx.strokeRect(hx - 3, hz - 1, 6, 4);
+    }
+    // land parcels & your built houses (so home is easy to find)
+    if (extras?.lands) {
+      for (const l of extras.lands) {
+        let lx = (l.x + S / 2 - sx) * k, lz = (l.z + S / 2 - sz) * k;
+        const off = lx < 4 || lz < 4 || lx > canvas.width - 4 || lz > canvas.height - 4;
+        lx = Math.max(6, Math.min(canvas.width - 6, lx));
+        lz = Math.max(6, Math.min(canvas.height - 6, lz));
+        if (l.built) { // your home — bright gold house icon
+          ctx.fillStyle = '#ffd23e';
+          ctx.fillRect(lx - 2.5, lz - 1, 5, 4);
+          ctx.beginPath();
+          ctx.moveTo(lx - 4, lz - 1); ctx.lineTo(lx, lz - 5); ctx.lineTo(lx + 4, lz - 1);
+          ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = '#5e3c10'; ctx.lineWidth = 1; ctx.strokeRect(lx - 2.5, lz - 1, 5, 4);
+        } else { // for-sale plot — hollow amber diamond
+          ctx.strokeStyle = l.owned ? '#a8e06a' : '#c8b060';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(lx, lz - 3.5); ctx.lineTo(lx + 3.5, lz); ctx.lineTo(lx, lz + 3.5); ctx.lineTo(lx - 3.5, lz);
+          ctx.closePath(); ctx.stroke();
+        }
+      }
     }
     // world boss: big pulsing gold marker, clamped to the map edge if far
     for (const e of enemies) {

@@ -89,6 +89,11 @@ const CSS = `
   background: rgba(216,184,102,0.08); border: 1px solid var(--gold-dim);
 }
 .coinbar img { width: 16px; height: 16px; image-rendering: pixelated; }
+.steps { display: flex; gap: 6px; margin-bottom: 10px; }
+.steps span { flex: 1; text-align: center; font-size: 9px; letter-spacing: 1px; padding: 5px 4px;
+  border: 1px solid var(--line-soft); color: var(--muted); background: rgba(0,0,0,0.2); }
+.steps span.now { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 6px var(--gold-glow); }
+.steps span.done { border-color: #4a7a4a; color: #8ac86a; }
 .help-body { font-size: 11px; color: #cfd8c8; line-height: 2; }
 .help-body h4 { font-size: 12px; color: #ffe9a8; letter-spacing: 2px; margin: 10px 0 4px; }
 .help-body b { background: #202a20; border: 1px solid #39443a; padding: 0 5px; color: #c5cdbd; font-weight: normal; }
@@ -377,19 +382,33 @@ export function createPanels(hudRoot, {
     if (!estate) return;
     const land = estate.currentLand();
     const coins = inventory.state.coins;
+    const steps = (active) => `<div class="steps">
+      <span class="${active >= 1 ? (active > 1 ? 'done' : 'now') : ''}">1 · Buy land</span>
+      <span class="${active >= 2 ? (active > 2 ? 'done' : 'now') : ''}">2 · Gather wood & ore</span>
+      <span class="${active >= 3 ? 'now' : ''}">3 · Build</span></div>`;
     let html = '';
     if (!land) {
-      html = '<div style="font-size:10px;color:var(--muted)">Stand on a land parcel to build.</div>';
+      html = `<div class="help-body" style="font-size:11px">
+        <b style="color:var(--gold)">How to build a house — 3 steps:</b><br>
+        <b>1.</b> Find a <span class="tip">Land parcel</span> in the wilds — a wooden sign with a big
+        <span style="color:#f0c455">"LAND FOR SALE"</span> label. It's marked <span style="color:#f0c455">◎</span> on the map
+        (${isTouch ? 'tap the minimap' : 'press N'}). Walk onto it.<br>
+        <b>2.</b> Gather building materials: chop <span class="tip">birch trees</span> for Hardwood and mine
+        <span class="tip">ore boulders</span> for Iron Ore (press F on them, 3 hits each).<br>
+        <b>3.</b> Stand on your land and press ${isTouch ? 'the ★ button' : '<b>F</b>'} — this menu opens to buy the
+        land (250c) and pick a house design. Homes heal you & keep monsters away!
+      </div>`;
     } else if (!land.owned) {
       const afford = coins >= estate.landPrice;
-      html = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
+      html = `${steps(1)}<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Step 1 — claim this plot. Earn coins by selling fish, crops & materials at Pip's shop.</div>
         <div class="rec-row"><div class="nm">Land Parcel #${land.idx + 1}
           <small>A scenic clearing, ready for a home of your own.</small></div>
           <div class="cost"><span class="${afford ? 'ok' : 'lack'}">${estate.landPrice}c</span></div>
-          <button class="act" data-buyland ${afford ? '' : 'disabled'}>BUY LAND</button></div>`;
+          <button class="act" data-buyland ${afford ? '' : 'disabled'}>BUY LAND (${estate.landPrice}c)</button></div>`;
     } else if (!land.built) {
-      html = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
-        <h4 class="sect">CHOOSE A DESIGN — gather materials from birch trees & ore nodes</h4>`;
+      html = `${steps(3)}<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
+        <h4 class="sect">PICK A DESIGN — chop birch trees for Hardwood, mine boulders for Iron Ore</h4>`;
       for (const [id, d] of Object.entries(estate.designs)) {
         let cost = '';
         let ok = coins >= d.coins;

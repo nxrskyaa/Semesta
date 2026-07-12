@@ -33,6 +33,27 @@ export const HOUSE_DESIGNS = {
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 
+// a floating billboard label so land parcels are obvious from a distance
+function makeLabel(title, sub, color) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 96;
+  const ctx = c.getContext('2d');
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(10,14,10,0.72)';
+  ctx.fillRect(8, 8, 240, 80);
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.strokeRect(9, 9, 238, 78);
+  ctx.font = 'bold 30px monospace'; ctx.fillStyle = color;
+  ctx.fillText(title, 128, 44);
+  ctx.font = '18px monospace'; ctx.fillStyle = '#e2dfc8';
+  ctx.fillText(sub, 128, 72);
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  spr.scale.set(2.6, 0.98, 1);
+  spr.position.y = 2.1;
+  return spr;
+}
+
 function buildSaleSign() {
   const g = new THREE.Group();
   const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), lam('#8a6a48'));
@@ -139,18 +160,31 @@ export function createHousing(scene, terrain, decorBlocked, particles) {
       const y = terrain.surfaceY(x, z);
       const sign = buildSaleSign();
       sign.position.set(x, y, z);
+      const label = makeLabel('LAND FOR SALE', `${LAND_PRICE} coins — press F`, '#f0c455');
+      sign.add(label);
       scene.add(sign);
       lands.push({
-        idx, x, z, y, sign,
+        idx, x, z, y, sign, label,
         owned: false, built: null, houseMesh: null,
       });
       return;
     }
   });
 
+  function refreshLabel(land) {
+    if (!land.sign || !land.label) return;
+    land.sign.remove(land.label);
+    if (land.built) { land.label = null; return; }
+    land.label = land.owned
+      ? makeLabel('YOUR LAND', 'press F to BUILD', '#a8e06a')
+      : makeLabel('LAND FOR SALE', `${LAND_PRICE} coins — press F`, '#f0c455');
+    land.sign.add(land.label);
+  }
+
   function buyLand(land) {
     if (land.owned) return false;
     land.owned = true;
+    refreshLabel(land);
     particles.fountain(new THREE.Vector3(land.x, land.y + 0.5, land.z), '#f0c455', 16);
     return true;
   }
@@ -189,7 +223,7 @@ export function createHousing(scene, terrain, decorBlocked, particles) {
     data.forEach((d, i) => {
       const l = lands[i];
       if (!l) return;
-      if (d.owned) l.owned = true;
+      if (d.owned) { l.owned = true; refreshLabel(l); }
       if (d.built) build(l, d.built);
     });
   }

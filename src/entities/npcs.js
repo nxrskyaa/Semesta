@@ -120,6 +120,24 @@ export const NPC_DEFS = [
       'The old dances of Bali gave me form. Honour, courage, and a very good mane.',
     ],
   },
+  {
+    id: 'kobo', name: 'Kobo', species: 'bear', role: 'Wandering Cub', ambient: true,
+    fur: '#8a6a4a', furLight: '#c8a87a', outfit: '#5a9ad0',
+    dialog: [
+      'I walked SO far from the village! Look how brave I am!',
+      'Did you see the windmill? The big blades go whoooosh!',
+      'One day I will climb the ruined tower. When I am taller. And braver.',
+    ],
+  },
+  {
+    id: 'pesca', name: 'Pesca', species: 'cat', role: 'Shoreline Dreamer', ambient: true,
+    fur: '#e0c86a', furLight: '#f4e6a8', outfit: '#3a7a8a',
+    dialog: [
+      'The best fishing spots are far from the noisy village, nya.',
+      'I am not lost. I am... exploring. Definitely exploring.',
+      'If you build a house out here, invite me for grilled fish!',
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -735,6 +753,28 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     return { x, z, y: terrain.surfaceY(x, z) };
   }
 
+  // like groundAt but spirals out to the nearest walkable, non-water, unblocked
+  // cell — used to scatter ambient NPCs across the world without landing them
+  // in a lake or inside a tree
+  function landNear(ox, oz) {
+    const ok = (x, z) => {
+      const [ix, iz] = terrain.cellOf(x, z);
+      if (!terrain.inBounds(ix, iz)) return false;
+      const h = terrain.heightCell(ix, iz);
+      return h > WATER_LEVEL && h < 9 && !decorBlocked.has(`${ix},${iz}`);
+    };
+    const bx = terrain.spawn.x + ox, bz = terrain.spawn.z + oz;
+    if (ok(bx, bz)) return { x: bx, z: bz, y: terrain.surfaceY(bx, bz) };
+    for (let r = 1; r <= 10; r++) {
+      for (let a = 0; a < 8; a++) {
+        const x = bx + Math.cos(a / 8 * Math.PI * 2) * r * 1.5;
+        const z = bz + Math.sin(a / 8 * Math.PI * 2) * r * 1.5;
+        if (ok(x, z)) return { x, z, y: terrain.surfaceY(x, z) };
+      }
+    }
+    return groundAt(ox, oz);
+  }
+
   function place(mesh, ox, oz, faceCenter = true, blockR = 1) {
     const spot = groundAt(ox, oz);
     mesh.position.set(spot.x, spot.y, spot.z);
@@ -858,39 +898,56 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
       { ox: 2.2, oz: 2.6, act: 'idle' },
       { ox: 5.6, oz: -2.2, act: 'shop' },
     ],
-    momo: [ // the kid zoomies loop
-      { ox: 1, oz: -4, act: 'idle' }, { ox: -4, oz: 1, act: 'idle' },
-      { ox: 3.5, oz: 3.5, act: 'idle' }, { ox: -1, oz: -6, act: 'idle' },
+    momo: [ // the kid zooms around the east meadow
+      { ox: 17, oz: -9, act: 'idle' }, { ox: 13, oz: -13, act: 'idle' },
+      { ox: 21, oz: -5, act: 'idle' }, { ox: 15, oz: -11, act: 'idle' },
     ],
-    tato: [
-      { ox: 2.4, oz: 3.4, act: 'sit' }, { ox: 1.6, oz: 2.2, act: 'idle' },
-      { ox: 2.4, oz: 3.4, act: 'sit' },
+    tato: [ // dozing by the far pond
+      { ox: -16, oz: 15, act: 'sit' }, { ox: -13, oz: 17, act: 'idle' },
+      { ox: -16, oz: 15, act: 'sit' },
     ],
-    lulu: [
-      { ox: -3.2, oz: 4.6, act: 'idle' }, { ox: -5.4, oz: 2.2, act: 'idle' },
-      { ox: -3.6, oz: 6.6, act: 'idle' },
+    lulu: [ // dreaming near the distant water
+      { ox: 15, oz: 19, act: 'idle' }, { ox: 18, oz: 15, act: 'idle' },
+      { ox: 12, oz: 21, act: 'idle' },
     ],
-    bimo: [
-      { ox: 6, oz: -6, act: 'idle' }, { ox: -6, oz: -6, act: 'idle' },
-      { ox: -6, oz: 6, act: 'idle' }, { ox: 6, oz: 6, act: 'idle' },
+    bimo: [ // wide perimeter patrol
+      { ox: -18, oz: -13, act: 'idle' }, { ox: -14, oz: -18, act: 'idle' },
+      { ox: -21, oz: -8, act: 'idle' }, { ox: -16, oz: -14, act: 'idle' },
     ],
-    nyanya: [
-      { ox: 3, oz: -1.5, act: 'idle' }, { ox: -2, oz: 3, act: 'idle' },
-      { ox: 5, oz: 3, act: 'idle' }, { ox: -3.5, oz: -3.5, act: 'idle' },
+    nyanya: [ // a flowery clearing just outside the village
+      { ox: 11, oz: 7, act: 'idle' }, { ox: 7, oz: 12, act: 'idle' },
+      { ox: 14, oz: 4, act: 'idle' }, { ox: 9, oz: 10, act: 'idle' },
+    ],
+    kobo: [ // roams the far north near the windmill
+      { ox: 22, oz: -16, act: 'idle' }, { ox: 26, oz: -10, act: 'idle' },
+      { ox: 18, oz: -20, act: 'idle' },
+    ],
+    pesca: [ // dreams by the far south-east shore
+      { ox: -20, oz: 20, act: 'idle' }, { ox: -24, oz: 15, act: 'sit' },
+      { ox: -16, oz: 24, act: 'idle' },
     ],
     barong: [ // stands guard at the village entrance, does not wander
       { ox: 0, oz: -9.5, act: 'idle' },
     ],
   };
 
+  // quest-givers + shopkeepers stay in the village; ambient villagers are
+  // scattered across the world so it doesn't feel like everyone's in one square
   const npcStart = [
     [-3.5, -3], [2.5, 1.5], [-3.2, -1.8], [4, 5.5], [4.2, 3.2],
-    [5.6, -2.2], [1, -4], [2.4, 3.2], [-3.2, 4.6], [6, -6],
-    [3, -1.5], [0, -9.5],
+    [5.6, -2.2],           // nxr (village)
+    [17, -9],              // momo — east meadow
+    [-16, 15],             // tato — a quiet pond in the south-west
+    [15, 19],              // lulu — near the far water
+    [-18, -13],            // bimo — north-west perimeter patrol
+    [11, 7],               // nyanya — a flowery clearing near the village
+    [0, -9.5],             // barong — village entrance (guardian)
+    [22, -16],             // kobo — far north
+    [-20, 20],             // pesca — far south-east
   ];
   NPC_DEFS.forEach((def, i) => {
     const [ox, oz] = npcStart[i % npcStart.length];
-    const spot = groundAt(ox, oz);
+    const spot = def.ambient ? landNear(ox, oz) : groundAt(ox, oz);
     const mesh = buildVillagerMesh(def);
     mesh.position.set(spot.x, spot.y, spot.z);
     scene.add(mesh);
