@@ -530,11 +530,17 @@ export function createPanels(hudRoot, {
     panels.help.innerHTML = `
       <h3>ADVENTURER'S GUIDE <small>[Esc] close</small></h3>
       <div class="help-body">
+        <h4>WHERE TO FIND EVERYTHING (talk with ${touch ? 'the ★ button' : '<b>F</b>'})</h4>
+        <span class="tip">Pip the Shopkeeper</span> — by the striped market stall (buy seeds, sell fish/crops/materials). Talk to Pip → <b>OPEN SHOP</b>.<br>
+        <span class="tip">Master NXR</span> — the koala at the capsule machine on the village's east side (gacha!). Talk → <b>WONDER CAPSULES</b>.<br>
+        <span class="tip">Bruna the Blacksmith</span> — the anvil/forge corner (or press <b>V</b> anywhere).<br>
+        <span class="tip">Farm plots</span> — the tilled field just west of the village.<br>
+        <span class="tip">Land parcels</span> (◎ on the map) & <span class="tip">Rest Camps</span> (▲, a Ranger heals you there) are out in the wilds — open the map with ${touch ? 'a tap on the minimap' : '<b>N</b>'}.
         <h4>CONTROLS</h4>
         ${touch
-          ? `Left stick to move · <b>⚔</b> attack (auto-aims) · <b>↺</b> roll · <b>⤒</b> jump · right side buttons for skills & tonic · <b>★</b> context button to talk / open chests / fish · drag the middle-right area to turn the camera.`
+          ? `Left stick to move · <b>⚔</b> attack (auto-aims) · <b>↺</b> roll · <b>⤒</b> jump · right side buttons for skills & tonic · <b>★</b> context button to talk / buy / open chests / fish · <b>✕</b> (top-right) closes any menu · drag the middle-right area to turn the camera.`
           : `<b>WASD</b> move · <b>Space</b> jump · <b>LMB</b> attack (auto-aims at the nearest enemy) · <b>RMB</b> roll ·
-             <b>1-3</b> skills · <b>4</b> tonic · <b>F</b> talk / open chests / fish · <b>M</b> mount · <b>Q/E</b> rotate camera · <b>Scroll</b> zoom.`}
+             <b>1-3</b> skills · <b>4</b> tonic · <b>F</b> talk / buy / open chests / fish · <b>M</b> mount · <b>N</b> map · <b>Q/E</b> rotate camera · <b>Scroll</b> zoom · <b>Esc</b> close menus.`}
         <h4>HOW TO GROW STRONGER</h4>
         1. Hunt monsters for XP and materials — tougher ones live far from the village.<br>
         2. <b>CRAFT</b> better weapons from monster parts (menu C).<br>

@@ -538,16 +538,28 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       e.anim += dt;
       e.attackCd -= dt;
 
-      // sanctuaries (village / camps / player homes): monsters turn tail and
-      // shuffle back out — no fighting inside the safe radius
+      // sanctuaries (village / camps / player homes): regular monsters can
+      // NEVER be inside the safe radius. They retreat, and if they somehow end
+      // up within it (knockback, chasing the player in) they're hard-clamped to
+      // just outside the boundary — basecamp is truly monster-free.
       const zone = hooks.inSafeZone?.(p.x, p.z);
       if (zone && !e.isWorldBoss) {
         const dx = p.x - zone.x, dz = p.z - zone.z;
-        const l = Math.hypot(dx, dz) || 1;
+        let l = Math.hypot(dx, dz);
+        // dead-center degenerate case: pick a stable outward heading
+        let nx, nz;
+        if (l < 0.01) { nx = Math.cos(e.dir || 0); nz = Math.sin(e.dir || 0); l = 0.01; }
+        else { nx = dx / l; nz = dz / l; }
         e.state = 'wander';
-        e.mesh.rotation.y = Math.atan2(dx, dz);
-        moveEnemy(e, (dx / l) * e.def.speed * 1.7, (dz / l) * e.def.speed * 1.7, dt);
-        applyKnock(e, dt);
+        e.dir = Math.atan2(nz, nx);
+        e.mesh.rotation.y = Math.atan2(nx, nz);
+        e.knock.set(0, 0); // cancel any inward knockback
+        moveEnemy(e, nx * e.def.speed * 2.2, nz * e.def.speed * 2.2, dt);
+        if (Math.hypot(p.x - zone.x, p.z - zone.z) < zone.r) {
+          p.x = zone.x + nx * (zone.r + 0.5);
+          p.z = zone.z + nz * (zone.r + 0.5);
+          p.y = terrain.surfaceY(p.x, p.z);
+        }
         continue;
       }
 

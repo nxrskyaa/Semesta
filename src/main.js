@@ -33,6 +33,7 @@ import { ITEMS } from './systems/items.js';
 import { createAudio } from './audio/audio.js';
 import { showCharacterCreation } from './ui/charcreate.js';
 import { showOpening, logoUrl } from './ui/menu.js';
+import { cleanImage } from './gfx/logo.js';
 import { createHUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
 import { createWorldMap } from './ui/worldmap.js';
@@ -65,11 +66,12 @@ async function main() {
   const saved = loadSave();
   const audio = createAudio();
 
-  // the world-building boot screen shows the real logo art
+  // the world-building boot screen shows the real logo art (background keyed out)
   const bootH1 = document.querySelector('#boot h1');
   if (bootH1) {
+    const cleanLogo = await cleanImage(logoUrl);
     bootH1.outerHTML =
-      `<img src="${logoUrl}" alt="SEMESTA" style="width:min(420px,80vw);image-rendering:pixelated;filter:drop-shadow(0 6px 18px #000a)">`;
+      `<img src="${cleanLogo}" alt="SEMESTA" style="width:min(420px,80vw);image-rendering:pixelated;filter:drop-shadow(0 6px 18px #000a)">`;
   }
 
   // opening: loading splash -> main menu (New / Continue / About)
@@ -844,6 +846,21 @@ async function init(character, saved, audio) {
       };
     }
 
+    // camp rangers: talk for a full heal
+    const ranger = camps.nearestRanger(player.state.pos, 2.4);
+    if (ranger && player.state.hp < player.state.maxHp) {
+      return {
+        label: 'Rest with Ranger (full heal)',
+        run: () => {
+          player.state.hp = player.state.maxHp;
+          player.state.sinceHurt = 999;
+          audio.sfx('potion');
+          particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#7dff8a', 16);
+          hud.toastText(camps.rangerLine(ranger));
+        },
+      };
+    }
+
     // campfires: cook the catch of the day
     const fire = camps.nearestFire(player.state.pos, 2.6)
       || (((npcs.cookfire.x - player.state.pos.x) ** 2 + (npcs.cookfire.z - player.state.pos.z) ** 2 < 2.6 * 2.6) ? npcs.cookfire : null);
@@ -936,6 +953,7 @@ async function init(character, saved, audio) {
       onAfkFish: () => {
         if (fishing.toggleAfk()) hud.toastText('AFK fishing on — common fish only. Move to stop.');
       },
+      onCloseMenu: () => { audio.sfx('ui'); panels.closeAll(); dialog.hide(); worldmap.hide(); fishing.cancel(); },
       onCameraDrag: (d) => { cam.yaw -= d; },
     });
   }
@@ -983,7 +1001,11 @@ async function init(character, saved, audio) {
   setTimeout(() => bootEl.remove(), 800);
   hud.banner(`WELCOME TO RIVERBROOK, ${character.name.toUpperCase()}`);
   if (!saved) {
-    setTimeout(() => hud.toastText('Villagers with a "!" have quests for you. Press H for the guide.'), 2600);
+    const hintKey = touch ? 'the ★ button' : 'F';
+    setTimeout(() => hud.toastText('Villagers with a "!" have quests for you. Press H anytime for the full guide.'), 2600);
+    setTimeout(() => hud.toastText(`Talk to Pip at the market stall to buy & sell (${hintKey}).`), 6200);
+    setTimeout(() => hud.toastText(`Master NXR the koala runs the gacha capsule machine — try your luck!`), 9800);
+    setTimeout(() => hud.toastText(`${touch ? 'Tap the minimap' : 'Press N'} for the world map: village, camps & land.`), 13400);
   }
 
   // --- world boss scheduler: one rises every 3 minutes ---
@@ -1112,6 +1134,8 @@ async function init(character, saved, audio) {
       const it = currentInteraction();
       hud.setPrompt(it ? { key: 'F', label: it.label } : null);
       touchUI?.setPrompt(it ? { label: it.label, afk: it.afk } : null);
+      // mobile ESC-replacement close button while any panel/dialog/map is open
+      touchUI?.setMenuOpen(panels.anyOpen() || dialog.isOpen() || worldmap.isOpen());
     }
 
     renderer.render(scene, camera);

@@ -119,37 +119,65 @@ const BUILDERS = {
     return g;
   },
   trotter() {
+    // Trotter — a chunky, ROUND tusk-pup: big glossy eyes, floppy ears, a
+    // squishy caramel body. Cute over gnarly.
     const g = new THREE.Group();
-    const fur = lam('#b0704a');
-    const furDark = lam('#8a5638');
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.85), fur);
-    body.position.y = 0.42;
+    const fur = lam('#d59a63');
+    const furDark = lam('#b0764a');
+    const cream = lam('#f2dcc0');
+    // round body
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), fur);
+    body.position.set(0, 0.46, 0);
+    body.scale.set(1.05, 0.92, 1.25);
     body.castShadow = true;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.32), fur);
-    head.position.set(0, 0.56, 0.5);
-    addFace(head, 'trotter', { eyeW: 3, eyeH: 4, gap: 6, eyeY: 1, mouth: 'none' }, 0.4, 0.3, 0, 0.05, 0.17);
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.13, 0.09), lam('#d89aa0'));
-    snout.position.set(0, -0.06, 0.19); head.add(snout);
-    const mane = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.5), furDark);
-    mane.position.set(0, 0.66, 0.06);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), cream);
+    belly.position.set(0, 0.34, 0.12); belly.scale.set(1, 0.8, 1.1);
+    // big round head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), fur);
+    head.position.set(0, 0.62, 0.46);
+    head.scale.set(1.1, 1, 1);
+    head.castShadow = true;
+    addFace(head, 'trotter', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, mouth: 'w', cheeks: 'rgba(240,150,140,0.6)' }, 0.42, 0.32, 0, 0.02, 0.24);
+    // round pink snout with nostrils
+    const snout = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 7), lam('#e8a8ac'));
+    snout.position.set(0, -0.05, 0.3); snout.scale.set(1.2, 0.85, 0.7);
+    head.add(snout);
+    const nostrils = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.03, 0.02), lam('#b06a70'));
+    nostrils.position.set(0, -0.05, 0.4); head.add(nostrils);
+    // floppy rounded ears
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.05), furDark);
-      ear.position.set(sx * 0.15, 0.24, -0.04); head.add(ear);
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), furDark);
+      ear.position.set(sx * 0.26, 0.14, -0.02);
+      ear.scale.set(0.7, 1.1, 0.35);
+      ear.rotation.z = sx * 0.5;
+      head.add(ear);
     }
-    // saddle
-    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.34), lam('#a83a34'));
-    saddle.position.y = 0.66;
-    const saddleTrim = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.36), lam('#c8a03a'));
-    saddleTrim.position.y = 0.62;
+    // tiny friendly tusks
+    for (const sx of [-1, 1]) {
+      const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.14, 5), cream);
+      tusk.position.set(sx * 0.12, -0.12, 0.28);
+      tusk.rotation.x = -0.5; tusk.rotation.z = sx * 0.2;
+      head.add(tusk);
+    }
+    // little curly tail
+    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.03, 5, 8), furDark);
+    tail.position.set(0, 0.5, -0.5); tail.rotation.y = Math.PI / 2;
+    // plush saddle with trim + horn
+    const saddle = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), lam('#c23a44'));
+    saddle.position.set(0, 0.66, -0.02); saddle.scale.set(1.1, 0.5, 1.2);
+    const saddleTrim = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.03, 6, 14), lam('#e8c45a'));
+    saddleTrim.position.set(0, 0.64, -0.02); saddleTrim.rotation.x = Math.PI / 2;
+    const horn = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), lam('#e8c45a'));
+    horn.position.set(0, 0.74, 0.14);
     const legs = [];
-    for (const [dx, dz] of [[-0.18, 0.28], [0.18, 0.28], [-0.18, -0.28], [0.18, -0.28]]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 0.14), furDark);
-      leg.position.set(dx, 0.15, dz);
+    for (const [dx, dz] of [[-0.2, 0.24], [0.2, 0.24], [-0.2, -0.24], [0.2, -0.24]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.26, 6), furDark);
+      leg.position.set(dx, 0.13, dz);
+      const hoof = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.06, 6), lam('#5a4432'));
+      hoof.position.y = -0.15; leg.add(hoof);
       g.add(leg); legs.push(leg);
     }
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.08), furDark);
-    tail.position.set(0, 0.5, -0.46); tail.rotation.x = -0.5;
-    g.add(body, head, mane, saddle, saddleTrim, tail);
+    g.add(body, belly, head, tail, saddle, saddleTrim, horn);
     g.userData.legs = legs;
     return g;
   },

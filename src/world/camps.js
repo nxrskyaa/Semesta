@@ -77,6 +77,58 @@ function buildCamp() {
   return g;
 }
 
+// a cozy little fox-ranger critter that sits by the fire
+function buildRanger() {
+  const g = new THREE.Group();
+  const fur = lam('#d98a54');
+  const furLight = lam('#f0d0a8');
+  const cloak = lam('#3a6a4a');
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), cloak);
+  body.position.y = 0.24; body.scale.set(1, 1.1, 1);
+  body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), fur);
+  head.position.y = 0.5;
+  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.14, 6), furLight);
+  snout.position.set(0, -0.02, 0.2); snout.rotation.x = Math.PI / 2;
+  head.add(snout);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.03, 5, 4), lam('#2a2620'));
+  nose.position.set(0, -0.02, 0.28); head.add(nose);
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 5), fur);
+    ear.position.set(sx * 0.11, 0.18, 0); ear.rotation.z = sx * 0.2;
+    head.add(ear);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 5, 4), lam('#2a2620'));
+    eye.position.set(sx * 0.08, 0.02, 0.17); head.add(eye);
+  }
+  // ranger hat brim
+  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.16, 0.02, 8), lam('#5a4432'));
+  hat.position.y = 0.66; head.add(hat);
+  const hatTop = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.14, 8), lam('#6a5038'));
+  hatTop.position.y = 0.73; head.add(hatTop);
+  // bushy tail
+  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), fur);
+  tail.position.set(0, 0.22, -0.22); tail.scale.set(0.8, 0.8, 1.2);
+  const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5), furLight);
+  tailTip.position.set(0, 0.28, -0.34);
+  g.add(body, head, tail, tailTip);
+
+  // floating name tag
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 24;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(10,12,10,0.55)';
+  const tw = ctx.measureText('Ranger').width + 12;
+  ctx.fillRect(64 - tw / 2, 3, tw, 17);
+  ctx.fillStyle = '#a8e0b0'; ctx.fillText('Ranger', 64, 16);
+  const tex = new THREE.CanvasTexture(c); tex.magFilter = THREE.NearestFilter;
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  tag.scale.set(1.3, 0.24, 1); tag.position.y = 0.98;
+  g.add(tag);
+  g.userData.head = head;
+  return g;
+}
+
 export function createCamps(scene, terrain, decorBlocked, particles) {
   const camps = [];
   const S2 = terrain.size / 2;
@@ -103,10 +155,24 @@ export function createCamps(scene, terrain, decorBlocked, particles) {
       scene.add(mesh);
       // block only the fire ring cell so the camp stays walkable
       decorBlocked.add(`${ix},${iz}`);
-      camps.push({ x, z, y, mesh, anim: Math.random() * 10 });
+      const camp = { x, z, y, mesh, anim: Math.random() * 10, ranger: null };
+      // every camp has a friendly Ranger who heals passing adventurers
+      const ranger = buildRanger();
+      ranger.position.set(x + 1.4, y, z + 0.9);
+      ranger.rotation.y = Math.atan2(-1.4, -0.9);
+      scene.add(ranger);
+      camp.ranger = { mesh: ranger, x: x + 1.4, z: z + 0.9, anim: Math.random() * 10, lineIdx: 0 };
+      camps.push(camp);
       placed = true;
     }
   }
+
+  const RANGER_LINES = [
+    'Rest easy — no monsters set foot in a Ranger camp.',
+    'Patched you right up! Off you go, hero.',
+    'A warm fire and a full heart. Come back any time.',
+    'The wilds are calmer near the fire. Breathe.',
+  ];
 
   function update(dt, playerPos, time) {
     for (const c of camps) {
@@ -119,6 +185,13 @@ export function createCamps(scene, terrain, decorBlocked, particles) {
       // ember sparks
       if (c.mesh.position.distanceToSquared(playerPos) < 30 * 30 && Math.random() < dt * 2.5) {
         particles.burst(new THREE.Vector3(c.x, c.y + 0.35, c.z), '#ffb055', 1, 0.7, -0.8, 0.8);
+      }
+      // ranger faces the player when near & gently bobs
+      if (c.ranger) {
+        c.ranger.anim += dt;
+        const dP = Math.hypot(c.ranger.x - playerPos.x, c.ranger.z - playerPos.z);
+        if (dP < 4) c.ranger.mesh.rotation.y = Math.atan2(playerPos.x - c.ranger.x, playerPos.z - c.ranger.z);
+        if (c.ranger.mesh.userData.head) c.ranger.mesh.userData.head.position.y = 0.5 + Math.sin(c.ranger.anim * 2.2) * 0.02;
       }
     }
   }
@@ -133,5 +206,21 @@ export function createCamps(scene, terrain, decorBlocked, particles) {
     return best;
   }
 
-  return { camps, update, nearestFire };
+  // nearest ranger within radius (talk -> full heal)
+  function nearestRanger(pos, radius) {
+    let best = null, bd = radius * radius;
+    for (const c of camps) {
+      if (!c.ranger) continue;
+      const d = (c.ranger.x - pos.x) ** 2 + (c.ranger.z - pos.z) ** 2;
+      if (d < bd) { bd = d; best = c.ranger; }
+    }
+    return best;
+  }
+  function rangerLine(ranger) {
+    const line = RANGER_LINES[ranger.lineIdx % RANGER_LINES.length];
+    ranger.lineIdx++;
+    return line;
+  }
+
+  return { camps, update, nearestFire, nearestRanger, rangerLine };
 }

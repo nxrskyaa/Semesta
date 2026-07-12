@@ -67,6 +67,16 @@ const CSS = `
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 #touchui .afk.show { display: flex; }
+/* menu close button (ESC replacement on touch) — top-right, only while a panel is open */
+#touchui .closebtn {
+  position: absolute; top: 10px; right: 10px; width: 48px; height: 48px;
+  border-radius: 50%; border: 2px solid #c88; background: rgba(40,16,16,0.82);
+  color: #ffd8d0; font-size: 22px; display: none; align-items: center; justify-content: center;
+  pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 45;
+}
+#touchui .closebtn.show { display: flex; }
+#touchui .closebtn:active { background: rgba(120,40,40,0.9); }
 #touchui .ctx:active { background: rgba(90,74,30,0.85); }
 #touchui .ctx .lbl {
   position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
@@ -101,6 +111,7 @@ export function createTouchControls(input, skillIds, callbacks) {
       <button class="ctx"><span class="ic">★</span><span class="lbl"></span></button>
       <button class="afk" title="AFK fishing">💤</button>
     </div>
+    <button class="closebtn" title="Close">✕</button>
   `;
   document.body.appendChild(root);
 
@@ -174,7 +185,9 @@ export function createTouchControls(input, skillIds, callbacks) {
   on('.pot', callbacks.onPotion);
   on('.ctx', () => callbacks.onInteract?.());
   on('.afk', () => callbacks.onAfkFish?.());
+  on('.closebtn', () => callbacks.onCloseMenu?.());
   const afkBtn = root.querySelector('.afk');
+  const closeBtn = root.querySelector('.closebtn');
   root.querySelectorAll('[data-skill]').forEach((b) => {
     b.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -190,6 +203,13 @@ export function createTouchControls(input, skillIds, callbacks) {
     afkBtn.classList.toggle('show', !!p.afk);
   }
 
+  // show/hide the ESC-replacement close button while a menu/panel is open
+  function setMenuOpen(open) {
+    closeBtn.classList.toggle('show', !!open);
+    // hide the action cluster while a full-screen panel is up so it's not tappable behind
+    root.querySelector('.btns').style.opacity = open ? '0.25' : '1';
+  }
+
   function update(skillSys, potionCount) {
     root.querySelectorAll('[data-skill]').forEach((b) => {
       const frac = skillSys.cdFrac(b.dataset.skill);
@@ -203,5 +223,5 @@ export function createTouchControls(input, skillIds, callbacks) {
     root.querySelector('.pot .cnt').textContent = potionCount;
   }
 
-  return { update, setPrompt, root };
+  return { update, setPrompt, setMenuOpen, root };
 }

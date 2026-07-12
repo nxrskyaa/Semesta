@@ -1,6 +1,7 @@
-// World decor: rounded low-poly trees (NOT blocky), faceted rocks, grass tufts,
-// flowers, bushes, torches along paths — plus living ambience: butterflies by
-// day, fireflies by night. All instanced for cheap draw calls.
+// World decor: lush rounded 3D trees (Pokopia/Animal-Crossing style — rounded
+// deciduous canopies + layered pine firs, NOT flat sprites or blocky voxels),
+// faceted rocks, grass tufts, flowers, bushes, torches — plus living ambience:
+// butterflies by day, fireflies by night. All instanced for cheap draw calls.
 import * as THREE from 'three';
 import { mulberry32, fbm2 } from '../util/noise.js';
 import { WATER_LEVEL } from './terrain.js';
@@ -8,72 +9,6 @@ import {
   makeGrassTuftTexture, makeFlowerTexture,
   makeFlameTexture, toTexture, PALETTE,
 } from '../gfx/textures.js';
-
-// --- pixel-art tree sprites (drawn on canvas, dark outline style) ---
-const TREE_PALETTES = [
-  { base: '#4a8a50', dark: '#2e5a36', light: '#6ab06a', trunk: '#5a4432', trunkDark: '#3e2f22' },
-  { base: '#468a62', dark: '#2c5a42', light: '#66b088', trunk: '#5a4432', trunkDark: '#3e2f22' },
-  { base: '#568a42', dark: '#38602c', light: '#7ab05a', trunk: '#6a5038', trunkDark: '#4a3826' },
-];
-
-function pxBlob(ctx, cx, cy, r, col) {
-  ctx.fillStyle = col;
-  for (let y = -r; y <= r; y++) {
-    for (let x = -r; x <= r; x++) {
-      if (x * x + y * y <= r * r + r * 0.3) ctx.fillRect(Math.round(cx + x), Math.round(cy + y), 1, 1);
-    }
-  }
-}
-
-function makeTreeSideTexture(variant) {
-  const P = TREE_PALETTES[variant % TREE_PALETTES.length];
-  const c = document.createElement('canvas');
-  c.width = 28; c.height = 36;
-  const ctx = c.getContext('2d');
-  // trunk (outlined)
-  pxBlob(ctx, 14, 30, 4, P.trunkDark);
-  ctx.fillStyle = P.trunkDark;
-  ctx.fillRect(11, 20, 6, 15);
-  ctx.fillStyle = P.trunk;
-  ctx.fillRect(12, 20, 4, 14);
-  ctx.fillRect(10, 32, 8, 3);
-  // canopy: dark outline pass, then base fill, then sunlit top
-  const lumps = [
-    [14, 11, 10], [7, 16, 6], [21, 16, 6], [14, 5, 6],
-  ];
-  for (const [x, y, r] of lumps) pxBlob(ctx, x, y, r + 1, P.dark);
-  for (const [x, y, r] of lumps) pxBlob(ctx, x, y, r, P.base);
-  pxBlob(ctx, 11, 7, 5, P.light);
-  pxBlob(ctx, 18, 10, 3, P.light);
-  // leafy speckles
-  ctx.fillStyle = P.dark;
-  for (const [sx, sy] of [[9, 14], [17, 17], [13, 15], [20, 12], [6, 18]]) ctx.fillRect(sx, sy, 1, 1);
-  return toTexture(c);
-}
-
-function makeTreeTopTexture(variant) {
-  const P = TREE_PALETTES[variant % TREE_PALETTES.length];
-  const c = document.createElement('canvas');
-  c.width = 26; c.height = 26;
-  const ctx = c.getContext('2d');
-  // scalloped rim: ring of outline bumps, then the filled crown
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    pxBlob(ctx, 13 + Math.cos(a) * 8, 13 + Math.sin(a) * 8, 5, P.dark);
-  }
-  pxBlob(ctx, 13, 13, 11, P.dark);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    pxBlob(ctx, 13 + Math.cos(a) * 7.5, 13 + Math.sin(a) * 7.5, 4, P.base);
-  }
-  pxBlob(ctx, 13, 13, 10, P.base);
-  // sunlight from the top-left + a peek of trunk heart
-  pxBlob(ctx, 10, 9, 5, P.light);
-  pxBlob(ctx, 16, 17, 2, P.dark);
-  ctx.fillStyle = P.dark;
-  for (const [sx, sy] of [[8, 16], [18, 8], [14, 20], [6, 11]]) ctx.fillRect(sx, sy, 1, 1);
-  return toTexture(c);
-}
 
 const SEED = 4242;
 
@@ -108,10 +43,12 @@ export function buildDecor(terrain, scene) {
       // keep the village clearing open
       const dSpawn = Math.hypot(wx - terrain.spawn.x, wz - terrain.spawn.z);
 
-      if (forest > 0.48 && r < 0.03 && dSpawn > 9 && !nearTree(trees, wx, wz, 3.6)) {
+      // trees are spaced generously (4.4) so canopies never overlap into an
+      // ugly tangled mass; ~1 in 3 is a pine fir, the rest rounded deciduous
+      if (forest > 0.48 && r < 0.032 && dSpawn > 9 && !nearTree(trees, wx, wz, 4.4)) {
         trees.push({
           x: wx, y, z: wz,
-          s: 0.85 + rng() * 0.4, seed: rng(), variant: Math.floor(rng() * 3),
+          s: 0.9 + rng() * 0.35, seed: rng(), pine: rng() < 0.34,
         });
         blocked.add(`${ix},${iz}`);
         continue;
@@ -161,45 +98,82 @@ export function buildDecor(terrain, scene) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
   const YUP = new THREE.Vector3(0, 1, 0);
 
-  // --- trees: proper PIXEL-ART imposters — two crossed sprite planes for the
-  // side view + a round scalloped cap for the top-down view. Short & sparse,
-  // so the steep camera never loses your character behind a forest wall.
-  const treeSideTexs = [0, 1, 2].map((vnt) => makeTreeSideTexture(vnt));
-  const treeTopTexs = [0, 1, 2].map((vnt) => makeTreeTopTexture(vnt));
-  const TREE_W = 2.3, TREE_H = 2.9;
+  // --- trees: lush rounded 3D canopies (deciduous) + layered firs (pine) ---
+  const decid = trees.filter((t) => !t.pine);
+  const pines = trees.filter((t) => t.pine);
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6a4a30 });
+  const leafMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const leafMatFlat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const setInst = (mesh, i, px, py, pz, sx, sy, sz, ry, col) => {
+    q.setFromAxisAngle(YUP, ry);
+    m.compose(v.set(px, py, pz), q, sc.set(sx, sy, sz));
+    mesh.setMatrixAt(i, m);
+    if (col) mesh.setColorAt(i, col);
+  };
 
-  if (trees.length) {
-    const byVariant = [[], [], []];
-    for (const tr of trees) byVariant[tr.variant].push(tr);
-    for (let vnt = 0; vnt < 3; vnt++) {
-      const list = byVariant[vnt];
-      if (!list.length) continue;
-      // crossed vertical planes (the classic pixel-art tree sprite)
-      const p1 = new THREE.PlaneGeometry(TREE_W, TREE_H);
-      const p2 = new THREE.PlaneGeometry(TREE_W, TREE_H);
-      p2.rotateY(Math.PI / 2);
-      const crossGeo = mergeGeoms([p1, p2]);
-      const crossMat = new THREE.MeshLambertMaterial({
-        map: treeSideTexs[vnt], transparent: false, alphaTest: 0.5, side: THREE.DoubleSide,
-      });
-      const crossMesh = new THREE.InstancedMesh(crossGeo, crossMat, list.length);
-      crossMesh.castShadow = true;
-      // horizontal canopy cap so trees read as round blobs from above
-      const capGeo = new THREE.PlaneGeometry(TREE_W * 0.96, TREE_W * 0.96);
-      capGeo.rotateX(-Math.PI / 2);
-      const capMat = new THREE.MeshLambertMaterial({
-        map: treeTopTexs[vnt], transparent: false, alphaTest: 0.5, side: THREE.DoubleSide,
-      });
-      const capMesh = new THREE.InstancedMesh(capGeo, capMat, list.length);
-      list.forEach((tr, i) => {
-        q.setFromAxisAngle(YUP, (tr.seed * 1.2) % (Math.PI / 2));
-        m.compose(v.set(tr.x, tr.y + TREE_H * 0.5 * tr.s, tr.z), q, sc.set(tr.s, tr.s, tr.s));
-        crossMesh.setMatrixAt(i, m);
-        m.compose(v.set(tr.x, tr.y + TREE_H * 0.68 * tr.s, tr.z), q, sc.set(tr.s, tr.s, tr.s));
-        capMesh.setMatrixAt(i, m);
-      });
-      group.add(crossMesh, capMesh);
-    }
+  // deciduous: tapered trunk + two stacked rounded canopy tiers (lower lush
+  // dome + darker scalloped cap) — the classic Pokopia rounded-tree read
+  if (decid.length) {
+    const tGeo = new THREE.CylinderGeometry(0.14, 0.22, 1, 6);
+    const trunk = new THREE.InstancedMesh(tGeo, trunkMat, decid.length);
+    trunk.castShadow = true; trunk.receiveShadow = true;
+    const lowGeo = new THREE.SphereGeometry(1, 10, 8);
+    const low = new THREE.InstancedMesh(lowGeo, leafMat, decid.length);
+    low.castShadow = true;
+    const capGeo = new THREE.SphereGeometry(1, 9, 7);
+    const cap = new THREE.InstancedMesh(capGeo, leafMat, decid.length);
+    cap.castShadow = true;
+    const lowCols = ['#5aa85a', '#66b25e', '#54a054', '#5eae56'].map((c) => new THREE.Color(c));
+    const capCols = ['#3f8a48', '#469253', '#3a8044'].map((c) => new THREE.Color(c));
+    // a few trees bear little red fruits (like the reference apple trees)
+    const fruited = decid.filter((t) => t.seed > 0.62);
+    const fruitGeo = new THREE.SphereGeometry(0.09, 5, 4);
+    const fruit = new THREE.InstancedMesh(fruitGeo, new THREE.MeshLambertMaterial({ color: 0xd83a44 }), Math.max(1, fruited.length * 3));
+    let fi = 0;
+    decid.forEach((tr, i) => {
+      const s = tr.s, th = 0.85 * s, ry = tr.seed * 6.28;
+      setInst(trunk, i, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry);
+      const cy = tr.y + th * 0.9;
+      setInst(low, i, tr.x, cy + 0.55 * s, tr.z, 1.15 * s, 0.92 * s, 1.15 * s, ry, lowCols[i % lowCols.length]);
+      setInst(cap, i, tr.x, cy + 1.15 * s, tr.z, 0.8 * s, 0.72 * s, 0.8 * s, ry * 1.7, capCols[i % capCols.length]);
+      if (tr.seed > 0.62) {
+        for (let k = 0; k < 3; k++) {
+          const a = tr.seed * 20 + k * 2.1;
+          setInst(fruit, fi++, tr.x + Math.cos(a) * 0.85 * s, cy + 0.6 * s + (k - 1) * 0.25 * s, tr.z + Math.sin(a) * 0.85 * s, 1, 1, 1, 0);
+        }
+      }
+    });
+    while (fi < fruited.length * 3) setInst(fruit, fi++, 0, -999, 0, 1, 1, 1, 0); // park unused
+    if (low.instanceColor) low.instanceColor.needsUpdate = true;
+    if (cap.instanceColor) cap.instanceColor.needsUpdate = true;
+    group.add(trunk, low, cap);
+    if (fruited.length) group.add(fruit);
+  }
+
+  // pine firs: thin trunk + three stacked cones (dark evergreen)
+  if (pines.length) {
+    const tGeo = new THREE.CylinderGeometry(0.1, 0.15, 1, 6);
+    const trunk = new THREE.InstancedMesh(tGeo, trunkMat, pines.length);
+    trunk.castShadow = true;
+    const coneGeo = [
+      new THREE.ConeGeometry(0.9, 1.1, 8),
+      new THREE.ConeGeometry(0.66, 0.95, 8),
+      new THREE.ConeGeometry(0.42, 0.8, 8),
+    ];
+    const tiers = coneGeo.map((g) => new THREE.InstancedMesh(g, leafMatFlat, pines.length));
+    tiers.forEach((t) => { t.castShadow = true; });
+    const pineCols = ['#357a46', '#2e7040', '#3c824c'].map((c) => new THREE.Color(c));
+    pines.forEach((tr, i) => {
+      const s = tr.s, th = 0.55 * s, ry = tr.seed * 6.28;
+      setInst(trunk, i, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry);
+      const col = pineCols[i % pineCols.length];
+      const base = tr.y + th * 0.7;
+      setInst(tiers[0], i, tr.x, base + 0.55 * s, tr.z, s, s, s, ry, col);
+      setInst(tiers[1], i, tr.x, base + 1.15 * s, tr.z, s, s, s, ry, col);
+      setInst(tiers[2], i, tr.x, base + 1.7 * s, tr.z, s, s, s, ry, col);
+    });
+    tiers.forEach((t) => { if (t.instanceColor) t.instanceColor.needsUpdate = true; });
+    group.add(trunk, ...tiers);
   }
 
   // --- rocks: faceted lumps ---
