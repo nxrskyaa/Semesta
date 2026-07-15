@@ -97,15 +97,37 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
   scene.add(fishSpr);
   const fishTexCache = new Map();
 
-  // fish shadow — a dark shape circles in, then strikes the bobber
-  const shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(0.26, 10),
-    new THREE.MeshBasicMaterial({ color: 0x16242e, transparent: true, opacity: 0.4, depthWrite: false }));
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.scale.set(1, 1.7, 1); // fish-shaped ellipse
+  // fish shadow — an actual fish silhouette (body + wagging tail + fins)
+  // gliding under the surface, not a flat blob
+  const shadow = new THREE.Group();
+  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x16242e, transparent: true, opacity: 0.38, depthWrite: false });
+  {
+    const body = new THREE.Mesh(new THREE.CircleGeometry(0.24, 12), shadowMat);
+    body.rotation.x = -Math.PI / 2;
+    body.scale.set(1, 1.8, 1); // long ellipse pointing +z
+    shadow.add(body);
+    for (const sx of [-1, 1]) { // side fins
+      const fin = new THREE.Mesh(new THREE.CircleGeometry(0.09, 8), shadowMat);
+      fin.rotation.x = -Math.PI / 2;
+      fin.scale.set(1, 1.6, 1);
+      fin.position.set(sx * 0.2, 0, 0.05);
+      fin.rotation.z = sx * 0.7;
+      shadow.add(fin);
+    }
+  }
+  const tailPivot = new THREE.Group();
+  tailPivot.position.set(0, 0, -0.4);
+  const tailFin = new THREE.Mesh(new THREE.CircleGeometry(0.13, 8), shadowMat);
+  tailFin.rotation.x = -Math.PI / 2;
+  tailFin.scale.set(1, 1.5, 1);
+  tailFin.position.z = -0.1;
+  tailPivot.add(tailFin);
+  shadow.add(tailPivot);
   shadow.visible = false;
   scene.add(shadow);
   let shadowAng = 0;
+  // fish heading: +z is forward, so rotate the group around Y
+  const setShadowHeading = (dx, dz) => { shadow.rotation.y = Math.atan2(dx, dz); };
 
   const ROD_REST = -0.5;
   let bobT = 0, rippleT = 0;
@@ -155,7 +177,7 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     shadowAng = Math.random() * Math.PI * 2;
     shadow.position.set(
       spot.x + Math.cos(shadowAng) * 2.4, WATER_Y - 0.02, spot.z + Math.sin(shadowAng) * 2.4);
-    shadow.rotation.z = -shadowAng;
+    setShadowHeading(spot.x - shadow.position.x, spot.z - shadow.position.z);
     shadow.visible = true;
     audio.sfx('cast');
     particles.burst(spot.clone(), '#aac8e0', 5, 1, 4, 0.35);
@@ -271,6 +293,10 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
         catchAnim.from.z + (p.z - catchAnim.from.z) * t,
       );
       fishSpr.material.rotation += dt * 6;
+      // sparkling droplet trail behind the flying fish
+      if (Math.random() < dt * 18) {
+        particles.burst(fishSpr.position.clone(), '#aee0f0', 1, 0.6, 3, 0.25);
+      }
       if (t >= 1) {
         fishSpr.visible = false;
         particles.fountain(p.clone().add(new THREE.Vector3(0, 0.9, 0)), '#7ab8e8', 10);
@@ -296,22 +322,25 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       } else {
         bobber.position.y = WATER_Y + 0.03 + Math.sin(bobT * 2.4) * 0.03;
       }
-      // the fish shadow spirals in, timed to arrive right at the bite
+      // the fish shadow glides in with a lazy S-curve, tail wagging
       if (shadow.visible) {
+        tailPivot.rotation.y = Math.sin(bobT * 6) * 0.55;
         const dx = bobber.position.x - shadow.position.x;
         const dz = bobber.position.z - shadow.position.z;
         const d = Math.hypot(dx, dz);
         if (d > 0.35) {
           const sp = Math.max(0.25, d / Math.max(0.4, state.t));
-          shadow.position.x += (dx / d) * sp * dt + Math.cos(bobT * 5) * 0.15 * dt;
-          shadow.position.z += (dz / d) * sp * dt + Math.sin(bobT * 5) * 0.15 * dt;
-          shadow.rotation.z = -Math.atan2(dx, dz);
+          const wob = Math.sin(bobT * 2.2) * 0.35; // gentle weave, not jitter
+          const nx = dx / d, nz = dz / d;
+          shadow.position.x += (nx + -nz * wob) * sp * dt;
+          shadow.position.z += (nz + nx * wob) * sp * dt;
+          setShadowHeading(nx + -nz * wob, nz + nx * wob);
         } else {
-          // lurking under the bobber — slow menacing circle
-          shadowAng += dt * 1.6;
-          shadow.position.x = bobber.position.x + Math.cos(shadowAng) * 0.3;
-          shadow.position.z = bobber.position.z + Math.sin(shadowAng) * 0.3;
-          shadow.rotation.z = -(shadowAng + Math.PI / 2);
+          // lurking under the bobber — slow curious circle
+          shadowAng += dt * 1.3;
+          shadow.position.x = bobber.position.x + Math.cos(shadowAng) * 0.32;
+          shadow.position.z = bobber.position.z + Math.sin(shadowAng) * 0.32;
+          setShadowHeading(-Math.sin(shadowAng), Math.cos(shadowAng));
         }
       }
       // ripple rings spreading from the bobber
@@ -333,14 +362,16 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       }
     } else if (state.phase === 'bite') {
       state.t -= dt;
-      bobber.position.y = WATER_Y - 0.1 + Math.sin(time * 22) * 0.04; // struggling
-      alert.scale.setScalar(0.5 + Math.sin(time * 18) * 0.07);
-      // the rod bends hard & the shadow thrashes under the float
-      rod.rotation.x = ROD_REST - 0.4 + Math.sin(time * 24) * 0.08;
-      shadow.position.x = bobber.position.x + Math.sin(time * 20) * 0.12;
-      shadow.position.z = bobber.position.z + Math.cos(time * 17) * 0.12;
-      if (Math.random() < dt * 4) {
-        particles.burst(bobber.position.clone(), '#d8f0f4', 2, 1.4, 5, 0.3);
+      // firm rhythmic TUGS (readable pulls, not a vibrating blur)
+      const tug = Math.max(0, Math.sin(time * 7));
+      bobber.position.y = WATER_Y - 0.06 - tug * 0.12;
+      alert.scale.setScalar(0.5 + Math.sin(time * 6) * 0.06);
+      rod.rotation.x = ROD_REST - 0.25 - tug * 0.28;
+      tailPivot.rotation.y = Math.sin(time * 9) * 0.7;
+      shadow.position.x = bobber.position.x + Math.sin(time * 5) * 0.1;
+      shadow.position.z = bobber.position.z + Math.cos(time * 4.2) * 0.1;
+      if (Math.random() < dt * 3) {
+        particles.burst(bobber.position.clone(), '#d8f0f4', 2, 1.2, 4, 0.3);
       }
       if (state.t <= 0) {
         end();

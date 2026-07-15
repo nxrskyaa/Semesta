@@ -30,7 +30,7 @@ import { createFishing } from './systems/fishing.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
 import { createHousing, LAND_PRICE, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
 import { CLASSES, defaultCharacter } from './systems/classes.js';
-import { ITEMS, RARITY, RARITY_ORDER } from './systems/items.js';
+import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS } from './systems/items.js';
 import { createWardrobe, cosmeticsBySlot } from './systems/cosmetics.js';
 import { createAudio } from './audio/audio.js';
 import { showCharacterCreation } from './ui/charcreate.js';
@@ -401,9 +401,9 @@ async function init(character, saved, audio) {
       'hat_bandana', 'hat_miner', 'back_sprout',
     ],
     rare: ['hat_wizard', 'hat_catears', 'back_bubble', 'trail_petal', { petCharm: true }],
-    epic: ['hat_viking', 'back_butterfly', 'trail_ember', 'mount_trotter', 'mount_clucky', 'mount_shellsworth'],
-    legendary: ['charm_glimmer', 'charm_nox', 'hat_crown', 'back_phoenix', 'trail_star', 'mount_nimbus', 'mount_blossom'],
-    mythic: ['charm_seraphi', 'mount_aurora', 'hat_halo', 'back_prism', 'trail_rainbow'],
+    epic: ['hat_viking', 'back_butterfly', 'trail_ember', 'mount_trotter', 'mount_clucky', 'mount_shellsworth', { gweapon: 'epic' }],
+    legendary: ['charm_glimmer', 'charm_nox', 'hat_crown', 'back_phoenix', 'trail_star', 'mount_nimbus', 'mount_blossom', { gweapon: 'legendary' }],
+    mythic: ['charm_seraphi', 'mount_aurora', 'hat_halo', 'back_prism', 'trail_rainbow', { gweapon: 'mythic' }],
   };
   const gacha = {
     price: 100,
@@ -437,6 +437,14 @@ async function init(character, saved, audio) {
         if (typeof entry === 'object' && entry.bundle) {
           inventory.add(entry.bundle, entry.count);
           return { rarity, iconId: entry.bundle, name: `${ITEMS[entry.bundle].name} x${entry.count}` };
+        }
+        if (typeof entry === 'object' && entry.gweapon) {
+          // an exclusive weapon matching your class's weapon type
+          const wid = GACHA_WEAPONS[entry.gweapon][cls.weaponType];
+          if (!wid || inventory.state.weapons.has(wid)) continue;
+          inventory.add(wid, 1);
+          if (rarity === 'legendary' || rarity === 'mythic') addShake(0.3);
+          return { rarity, iconId: wid, name: ITEMS[wid].name, note: 'Exclusive weapon! Equip it in your Bag [Tab]' };
         }
         if (typeof entry === 'object' && entry.petCharm) {
           const missing = Object.values(PET_DEFS).filter((d) => !d.gachaOnly).map((d) => d.charm)
@@ -474,6 +482,21 @@ async function init(character, saved, audio) {
         particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.9, 0)),
           RARITY[ITEMS[id]?.rarity || 'common'].color, 12);
       } else audio.sfx('ui');
+    },
+    // full appearance editing — the same body/hair/outfit options as character
+    // creation, applied live to the hero (and persisted with the save)
+    appearance: {
+      config: character,
+      apply() {
+        player.applyAppearance();
+        // re-attach equipped cosmetics onto the fresh rig
+        for (const slot of ['hat', 'back']) {
+          if (wardrobe.state[slot]) wardrobe.equip(slot, wardrobe.state[slot]);
+        }
+        hud.refreshPortrait?.();
+        audio.sfx('craft');
+        particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), '#ffd23e', 10);
+      },
     },
   };
 

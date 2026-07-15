@@ -89,31 +89,34 @@ export function buildDecor(terrain, scene) {
     }
     return false;
   };
+  // generous spacing: lanterns are calm accents, never a fence of lights
+  const LANTERN_MIN_D = 14;
   let pathCount = 0;
   for (let iz = 2; iz < S - 2; iz++) {
     for (let ix = 2; ix < S - 2; ix++) {
       const i = terrain.idx(ix, iz);
       if (terrain.type[i] !== 1) continue;
       pathCount++;
-      if (pathCount % 12 !== 0) continue;
+      if (pathCount % 16 !== 0) continue;
       const wx = ix - S / 2 + 0.5 + (rng() - 0.5) * 0.4;
       const wz = iz - S / 2 + 0.5 + (rng() - 0.5) * 0.4;
+      if (nearLantern(wx, wz, LANTERN_MIN_D)) continue;
       torches.push({ x: wx, y: terrain.surfaceY(wx, wz), z: wz });
     }
   }
-  // grid coverage: one lantern roughly every 14 cells of open land
-  for (let gz = 4; gz < S - 4; gz += 14) {
-    for (let gx = 4; gx < S - 4; gx += 14) {
-      const ix = gx + Math.floor(rng() * 7) - 3;
-      const iz = gz + Math.floor(rng() * 7) - 3;
+  // grid coverage: roughly one lantern per 18-cell region of open land
+  for (let gz = 5; gz < S - 5; gz += 18) {
+    for (let gx = 5; gx < S - 5; gx += 18) {
+      const ix = gx + Math.floor(rng() * 9) - 4;
+      const iz = gz + Math.floor(rng() * 9) - 4;
       const i = terrain.idx(ix, iz);
       const h = terrain.height[i];
       if (h <= WATER_LEVEL || terrain.type[i] === 1) continue;
       if (blocked.has(`${ix},${iz}`)) continue;
       const wx = ix - S / 2 + 0.5, wz = iz - S / 2 + 0.5;
       const dSpawn = Math.hypot(wx - terrain.spawn.x, wz - terrain.spawn.z);
-      if (dSpawn < 9) continue; // the village has its own lamps
-      if (nearLantern(wx, wz, 9)) continue;
+      if (dSpawn < 10) continue; // the village has its own lamps
+      if (nearLantern(wx, wz, LANTERN_MIN_D)) continue;
       torches.push({ x: wx, y: terrain.surfaceY(wx, wz), z: wz });
     }
   }
@@ -283,19 +286,23 @@ export function buildDecor(terrain, scene) {
     ctx.fillStyle = g2; ctx.fillRect(0, 0, 32, 32);
   }, 32, 32);
   const N_LAN = Math.max(1, torches.length);
-  const stoneMat = new THREE.MeshLambertMaterial({ color: new THREE.Color('#787c76') });
-  const stoneDark = new THREE.MeshLambertMaterial({ color: new THREE.Color('#5c605a') });
-  const baseMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.4, 0.12, 0.4), stoneDark, N_LAN);
-  const postMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.13, 0.5, 0.13), stoneMat, N_LAN);
+  const stoneMat = new THREE.MeshLambertMaterial({ color: new THREE.Color('#84887e') });
+  const stoneDark = new THREE.MeshLambertMaterial({ color: new THREE.Color('#5e625a') });
+  // elegant kasuga-dōrō proportions: wide base slab, slender pillar, collar,
+  // stone light box with a warm paper pane, broad overhanging roof, round cap
+  const baseMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.46, 0.1, 0.46), stoneDark, N_LAN);
+  const base2Mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.08, 0.3), stoneMat, N_LAN);
+  const postMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.11, 0.62, 0.11), stoneMat, N_LAN);
   postMesh.castShadow = true;
-  const houseMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.22, 0.3), stoneMat, N_LAN);
+  const collarMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.06, 0.3), stoneDark, N_LAN);
+  const houseMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.26, 0.24, 0.26), stoneMat, N_LAN);
   houseMesh.castShadow = true;
   // warm paper pane peeking out of the light box
-  const paneMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.16, 0.22),
+  const paneMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 0.18, 0.2),
     new THREE.MeshBasicMaterial({ color: new THREE.Color('#f5d9a0') }), N_LAN);
-  const roofMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.3, 0.17, 4), stoneDark, N_LAN);
+  const roofMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.36, 0.22, 4), stoneDark, N_LAN);
   roofMesh.castShadow = true;
-  const capMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.07, 0.06), stoneMat, N_LAN);
+  const capMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 6, 5), stoneMat, N_LAN);
   const glowMat = new THREE.SpriteMaterial({
     map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.1,
   });
@@ -303,25 +310,29 @@ export function buildDecor(terrain, scene) {
   const qRoof = new THREE.Quaternion().setFromAxisAngle(YUP, Math.PI / 4);
   torches.forEach((tc, i) => {
     q.identity();
-    m.compose(v.set(tc.x, tc.y + 0.06, tc.z), q, sc.set(1, 1, 1));
+    m.compose(v.set(tc.x, tc.y + 0.05, tc.z), q, sc.set(1, 1, 1));
     baseMesh.setMatrixAt(i, m);
-    m.compose(v.set(tc.x, tc.y + 0.37, tc.z), q, sc.set(1, 1, 1));
+    m.compose(v.set(tc.x, tc.y + 0.13, tc.z), q, sc.set(1, 1, 1));
+    base2Mesh.setMatrixAt(i, m);
+    m.compose(v.set(tc.x, tc.y + 0.46, tc.z), q, sc.set(1, 1, 1));
     postMesh.setMatrixAt(i, m);
-    m.compose(v.set(tc.x, tc.y + 0.73, tc.z), q, sc.set(1, 1, 1));
+    m.compose(v.set(tc.x, tc.y + 0.79, tc.z), q, sc.set(1, 1, 1));
+    collarMesh.setMatrixAt(i, m);
+    m.compose(v.set(tc.x, tc.y + 0.95, tc.z), q, sc.set(1, 1, 1));
     houseMesh.setMatrixAt(i, m);
     paneMesh.setMatrixAt(i, m);
-    m.compose(v.set(tc.x, tc.y + 0.92, tc.z), qRoof, sc.set(1, 1, 1));
+    m.compose(v.set(tc.x, tc.y + 1.17, tc.z), qRoof, sc.set(1, 1, 1));
     roofMesh.setMatrixAt(i, m);
     q.identity();
-    m.compose(v.set(tc.x, tc.y + 1.03, tc.z), q, sc.set(1, 1, 1));
+    m.compose(v.set(tc.x, tc.y + 1.3, tc.z), q, sc.set(1, 1, 1));
     capMesh.setMatrixAt(i, m);
     const glow = new THREE.Sprite(glowMat.clone());
     glow.scale.set(1.9, 1.9, 1);
-    glow.position.set(tc.x, tc.y + 0.75, tc.z);
+    glow.position.set(tc.x, tc.y + 0.97, tc.z);
     group.add(glow);
     glowSprites.push(glow);
   });
-  if (torches.length) group.add(baseMesh, postMesh, houseMesh, paneMesh, roofMesh, capMesh);
+  if (torches.length) group.add(baseMesh, base2Mesh, postMesh, collarMesh, houseMesh, paneMesh, roofMesh, capMesh);
 
   // lantern light pool: the N nearest lanterns cast soft warm light at night
   const LIGHTS = 12;
@@ -358,19 +369,35 @@ export function buildDecor(terrain, scene) {
     butterflies.push({ spr, home, t: rng() * 10, a: rng() * Math.PI * 2 });
   }
 
-  // --- fireflies (night) ---
-  const FFLY = 46;
+  // --- fireflies (night): soft glowing motes drifting over the meadows and
+  // gathering around the stone lanterns — the night should feel enchanted
+  const FFLY = 110;
+  const ffTex = canvasTex((ctx) => {
+    const g2 = ctx.createRadialGradient(8, 8, 0.5, 8, 8, 7.5);
+    g2.addColorStop(0, 'rgba(240,255,190,1)');
+    g2.addColorStop(0.35, 'rgba(216,240,140,0.7)');
+    g2.addColorStop(1, 'rgba(180,220,90,0)');
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, 16, 16);
+  }, 16, 16);
   const ffGeo = new THREE.BufferGeometry();
   const ffPos = new Float32Array(FFLY * 3);
   const ffData = [];
   for (let i = 0; i < FFLY; i++) {
-    const spot = tufts.length ? tufts[Math.floor(rng() * tufts.length)] : { x: 0, y: 3, z: 0 };
-    ffData.push({ x: spot.x, y: spot.y + 0.5, z: spot.z, t: rng() * 10 });
-    ffPos[i * 3] = spot.x; ffPos[i * 3 + 1] = spot.y + 0.5; ffPos[i * 3 + 2] = spot.z;
+    // ~1/3 of them dance around lanterns, the rest roam the grass
+    let spot;
+    if (torches.length && i % 3 === 0) {
+      const tc = torches[Math.floor(rng() * torches.length)];
+      spot = { x: tc.x + (rng() - 0.5) * 2.5, y: tc.y + 0.6, z: tc.z + (rng() - 0.5) * 2.5 };
+    } else {
+      const t = tufts.length ? tufts[Math.floor(rng() * tufts.length)] : { x: 0, y: 3, z: 0 };
+      spot = { x: t.x, y: t.y + 0.5, z: t.z };
+    }
+    ffData.push({ x: spot.x, y: spot.y, z: spot.z, t: rng() * 10, s: 0.5 + rng() });
+    ffPos[i * 3] = spot.x; ffPos[i * 3 + 1] = spot.y; ffPos[i * 3 + 2] = spot.z;
   }
   ffGeo.setAttribute('position', new THREE.BufferAttribute(ffPos, 3));
   const ffMat = new THREE.PointsMaterial({
-    color: 0xd8f090, size: 0.12, transparent: true, opacity: 0,
+    color: 0xf0ffc0, size: 0.3, map: ffTex, transparent: true, opacity: 0,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
   const fireflies = new THREE.Points(ffGeo, ffMat);
@@ -389,7 +416,7 @@ export function buildDecor(terrain, scene) {
     lights.forEach((L, i) => {
       if (i < sorted.length && sorted[i].d < 42 * 42 && isNight) {
         const tc = sorted[i].tc;
-        L.position.set(tc.x, tc.y + 0.8, tc.z);
+        L.position.set(tc.x, tc.y + 1.0, tc.z);
         L.intensity = 4.2 + Math.sin(time * 3.2 + tc.x * 2.1) * 0.35;
       } else {
         L.intensity = 0;
@@ -417,15 +444,16 @@ export function buildDecor(terrain, scene) {
       b.spr.material = bflyMats[Math.floor(b.t * 8) % 2];
     }
 
-    // fireflies drift & pulse at night
-    ffMat.opacity += ((isNight ? 0.9 : 0) - ffMat.opacity) * Math.min(1, dt * 1.5);
+    // fireflies drift in lazy loops & twinkle at night
+    const ffTarget = isNight ? 0.85 + Math.sin(time * 2.1) * 0.12 : 0;
+    ffMat.opacity += (ffTarget - ffMat.opacity) * Math.min(1, dt * 1.5);
     if (ffMat.opacity > 0.02) {
       for (let i = 0; i < FFLY; i++) {
         const f = ffData[i];
-        f.t += dt;
-        ffPos[i * 3] = f.x + Math.sin(f.t * 0.7) * 0.8;
-        ffPos[i * 3 + 1] = f.y + 0.3 + Math.sin(f.t * 1.3) * 0.25;
-        ffPos[i * 3 + 2] = f.z + Math.cos(f.t * 0.55) * 0.8;
+        f.t += dt * f.s;
+        ffPos[i * 3] = f.x + Math.sin(f.t * 0.7) * 1.1 + Math.sin(f.t * 1.9) * 0.2;
+        ffPos[i * 3 + 1] = f.y + 0.3 + Math.sin(f.t * 1.3) * 0.35;
+        ffPos[i * 3 + 2] = f.z + Math.cos(f.t * 0.55) * 1.1 + Math.cos(f.t * 2.3) * 0.2;
       }
       ffGeo.attributes.position.needsUpdate = true;
     }

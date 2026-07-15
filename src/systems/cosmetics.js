@@ -66,25 +66,34 @@ const HAT_BUILDERS = {
     cone.position.y = 0.28; cone.rotation.y = 0.4;
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 6), lam('#5a4a9a'));
     tip.position.set(0.05, 0.6, 0); tip.rotation.z = -0.5;
-    for (const [sx, sy] of [[0.1, 0.2], [-0.08, 0.34], [0.02, 0.46]]) {
+    // little stars orbit the cone
+    const orbit = new THREE.Group();
+    orbit.position.y = 0.32;
+    for (let i = 0; i < 3; i++) {
       const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.035), glow('#ffe27a'));
-      star.position.set(sx, sy, 0.16);
-      g.add(star);
+      const a = (i / 3) * Math.PI * 2;
+      star.position.set(Math.cos(a) * 0.3, (i - 1) * 0.1, Math.sin(a) * 0.3);
+      orbit.add(star);
     }
-    g.add(brim, cone, tip);
+    g.add(brim, cone, tip, orbit);
+    g.userData.orbit = orbit;
     return g;
   },
   hat_catears() {
     const g = new THREE.Group();
+    const ears = [];
     for (const sx of [-1, 1]) {
       const ear = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.2, 4), lam('#f2a6cc'));
       ear.position.set(sx * 0.16, 0.1, 0);
       ear.rotation.z = -sx * 0.2;
+      ear.userData.baseZ = -sx * 0.2;
       const inner = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), lam('#fbd6e8'));
       inner.position.set(0, -0.01, 0.03);
       ear.add(inner);
       g.add(ear);
+      ears.push(ear);
     }
+    g.userData.ears = ears; // twitch cutely now and then
     return g;
   },
   hat_viking() {
@@ -115,6 +124,7 @@ const HAT_BUILDERS = {
     const light = new THREE.PointLight(0xffd23e, 0.8, 3, 2);
     light.position.y = 0.2;
     g.add(band, gem, light);
+    g.userData.gem = gem; // pulses regally
     return g;
   },
   hat_halo() {
@@ -171,6 +181,7 @@ const BACK_BUILDERS = {
     const light = new THREE.PointLight(0xff9a3a, 1.2, 4, 2);
     g.add(light);
     g.userData.flap = true;
+    g.userData.flicker = light; // ember-light breathes
     return g;
   },
   back_prism() {
@@ -235,10 +246,25 @@ export function createWardrobe(player) {
 
   function update(dt, time) {
     if (hatMesh?.userData.spin) hatMesh.userData.spin.rotation.z = time * 0.8;
+    if (hatMesh?.userData.orbit) hatMesh.userData.orbit.rotation.y = time * 1.6;
+    if (hatMesh?.userData.gem) {
+      hatMesh.userData.gem.rotation.y = time * 2;
+      hatMesh.userData.gem.scale.setScalar(1 + Math.sin(time * 3.2) * 0.2);
+    }
+    if (hatMesh?.userData.ears) {
+      // occasional quick twitch (kitty radar)
+      const tw = Math.max(0, Math.sin(time * 0.9)) ** 24;
+      hatMesh.userData.ears.forEach((ear, i) => {
+        ear.rotation.z = ear.userData.baseZ + (i ? -1 : 1) * tw * 0.35;
+      });
+    }
     if (backMesh?.userData.flap) {
       const f = Math.sin(time * 6) * 0.35;
       if (backMesh.children[0]) backMesh.children[0].rotation.y = 0.5 + f;
       if (backMesh.children[2]) backMesh.children[2].rotation.y = -0.5 - f;
+    }
+    if (backMesh?.userData.flicker) {
+      backMesh.userData.flicker.intensity = 1.1 + Math.sin(time * 5.2) * 0.3;
     }
     if (backMesh?.userData.prism) {
       _hue.setHSL((time * 0.12) % 1, 0.7, 0.72);

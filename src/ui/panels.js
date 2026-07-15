@@ -5,6 +5,10 @@ import { recipesFor, canCraft, craft } from '../systems/crafting.js';
 import { forgeCost, forgeChance, MAX_PLUS } from '../systems/forge.js';
 import { PET_DEFS } from '../systems/pets.js';
 import { MOUNT_DEFS } from '../systems/mounts.js';
+import {
+  GENDERS, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS,
+  OUTFIT_STYLES, OUTFIT_COLORS, CAPE_COLORS, ACCESSORIES,
+} from '../systems/classes.js';
 
 const CSS = `
 .panel {
@@ -606,17 +610,47 @@ export function createPanels(hudRoot, {
     });
   }
 
-  // --- Wardrobe: equip cosmetics from gacha & level rewards ---
+  // --- Wardrobe: full appearance editor (same options as character creation)
+  // + cosmetics earned from gacha & level rewards ---
   const WARD_SLOTS = [
     ['hat', 'HATS — worn on your head'],
     ['back', 'BACK — packs & wings'],
     ['trail', 'TRAILS — sparkle in your footsteps'],
   ];
-  function renderWardrobe() {
-    if (!wardrobe) return;
+  let wardTab = 'style'; // style (appearance) | cosmetics
+  function renderWardAppearance() {
+    const cfg = wardrobe.appearance.config;
+    const seg = (label, key, list, keyName) => {
+      const items = Array.isArray(list) ? list : Object.entries(list);
+      const btns = Array.isArray(list)
+        ? list.map((nm, i) => `<button data-wa="${keyName}:${i}" class="${cfg[keyName] === i ? 'sel' : ''}">${nm}</button>`).join('')
+        : items.map(([id, nm]) => `<button data-wa="${keyName}:${id}" class="${cfg[keyName] === id ? 'sel' : ''}">${nm}</button>`).join('');
+      return `<div class="w-row"><label>${label}</label><div class="w-segs">${btns}</div></div>`;
+    };
+    const sw = (label, colors, keyName, extraNone = false) => {
+      let h = extraNone ? `<div class="w-sw none ${cfg[keyName] === -1 ? 'sel' : ''}" data-wa="${keyName}:-1"></div>` : '';
+      h += colors.map((c, i) =>
+        `<div class="w-sw ${cfg[keyName] === i ? 'sel' : ''}" data-wa="${keyName}:${i}" style="background:${c}"></div>`).join('');
+      return `<div class="w-row"><label>${label}</label><div class="w-sws">${h}</div></div>`;
+    };
+    return `
+      <div style="font-size:10px;color:var(--muted);margin-bottom:10px;letter-spacing:1px">
+        Restyle your hero anytime — changes apply instantly.</div>
+      ${seg('GENDER', null, GENDERS, 'gender')}
+      ${sw('SKIN TONE', SKIN_TONES, 'skin')}
+      ${seg('HAIR STYLE', null, HAIR_STYLES, 'hairStyle')}
+      ${sw('HAIR COLOR', HAIR_COLORS, 'hairColor')}
+      ${sw('EYE COLOR', EYE_COLORS, 'eyes')}
+      ${seg('FACE', null, ACCESSORIES, 'accessory')}
+      ${seg('OUTFIT STYLE', null, OUTFIT_STYLES, 'outfitStyle')}
+      ${sw('OUTFIT COLOR', OUTFIT_COLORS, 'outfit')}
+      ${sw('CAPE', CAPE_COLORS, 'cape', true)}
+    `;
+  }
+  function renderWardCosmetics() {
     const byRar = (a, b) => RARITY_ORDER.indexOf(ITEMS[a].rarity) - RARITY_ORDER.indexOf(ITEMS[b].rarity);
     let html = `<div style="font-size:10px;color:var(--muted);margin-bottom:10px;letter-spacing:1px">
-      Dress up your hero! Cosmetics come from Wonder Capsules (gacha) & level milestones.</div>`;
+      Cosmetics come from Wonder Capsules (gacha) & level milestones.</div>`;
     for (const [slot, label] of WARD_SLOTS) {
       const equipped = wardrobe.state[slot];
       html += `<h4 class="sect">${label}</h4>`;
@@ -641,7 +675,50 @@ export function createPanels(hudRoot, {
         </div>`;
       }
     }
-    panels.ward.innerHTML = `<h3>WARDROBE <small>[O] close</small></h3>${html}`;
+    return html;
+  }
+  function renderWardrobe() {
+    if (!wardrobe) return;
+    const body = wardTab === 'style' && wardrobe.appearance
+      ? renderWardAppearance() : renderWardCosmetics();
+    panels.ward.innerHTML = `<h3>WARDROBE <small>[O] close</small></h3>
+      <style>
+        .w-tabs { display: flex; gap: 5px; margin-bottom: 12px; }
+        .w-tabs button { flex: 1; font-family: inherit; font-size: 10px; letter-spacing: 2px; cursor: pointer;
+          padding: 8px 4px; color: #8a967f; border: 0; background: #131a12; box-shadow: inset 0 0 0 2px #2c352c; }
+        .w-tabs button.on { color: #ffe9b0; background: #2c2a16; box-shadow: inset 0 0 0 2px var(--gold); }
+        .w-row { margin-bottom: 11px; }
+        .w-row label { display: block; font-size: 9px; color: #b9a76a; letter-spacing: 2px; margin-bottom: 5px; }
+        .w-row label::before { content: '▸ '; color: #6a5a34; }
+        .w-segs { display: flex; gap: 4px; flex-wrap: wrap; }
+        .w-segs button { flex: 1; min-width: 56px; font-family: inherit; font-size: 10px; padding: 7px 4px;
+          cursor: pointer; color: #aab5a0; border: 0; background: #131a12; box-shadow: inset 0 0 0 2px #2c352c; }
+        .w-segs button.sel { color: #ffe9b0; background: #2c2a16; box-shadow: inset 0 0 0 2px var(--gold); }
+        .w-sws { display: flex; gap: 6px; flex-wrap: wrap; }
+        .w-sw { width: 28px; height: 24px; cursor: pointer; position: relative;
+          box-shadow: inset 0 0 0 2px rgba(0,0,0,0.45), 0 0 0 2px #2c352c; }
+        .w-sw.sel { box-shadow: inset 0 0 0 2px rgba(0,0,0,0.3), 0 0 0 2px #f0e5c0, 0 0 8px var(--gold-glow); }
+        .w-sw.none { background: repeating-linear-gradient(45deg, #131a12, #131a12 4px, #202a20 4px, #202a20 8px); }
+        .w-sw.none::after { content: '✕'; position: absolute; inset: 0; text-align: center; line-height: 22px; font-size: 10px; color: #8a967f; }
+      </style>
+      ${wardrobe.appearance ? `<div class="w-tabs">
+        <button data-wtab="style" class="${wardTab === 'style' ? 'on' : ''}">☺ APPEARANCE</button>
+        <button data-wtab="cosmetics" class="${wardTab === 'cosmetics' ? 'on' : ''}">🧢 COSMETICS</button>
+      </div>` : ''}
+      ${body}`;
+    panels.ward.querySelectorAll('[data-wtab]').forEach((b) => {
+      b.addEventListener('click', () => { wardTab = b.dataset.wtab; audio.sfx('ui'); renderWardrobe(); });
+    });
+    // appearance edits: parse "key:value", coerce numeric indices, apply live
+    panels.ward.querySelectorAll('[data-wa]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const [key, raw] = b.dataset.wa.split(':');
+        const cfg = wardrobe.appearance.config;
+        cfg[key] = key === 'gender' ? raw : parseInt(raw, 10);
+        wardrobe.appearance.apply();
+        renderWardrobe();
+      });
+    });
     panels.ward.querySelectorAll('[data-wear]').forEach((b) => {
       b.addEventListener('click', () => {
         const [slot, id] = b.dataset.wear.split(':');

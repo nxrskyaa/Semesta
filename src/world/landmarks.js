@@ -213,6 +213,91 @@ function buildSchool() {
   return g;
 }
 
+// Rialo monument — a stone plinth with a tall flagpole; the cream banner
+// carries the Rialo mark (painted procedurally on canvas) and ripples in the
+// wind. Two paper lanterns sway on a crossbar.
+function makeRialoTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#e8e2d2';
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = '#181818';
+  ctx.lineWidth = 17;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // the rounded step-glyph: top bar w/ right nub, mid bar hooking up, tail down
+  ctx.beginPath();
+  ctx.moveTo(40, 38); ctx.lineTo(72, 38); ctx.lineTo(72, 48); ctx.lineTo(90, 48);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(78, 66); ctx.lineTo(36, 66);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(62, 66); ctx.lineTo(62, 94);
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function buildRialoMonument() {
+  const g = new THREE.Group();
+  const stone = lam('#b8b0a0'), stoneDark = lam('#8a8478');
+  // two-step plinth
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.35, 2.0), stoneDark);
+  base.position.y = 0.17; base.castShadow = true;
+  const step = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.35, 1.4), stone);
+  step.position.y = 0.5; step.castShadow = true;
+  // tall pole + gold finial
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 4.4, 8), lam('#5a4a3a'));
+  pole.position.y = 2.8; pole.castShadow = true;
+  const finial = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), lam('#e8c45a'));
+  finial.position.y = 5.05;
+  // waving banner — left edge pinned to the pole
+  const flagGeo = new THREE.PlaneGeometry(1.5, 0.95, 12, 6);
+  flagGeo.translate(0.78, 0, 0);
+  const flag = new THREE.Mesh(flagGeo, new THREE.MeshLambertMaterial({
+    map: makeRialoTexture(), side: THREE.DoubleSide,
+  }));
+  flag.position.y = 4.4;
+  flag.castShadow = true;
+  const flagBase = Float32Array.from(flagGeo.attributes.position.array);
+  // plaque with the mark on the plinth face
+  const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7),
+    new THREE.MeshLambertMaterial({ map: makeRialoTexture() }));
+  plaque.position.set(0, 0.5, 0.71);
+  // crossbar with two swaying paper lanterns (chōchin)
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.07, 0.07), lam('#5a4a3a'));
+  bar.position.y = 2.0;
+  const lanterns = [];
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * 0.75, 2.0, 0);
+    const string = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.22, 0.02), lam('#3a322a'));
+    string.position.y = -0.11;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.26, 8), lam('#e05a48'));
+    body.position.y = -0.36;
+    const rim1 = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8), lam('#3a322a'));
+    rim1.position.y = -0.22;
+    const rim2 = rim1.clone(); rim2.position.y = -0.5;
+    const glowP = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.1),
+      new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+    glowP.position.y = -0.36;
+    pivot.add(string, body, rim1, rim2, glowP);
+    g.add(pivot);
+    lanterns.push(pivot);
+  }
+  const light = new THREE.PointLight(0xffc27a, 1.2, 6, 2);
+  light.position.y = 1.7;
+  g.add(base, step, pole, finial, flag, plaque, bar, light);
+  g.userData.flag = flag;
+  g.userData.flagBase = flagBase;
+  g.userData.lanterns = lanterns;
+  return g;
+}
+
 export function createLandmarks(scene, terrain, decorBlocked) {
   const S2 = terrain.size / 2;
   const built = [];
@@ -248,8 +333,27 @@ export function createLandmarks(scene, terrain, decorBlocked) {
   if (place(school, -S2 * 0.2, -S2 * 0.42, 2)) built.push(school);
   const heart = buildHeartTorches();
   if (place(heart, S2 * 0.38, S2 * 0.22, 2)) built.push(heart);
+  const rialo = buildRialoMonument();
+  if (place(rialo, -S2 * 0.55, -S2 * 0.12, 2)) built.push(rialo);
 
   function update(dt, time) {
+    // Rialo banner ripples in the wind; the paper lanterns sway
+    if (rialo.userData.flag) {
+      const pos = rialo.userData.flag.geometry.attributes.position;
+      const base = rialo.userData.flagBase;
+      for (let i = 0; i < pos.count; i++) {
+        const bx = base[i * 3];
+        // the further from the pole, the bigger the ripple
+        pos.array[i * 3 + 2] = Math.sin(bx * 4.2 - time * 5) * 0.1 * (bx / 1.56)
+          + Math.sin(bx * 8 - time * 8.4) * 0.025 * (bx / 1.56);
+      }
+      pos.needsUpdate = true;
+      rialo.userData.flag.geometry.computeVertexNormals();
+      for (let i = 0; i < rialo.userData.lanterns.length; i++) {
+        rialo.userData.lanterns[i].rotation.z = Math.sin(time * 1.7 + i * 2.1) * 0.16;
+        rialo.userData.lanterns[i].rotation.x = Math.sin(time * 1.3 + i) * 0.1;
+      }
+    }
     if (windmill.userData.sails) windmill.userData.sails.rotation.z += dt * 0.5;
     if (shrine.userData.gem) {
       shrine.userData.gem.rotation.y += dt * 1.2;

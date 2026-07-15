@@ -299,10 +299,10 @@ export function createAudio() {
     wisp_shot:  () => tone('sine', 1200, 500, 0.18, 0.1),
     boar_charge:() => { tone('sawtooth', 140, 90, 0.3, 0.18); noise(0.25, 0.12, 'lowpass', 500); },
     death_player:() => { [330, 262, 196, 131].forEach((f, i) => tone('sawtooth', f, f, 0.3, 0.14, ctx ? ctx.currentTime + i * 0.22 : null)); },
-    // fishing
-    cast:       () => { noise(0.14, 0.1, 'highpass', 1600); tone('sine', 500, 200, 0.18, 0.08, ctx ? ctx.currentTime + 0.1 : null); },
-    splash:     () => { noise(0.25, 0.16, 'lowpass', 900, 300); tone('sine', 300, 120, 0.15, 0.08); },
-    bite:       () => { tone('square', 900, 900, 0.06, 0.12); tone('square', 1200, 1200, 0.08, 0.12, ctx ? ctx.currentTime + 0.08 : null); },
+    // fishing — soft & watery, no buzzy squares
+    cast:       () => { noise(0.16, 0.07, 'bandpass', 900, 2000); tone('sine', 420, 220, 0.2, 0.06, ctx ? ctx.currentTime + 0.12 : null); },
+    splash:     () => { noise(0.3, 0.11, 'lowpass', 700, 200); tone('sine', 240, 100, 0.18, 0.06); },
+    bite:       () => { tone('sine', 620, 660, 0.09, 0.13); tone('sine', 880, 930, 0.12, 0.13, ctx ? ctx.currentTime + 0.11 : null); },
     catch:      () => { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.12, 0.12, ctx ? ctx.currentTime + i * 0.07 : null)); noise(0.2, 0.1, 'lowpass', 1000, 400); },
     // world & quests
     chest:      () => { tone('square', 300, 500, 0.1, 0.12); [660, 880, 1100].forEach((f, i) => tone('triangle', f, f, 0.12, 0.1, ctx ? ctx.currentTime + 0.1 + i * 0.07 : null)); },

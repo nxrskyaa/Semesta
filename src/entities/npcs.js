@@ -642,21 +642,25 @@ function buildLamp() {
   // village lamps match the wild Japanese stone lanterns (ishidōrō) so lighting
   // reads as one aesthetic: stone base + pillar + warm light box + pyramid cap
   const g = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.4), lam('#5c605a'));
-  base.position.y = 0.06;
-  const post = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.13), lam('#787c76'));
-  post.position.y = 0.37;
-  const house = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.3), lam('#787c76'));
-  house.position.y = 0.73;
-  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.22),
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.1, 0.46), lam('#5e625a'));
+  base.position.y = 0.05;
+  const base2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.3), lam('#84887e'));
+  base2.position.y = 0.13;
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.62, 0.11), lam('#84887e'));
+  post.position.y = 0.46;
+  const collar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.3), lam('#5e625a'));
+  collar.position.y = 0.79;
+  const house = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.24, 0.26), lam('#84887e'));
+  house.position.y = 0.95;
+  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.2),
     new THREE.MeshBasicMaterial({ color: 0xf5d9a0 }));
-  pane.position.y = 0.73;
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.17, 4), lam('#5c605a'));
-  roof.position.y = 0.92;
+  pane.position.y = 0.95;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.22, 4), lam('#5e625a'));
+  roof.position.y = 1.17;
   roof.rotation.y = Math.PI / 4;
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.06), lam('#787c76'));
-  cap.position.y = 1.03;
-  g.add(base, post, house, pane, roof, cap);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), lam('#84887e'));
+  cap.position.y = 1.3;
+  g.add(base, base2, post, collar, house, pane, roof, cap);
   return g;
 }
 

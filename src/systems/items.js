@@ -134,6 +134,32 @@ export const ITEMS = {
   fang_daggers:  { name: 'Fang Daggers',  weapon: true, type: 'dagger', tier: 1, dmg: 7,  speed: 3.1, range: 1.9, arc: 1.6, hits: 2, blade: ['#b5ad95', '#efe9d6'], scale: 0.75 },
   chitin_claws:  { name: 'Chitin Claws',  weapon: true, type: 'dagger', tier: 2, dmg: 10, speed: 3.2, range: 1.9, arc: 1.7, hits: 2, blade: ['#5c4630', '#96703f'], scale: 0.78 },
   shadow_fangs:  { name: 'Shadow Fangs',  weapon: true, type: 'dagger', tier: 3, dmg: 15, speed: 3.3, range: 2.0, arc: 1.8, hits: 2, blade: ['#3a3a4a', '#8a7ad0'], scale: 0.85 },
+
+  // ---- GACHA-EXCLUSIVE WEAPONS ----
+  // three tiers per weapon type; `glow` gives them an aura light + orbiting
+  // sparks on the blade. Which one you pull matches your class's weapon type.
+  // epic — STARFORGED (violet starlight)
+  star_blade:  { name: 'Starforged Blade',   weapon: true, type: 'sword',  tier: 4, dmg: 32, speed: 1.7,  range: 2.6, arc: 2.2, blade: ['#4a4a7a', '#b8b8f5'], scale: 1.2,  glow: '#b06ae8', rarity: 'epic' },
+  star_bow:    { name: 'Starforged Bow',     weapon: true, type: 'bow',    tier: 4, dmg: 26, speed: 1.95, range: 19, projSpeed: 27, blade: ['#4a4a7a', '#b8b8f5'], scale: 1.15, glow: '#b06ae8', rarity: 'epic' },
+  star_staff:  { name: 'Starforged Staff',   weapon: true, type: 'staff',  tier: 4, dmg: 31, speed: 1.45, range: 16, projSpeed: 16, aoe: 2.0, blade: ['#4a4a7a', '#b8b8f5'], scale: 1.12, glow: '#b06ae8', rarity: 'epic' },
+  star_fangs:  { name: 'Starforged Fangs',   weapon: true, type: 'dagger', tier: 4, dmg: 17, speed: 3.35, range: 2.0, arc: 1.8, hits: 2, blade: ['#4a4a7a', '#b8b8f5'], scale: 0.86, glow: '#b06ae8', rarity: 'epic' },
+  // legendary — DRAGONFANG (molten gold)
+  dragon_edge:    { name: 'Dragonfang Edge',    weapon: true, type: 'sword',  tier: 5, dmg: 38, speed: 1.75, range: 2.7, arc: 2.3, blade: ['#8a3a20', '#ffb055'], scale: 1.28, glow: '#f0c455', rarity: 'legendary' },
+  dragon_recurve: { name: 'Dragonfang Recurve', weapon: true, type: 'bow',    tier: 5, dmg: 31, speed: 2.0,  range: 20, projSpeed: 28, blade: ['#8a3a20', '#ffb055'], scale: 1.2,  glow: '#f0c455', rarity: 'legendary' },
+  dragon_scepter: { name: 'Dragonfang Scepter', weapon: true, type: 'staff',  tier: 5, dmg: 37, speed: 1.5,  range: 17, projSpeed: 16, aoe: 2.2, blade: ['#8a3a20', '#ffb055'], scale: 1.18, glow: '#f0c455', rarity: 'legendary' },
+  dragon_talons:  { name: 'Dragonfang Talons',  weapon: true, type: 'dagger', tier: 5, dmg: 21, speed: 3.4,  range: 2.1, arc: 1.9, hits: 2, blade: ['#8a3a20', '#ffb055'], scale: 0.9,  glow: '#f0c455', rarity: 'legendary' },
+  // mythic — CELESTIUM (rose starfire)
+  celestial_saber: { name: 'Celestium Saber', weapon: true, type: 'sword',  tier: 6, dmg: 46, speed: 1.8,  range: 2.8, arc: 2.4, blade: ['#6a2a4a', '#ffc8e8'], scale: 1.34, glow: '#f05a9a', rarity: 'mythic' },
+  celestial_arc:   { name: 'Celestium Arc',   weapon: true, type: 'bow',    tier: 6, dmg: 38, speed: 2.05, range: 21, projSpeed: 30, blade: ['#6a2a4a', '#ffc8e8'], scale: 1.25, glow: '#f05a9a', rarity: 'mythic' },
+  celestial_rod:   { name: 'Celestium Rod',   weapon: true, type: 'staff',  tier: 6, dmg: 45, speed: 1.55, range: 18, projSpeed: 17, aoe: 2.5, blade: ['#6a2a4a', '#ffc8e8'], scale: 1.22, glow: '#f05a9a', rarity: 'mythic' },
+  celestial_claws: { name: 'Celestium Claws', weapon: true, type: 'dagger', tier: 6, dmg: 26, speed: 3.5,  range: 2.2, arc: 2.0, hits: 2, blade: ['#6a2a4a', '#ffc8e8'], scale: 0.95, glow: '#f05a9a', rarity: 'mythic' },
+};
+
+// gacha weapon lookup: rarity tier -> weapon type -> item id
+export const GACHA_WEAPONS = {
+  epic:      { sword: 'star_blade', bow: 'star_bow', staff: 'star_staff', dagger: 'star_fangs' },
+  legendary: { sword: 'dragon_edge', bow: 'dragon_recurve', staff: 'dragon_scepter', dagger: 'dragon_talons' },
+  mythic:    { sword: 'celestial_saber', bow: 'celestial_arc', staff: 'celestial_rod', dagger: 'celestial_claws' },
 };
 
 // [itemId, chance, min, max]

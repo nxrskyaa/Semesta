@@ -258,26 +258,42 @@ const CSS = `
   mask-image: radial-gradient(circle, #000 30%, transparent 68%);
 }
 @keyframes lvl-rays { to { transform: translate(-50%, -50%) rotate(360deg); } }
-#hud .lvlup .lu-title {
-  font-size: 15px; letter-spacing: 6px; color: #fff6c8;
-  text-shadow: 0 0 14px var(--gold-glow), 1px 1px 0 #5e3c10;
+#hud .lvlup .lu-ribbon {
+  font-size: 11px; letter-spacing: 5px; color: #241c0a; padding: 4px 18px;
+  background: linear-gradient(180deg, #ffe27a, #e8b93e);
+  box-shadow: 0 0 0 2px #5e3c10, 0 0 0 4px var(--ink), 0 0 18px var(--gold-glow);
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 8px 100%, 0 50%);
   animation: lvl-pop 0.4s cubic-bezier(0.2, 2.4, 0.4, 1);
+  text-shadow: none;
 }
 #hud .lvlup .lu-num {
-  font-size: 52px; color: var(--gold); letter-spacing: 4px;
+  font-size: 64px; line-height: 1; color: var(--gold); margin-top: 2px;
   text-shadow: 0 3px 0 #5e3c10, 0 6px 14px #000, 0 0 34px var(--gold-glow);
-  animation: lvl-pop 0.5s cubic-bezier(0.2, 2.6, 0.4, 1);
+  animation: lvl-bounce 0.6s cubic-bezier(0.2, 2.6, 0.4, 1);
 }
-#hud .lvlup .lu-rewards { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+#hud .lvlup .lu-ring {
+  position: absolute; width: 60px; height: 60px; top: 50%; left: 50%;
+  margin: -30px 0 0 -30px; border: 3px solid var(--gold); border-radius: 50%;
+  opacity: 0; animation: lvl-ring 0.9s ease-out 0.15s;
+}
+@keyframes lvl-ring { 0% { transform: scale(0.4); opacity: 0.9; } 100% { transform: scale(5); opacity: 0; } }
+#hud .lvlup .lu-rewards { display: flex; flex-direction: column; gap: 5px; align-items: center; margin-top: 8px; }
 #hud .lvlup .lu-r {
   display: flex; align-items: center; gap: 7px; font-size: 11px; color: #ffe9a8;
-  background: rgba(20,20,10,0.82); border: 1px solid #6a5a2a; padding: 4px 12px;
+  background: rgba(16,14,6,0.9); padding: 5px 14px;
+  box-shadow: 0 0 0 2px #6a5a2a, 0 0 0 4px var(--ink);
   animation: lvl-rise 0.4s backwards;
   text-shadow: 1px 1px 0 #000;
 }
 #hud .lvlup .lu-r img { width: 18px; height: 18px; image-rendering: pixelated; }
 @keyframes lvl-pop { from { transform: scale(0.2); opacity: 0; } }
-@keyframes lvl-rise { from { transform: translateY(10px); opacity: 0; } }
+@keyframes lvl-bounce {
+  0% { transform: scale(0.1); opacity: 0; }
+  55% { transform: scale(1.25); opacity: 1; }
+  75% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+@keyframes lvl-rise { from { transform: translateY(12px); opacity: 0; } }
 
 #hud .deadwrap {
   position: absolute; inset: 0;
@@ -384,7 +400,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     </div>
     <div class="toasts"></div>
     <div class="banner"></div>
-    <div class="lvlup"><div class="rays"></div><span class="lu-title">◆ LEVEL UP ◆</span><span class="lu-num"></span><div class="lu-rewards"></div></div>
+    <div class="lvlup"><div class="rays"></div><div class="lu-ring"></div><span class="lu-ribbon">LEVEL UP!</span><span class="lu-num"></span><div class="lu-rewards"></div></div>
     <div class="deadwrap"><h2>YOU FELL</h2><button>RISE AT THE VILLAGE</button></div>
   `;
 
@@ -413,16 +429,19 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     prompt: root.querySelector('.prompt'),
   };
 
-  // pixel portrait from the character's face texture
-  {
+  // pixel portrait from the character's face texture (redrawn after a
+  // wardrobe appearance edit)
+  function refreshPortrait() {
     const skin = SKIN_TONES[(character.skin ?? 0) % SKIN_TONES.length];
     const hairC = HAIR_COLORS[(character.hairColor ?? 0) % HAIR_COLORS.length];
     const eyeC = EYE_COLORS[(character.eyes ?? 0) % EYE_COLORS.length];
     const faceTex = makePlayerFaceTexture(skin, hairC, eyeC, character.gender === 'female',
       character.hairStyle === BALD_STYLE, character.accessory ?? 0);
     const pc = root.querySelector('.portrait canvas');
+    pc.getContext('2d').clearRect(0, 0, pc.width, pc.height);
     pc.getContext('2d').drawImage(faceTex.image, 0, 0);
   }
+  refreshPortrait();
 
   let bannerT = null;
   let vignetteT = 0;
@@ -585,7 +604,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   const lvlEl = root.querySelector('.lvlup');
   let lvlT = null;
   function levelUp(lv, rewards = []) {
-    lvlEl.querySelector('.lu-num').textContent = `LEVEL ${lv}`;
+    lvlEl.querySelector('.lu-num').textContent = lv; // just the number — the ribbon already says LEVEL UP
     lvlEl.querySelector('.lu-rewards').innerHTML = rewards.map((r, i) =>
       `<div class="lu-r" style="animation-delay:${0.35 + i * 0.18}s">
         ${r.icon ? `<img src="${itemIconUrl(r.icon)}">` : '✦'} ${r.label}
@@ -601,5 +620,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
+    refreshPortrait,
   };
 }

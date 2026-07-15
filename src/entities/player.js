@@ -401,6 +401,26 @@ export function buildCharacterMesh(config) {
       }
       handR.add(g);
     }
+    // gacha-exclusive weapons carry a living aura: colored light + orbiting sparks
+    if (def.glow) {
+      const auraY = def.type === 'bow' ? 0 : def.type === 'staff' ? 1.1 : 0.7 * s;
+      const aura = new THREE.PointLight(new THREE.Color(def.glow), 0.9, 3.5, 2);
+      aura.position.y = auraY;
+      g.add(aura);
+      const sparks = new THREE.Group();
+      const sMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(def.glow), transparent: true, opacity: 0.9,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      for (let i = 0; i < 4; i++) {
+        const sp = new THREE.Mesh(new THREE.OctahedronGeometry(0.03), sMat);
+        sp.userData.a0 = (i / 4) * Math.PI * 2;
+        sparks.add(sp);
+      }
+      sparks.position.y = auraY;
+      g.add(sparks);
+      g.userData.sparks = sparks;
+    }
     weaponGroup = g;
   }
 
@@ -410,6 +430,7 @@ export function buildCharacterMesh(config) {
     setWeapon,
     getBowArrow: () => bowArrow,
     getStaffOrb: () => staffOrb,
+    getWeaponSparks: () => weaponGroup?.userData.sparks || null,
   };
 }
 
@@ -418,8 +439,10 @@ export function buildCharacterMesh(config) {
 // ---------------------------------------------------------------------------
 export function createPlayer(terrain, decorBlocked, config, particles) {
   const cls = CLASSES[config.cls];
-  const rig = buildCharacterMesh(config);
-  const { group, vis, parts } = rig;
+  let rig = buildCharacterMesh(config);
+  const group = rig.group;   // persistent root: scene/mounts/trail attach here
+  let vis = rig.vis;         // swapped when the appearance is rebuilt
+  const parts = rig.parts;   // shared object — mutated in place on rebuild
   group.position.copy(terrain.spawn);
 
   // swing trail (ring sector) for melee
@@ -470,6 +493,21 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
   };
   rig.setWeapon(cls.startWeapon);
   trailMat.color = new THREE.Color(ITEMS[cls.startWeapon].blade[1]);
+
+  // rebuild the hero visuals in place after a wardrobe appearance edit —
+  // the persistent group (position, mounts, trail) and the shared `parts`
+  // object survive; only the visual pivot is swapped out
+  function applyAppearance() {
+    const fresh = buildCharacterMesh(config);
+    fresh.group.remove(fresh.vis);
+    group.remove(vis);
+    vis = fresh.vis;
+    vis.position.y = visBase;
+    group.add(vis);
+    Object.assign(parts, fresh.parts);
+    rig = fresh;
+    rig.setWeapon(state.equipped); // re-attach the current weapon to the new hands
+  }
 
   function addBuff(b) {
     state.buffs = state.buffs.filter((x) => x.id !== b.id);
@@ -612,6 +650,16 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     group.rotation.y = state.facing;
     state.idleT += dt;
     if (state.landSquash > 0) state.landSquash = Math.max(0, state.landSquash - dt * 0.8);
+
+    // gacha-weapon aura: sparks orbit the blade
+    const sparks = rig.getWeaponSparks?.();
+    if (sparks) {
+      sparks.children.forEach((sp, i) => {
+        const a = sp.userData.a0 + state.idleT * 1.8;
+        sp.position.set(Math.cos(a) * 0.17, Math.sin(state.idleT * 2.2 + i * 1.7) * 0.12, Math.sin(a) * 0.17);
+        sp.rotation.y = state.idleT * 3;
+      });
+    }
 
     if (state.rolling > 0) {
       const t = 1 - state.rolling / ROLL_TIME;
@@ -912,7 +960,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
 
   return {
     state, parts, update, tryAttack, tryRoll, tryJump, takeDamage, respawn,
-    addBuff, consumeCritBuff, buffVal, setMountState,
+    addBuff, consumeCritBuff, buffVal, setMountState, applyAppearance,
     playSwing, playSpin, playBowDraw, playStaffCast, playCast,
   };
 }
