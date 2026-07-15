@@ -5,6 +5,7 @@
 // stays procedural).
 import logoUrl from '../../logoasset/semesta.png';
 import mascotUrl from '../../logoasset/nxrmascott.png';
+import { paintRialoMark } from '../world/landmarks.js';
 import { cleanImage } from '../gfx/logo.js';
 
 export { logoUrl, mascotUrl };
@@ -64,6 +65,14 @@ const CSS = `
   width: min(340px, 70vw); text-align: center;
 }
 #opening .loadbox .txt { font-size: 10px; letter-spacing: 4px; color: #f0f6fc; text-shadow: 0 2px 0 #2a4a7a; margin-bottom: 8px; }
+#opening .loadbox .rialoline {
+  display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 14px;
+  font-size: 10px; letter-spacing: 4px; color: #e8e2d2; text-shadow: 0 2px 0 #2a4a7a;
+}
+#opening .loadbox .rialoline canvas {
+  width: 22px; height: 22px; image-rendering: pixelated; border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(232,226,210,0.4), 0 2px 8px rgba(0,0,0,0.35);
+}
 #opening .loadbox .bar {
   height: 14px; border: 2px solid #22324e; background: rgba(16,26,44,0.75);
   box-shadow: inset 0 0 0 1px rgba(200,220,255,0.25), 0 3px 8px rgba(10,20,40,0.4);
@@ -321,8 +330,11 @@ export function showOpening(saved) {
     // --- loading bar -> menu ---
     const loadbox = document.createElement('div');
     loadbox.className = 'loadbox';
-    loadbox.innerHTML = '<div class="txt">AWAKENING THE WORLD...</div><div class="bar"><div></div></div>';
+    // (the mini Rialo mark is painted right after the innerHTML below)
+    loadbox.innerHTML = `<div class="txt">AWAKENING THE WORLD...</div><div class="bar"><div></div></div>
+      <div class="rialoline"><canvas class="rlogo" width="40" height="40"></canvas><span>BUILD FOR RIALO</span></div>`;
     root.appendChild(loadbox);
+    paintRialoMark(loadbox.querySelector('.rlogo').getContext('2d'), 40);
 
     const menu = document.createElement('div');
     menu.className = 'menu';

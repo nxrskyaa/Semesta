@@ -270,29 +270,36 @@ function buildSchool() {
 // Rialo monument — a stone plinth with a tall flagpole; the cream banner
 // carries the Rialo mark (painted procedurally on canvas) and ripples in the
 // wind. Two paper lanterns sway on a crossbar.
-function makeRialoTexture() {
-  // faithful redraw of the Rialo mark: two stacked rounded "steps" —
-  // TOP: a bar that steps DOWN at its right end into a short nub;
-  // BOTTOM: a longer bar (shifted left) whose right end hooks UP toward the
-  // nub, with a thick tail dropping straight down from its middle.
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
-  const ctx = c.getContext('2d');
+export function paintRialoMark(ctx, W = 128) {
+  // Rialo blockchain mark — matched to the official logo, structure exact:
+  // • TOP: a bar that steps DOWN at its right end and runs on as a nub
+  //   reaching furthest right.
+  // • MIDDLE: a longer bar starting furthest LEFT; at its RIGHT END sits a
+  //   junction — a short hook leaning up-and-right toward the nub's underside
+  //   (with a clear gap), and a thick tail dropping straight down from the
+  //   same junction to below everything else.
+  const k = W / 128;
   ctx.fillStyle = '#e8e2d2';
-  ctx.fillRect(0, 0, 128, 128);
+  ctx.fillRect(0, 0, W, W);
   ctx.strokeStyle = '#141414';
-  ctx.lineWidth = 16;
+  ctx.lineWidth = 10.5 * k;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.beginPath(); // top bar + step-down + right nub
-  ctx.moveTo(38, 35); ctx.lineTo(66, 35); ctx.lineTo(66, 47); ctx.lineTo(89, 47);
-  ctx.stroke();
-  ctx.beginPath(); // long mid bar + up-hook at the right end (mirrors the top step)
-  ctx.moveTo(29, 69); ctx.lineTo(73, 69); ctx.lineTo(73, 57);
-  ctx.stroke();
-  ctx.beginPath(); // tail dropping from the mid bar
-  ctx.moveTo(55, 69); ctx.lineTo(55, 97);
-  ctx.stroke();
+  const P = (pts) => {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0] * k, pts[0][1] * k);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * k, pts[i][1] * k);
+    ctx.stroke();
+  };
+  P([[50, 33], [73, 33], [73, 45], [90, 45]]);  // top bar → step down → right nub
+  P([[34, 66], [73, 66], [80, 54]]);            // long mid bar → up-right hook
+  P([[74, 68], [74, 97]]);                      // tail from the junction, straight down
+}
+
+function makeRialoTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  paintRialoMark(c.getContext('2d'), 128);
   const tex = new THREE.CanvasTexture(c);
   tex.magFilter = THREE.NearestFilter;
   tex.colorSpace = THREE.SRGBColorSpace;
