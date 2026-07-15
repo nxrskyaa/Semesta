@@ -286,7 +286,26 @@ export function buildCharacterMesh(config) {
     g.userData.isWeapon = true;
     const [darkC, lightC] = def.blade;
 
-    if (def.type === 'sword' || !def.type) {
+    if (def.model) {
+      // gacha exclusives get whole custom silhouettes (see buildExoticWeapon)
+      const ex = buildExoticWeapon(g, def, s);
+      if (def.type === 'bow') {
+        bowArrow = ex.arrow || null;
+        g.rotation.y = Math.PI / 2;
+        handL.add(g);
+      } else {
+        if (def.type === 'staff' && ex.orb) staffOrb = ex.orb;
+        handR.add(g);
+        if (ex.off) {
+          ex.off.rotation.z = 0.15;
+          handL.add(ex.off);
+          g.userData.offhand = ex.off;
+        }
+      }
+      if (ex.anim && (ex.anim.ring || ex.anim.orb || ex.anim.floaters?.length)) {
+        g.userData.anim = ex.anim;
+      }
+    } else if (def.type === 'sword' || !def.type) {
       // tapered blade: wide base, narrow top, pyramid tip + fuller line
       const bladeMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
       const lower = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.55 * s, 0.24 * s), bladeMat);
@@ -464,6 +483,262 @@ export function buildCharacterMesh(config) {
     getWeaponSparks: () => weaponGroup?.userData.sparks || null,
     getWeaponAnim: () => weaponGroup?.userData.anim || null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Gacha-exclusive weapon silhouettes — whole different SHAPES per family,
+// not recolors: STARFORGED = faceted floating crystal, DRAGONFANG = curved
+// fangs & horns with serrated teeth, CELESTIUM = slim halos & crescents.
+// Builds into `g` (blade along +y) and returns { arrow, orb, off, anim }.
+// ---------------------------------------------------------------------------
+function buildExoticWeapon(g, def, s) {
+  const [darkC, lightC] = def.blade;
+  const B = (c, o = {}) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c), ...o });
+  const box = (w, h, d, mat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const octa = (r, mat) => new THREE.Mesh(new THREE.OctahedronGeometry(r), mat);
+  const grip = () => { const m = box(0.055, 0.2, 0.07, lam('#3a3040')); m.position.y = 0.02; return m; };
+  const out = { anim: { floaters: [] } };
+  const float = (mesh) => { mesh.userData.by = mesh.position.y; out.anim.floaters.push(mesh); g.add(mesh); };
+  const key = `${def.model}_${def.type}`;
+
+  if (key === 'star_sword') {
+    // a faceted crystal greatblade with shard fragments orbiting loose
+    const core = octa(0.16, lam(lightC));
+    core.scale.set(0.7, 4.2, 1.3); core.position.y = 0.72 * s;
+    const inner = octa(0.09, B(def.glow));
+    inner.scale.set(0.6, 3.4, 0.9); inner.position.y = 0.72 * s;
+    for (const sx of [-1, 1]) {
+      const wing = octa(0.07, lam(darkC));
+      wing.scale.set(0.6, 2.0, 0.8);
+      wing.position.set(0, 0.34 * s, sx * 0.16);
+      wing.rotation.x = sx * 0.35;
+      g.add(wing);
+      const gd = box(0.07, 0.06, 0.16, lam(darkC));
+      gd.position.set(0, 0.15, sx * 0.11); gd.rotation.x = -sx * 0.5;
+      g.add(gd);
+    }
+    for (let i = 0; i < 3; i++) {
+      const fr = octa(0.045, B(def.glow, { transparent: true, opacity: 0.9 }));
+      fr.position.set(0.14 * (i % 2 ? 1 : -1), (0.4 + i * 0.3) * s, 0.1 * (i - 1));
+      float(fr);
+    }
+    g.add(core, inner, grip());
+  } else if (key === 'star_bow') {
+    // an arc of five detached floating crystal shards
+    for (let i = 0; i < 5; i++) {
+      const t = i / 4 - 0.5;
+      const shard = octa(0.075, i === 2 ? B(def.glow) : lam(lightC));
+      shard.scale.set(0.7, 1.9, 0.7);
+      shard.position.set(Math.cos(t * Math.PI) * 0.22 * s, t * 0.95 * s, 0);
+      shard.rotation.z = -t * 1.2;
+      float(shard);
+    }
+    const handle = box(0.07, 0.16 * s, 0.08, lam(darkC));
+    handle.position.x = 0.2 * s;
+    g.add(handle);
+    const stringGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.08 * s, 0.46 * s, 0), new THREE.Vector3(-0.15 * s, 0, 0), new THREE.Vector3(-0.08 * s, -0.46 * s, 0),
+    ]);
+    g.add(new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: 0xd8c8f5 })));
+    out.arrow = octa(0.05, B(def.glow));
+    out.arrow.scale.set(0.5, 0.5, 4.5);
+    out.arrow.position.set(-0.08, 0, 0.14);
+    out.arrow.visible = false;
+    g.add(out.arrow);
+  } else if (key === 'star_staff') {
+    // a dark monolith rod crowned by a huge levitating crystal
+    const rod = box(0.06, 1.25 * s, 0.06, lam('#2c2c4a'));
+    rod.position.y = 0.36;
+    for (const ry of [0.5, 0.8]) {
+      const band = box(0.1, 0.05, 0.1, B(def.glow, { transparent: true, opacity: 0.85 }));
+      band.position.y = ry;
+      g.add(band);
+    }
+    const crystal = octa(0.17, lam(lightC));
+    crystal.scale.set(0.8, 1.9, 0.8); crystal.position.y = 1.32;
+    const heart = octa(0.08, B(def.glow));
+    heart.position.y = 1.32;
+    float(crystal); float(heart);
+    out.orb = heart;
+    for (let i = 0; i < 2; i++) {
+      const star2 = octa(0.04, B('#ffffff'));
+      star2.position.set(i ? 0.16 : -0.16, 1.2 + i * 0.24, 0);
+      float(star2);
+    }
+    g.add(rod, grip());
+  } else if (key === 'star_fangs') {
+    const mk = () => {
+      const d = new THREE.Group();
+      d.userData.isWeapon = true;
+      for (let i = 0; i < 3; i++) { // a fan of three loose shards
+        const sh = octa(0.055, i === 1 ? B(def.glow) : lam(lightC));
+        sh.scale.set(0.55, 2.5 - i * 0.5, 0.7);
+        sh.position.set(0, 0.3, (i - 1) * 0.09);
+        sh.rotation.x = (i - 1) * 0.35;
+        d.add(sh);
+      }
+      const gr = grip(); d.add(gr);
+      return d;
+    };
+    g.add(mk());
+    out.off = mk();
+  } else if (key === 'dragon_sword') {
+    // a forward-curved fang with serrated teeth along the spine
+    let ang = 0;
+    for (let i = 0; i < 4; i++) {
+      const seg = box(0.07 * s, 0.34 * s, 0.2 * s - i * 0.03, lam(i % 2 ? darkC : lightC));
+      ang += 0.16;
+      seg.position.set(0, (0.32 + i * 0.3) * s, (i * i) * 0.022 * s);
+      seg.rotation.x = -ang;
+      g.add(seg);
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.11, 4), B(def.glow));
+      tooth.position.set(0, (0.36 + i * 0.3) * s, (-0.1 - i * i * 0.01) * s);
+      tooth.rotation.x = Math.PI - ang;
+      g.add(tooth);
+    }
+    const eye = octa(0.06, B('#ff4a2e'));
+    eye.position.set(0, 0.16, 0.1);
+    const jaw = box(0.16 * s, 0.08, 0.3 * s, lam('#5a2a18'));
+    jaw.position.y = 0.14;
+    g.add(eye, jaw, grip());
+  } else if (key === 'dragon_bow') {
+    // twin horns lashed to a scaled grip, ember tips smoldering
+    for (const sy of [-1, 1]) {
+      let ang = 0;
+      for (let i = 0; i < 3; i++) {
+        const seg = box(0.06, 0.3 * s, 0.07 + (2 - i) * 0.02, lam(i === 2 ? darkC : lightC));
+        ang += 0.4;
+        seg.position.set(Math.sin(ang) * 0.16 * s, sy * (0.16 + i * 0.26) * s, 0);
+        seg.rotation.z = -sy * ang * 0.5;
+        g.add(seg);
+      }
+      const ember = octa(0.055, B('#ff6a2e'));
+      ember.position.set(0.14 * s, sy * 0.72 * s, 0);
+      float(ember);
+    }
+    const gripm = box(0.09, 0.2 * s, 0.1, lam('#5a2a18'));
+    g.add(gripm);
+    const stringGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0.05 * s, 0.7 * s, 0), new THREE.Vector3(-0.12 * s, 0, 0), new THREE.Vector3(0.05 * s, -0.7 * s, 0),
+    ]);
+    g.add(new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: 0xffd8a8 })));
+    out.arrow = box(0.035, 0.035, 0.6, B(def.glow));
+    out.arrow.position.set(-0.06, 0, 0.12);
+    out.arrow.visible = false;
+    g.add(out.arrow);
+  } else if (key === 'dragon_staff') {
+    // ribbed shaft ending in a three-clawed talon gripping a molten orb
+    const rod = box(0.065, 1.3 * s, 0.065, lam('#5a2a18'));
+    rod.position.y = 0.38;
+    for (const ry of [0.35, 0.6, 0.85]) {
+      const rib = box(0.11, 0.045, 0.11, lam(darkC));
+      rib.position.y = ry;
+      g.add(rib);
+    }
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.3, 4), lam(lightC));
+      claw.position.set(Math.cos(a) * 0.13, 1.16, Math.sin(a) * 0.13);
+      claw.rotation.x = Math.sin(a) * 0.5;
+      claw.rotation.z = -Math.cos(a) * 0.5;
+      g.add(claw);
+    }
+    out.orb = octa(0.12 * s, B('#ffb055'));
+    out.orb.position.y = 1.24;
+    float(out.orb);
+    g.add(rod, grip());
+  } else if (key === 'dragon_dagger' || key === 'dragon_fangs' || (def.model === 'dragon' && def.type === 'dagger')) {
+    const mk = () => {
+      const d = new THREE.Group();
+      d.userData.isWeapon = true;
+      let ang = 0;
+      for (let i = 0; i < 3; i++) { // a karambit talon curling hard forward
+        const seg = box(0.05, 0.2, 0.09 - i * 0.02, lam(i % 2 ? darkC : lightC));
+        ang += 0.45;
+        seg.position.set(0, 0.16 + i * 0.16, i * i * 0.035);
+        seg.rotation.x = -ang;
+        d.add(seg);
+      }
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 4, 10), lam('#5a2a18'));
+      ring.position.y = -0.04;
+      const spur = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 4), B(def.glow));
+      spur.position.set(0, 0.1, -0.07);
+      spur.rotation.x = Math.PI;
+      d.add(ring, spur, grip());
+      return d;
+    };
+    g.add(mk());
+    out.off = mk();
+  } else if (key === 'celestial_sword') {
+    // a slim moonlit saber ringed by a great halo at the guard
+    const blade = box(0.045 * s, 1.1 * s, 0.13 * s, lam(lightC));
+    blade.position.y = 0.68 * s;
+    const gleam = box(0.02, 1.0 * s, 0.03, B('#ffffff', { transparent: true, opacity: 0.9 }));
+    gleam.position.set(0, 0.66 * s, 0.055 * s);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05 * s, 0.2 * s, 4), B(def.glow));
+    tip.position.y = 1.3 * s;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.2 * s, 0.02, 6, 20), B(def.glow, { transparent: true, opacity: 0.9 }));
+    halo.position.y = 0.2;
+    out.anim.ring = halo;
+    const star = octa(0.05, B('#ffffff'));
+    star.position.y = 1.46 * s;
+    float(star);
+    g.add(blade, gleam, tip, halo, grip());
+  } else if (key === 'celestial_bow') {
+    // winged limbs of layered feathers around a radiant core
+    for (const sy of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const feather = box(0.045, 0.4 * s - i * 0.07, 0.1 - i * 0.02, i === 0 ? lam(lightC) : i === 1 ? lam('#e8b8d8') : B(def.glow, { transparent: true, opacity: 0.8 }));
+        feather.position.set(0.05 + i * 0.08, sy * (0.3 + i * 0.14) * s, 0);
+        feather.rotation.z = -sy * (0.5 + i * 0.3);
+        g.add(feather);
+      }
+    }
+    const core = octa(0.08, B(def.glow));
+    float(core);
+    const stringGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.02, 0.62 * s, 0), new THREE.Vector3(-0.14 * s, 0, 0), new THREE.Vector3(-0.02, -0.62 * s, 0),
+    ]);
+    g.add(new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: 0xffe0f0 })));
+    out.arrow = box(0.03, 0.03, 0.6, B('#ffffff'));
+    out.arrow.position.set(-0.06, 0, 0.12);
+    out.arrow.visible = false;
+    g.add(out.arrow);
+  } else if (key === 'celestial_staff') {
+    // a crescent moon cradling a pearl, stars adrift around it
+    const rod = box(0.055, 1.3 * s, 0.055, lam('#4a2a44'));
+    rod.position.y = 0.38;
+    const crescent = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.045, 6, 14, Math.PI * 1.25), lam(lightC));
+    crescent.position.y = 1.18;
+    crescent.rotation.z = Math.PI * 0.88;
+    out.orb = new THREE.Mesh(new THREE.SphereGeometry(0.1 * s, 8, 6), B('#fff0f8'));
+    out.orb.position.y = 1.2;
+    float(out.orb);
+    for (let i = 0; i < 3; i++) {
+      const star = octa(0.035, B(def.glow));
+      star.position.set(Math.cos(i * 2.1) * 0.22, 1.05 + i * 0.16, Math.sin(i * 2.1) * 0.22);
+      float(star);
+    }
+    g.add(rod, crescent, grip());
+  } else { // celestial daggers: paired crescent moon blades
+    const mk = () => {
+      const d = new THREE.Group();
+      d.userData.isWeapon = true;
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.035, 6, 12, Math.PI * 1.1), lam(lightC));
+      arc.position.y = 0.3;
+      arc.rotation.z = Math.PI * 0.95;
+      const edge = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.014, 4, 12, Math.PI * 1.1), B('#ffffff', { transparent: true, opacity: 0.9 }));
+      edge.position.set(0, 0.3, 0.03);
+      edge.rotation.z = Math.PI * 0.95;
+      const gem = octa(0.04, B(def.glow));
+      gem.position.y = 0.12;
+      d.add(arc, edge, gem, grip());
+      return d;
+    };
+    g.add(mk());
+    out.off = mk();
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -692,8 +967,8 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
         sp.rotation.y = state.idleT * 3;
       });
     }
-    // staff jewelry: the orbit ring precesses (a flat torus spinning on its
-    // own axis would be invisible), the orb breathes
+    // weapon jewelry: rings precess (a flat torus spinning on its own axis
+    // would be invisible), orbs breathe, loose fragments hover & twirl
     const wAnim = rig.getWeaponAnim?.();
     if (wAnim) {
       if (wAnim.ring) {
@@ -701,6 +976,12 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
         wAnim.ring.rotation.z = state.idleT * 1.4;
       }
       if (wAnim.orb) wAnim.orb.scale.setScalar(1 + Math.sin(state.idleT * 3.4) * 0.1);
+      if (wAnim.floaters) {
+        wAnim.floaters.forEach((f, i) => {
+          f.position.y = f.userData.by + Math.sin(state.idleT * 2.6 + i * 1.9) * 0.045;
+          f.rotation.y = state.idleT * 2 + i;
+        });
+      }
     }
 
     if (state.rolling > 0) {

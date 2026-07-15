@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from './terrain.js';
 
-const CAMP_COUNT = 4;
+const CAMP_COUNT = 6;
 export const CAMP_SAFE_R = 7;     // monsters won't enter this radius
 export const CAMP_HEAL_R = 3.5;   // fast healing this close to the fire
 
@@ -133,10 +133,11 @@ export function createCamps(scene, terrain, decorBlocked, particles) {
   const camps = [];
   const S2 = terrain.size / 2;
 
-  // spread camps across quadrants, away from the village
+  // spread camps across quadrants + the sparse mid-edges, away from the village
   const targets = [
     [-S2 * 0.55, -S2 * 0.5], [S2 * 0.55, -S2 * 0.45],
     [-S2 * 0.5, S2 * 0.55], [S2 * 0.5, S2 * 0.5],
+    [0, -S2 * 0.6], [-S2 * 0.65, 0],
   ];
   for (let c = 0; c < CAMP_COUNT; c++) {
     let placed = false;

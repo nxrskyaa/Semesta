@@ -64,6 +64,7 @@ export function createWorldMap({ minimap, terrain }) {
         <span><b style="color:#f0a8c8">◈</b>Gacha</span>
         <span><b style="color:#e8a35d">⚒</b>Forge</span>
         <span><b style="color:#8ac86a">▲</b>Rest Camp</span>
+        <span><b style="color:#6ad0e8">⚓</b>Fish Dock</span>
         <span><b style="color:#f0c455">⌂</b>Your Home</span>
         <span><b style="color:#c8b494">◎</b>Land</span>
         <span><b style="color:#ffd23e">◆</b>Boss</span>
@@ -145,6 +146,15 @@ export function createWorldMap({ minimap, terrain }) {
       if (n.questMark) {
         ctx.fillStyle = '#0a0f0a'; ctx.fillText('!', x + 1, y - 3);
         ctx.fillStyle = '#ffd23e'; ctx.fillText('!', x, y - 4);
+      }
+    }
+    // lakeside fish markets
+    if (refs.docks) {
+      ctx.font = 'bold 14px monospace';
+      for (const d of refs.docks) {
+        const [x, y] = toXY(d.x, d.z);
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('⚓', x + 1, y + 1);
+        ctx.fillStyle = '#6ad0e8'; ctx.fillText('⚓', x, y);
       }
     }
     // shop, gacha & forge landmarks in the village

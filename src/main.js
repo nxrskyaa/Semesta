@@ -1130,6 +1130,11 @@ async function init(character, saved, audio) {
     if (near(npcs.gachaSpot)) return { label: 'Wonder Capsules (gacha)', run: () => { audio.sfx('ui'); panels.toggle('gacha'); } };
     if (near(npcs.forgeSpot)) return { label: 'Forge your weapon', run: () => { audio.sfx('ui'); panels.toggle('forge'); } };
 
+    // lakeside fish markets: every dock has a fishmonger who buys the catch
+    const dock = landmarks.docks?.find(
+      (d) => (d.x - player.state.pos.x) ** 2 + (d.z - player.state.pos.z) ** 2 < 2.8 * 2.8);
+    if (dock) return { label: 'Fish Market — sell your catch', run: () => { audio.sfx('ui'); panels.toggle('shop'); } };
+
     // campfires: cook the catch of the day
     const fire = camps.nearestFire(player.state.pos, 2.6)
       || (((npcs.cookfire.x - player.state.pos.x) ** 2 + (npcs.cookfire.z - player.state.pos.z) ** 2 < 2.6 * 2.6) ? npcs.cookfire : null);
@@ -1199,7 +1204,7 @@ async function init(character, saved, audio) {
   const worldmap = createWorldMap({ minimap, terrain });
   function toggleWorldMap() {
     audio.sfx('ui');
-    worldmap.toggle({ player, npcs, camps, lands: housing, enemies: enemyMgr.enemies, quests });
+    worldmap.toggle({ player, npcs, camps, lands: housing, enemies: enemyMgr.enemies, quests, docks: landmarks.docks });
   }
   hud.els.minimapCanvas.style.pointerEvents = 'auto';
   hud.els.minimapCanvas.style.cursor = 'pointer';

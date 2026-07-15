@@ -2,9 +2,63 @@
 // to make the wilds feel lived-in beyond the village. Purely scenic (blocked
 // footprints); the windmill's sails turn.
 import * as THREE from 'three';
-import { WATER_LEVEL } from './terrain.js';
+import { WATER_LEVEL, WATER_Y } from './terrain.js';
+import { makeCritterFaceTexture } from '../gfx/textures.js';
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
+
+const faceCache = new Map();
+function critterFace(key, opts) {
+  if (!faceCache.has(key)) faceCache.set(key, makeCritterFaceTexture(opts));
+  return faceCache.get(key);
+}
+
+// small chibi villager critter used by scenic landmarks (dancers, fishermen)
+function buildCritter(furC, bellyC, faceKey, faceOpts) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.26), lam(furC));
+  body.position.y = 0.26;
+  body.castShadow = true;
+  const belly = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.05), lam(bellyC));
+  belly.position.set(0, 0.24, 0.14);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.28), lam(furC));
+  head.position.y = 0.56;
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.24),
+    new THREE.MeshBasicMaterial({ map: critterFace(faceKey, faceOpts), transparent: true }));
+  face.position.set(0, 0.57, 0.15);
+  const arms = [];
+  for (const sx of [-1, 1]) {
+    const arm = new THREE.Group();
+    arm.position.set(sx * 0.19, 0.36, 0);
+    const limb = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.09), lam(furC));
+    limb.position.y = -0.08;
+    arm.add(limb);
+    g.add(arm);
+    arms.push(arm);
+  }
+  const feet = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.1, 0.2), lam(bellyC));
+  feet.position.y = 0.06;
+  g.add(body, belly, head, face, feet);
+  g.userData.arms = arms;
+  return g;
+}
+
+// hanging paper lantern (chōchin) on a swing pivot
+function buildChochin(scale = 1) {
+  const pivot = new THREE.Group();
+  const string = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.18, 0.02), lam('#3a322a'));
+  string.position.y = -0.09;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.11 * scale, 0.11 * scale, 0.22 * scale, 8), lam('#e05a48'));
+  body.position.y = -0.3 * scale;
+  const rim1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.08 * scale, 0.035, 8), lam('#3a322a'));
+  rim1.position.y = -0.18 * scale;
+  const rim2 = rim1.clone(); rim2.position.y = -0.42 * scale;
+  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.09 * scale, 0.1 * scale, 0.09 * scale),
+    new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+  pane.position.y = -0.3 * scale;
+  pivot.add(string, body, rim1, rim2, pane);
+  return pivot;
+}
 
 function buildWindmill() {
   const g = new THREE.Group();
@@ -217,24 +271,27 @@ function buildSchool() {
 // carries the Rialo mark (painted procedurally on canvas) and ripples in the
 // wind. Two paper lanterns sway on a crossbar.
 function makeRialoTexture() {
+  // faithful redraw of the Rialo mark: two stacked rounded "steps" —
+  // TOP: a bar that steps DOWN at its right end into a short nub;
+  // BOTTOM: a longer bar (shifted left) whose right end hooks UP toward the
+  // nub, with a thick tail dropping straight down from its middle.
   const c = document.createElement('canvas');
   c.width = 128; c.height = 128;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#e8e2d2';
   ctx.fillRect(0, 0, 128, 128);
-  ctx.strokeStyle = '#181818';
-  ctx.lineWidth = 17;
+  ctx.strokeStyle = '#141414';
+  ctx.lineWidth = 16;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // the rounded step-glyph: top bar w/ right nub, mid bar hooking up, tail down
-  ctx.beginPath();
-  ctx.moveTo(40, 38); ctx.lineTo(72, 38); ctx.lineTo(72, 48); ctx.lineTo(90, 48);
+  ctx.beginPath(); // top bar + step-down + right nub
+  ctx.moveTo(38, 35); ctx.lineTo(66, 35); ctx.lineTo(66, 47); ctx.lineTo(89, 47);
   ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(78, 66); ctx.lineTo(36, 66);
+  ctx.beginPath(); // long mid bar + up-hook at the right end (mirrors the top step)
+  ctx.moveTo(29, 69); ctx.lineTo(73, 69); ctx.lineTo(73, 57);
   ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(62, 66); ctx.lineTo(62, 94);
+  ctx.beginPath(); // tail dropping from the mid bar
+  ctx.moveTo(55, 69); ctx.lineTo(55, 97);
   ctx.stroke();
   const tex = new THREE.CanvasTexture(c);
   tex.magFilter = THREE.NearestFilter;
@@ -298,14 +355,216 @@ function buildRialoMonument() {
   return g;
 }
 
+// Festival plaza — a packed-earth dance circle around a bonfire, ringed by
+// lantern poles, with villager critters dancing to their own drum
+function buildFestival() {
+  const g = new THREE.Group();
+  const ground = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.6, 0.08, 14), lam('#b89468'));
+  ground.position.y = 0.04;
+  ground.receiveShadow = true;
+  g.add(ground);
+  // bonfire
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const stone = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.13, 0.14), lam('#8d9294'));
+    stone.position.set(Math.cos(a) * 0.42, 0.12, Math.sin(a) * 0.42);
+    g.add(stone);
+  }
+  const flames = [];
+  for (const [fx, fy, fz, s] of [[0, 0.3, 0, 0.17], [0.08, 0.42, 0.05, 0.1], [-0.09, 0.4, -0.04, 0.11]]) {
+    const flame = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0),
+      new THREE.MeshBasicMaterial({ color: fy > 0.35 ? 0xffd23e : 0xff8a33 }));
+    flame.position.set(fx, fy, fz);
+    g.add(flame);
+    flames.push(flame);
+  }
+  const fireLight = new THREE.PointLight(0xffa050, 2.2, 8, 2);
+  fireLight.position.y = 0.7;
+  g.add(fireLight);
+  // lantern poles around the circle
+  const lanterns = [];
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + 0.5;
+    const px = Math.cos(a) * 2.2, pz = Math.sin(a) * 2.2;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.7, 6), lam('#5a4a3a'));
+    pole.position.set(px, 0.85, pz);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.06), lam('#5a4a3a'));
+    arm.position.set(px, 1.68, pz);
+    arm.lookAt(0, 1.68, 0);
+    g.add(pole, arm);
+    const cho = buildChochin(0.8);
+    cho.position.set(px * 0.86, 1.66, pz * 0.86);
+    g.add(cho);
+    lanterns.push(cho);
+  }
+  // the dancers! villager critters circling the fire
+  const DANCER_LOOKS = [
+    ['#e8a86a', '#f5dcb8', 'd_fox', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,140,120,0.7)' }],
+    ['#a8c8e8', '#e0eef8', 'd_bun', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'w', cheeks: 'rgba(240,150,170,0.6)' }],
+    ['#b8d888', '#e8f5cc', 'd_frog', { eyeW: 4, eyeH: 4, gap: 4, eyeY: 2, mouth: 'smile' }],
+    ['#e8c8a0', '#f8ecd8', 'd_cub', { eyeW: 3, eyeH: 5, gap: 4, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,150,140,0.7)' }],
+  ];
+  const dancers = [];
+  DANCER_LOOKS.forEach((look, i) => {
+    const d = buildCritter(...look);
+    const a = (i / DANCER_LOOKS.length) * Math.PI * 2;
+    d.position.set(Math.cos(a) * 1.35, 0.08, Math.sin(a) * 1.35);
+    d.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
+    g.add(d);
+    dancers.push({ g: d, seed: i * 1.7, baseA: a });
+  });
+  g.userData.flames = flames;
+  g.userData.lanterns = lanterns;
+  g.userData.dancers = dancers;
+  return g;
+}
+
+// wooden watchtower — a tall lookout with a lantern, great for sparse corners
+function buildWatchtower() {
+  const g = new THREE.Group();
+  const wood = lam('#7a5638'), woodDark = lam('#5a4028');
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.8, 0.16), wood);
+    leg.position.set(sx * 0.55, 1.4, sz * 0.55);
+    leg.rotation.z = -sx * 0.06;
+    leg.rotation.x = sz * 0.06;
+    leg.castShadow = true;
+    g.add(leg);
+    const brace = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.1, 0.08), woodDark);
+    brace.position.set(sx * 0.5, 0.9, 0);
+    brace.rotation.x = sz * 0.6;
+    g.add(brace);
+  }
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 1.7), wood);
+  deck.position.y = 2.8;
+  deck.castShadow = true;
+  g.add(deck);
+  for (const [sx, sz, w, d] of [[0, -1, 1.7, 0.08], [0, 1, 1.7, 0.08], [-1, 0, 0.08, 1.7], [1, 0, 0.08, 1.7]]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 0.34, d), woodDark);
+    rail.position.set(sx * 0.81, 3.05, sz * 0.81);
+    g.add(rail);
+  }
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.75, 4), lam('#8a4638'));
+  roof.position.y = 3.9;
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.75, 0.09), wood);
+    post.position.set(sx * 0.7, 3.2, sz * 0.7);
+    g.add(post);
+  }
+  // ladder up the front
+  for (let i = 0; i < 6; i++) {
+    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), woodDark);
+    rung.position.set(0, 0.4 + i * 0.44, 0.62);
+    g.add(rung);
+  }
+  for (const sx of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.75, 0.06), wood);
+    rail.position.set(sx * 0.23, 1.45, 0.62);
+    g.add(rail);
+  }
+  const cho = buildChochin(0.9);
+  cho.position.set(0, 3.62, 0.8);
+  g.add(cho, roof);
+  const light = new THREE.PointLight(0xffc27a, 1.3, 7, 2);
+  light.position.y = 3.1;
+  g.add(light);
+  g.userData.lanterns = [cho];
+  return g;
+}
+
+// fishing dock — a lantern-lit wooden pier reaching into the lake, with a
+// fishmonger critter and a fish-market stall (walk up + interact to sell)
+function buildFishingDock() {
+  const g = new THREE.Group();
+  const wood = lam('#8a6a48'), woodDark = lam('#6a4e34');
+  // pier planks marching out over the water (+z = toward the lake)
+  for (let i = 0; i < 3; i++) {
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.09, 1.05), wood);
+    deck.position.set(0, 0.42, 0.55 + i * 1.0);
+    deck.castShadow = true;
+    g.add(deck);
+    for (const sx of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.9, 6), woodDark);
+      post.position.set(sx * 0.48, 0, 0.55 + i * 1.0);
+      g.add(post);
+    }
+  }
+  // end railing + two lanterns over the water
+  const lanterns = [];
+  for (const sx of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.65, 0.07), woodDark);
+    rail.position.set(sx * 0.48, 0.74, 2.95);
+    g.add(rail);
+    const cho = buildChochin(0.75);
+    cho.position.set(sx * 0.48, 1.12, 2.95);
+    g.add(cho);
+    lanterns.push(cho);
+  }
+  // fish-market stall on the shore end: counter + striped awning + crates
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 0.6), woodDark);
+  counter.position.set(0, 0.28, -0.75);
+  counter.castShadow = true;
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 0.7), wood);
+  top.position.set(0, 0.6, -0.75);
+  for (const sx of [-1, 1]) {
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.5, 0.08), wood);
+    pole.position.set(sx * 0.76, 0.75, -0.75);
+    g.add(pole);
+  }
+  const awning = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.95),
+      lam(i % 2 ? '#f0ead8' : '#4a90b8'));
+    strip.position.set(-0.72 + i * 0.36, 0, 0);
+    awning.add(strip);
+  }
+  awning.position.set(0, 1.55, -0.75);
+  awning.rotation.x = 0.18;
+  // crates of the day's catch
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4), wood);
+  crate.position.set(0.45, 0.72, -0.75);
+  for (let i = 0; i < 3; i++) {
+    const fish = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.1),
+      lam(['#7ab8e8', '#e8a35d', '#f0c455'][i]));
+    fish.position.set(0.34 + i * 0.11, 0.9, -0.75 + (i % 2 ? 0.08 : -0.06));
+    fish.rotation.y = i * 0.5;
+    g.add(fish);
+  }
+  // hanging sign: a painted fish
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.05), lam('#f0ead8'));
+  sign.position.set(0, 1.14, -0.4);
+  const signFish = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.02), lam('#4a90b8'));
+  signFish.position.set(0, 1.14, -0.36);
+  // the fishmonger — a cheery otter critter in a straw hat
+  const monger = buildCritter('#8a7258', '#e8d8b8', 'monger',
+    { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'smile', cheeks: 'rgba(240,160,130,0.6)' });
+  monger.position.set(-0.5, 0.05, -1.35);
+  monger.rotation.y = Math.PI; // faces customers coming from land
+  const hat = new THREE.Group();
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.04, 8), lam('#d8b86a'));
+  const dome = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.1, 8), lam('#e8cc82'));
+  dome.position.y = 0.06;
+  hat.add(brim, dome);
+  hat.position.y = 0.74;
+  monger.add(hat);
+  const light = new THREE.PointLight(0xffc27a, 1.1, 6, 2);
+  light.position.set(0, 1.2, 0.6);
+  g.add(counter, top, awning, crate, sign, signFish, monger, light);
+  g.userData.lanterns = lanterns;
+  g.userData.monger = monger;
+  return g;
+}
+
 export function createLandmarks(scene, terrain, decorBlocked) {
   const S2 = terrain.size / 2;
   const built = [];
 
-  function place(mesh, tx, tz, blockR = 1) {
+  function place(mesh, tx, tz, blockR = 1, jitter = 12) {
     for (let tries = 0; tries < 80; tries++) {
-      const x = tx + (Math.random() - 0.5) * 12;
-      const z = tz + (Math.random() - 0.5) * 12;
+      const x = tx + (Math.random() - 0.5) * jitter;
+      const z = tz + (Math.random() - 0.5) * jitter;
       const [ix, iz] = terrain.cellOf(x, z);
       if (!terrain.inBounds(ix, iz)) continue;
       const h = terrain.heightCell(ix, iz);
@@ -333,8 +592,44 @@ export function createLandmarks(scene, terrain, decorBlocked) {
   if (place(school, -S2 * 0.2, -S2 * 0.42, 2)) built.push(school);
   const heart = buildHeartTorches();
   if (place(heart, S2 * 0.38, S2 * 0.22, 2)) built.push(heart);
+  // the Rialo monument stands right at the basecamp so nobody misses it —
+  // just outside the village circle, plaque facing the well
   const rialo = buildRialoMonument();
-  if (place(rialo, -S2 * 0.55, -S2 * 0.12, 2)) built.push(rialo);
+  if (place(rialo, terrain.spawn.x + 10.5, terrain.spawn.z - 9, 2, 4)) {
+    rialo.rotation.y = Math.atan2(
+      terrain.spawn.x - rialo.position.x, terrain.spawn.z - rialo.position.z);
+    built.push(rialo);
+  }
+  // festival plaza (south) & watchtower (east) fill the quieter stretches
+  const festival = buildFestival();
+  if (place(festival, S2 * 0.05, S2 * 0.6, 2)) built.push(festival);
+  const watch = buildWatchtower();
+  if (place(watch, S2 * 0.6, S2 * 0.06, 1)) built.push(watch);
+
+  // a lantern-lit fishing dock on the shore of EVERY lake, each with its own
+  // fishmonger — walk up to sell the day's catch
+  const docks = [];
+  for (const L of terrain.lakes) {
+    const wx0 = L.x - terrain.size / 2, wz0 = L.z - terrain.size / 2;
+    const dir = Math.atan2(-wx0, -wz0); // out of the lake toward the map center
+    for (let t = 2; t < L.r * 2.6; t += 0.5) {
+      const x = wx0 + Math.sin(dir) * t;
+      const z = wz0 + Math.cos(dir) * t;
+      if (terrain.isWater(x, z)) continue;
+      // first dry cell heading inland: nudge a little further onto the shore
+      const dx2 = x + Math.sin(dir) * 1.2, dz2 = z + Math.cos(dir) * 1.2;
+      const [ix, iz] = terrain.cellOf(dx2, dz2);
+      if (!terrain.inBounds(ix, iz)) break;
+      const dock = buildFishingDock();
+      dock.position.set(dx2, Math.max(terrain.surfaceY(dx2, dz2), WATER_Y + 0.1), dz2);
+      dock.rotation.y = Math.atan2(wx0 - dx2, wz0 - dz2); // pier reaches the water
+      scene.add(dock);
+      decorBlocked.add(`${ix},${iz}`);
+      built.push(dock);
+      docks.push({ x: dx2, z: dz2, mesh: dock });
+      break;
+    }
+  }
 
   function update(dt, time) {
     // Rialo banner ripples in the wind; the paper lanterns sway
@@ -366,7 +661,36 @@ export function createLandmarks(scene, terrain, decorBlocked) {
       }
     }
     if (school.userData.clockHand) school.userData.clockHand.rotation.z = -time * 0.2;
+
+    // paper lanterns sway on every landmark that hangs them
+    for (const lm of [festival, watch, ...docks.map((d) => d.mesh)]) {
+      const ls = lm.userData.lanterns;
+      if (!ls) continue;
+      for (let i = 0; i < ls.length; i++) {
+        ls[i].rotation.z = Math.sin(time * 1.6 + i * 2.3 + lm.position.x) * 0.15;
+        ls[i].rotation.x = Math.sin(time * 1.2 + i) * 0.09;
+      }
+    }
+    // festival: the bonfire crackles and the critters DANCE
+    if (festival.userData.flames) {
+      festival.userData.flames.forEach((f, i) => {
+        f.scale.setScalar(1 + Math.sin(time * 9 + i * 1.4) * 0.25);
+      });
+      for (const d of festival.userData.dancers) {
+        d.g.position.y = 0.08 + Math.abs(Math.sin(time * 5 + d.seed)) * 0.16;
+        d.g.rotation.y = Math.atan2(-Math.cos(d.baseA), -Math.sin(d.baseA))
+          + Math.sin(time * 2.4 + d.seed) * 0.7;
+        const [aL, aR] = d.g.userData.arms;
+        aL.rotation.z = 2.4 + Math.sin(time * 7 + d.seed) * 0.6;   // arms up, waving
+        aR.rotation.z = -2.4 - Math.sin(time * 7 + d.seed + 1.2) * 0.6;
+      }
+    }
+    // fishmongers rock gently on their heels
+    for (const d of docks) {
+      const m = d.mesh.userData.monger;
+      if (m) m.position.y = 0.05 + Math.abs(Math.sin(time * 2.2 + d.x)) * 0.03;
+    }
   }
 
-  return { built, update, heart };
+  return { built, update, heart, docks };
 }
