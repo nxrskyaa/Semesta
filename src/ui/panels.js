@@ -1,5 +1,5 @@
-// Panels: Bag (Tab), Craft (C), Forge (V), Pets (P), Help (?) — pixel style, touch friendly.
-import { ITEMS } from '../systems/items.js';
+// Panels: Bag (Tab), Craft (C), Forge (V), Pets (P), Wardrobe (O), Help (?) — pixel style, touch friendly.
+import { ITEMS, RARITY, RARITY_ORDER } from '../systems/items.js';
 import { itemIconUrl } from '../gfx/textures.js';
 import { recipesFor, canCraft, craft } from '../systems/crafting.js';
 import { forgeCost, forgeChance, MAX_PLUS } from '../systems/forge.js';
@@ -9,11 +9,12 @@ import { MOUNT_DEFS } from '../systems/mounts.js';
 const CSS = `
 .panel {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -52%);
-  width: min(500px, calc(100vw - 20px)); max-height: 78vh; overflow-y: auto;
-  background: linear-gradient(180deg, var(--panel-1), var(--panel-2));
-  border: 2px solid var(--line);
-  box-shadow: inset 0 0 0 1px var(--gold-glow), inset 0 0 50px rgba(0,0,0,0.45), 0 0 0 1px var(--ink);
-  clip-path: var(--cut);
+  width: min(500px, calc(100vw - 32px)); max-height: 78vh; overflow-y: auto;
+  background:
+    var(--dither) 0 0/4px 4px,
+    linear-gradient(180deg, var(--panel-1), var(--panel-2));
+  border: 0;
+  box-shadow: var(--pix-frame), inset 0 0 50px rgba(0,0,0,0.45);
   padding: 15px; display: none;
   pointer-events: auto; z-index: 30;
   scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent;
@@ -21,9 +22,11 @@ const CSS = `
 .panel.show { display: block; animation: panel-in 0.14s ease-out; }
 @keyframes panel-in { from { transform: translate(-50%, -50%) scale(0.97); opacity: 0; } }
 .panel h3 {
-  font-size: 15px; letter-spacing: 4px; color: var(--gold); margin-bottom: 12px;
-  border-bottom: 1px solid var(--gold-dim); padding-bottom: 8px;
-  text-shadow: 0 1px 0 var(--ink);
+  font-size: 14px; letter-spacing: 4px; color: var(--gold); margin: -4px -4px 12px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, rgba(216,184,102,0.12), rgba(216,184,102,0.03));
+  box-shadow: inset 0 0 0 1px rgba(216,184,102,0.22), inset 0 -3px 0 0 rgba(0,0,0,0.35);
+  text-shadow: 0 1px 0 var(--ink), 0 0 12px var(--gold-glow);
 }
 .panel h3::before { content: '◆ '; font-size: 10px; color: var(--gold-dim); vertical-align: 2px; }
 .panel h3 small { float: right; color: var(--muted); font-size: 10px; letter-spacing: 1px; }
@@ -51,19 +54,28 @@ const CSS = `
 .rec-row .cost .lack { color: #e87a6a; }
 .rec-row .cost .ok { color: #b8e89a; }
 .panel button.act {
-  font-family: inherit; font-size: 11px; padding: 7px 14px; cursor: pointer;
+  font-family: inherit; font-size: 11px; padding: 8px 14px; cursor: pointer;
   background: linear-gradient(180deg, #57452a, #3a2e18); color: #ffe9b0;
-  border: 1px solid var(--gold-dim); box-shadow: 0 0 0 1px var(--ink);
-  letter-spacing: 1px;
+  border: 0; letter-spacing: 1px; margin: 2px;
+  box-shadow:
+    0 -2px 0 0 #8a744a, 0 2px 0 0 #241c0a,
+    -2px 0 0 0 #5a4a2a, 2px 0 0 0 #5a4a2a,
+    0 0 0 3px var(--ink) inset;
+  text-shadow: 0 1px 0 #241c0a;
 }
-.panel button.act:hover:not(:disabled) { border-color: var(--gold); filter: brightness(1.2); }
-.panel button.act:disabled { background: #242a24; color: #666f60; border-color: #333c33; cursor: default; }
+.panel button.act:hover:not(:disabled) { filter: brightness(1.25); }
+.panel button.act:active:not(:disabled) { transform: translateY(2px); }
+.panel button.act:disabled {
+  background: #242a24; color: #666f60; cursor: default; text-shadow: none;
+  box-shadow: 0 -2px 0 0 #333c33, 0 2px 0 0 #181c18, -2px 0 0 0 #2a322a, 2px 0 0 0 #2a322a, 0 0 0 3px var(--ink) inset;
+}
 .panel button.eq {
-  font-family: inherit; font-size: 11px; padding: 6px 12px; cursor: pointer;
+  font-family: inherit; font-size: 11px; padding: 7px 12px; cursor: pointer;
   background: linear-gradient(180deg, #2a3522, #1a2215); color: #c2cbb0;
-  border: 1px solid #5a6a4a; box-shadow: 0 0 0 1px var(--ink);
+  border: 0; margin: 2px; box-shadow: var(--pix-btn);
 }
-.panel button.eq:hover:not(:disabled) { border-color: var(--gold); color: #f0e9cc; }
+.panel button.eq:hover:not(:disabled) { color: #ffe9b0; filter: brightness(1.2); }
+.panel button.eq:active:not(:disabled) { transform: translateY(2px); }
 .panel button.eq:disabled { opacity: 0.55; cursor: default; }
 .forge-target {
   display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 10px;
@@ -103,7 +115,7 @@ const CSS = `
 export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
-  economy, cooking, estate, gacha,
+  economy, cooking, estate, gacha, wardrobe,
 }) {
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -119,6 +131,7 @@ export function createPanels(hudRoot, {
     cook: document.createElement('div'),
     estate: document.createElement('div'),
     gacha: document.createElement('div'),
+    ward: document.createElement('div'),
     help: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
@@ -435,67 +448,176 @@ export function createPanels(hudRoot, {
     });
   }
 
+  // --- Wonder Capsules v2: six-tier reveal show with a real capsule machine ---
   let gachaHistory = [];
-  function renderGacha(rolling = false, result = null) {
+  let gachaBusy = false; // don't let inventory refreshes stomp the animation
+  function renderGacha(phase = 'idle', result = null) {
     if (!gacha) return;
+    if (gachaBusy && phase === 'idle') return;
     const coins = inventory.state.coins;
     const afford = coins >= gacha.price;
-    const RARITY = {
-      common: ['COMMON', '#b8c4b0'], rare: ['RARE', '#7ab8e8'],
-      epic: ['EPIC', '#c8a8f0'], legendary: ['LEGENDARY', '#f0c455'],
-    };
-    let resultHtml;
-    if (rolling) {
-      resultHtml = '<div class="g-capsule spin">●</div><div class="g-hint">The capsule tumbles...</div>';
-    } else if (result) {
-      const [label, col] = RARITY[result.rarity];
-      resultHtml = `<div class="g-card" style="--rc:${col}">
-        <div class="g-rarity">${label}</div>
-        <img src="${itemIconUrl(result.iconId)}">
-        <div class="g-name">${result.name}</div>
-        ${result.note ? `<div class="g-note">${result.note}</div>` : ''}
-      </div>`;
+    const rc = (r) => RARITY[r].color;
+
+    let stage;
+    if (phase === 'spin') {
+      stage = `<div class="g-machine spin">
+          <div class="g-dome"><div class="g-caps a"></div><div class="g-caps b"></div><div class="g-caps c"></div></div>
+          <div class="g-body">◈</div><div class="g-crank">✦</div>
+        </div>
+        <div class="g-hint">The capsule tumbles...</div>`;
+    } else if (phase === 'reveal' && result) {
+      const R = RARITY[result.rarity];
+      const high = result.rarity === 'legendary' || result.rarity === 'mythic';
+      stage = `<div class="g-flash" style="--rc:${R.color}"></div>
+        <div class="g-card ${high ? 'high' : ''} r-${result.rarity}" style="--rc:${R.color}">
+          <div class="g-rarity">${'◆'.repeat(RARITY_ORDER.indexOf(result.rarity) + 1)} ${R.name.toUpperCase()}</div>
+          <div class="g-icoframe"><img src="${itemIconUrl(result.iconId)}"></div>
+          <div class="g-name">${result.name}</div>
+          ${result.note ? `<div class="g-note">${result.note}</div>` : ''}
+        </div>`;
     } else {
-      resultHtml = '<div class="g-capsule">●</div><div class="g-hint">Spin for charms, mount whistles... maybe even Blossom.</div>';
+      stage = `<div class="g-machine">
+          <div class="g-dome"><div class="g-caps a"></div><div class="g-caps b"></div><div class="g-caps c"></div></div>
+          <div class="g-body">◈</div><div class="g-crank">✦</div>
+        </div>
+        <div class="g-hint">Cosmetics · exclusive pets · exclusive mounts... maybe a MYTHIC.</div>`;
     }
-    const hist = gachaHistory.slice(-6).reverse().map((h) =>
-      `<span style="color:${RARITY[h.rarity][1]}">◆ ${h.name}</span>`).join('<br>');
+
+    const oddsLine = gacha.odds.map(([r, w]) =>
+      `<span style="color:${rc(r)}">${RARITY[r].name} ${w}%</span>`).join(' · ');
+    const hist = gachaHistory.slice(-8).reverse().map((h) =>
+      `<span style="color:${rc(h.rarity)}">◆ ${h.name}</span>`).join('<br>');
+    const pityPct = Math.min(100, (gacha.pity / 9) * 100);
+
     panels.gacha.innerHTML = `<h3>WONDER CAPSULES <small>[Esc] close</small></h3>
       <style>
-        .g-stage { text-align: center; padding: 12px 0 6px; min-height: 150px; }
-        .g-capsule { font-size: 56px; color: #f06a7a; text-shadow: 0 0 20px rgba(240,106,122,0.4); }
-        .g-capsule.spin { display: inline-block; animation: g-shake 0.12s linear infinite; }
-        @keyframes g-shake { 0% { transform: rotate(-14deg) translateX(-3px); } 50% { transform: rotate(12deg) translateX(3px); } 100% { transform: rotate(-14deg) translateX(-3px); } }
-        .g-hint { font-size: 10px; color: var(--muted); margin-top: 8px; letter-spacing: 1px; }
-        .g-card { display: inline-block; padding: 14px 26px; border: 2px solid var(--rc);
-          background: rgba(10,14,9,0.75); box-shadow: 0 0 22px var(--rc), inset 0 0 14px rgba(0,0,0,0.5);
-          animation: g-pop 0.3s ease-out; }
-        @keyframes g-pop { from { transform: scale(0.6); opacity: 0; } }
-        .g-rarity { font-size: 9px; letter-spacing: 4px; color: var(--rc); margin-bottom: 8px; }
-        .g-card img { width: 48px; height: 48px; image-rendering: pixelated; }
-        .g-name { font-size: 13px; color: var(--text); margin-top: 6px; }
-        .g-note { font-size: 9px; color: var(--muted); margin-top: 4px; }
+        .g-stage { text-align: center; padding: 10px 0 4px; min-height: 190px; position: relative; }
+        /* pixel capsule machine */
+        .g-machine { display: inline-block; position: relative; width: 96px; }
+        .g-dome { width: 84px; height: 56px; margin: 0 auto; border: 3px solid #3a2e18;
+          border-bottom: none; border-radius: 42px 42px 0 0; position: relative; overflow: hidden;
+          background: linear-gradient(180deg, rgba(200,230,255,0.16), rgba(140,180,220,0.06)); }
+        .g-caps { position: absolute; width: 18px; height: 18px; border-radius: 50%; }
+        .g-caps::after { content: ''; position: absolute; inset: 50% 0 0 0; border-radius: 0 0 9px 9px; background: #f4f0e4; }
+        .g-caps.a { background: #f06a7a; left: 12px; bottom: 2px; }
+        .g-caps.b { background: #5aa8e8; left: 34px; bottom: 6px; }
+        .g-caps.c { background: #ffd23e; left: 54px; bottom: 1px; }
+        .g-body { width: 96px; height: 46px; margin-top: -1px; display: flex; align-items: center; justify-content: center;
+          background: linear-gradient(180deg, #c23a44, #8a2830); border: 3px solid #3a2e18;
+          color: #ffd7a8; font-size: 18px; text-shadow: 0 0 8px rgba(255,200,120,0.6); }
+        .g-crank { position: absolute; right: -7px; bottom: 14px; width: 20px; height: 20px; line-height: 20px;
+          background: #ffd23e; border: 2px solid #3a2e18; border-radius: 50%; font-size: 10px; color: #5e3c10; }
+        .g-machine.spin { animation: g-rattle 0.14s linear infinite; }
+        .g-machine.spin .g-caps.a { animation: g-jump 0.22s ease-in-out infinite; }
+        .g-machine.spin .g-caps.b { animation: g-jump 0.19s ease-in-out infinite 0.05s; }
+        .g-machine.spin .g-caps.c { animation: g-jump 0.25s ease-in-out infinite 0.1s; }
+        .g-machine.spin .g-crank { animation: g-spin 0.5s linear infinite; }
+        @keyframes g-rattle { 25% { transform: translate(-2px, 0) rotate(-1.5deg); } 75% { transform: translate(2px, 0) rotate(1.5deg); } }
+        @keyframes g-jump { 50% { transform: translateY(-14px); } }
+        @keyframes g-spin { to { transform: rotate(360deg); } }
+        .g-hint { font-size: 10px; color: var(--muted); margin-top: 10px; letter-spacing: 1px; }
+        /* rarity flash + reveal card */
+        .g-flash { position: absolute; inset: -15px; pointer-events: none;
+          background: radial-gradient(circle at 50% 45%, var(--rc) 0%, transparent 55%);
+          opacity: 0; animation: g-flashin 0.55s ease-out; }
+        @keyframes g-flashin { 12% { opacity: 0.55; } 100% { opacity: 0; } }
+        .g-card { display: inline-block; position: relative; padding: 14px 30px; border: 2px solid var(--rc);
+          background: linear-gradient(180deg, rgba(10,14,9,0.9), rgba(6,9,6,0.95));
+          box-shadow: 0 0 18px var(--rc), inset 0 0 0 1px rgba(0,0,0,0.7), inset 0 0 24px rgba(0,0,0,0.5);
+          animation: g-pop 0.34s cubic-bezier(0.2, 1.8, 0.4, 1); }
+        .g-card.high { animation: g-pop 0.44s cubic-bezier(0.2, 2.2, 0.4, 1); box-shadow: 0 0 34px var(--rc), inset 0 0 0 1px rgba(0,0,0,0.7); }
+        .g-card.high::before, .g-card.high::after { content: '✦'; position: absolute; color: var(--rc); font-size: 13px;
+          animation: g-tw 1.2s ease-in-out infinite; }
+        .g-card.high::before { top: 4px; left: 8px; } .g-card.high::after { bottom: 4px; right: 8px; animation-delay: 0.6s; }
+        .g-card.r-mythic { background: linear-gradient(160deg, rgba(40,10,30,0.92), rgba(6,9,6,0.95)); }
+        @keyframes g-tw { 50% { opacity: 0.2; transform: scale(0.7); } }
+        @keyframes g-pop { from { transform: scale(0.4); opacity: 0; } }
+        .g-rarity { font-size: 9px; letter-spacing: 4px; color: var(--rc); margin-bottom: 9px; text-shadow: 0 0 8px var(--rc); }
+        .g-icoframe { width: 58px; height: 58px; margin: 0 auto; display: flex; align-items: center; justify-content: center;
+          border: 2px solid var(--rc); background: rgba(0,0,0,0.4); }
+        .g-icoframe img { width: 44px; height: 44px; image-rendering: pixelated; }
+        .g-name { font-size: 13px; color: var(--text); margin-top: 8px; }
+        .g-note { font-size: 9px; color: var(--gold); margin-top: 5px; }
         .g-hist { font-size: 9px; line-height: 1.9; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
         .g-rollbtn { width: 100%; margin-top: 10px; font-size: 13px !important; padding: 12px !important; letter-spacing: 3px !important; }
-        .g-odds { font-size: 8px; color: var(--muted); text-align: center; margin-top: 6px; letter-spacing: 1px; }
+        .g-odds { font-size: 8px; text-align: center; margin-top: 8px; letter-spacing: 1px; line-height: 1.9; color: var(--muted); }
+        .g-pity { height: 5px; background: #141a12; border: 1px solid #0a0f0a; margin-top: 8px; }
+        .g-pity > div { height: 100%; background: linear-gradient(90deg, #b06ae8, #f0c455); }
+        .g-pitylbl { font-size: 8px; color: var(--muted); margin-top: 3px; letter-spacing: 1px; text-align: center; }
       </style>
       <div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
-      <div class="g-stage">${resultHtml}</div>
-      <button class="act g-rollbtn" data-roll ${(!afford || rolling) ? 'disabled' : ''}>
-        🎰 SPIN — ${gacha.price}c
+      <div class="g-stage">${stage}</div>
+      <button class="act g-rollbtn" data-roll ${(!afford || phase === 'spin') ? 'disabled' : ''}>
+        ◈ SPIN — ${gacha.price}c
       </button>
-      <div class="g-odds">COMMON 60% · RARE 25% · EPIC 12% · LEGENDARY 3% — dupes refund coins</div>
+      <div class="g-pity"><div style="width:${pityPct}%"></div></div>
+      <div class="g-pitylbl">LUCK CHARGE ${Math.min(gacha.pity, 9)}/9 — charged spins pull higher tiers · dupes refund coins</div>
+      <div class="g-odds">${oddsLine}</div>
       ${hist ? `<div class="g-hist">${hist}</div>` : ''}`;
     panels.gacha.querySelector('[data-roll]')?.addEventListener('click', () => {
       const prize = gacha.roll();
       if (!prize) { audio.sfx('deny'); return; }
-      audio.sfx('chest');
-      renderGacha(true, null);
+      gachaBusy = true;
+      audio.sfx('gacha_crank');
+      renderGacha('spin');
+      setTimeout(() => { audio.sfx('gacha_pop'); }, 750);
       setTimeout(() => {
         gachaHistory.push(prize);
-        audio.sfx(prize.rarity === 'legendary' ? 'quest_done' : prize.rarity === 'epic' ? 'forge_ok' : 'catch');
-        renderGacha(false, prize);
-      }, 1100);
+        gachaBusy = false;
+        audio.sfx(`reveal_${prize.rarity}`);
+        renderGacha('reveal', prize);
+      }, 950);
+    });
+  }
+
+  // --- Wardrobe: equip cosmetics from gacha & level rewards ---
+  const WARD_SLOTS = [
+    ['hat', 'HATS — worn on your head'],
+    ['back', 'BACK — packs & wings'],
+    ['trail', 'TRAILS — sparkle in your footsteps'],
+  ];
+  function renderWardrobe() {
+    if (!wardrobe) return;
+    const byRar = (a, b) => RARITY_ORDER.indexOf(ITEMS[a].rarity) - RARITY_ORDER.indexOf(ITEMS[b].rarity);
+    let html = `<div style="font-size:10px;color:var(--muted);margin-bottom:10px;letter-spacing:1px">
+      Dress up your hero! Cosmetics come from Wonder Capsules (gacha) & level milestones.</div>`;
+    for (const [slot, label] of WARD_SLOTS) {
+      const equipped = wardrobe.state[slot];
+      html += `<h4 class="sect">${label}</h4>`;
+      if (equipped) {
+        html += `<button class="eq" data-unequip="${slot}" style="margin-bottom:6px">✕ REMOVE ${ITEMS[equipped].name.toUpperCase()}</button>`;
+      }
+      const ids = [...wardrobe.bySlot[slot]].sort(byRar);
+      for (const id of ids) {
+        const d = ITEMS[id];
+        const owned = wardrobe.owned(id);
+        const active = equipped === id;
+        const R = RARITY[d.rarity];
+        html += `<div class="pet-row ${owned ? '' : 'locked'}" style="border-color:${owned ? R.color + '55' : '#2c352c'}">
+          <div class="dot" style="background:#141a12;border-color:${R.color}">
+            ${owned ? `<img src="${itemIconUrl(id)}" style="width:26px;height:26px;image-rendering:pixelated">` : '?'}
+          </div>
+          <div class="nm">${owned ? d.name : '???'}
+            <small style="color:${R.color}">${'◆'.repeat(RARITY_ORDER.indexOf(d.rarity) + 1)} ${R.name}</small>
+            ${owned ? '' : '<small>Pull it from the Wonder Capsules!</small>'}
+          </div>
+          ${owned ? `<button class="eq" data-wear="${slot}:${id}" ${active ? 'disabled' : ''}>${active ? 'WORN' : 'WEAR'}</button>` : ''}
+        </div>`;
+      }
+    }
+    panels.ward.innerHTML = `<h3>WARDROBE <small>[O] close</small></h3>${html}`;
+    panels.ward.querySelectorAll('[data-wear]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const [slot, id] = b.dataset.wear.split(':');
+        wardrobe.equip(slot, id);
+        renderWardrobe();
+      });
+    });
+    panels.ward.querySelectorAll('[data-unequip]').forEach((b) => {
+      b.addEventListener('click', () => {
+        wardrobe.equip(b.dataset.unequip, null);
+        renderWardrobe();
+      });
     });
   }
 
@@ -624,7 +746,7 @@ export function createPanels(hudRoot, {
   const RENDER = {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
-    gacha: () => renderGacha(), help: renderHelp,
+    gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp,
   };
 
   function toggle(which) {

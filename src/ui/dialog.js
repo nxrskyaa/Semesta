@@ -5,11 +5,12 @@ import { itemIconUrl } from '../gfx/textures.js';
 const CSS = `
 #dialog {
   position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%);
-  width: min(560px, calc(100vw - 24px)); z-index: 40; display: none;
-  background: linear-gradient(180deg, var(--panel-1), var(--panel-2));
-  border: 2px solid var(--line);
-  box-shadow: inset 0 0 0 1px var(--gold-glow), 0 0 0 1px var(--ink);
-  clip-path: var(--cut);
+  width: min(560px, calc(100vw - 36px)); z-index: 40; display: none;
+  background:
+    var(--dither) 0 0/4px 4px,
+    linear-gradient(180deg, var(--panel-1), var(--panel-2));
+  border: 0;
+  box-shadow: var(--pix-frame);
   padding: 14px 18px; pointer-events: auto;
 }
 #dialog.show { display: block; animation: dlg-in 0.15s; }
@@ -30,12 +31,18 @@ const CSS = `
 #dialog button {
   font-family: inherit; font-size: 12px; padding: 8px 18px; cursor: pointer;
   background: linear-gradient(180deg, #2a3522, #1a2215); color: #c2cbb0;
-  border: 1px solid #5a6a4a; box-shadow: 0 0 0 1px var(--ink); letter-spacing: 1px;
+  border: 0; box-shadow: var(--pix-btn); letter-spacing: 1px; margin: 2px;
 }
 #dialog button.primary {
-  background: linear-gradient(180deg, #57452a, #3a2e18); color: #ffe9b0; border-color: var(--gold-dim);
+  background: linear-gradient(180deg, #57452a, #3a2e18); color: #ffe9b0;
+  box-shadow:
+    0 -2px 0 0 #8a744a, 0 2px 0 0 #241c0a,
+    -2px 0 0 0 #5a4a2a, 2px 0 0 0 #5a4a2a,
+    0 0 0 3px var(--ink) inset;
+  text-shadow: 0 1px 0 #241c0a;
 }
 #dialog button:hover { filter: brightness(1.2); }
+#dialog button:active { transform: translateY(2px); }
 `;
 
 export function createDialog(audio) {

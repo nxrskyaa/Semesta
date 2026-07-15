@@ -30,7 +30,8 @@ import { createFishing } from './systems/fishing.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
 import { createHousing, LAND_PRICE, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
 import { CLASSES, defaultCharacter } from './systems/classes.js';
-import { ITEMS } from './systems/items.js';
+import { ITEMS, RARITY, RARITY_ORDER } from './systems/items.js';
+import { createWardrobe, cosmeticsBySlot } from './systems/cosmetics.js';
 import { createAudio } from './audio/audio.js';
 import { showCharacterCreation } from './ui/charcreate.js';
 import { showOpening, logoUrl } from './ui/menu.js';
@@ -129,8 +130,15 @@ async function init(character, saved, audio) {
   const camps = createCamps(scene, terrain, decor.blocked, particles);
   const gathering = createGathering(scene, terrain, decor.blocked, particles);
   const landmarks = createLandmarks(scene, terrain, decor.blocked);
+
+  // scrub any scenery (trees/rocks/bushes) that would clip through structures —
+  // camps, landmarks and land parcels were placed AFTER the forest grew
+  for (const c of camps.camps) decor.clearArea(c.x, c.z, 3.6);
+  for (const b of landmarks.built) decor.clearArea(b.position.x, b.position.z, 4.6);
   const farming = createFarming(scene, terrain, decor.blocked, particles);
   const housing = createHousing(scene, terrain, decor.blocked, particles);
+  // keep land parcels free of clipping scenery too (covers houses loaded from save)
+  for (const l of housing.lands) decor.clearArea(l.x, l.z, 3.8);
 
   // --- safe zones: the village, rest camps and your homes repel monsters ---
   const VILLAGE_SAFE_R = 13;
@@ -302,66 +310,175 @@ async function init(character, saved, audio) {
       for (const [id, n] of Object.entries(d.cost)) inventory.remove(id, n);
       if (d.coins) inventory.spendCoins(d.coins);
       housing.build(land, designId);
+      decor.clearArea?.(land.x, land.z, 3.2); // no trees clipping the house
       quests.event('build');
+      // the house is a solid building — nudge the player out to the door side so
+      // they aren't trapped inside the freshly-blocked footprint
+      moveToClearSpot(land.x, land.z, 3.0);
       audio.sfx('quest_done');
       addShake(0.3);
       hud.banner(`${d.name.toUpperCase()} BUILT!`);
     },
   };
 
-  // --- Master NXR's gacha: coins in, wonders out ---
+  // relocate the player to the nearest walkable, unblocked cell outside a
+  // building footprint (prefers the +z "door" side)
+  function moveToClearSpot(cx, cz, startR) {
+    const clear = (x, z) => {
+      const [ix, iz] = terrain.cellOf(x, z);
+      return !decor.blocked.has(`${ix},${iz}`) && terrain.walkable(x, z, terrain.surfaceY(x, z));
+    };
+    // door side first, then a widening ring
+    for (let r = startR; r <= startR + 5; r += 0.6) {
+      const tries = [[0, 1], [0.5, 0.87], [-0.5, 0.87], [1, 0], [-1, 0], [0.5, -0.87], [-0.5, -0.87], [0, -1]];
+      for (const [dx, dz] of tries) {
+        const x = cx + dx * r, z = cz + dz * r;
+        if (clear(x, z)) {
+          player.state.pos.set(x, terrain.surfaceY(x, z), z);
+          player.state.vy = 0; player.state.grounded = true;
+          return;
+        }
+      }
+    }
+  }
+
+  // --- teleport home (T): back to your house, or the village if you have none.
+  // Short channel so it can't cheese combat; always lands on a CLEAR walkable
+  // cell OUTSIDE any building footprint (never inside your own house).
+  const tele = { channel: 0, cd: 0 };
+  function teleportHome() {
+    if (player.state.dead || player.state.busy) return;
+    if (tele.channel > 0) { tele.channel = 0; hud.toastText('Teleport cancelled.'); return; }
+    if (tele.cd > 0) { audio.sfx('deny'); hud.toastText(`Teleport recharging (${Math.ceil(tele.cd)}s)...`); return; }
+    tele.channel = 1.6;
+    audio.sfx('teleport');
+    hud.toastText('Channeling teleport... stand still!');
+  }
+  function tickTeleport(dt) {
+    if (tele.cd > 0) tele.cd -= dt;
+    if (tele.channel <= 0) return;
+    // moving or getting hit interrupts the channel
+    if (player.state.isMoving || player.state.dead) { tele.channel = 0; return; }
+    if (Math.random() < dt * 18) {
+      particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.3, 0)), '#8ae0d8', 2);
+    }
+    tele.channel -= dt;
+    if (tele.channel > 0) return;
+    tele.cd = 20;
+    fishing.cancel();
+    dismountIfRiding();
+    const home = housing.lands.find((l) => l.built);
+    particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#8ae0d8', 18, 2.5);
+    if (home) {
+      // land beside the door — never inside the blocked footprint
+      moveToClearSpot(home.x, home.z, 2.6);
+    } else {
+      player.state.pos.set(terrain.spawn.x, terrain.surfaceY(terrain.spawn.x, terrain.spawn.z), terrain.spawn.z);
+      player.state.vy = 0; player.state.grounded = true;
+    }
+    audio.sfx('teleport');
+    particles.shockwave(player.state.pos.clone().add(new THREE.Vector3(0, 0.15, 0)), '#8ae0d8', 2.6, 0.4);
+    particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#c8fff5', 16);
+    hud.banner(home ? 'WELCOME HOME' : 'BACK TO RIVERBROOK');
+  }
+
+  // --- Master NXR's gacha v2: six-tier rarity ladder with soft pity ---
+  // Weighted tiers -> a prize from that tier's pool. Unique prizes (cosmetics,
+  // charms, whistles) never dupe: owned ones refund coins per rarity instead.
+  const GACHA_WEIGHTS = [
+    ['common', 40], ['uncommon', 26], ['rare', 16.5],
+    ['epic', 10], ['legendary', 5.5], ['mythic', 2],
+  ];
+  const GACHA_POOLS = {
+    common: [
+      { bundle: 'forge_stone', count: 3 }, { bundle: 'tonic', count: 2 },
+      { bundle: 'seed_berry', count: 3 }, { bundle: 'iron_ore', count: 2 },
+      'hat_straw', 'hat_leaf', 'back_pack',
+    ],
+    uncommon: [
+      { bundle: 'forge_stone', count: 6 }, { bundle: 'hardwood', count: 5 },
+      'hat_bandana', 'hat_miner', 'back_sprout',
+    ],
+    rare: ['hat_wizard', 'hat_catears', 'back_bubble', 'trail_petal', { petCharm: true }],
+    epic: ['hat_viking', 'back_butterfly', 'trail_ember', 'mount_trotter', 'mount_clucky', 'mount_shellsworth'],
+    legendary: ['charm_glimmer', 'charm_nox', 'hat_crown', 'back_phoenix', 'trail_star', 'mount_nimbus', 'mount_blossom'],
+    mythic: ['charm_seraphi', 'mount_aurora', 'hat_halo', 'back_prism', 'trail_rainbow'],
+  };
   const gacha = {
     price: 100,
+    pity: saved?.gachaPity ?? 0, // rolls since the last epic-or-better
+    RARITY, RARITY_ORDER,
+    odds: GACHA_WEIGHTS,
+    rollRarity() {
+      // soft pity: every roll past 8 without epic+ adds weight to the top tiers
+      const bonus = Math.max(0, this.pity - 8) * 4;
+      const w = GACHA_WEIGHTS.map(([r, base]) =>
+        [r, base + (r === 'epic' || r === 'legendary' ? bonus : r === 'mythic' ? bonus * 0.5 : 0)]);
+      let total = 0; for (const [, x] of w) total += x;
+      let r = Math.random() * total;
+      for (const [rar, x] of w) { r -= x; if (r <= 0) return rar; }
+      return 'common';
+    },
     roll() {
       if (!inventory.spendCoins(this.price)) return null;
-      const r = Math.random();
-      if (r < 0.60) { // common: supply bundle
-        const bundles = [
-          { id: 'forge_stone', count: 3 }, { id: 'tonic', count: 2 },
-          { id: 'seed_berry', count: 3 }, { id: 'iron_ore', count: 2 },
-          { id: 'seed_pumpkin', count: 2 },
-        ];
-        const b = bundles[Math.floor(Math.random() * bundles.length)];
-        inventory.add(b.id, b.count);
-        return { rarity: 'common', iconId: b.id, name: `${ITEMS[b.id].name} x${b.count}` };
-      }
-      if (r < 0.85) { // rare: pet charm (dupes impossible — refunds instead)
-        const charms = Object.values(PET_DEFS).map((d) => d.charm);
-        const missing = charms.filter((c) => inventory.count(c) === 0);
-        if (!missing.length) {
-          inventory.addCoins(60);
-          return { rarity: 'rare', iconId: 'coin', name: '+60 coins', note: 'Every pet collected — refunded!' };
+      const rarity = this.rollRarity();
+      this.pity = (rarity === 'epic' || rarity === 'legendary' || rarity === 'mythic') ? 0 : this.pity + 1;
+
+      const note = {
+        cosmetic: 'New cosmetic! Equip it in the Wardrobe [O]',
+        petCharm: 'New pet unlocked! Summon with [P]',
+        mountId: 'New mount! Ride with [M]',
+      };
+      // resolve a prize from the tier pool, skipping owned uniques
+      const pool = GACHA_POOLS[rarity];
+      const entries = [...pool].sort(() => Math.random() - 0.5);
+      for (const entry of entries) {
+        if (typeof entry === 'object' && entry.bundle) {
+          inventory.add(entry.bundle, entry.count);
+          return { rarity, iconId: entry.bundle, name: `${ITEMS[entry.bundle].name} x${entry.count}` };
         }
-        const c = missing[Math.floor(Math.random() * missing.length)];
-        inventory.add(c, 1);
-        return { rarity: 'rare', iconId: c, name: ITEMS[c].name, note: 'New pet unlocked! Summon with [P]' };
-      }
-      if (r < 0.97) { // epic: mount whistle
-        const pool = ['mount_trotter', 'mount_clucky', 'mount_shellsworth'].filter((m) => inventory.count(m) === 0);
-        if (!pool.length) {
-          inventory.addCoins(90);
-          return { rarity: 'epic', iconId: 'coin', name: '+90 coins', note: 'Duplicate mount — refunded!' };
+        if (typeof entry === 'object' && entry.petCharm) {
+          const missing = Object.values(PET_DEFS).filter((d) => !d.gachaOnly).map((d) => d.charm)
+            .filter((c) => inventory.count(c) === 0);
+          if (!missing.length) continue;
+          const c = missing[Math.floor(Math.random() * missing.length)];
+          inventory.add(c, 1);
+          return { rarity, iconId: c, name: ITEMS[c].name, note: note.petCharm };
         }
-        const mnt = pool[Math.floor(Math.random() * pool.length)];
-        inventory.add(mnt, 1);
-        return { rarity: 'epic', iconId: mnt, name: ITEMS[mnt].name, note: 'New mount! Ride with [M]' };
+        if (inventory.count(entry) > 0) continue; // unique already owned
+        inventory.add(entry, 1);
+        const def = ITEMS[entry];
+        const kind = def.cosmetic ? 'cosmetic' : def.petCharm ? 'petCharm' : def.mountId ? 'mountId' : null;
+        if (rarity === 'legendary' || rarity === 'mythic') addShake(0.3);
+        return { rarity, iconId: entry, name: def.name, note: kind ? note[kind] : undefined };
       }
-      // legendary: Nimbus or the gacha-exclusive Blossom
-      const pool = ['mount_nimbus', 'mount_blossom'].filter((m) => inventory.count(m) === 0);
-      if (!pool.length) {
-        inventory.addCoins(250);
-        return { rarity: 'legendary', iconId: 'coin', name: '+250 coins', note: 'Every legend collected — refunded!' };
-      }
-      const mnt = pool[Math.floor(Math.random() * pool.length)];
-      inventory.add(mnt, 1);
-      addShake(0.3);
-      return { rarity: 'legendary', iconId: mnt, name: ITEMS[mnt].name, note: '✨ LEGENDARY MOUNT ✨' };
+      // whole tier owned — refund by rarity
+      const refund = RARITY[rarity].refund;
+      inventory.addCoins(refund);
+      return { rarity, iconId: 'coin', name: `+${refund} coins`, note: `${RARITY[rarity].name} tier complete — refunded!` };
+    },
+  };
+
+  // --- wardrobe: equip cosmetics earned from gacha & level rewards ---
+  const wardrobe = createWardrobe(player);
+  wardrobe.load(saved?.wardrobe);
+  const wardrobeApi = {
+    bySlot: cosmeticsBySlot(),
+    state: wardrobe.state,
+    owned: (id) => inventory.count(id) > 0,
+    equip: (slot, id) => {
+      wardrobe.equip(slot, id);
+      if (id) {
+        audio.sfx('craft');
+        particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.9, 0)),
+          RARITY[ITEMS[id]?.rarity || 'common'].color, 12);
+      } else audio.sfx('ui');
     },
   };
 
   const panels = createPanels(hudRoot, {
     inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
-    economy, cooking, estate, gacha,
+    economy, cooking, estate, gacha, wardrobe: wardrobeApi,
     onCraft(recipe) {
       hud.banner(`${ITEMS[recipe.out].name.toUpperCase()} CRAFTED!`);
       particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffd23e', 16);
@@ -435,14 +552,51 @@ async function init(character, saved, audio) {
   player.state.hp = saved?.hp ?? player.state.maxHp;
   player.state.stamina = player.state.maxStamina;
 
+  // --- level up: golden celebration + a reward drop every level ---
+  function levelRewards(lv) {
+    const rewards = [];
+    const coins = 15 + lv * 5;
+    inventory.addCoins(coins);
+    rewards.push({ icon: 'coin', label: `+${coins} coins` });
+    if (lv % 3 === 0) {
+      inventory.add('tonic', 2);
+      rewards.push({ icon: 'tonic', label: 'Health Tonic x2' });
+    }
+    if (lv % 5 === 0) {
+      // milestone: a cosmetic you don't own yet (common → rare)
+      const pool = ['hat_straw', 'hat_leaf', 'back_pack', 'hat_bandana', 'hat_miner', 'back_sprout',
+        'hat_wizard', 'hat_catears', 'back_bubble', 'trail_petal']
+        .filter((id) => inventory.count(id) === 0);
+      if (pool.length) {
+        const id = pool[Math.floor(Math.random() * pool.length)];
+        inventory.add(id, 1);
+        rewards.push({ icon: id, label: `${ITEMS[id].name} (wardrobe!)`, rarity: ITEMS[id].rarity });
+      } else {
+        inventory.add('forge_stone', 5);
+        rewards.push({ icon: 'forge_stone', label: 'Forge Stone x5' });
+      }
+    }
+    rewards.push({ icon: null, label: '+1 Skill Point [K]' });
+    return rewards;
+  }
   leveling.state.onLevelUp = (lv) => {
     applyLevelStats();
     player.state.hp = player.state.maxHp;
     skillPoints++;
-    hud.banner(`LEVEL ${lv}!`);
-    hud.toastText('+1 Skill Point — press K to upgrade a skill');
-    audio.sfx('levelup');
-    particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#9fe86e', 24);
+    const rewards = levelRewards(lv);
+    audio.sfx('levelup_big');
+    addShake(0.28);
+    // golden pillar: ring + fountain + rising sparks around the hero
+    const base = player.state.pos.clone();
+    particles.shockwave(base.clone().add(new THREE.Vector3(0, 0.15, 0)), '#ffd23e', 3.2, 0.5);
+    particles.fountain(base.clone().add(new THREE.Vector3(0, 0.4, 0)), '#ffe27a', 30);
+    particles.fountain(base.clone().add(new THREE.Vector3(0, 1.0, 0)), '#fff6c8', 18);
+    setTimeout(() => {
+      if (player.state.dead) return;
+      particles.shockwave(player.state.pos.clone().add(new THREE.Vector3(0, 0.15, 0)), '#fff6c8', 4.2, 0.4);
+      particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#ffd23e', 20);
+    }, 320);
+    hud.levelUp?.(lv, rewards) ?? hud.banner(`LEVEL ${lv}!`);
   };
 
   inventory.onChange(() => {
@@ -947,6 +1101,8 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyP') { audio.sfx('ui'); panels.toggle('pets'); }
     if (e.code === 'KeyK') { audio.sfx('ui'); panels.toggle('skills'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
+    if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
+    if (e.code === 'KeyT') teleportHome();
     if (e.code === 'KeyF') doInteract();
     if (e.code === 'Space') { e.preventDefault(); doJump(); }
     if (e.code === 'KeyM') toggleMount();
@@ -991,6 +1147,7 @@ async function init(character, saved, audio) {
     onPotion: usePotion,
     onMenu: (which) => {
       if (which === 'auto') { toggleAutoBattle(); return; }
+      if (which === 'home') { teleportHome(); return; }
       audio.sfx('ui'); panels.toggle(which);
     },
     onRespawn: () => {
@@ -1041,6 +1198,8 @@ async function init(character, saved, audio) {
         houses: housing.serialize(),
         pet: pets.state.active,
         mount: mounts.state.active,
+        wardrobe: wardrobe.serialize(),
+        gachaPity: gacha.pity,
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
       }));
     } catch { /* storage full/blocked: ignore */ }
@@ -1053,6 +1212,7 @@ async function init(character, saved, audio) {
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
+    wardrobe, wardrobeApi, teleportHome, tele, panels,
     summonMount, summonPet, inSafeZone,
   };
 
@@ -1144,6 +1304,16 @@ async function init(character, saved, audio) {
     pets.update(dt, player.state, time);
     mounts.update(dt, player, terrain);
     fishing.update(dt, time);
+    tickTeleport(dt);
+    wardrobe.update(dt, time);
+    // cosmetic movement trail (wardrobe slot 3)
+    if (player.state.isMoving && !player.state.dead) {
+      const tr = wardrobe.trailColor(time);
+      if (tr && Math.random() < dt * tr.rate) {
+        particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.25, 0)),
+          tr.color, 2, 1.1, tr.rise, 0.5);
+      }
+    }
     updateCamera(dt);
 
     // resting: campfires and your own homes heal quickly

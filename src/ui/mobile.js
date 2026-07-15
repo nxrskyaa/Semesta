@@ -29,19 +29,38 @@ const CSS = `
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 #touchui .abtn {
-  position: absolute; border-radius: 50%; border: 2px solid rgba(200,220,190,0.35);
-  background: rgba(16,22,14,0.5) center/56% no-repeat; image-rendering: pixelated;
+  position: absolute; border-radius: 10px; border: 0;
+  background:
+    linear-gradient(180deg, rgba(52,66,42,0.85), rgba(24,32,20,0.85)) padding-box,
+    rgba(16,22,14,0.6);
+  background-position: center; background-repeat: no-repeat; background-size: 56%;
+  image-rendering: pixelated;
   display: flex; align-items: center; justify-content: center;
   color: #dce5d5; font-family: inherit; text-shadow: 1px 1px 0 #000;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   pointer-events: auto;
+  box-shadow:
+    inset 0 2px 0 0 rgba(220,240,200,0.22), inset 0 -3px 0 0 rgba(0,0,0,0.5),
+    inset 0 0 0 2px rgba(90,106,74,0.7), 0 0 0 2px rgba(6,9,6,0.8),
+    0 3px 6px rgba(0,0,0,0.4);
 }
-#touchui .abtn:active { background-color: rgba(110,140,90,0.55); border-color: rgba(220,240,200,0.7); }
-#touchui .abtn .cdo { position: absolute; inset: -2px; border-radius: 50%; display: none; }
+#touchui .abtn:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 3px 4px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(190,220,150,0.8),
+    0 0 0 2px rgba(6,9,6,0.8), 0 0 12px rgba(150,200,110,0.4);
+}
+#touchui .abtn .cdo { position: absolute; inset: 0; border-radius: 10px; display: none; overflow: hidden; }
 #touchui .abtn.oncd .cdo { display: block; }
 
 #touchui .attack { width: 74px; height: 74px; right: 4px; bottom: 4px; font-size: 27px;
-  border-color: rgba(230,200,140,0.5); }
+  border-radius: 14px;
+  background-image: linear-gradient(180deg, rgba(96,74,34,0.9), rgba(52,40,18,0.9));
+  box-shadow:
+    inset 0 2px 0 0 rgba(255,230,160,0.3), inset 0 -3px 0 0 rgba(0,0,0,0.5),
+    inset 0 0 0 2px rgba(200,160,58,0.75), 0 0 0 2px rgba(6,9,6,0.8),
+    0 0 14px rgba(200,160,58,0.25), 0 3px 6px rgba(0,0,0,0.4);
+}
 #touchui .roll { width: 50px; height: 50px; right: 86px; bottom: 0; font-size: 18px; }
 #touchui .jump { width: 46px; height: 46px; right: 140px; bottom: 52px; font-size: 17px; }
 #touchui .sk { width: 46px; height: 46px; }
@@ -53,31 +72,42 @@ const CSS = `
 
 /* contextual interact button (talk / chest / fish) */
 #touchui .ctx {
-  position: absolute; right: 148px; bottom: 64px; width: 54px; height: 54px;
-  border-radius: 50%; border: 2px solid #d8b85a; background: rgba(40,34,14,0.7);
+  position: absolute; right: 148px; bottom: 64px; width: 56px; height: 56px;
+  border-radius: 12px; border: 0; background: linear-gradient(180deg, rgba(96,80,28,0.9), rgba(50,40,14,0.92));
   color: #ffe9a8; font-size: 21px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-  box-shadow: 0 0 12px #c8a03a55;
+  box-shadow:
+    inset 0 2px 0 0 rgba(255,230,160,0.35), inset 0 -3px 0 0 rgba(0,0,0,0.5),
+    inset 0 0 0 2px #d8b85a, 0 0 0 2px rgba(6,9,6,0.8), 0 0 14px rgba(200,160,58,0.45);
+  animation: ctx-pulse 1.6s ease-in-out infinite;
 }
-#touchui .ctx.show { display: flex; animation: ctx-in 0.15s; }
+#touchui .ctx.show { display: flex; }
+@keyframes ctx-pulse { 50% { box-shadow:
+  inset 0 2px 0 0 rgba(255,230,160,0.35), inset 0 -3px 0 0 rgba(0,0,0,0.5),
+  inset 0 0 0 2px #ffe27a, 0 0 0 2px rgba(6,9,6,0.8), 0 0 22px rgba(255,210,62,0.6); } }
 #touchui .afk {
-  position: absolute; right: 208px; bottom: 70px; width: 40px; height: 40px;
-  border-radius: 50%; border: 2px solid rgba(150,180,220,0.6); background: rgba(20,28,40,0.7);
+  position: absolute; right: 212px; bottom: 72px; width: 42px; height: 42px;
+  border-radius: 10px; border: 0; background: linear-gradient(180deg, rgba(34,48,66,0.9), rgba(18,26,38,0.92));
   color: #b8d0f0; font-size: 15px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  box-shadow:
+    inset 0 2px 0 0 rgba(190,215,245,0.25), inset 0 -3px 0 0 rgba(0,0,0,0.5),
+    inset 0 0 0 2px rgba(150,180,220,0.6), 0 0 0 2px rgba(6,9,6,0.8);
 }
 #touchui .afk.show { display: flex; }
 /* menu close button (ESC replacement on touch) — top-right, only while a panel is open */
 #touchui .closebtn {
   position: absolute; top: 10px; right: 10px; width: 48px; height: 48px;
-  border-radius: 50%; border: 2px solid #c88; background: rgba(40,16,16,0.82);
+  border-radius: 12px; border: 0; background: linear-gradient(180deg, rgba(90,30,26,0.92), rgba(48,16,14,0.94));
   color: #ffd8d0; font-size: 22px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 45;
+  box-shadow:
+    inset 0 2px 0 0 rgba(255,200,190,0.3), inset 0 -3px 0 0 rgba(0,0,0,0.5),
+    inset 0 0 0 2px #c88, 0 0 0 2px rgba(6,9,6,0.8), 0 2px 10px rgba(0,0,0,0.5);
+  z-index: 45;
 }
 #touchui .closebtn.show { display: flex; }
-#touchui .closebtn:active { background: rgba(120,40,40,0.9); }
-#touchui .ctx:active { background: rgba(90,74,30,0.85); }
+#touchui .closebtn:active, #touchui .ctx:active, #touchui .afk:active { transform: translateY(2px); filter: brightness(1.2); }
 #touchui .ctx .lbl {
   position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
   font-size: 8px; color: #ffe9a8; white-space: nowrap; letter-spacing: 1px;

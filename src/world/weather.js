@@ -30,13 +30,61 @@ export function createWeather(scene, terrain, particles) {
     });
   }
 
+  // gentle snowfall inside the winter biome — always-on ambience, fades in
+  // as the player crosses the treeline
+  const FLAKES = 260;
+  const snowGeo = new THREE.BufferGeometry();
+  const snowPos = new Float32Array(FLAKES * 3);
+  const flakes = [];
+  for (let i = 0; i < FLAKES; i++) {
+    flakes.push({
+      x: (Math.random() - 0.5) * AREA * 2,
+      y: Math.random() * TOP,
+      z: (Math.random() - 0.5) * AREA * 2,
+      v: 0.9 + Math.random() * 0.9,
+      sway: Math.random() * Math.PI * 2,
+    });
+  }
+  snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+  const snowMat = new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.13, transparent: true, opacity: 0, depthWrite: false,
+  });
+  const snowPts = new THREE.Points(snowGeo, snowMat);
+  snowPts.frustumCulled = false;
+  snowPts.visible = false;
+  scene.add(snowPts);
+
   const state = {
     raining: false,
     intensity: 0,      // 0..1, eases in/out
+    snowAmt: 0,        // 0..1, eases in when the player is in the winter biome
     timer: 60 + Math.random() * 120, // seconds until next weather flip
   };
 
   function update(dt, playerPos, time) {
+    // --- snowfall (biome-driven, independent of rain) ---
+    const inSnow = terrain.inSnow ? terrain.inSnow(playerPos.x, playerPos.z) : false;
+    state.snowAmt += ((inSnow ? 1 : 0) - state.snowAmt) * Math.min(1, dt * 0.8);
+    if (state.snowAmt > 0.02) {
+      snowPts.visible = true;
+      snowMat.opacity = 0.9 * state.snowAmt;
+      for (let i = 0; i < FLAKES; i++) {
+        const f = flakes[i];
+        f.y -= f.v * dt;
+        f.sway += dt;
+        if (f.y < 0) {
+          f.y = TOP * (0.5 + Math.random() * 0.5);
+          f.x = (Math.random() - 0.5) * AREA * 2;
+          f.z = (Math.random() - 0.5) * AREA * 2;
+        }
+        snowPos[i * 3] = playerPos.x + f.x + Math.sin(f.sway) * 0.6;
+        snowPos[i * 3 + 1] = playerPos.y + f.y;
+        snowPos[i * 3 + 2] = playerPos.z + f.z + Math.cos(f.sway * 0.7) * 0.6;
+      }
+      snowGeo.attributes.position.needsUpdate = true;
+    } else {
+      snowPts.visible = false;
+    }
     state.timer -= dt;
     if (state.timer <= 0) {
       state.raining = !state.raining;

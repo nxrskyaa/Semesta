@@ -57,6 +57,22 @@ export const PET_DEFS = {
     desc: 'A coconut-chick that smells faintly of the beach. Fish adore it.',
     perk: { key: 'fish', value: 1.0, label: 'Faster fishing bites' },
   },
+  // --- gacha-exclusive companions (never found in chests) ---
+  glimmer: {
+    name: 'Glimmer', charm: 'charm_glimmer', color: '#a8d8f0', gachaOnly: true, rarity: 'legendary',
+    desc: 'GACHA EXCLUSIVE — a crystal fox grown from a living gemstone. It chimes when it trots.',
+    perk: { key: 'dmg', value: 0.15, label: '+15% damage' },
+  },
+  nox: {
+    name: 'Nox', charm: 'charm_nox', color: '#6a4a8a', gachaOnly: true, rarity: 'legendary',
+    desc: 'GACHA EXCLUSIVE — a mischievous shadow imp. Mostly harmless. Mostly.',
+    perk: { key: 'atkSpeed', value: 0.15, label: '+15% attack speed' },
+  },
+  seraphi: {
+    name: 'Seraphi', charm: 'charm_seraphi', color: '#f0d8a0', gachaOnly: true, rarity: 'mythic',
+    desc: 'MYTHIC — a palm-sized golden dragon whose sneezes smell of stardust.',
+    perk: { key: 'xp', value: 0.30, label: '+30% XP' },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -286,6 +302,81 @@ const BUILDERS = {
       wing.position.set(sx * 0.17, 0.2, 0);
       g.add(wing);
     }
+    return g;
+  },
+  glimmer() {
+    const { g, head } = basePet('#a8d8f0', '#e0f2fc', 'glimmer',
+      { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'w', cheeks: 'rgba(160,200,240,0.6)' });
+    // crystal fox: pointed ears + gem shards growing from back & brow
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 4), lam('#a8d8f0'));
+      ear.position.set(sx * 0.11, 0.22, -0.02);
+      head.add(ear);
+    }
+    const shardMat = new THREE.MeshBasicMaterial({ color: 0xcfeeff, transparent: true, opacity: 0.9 });
+    for (const [dx, dy, dz, s] of [[0, 0.36, -0.12, 0.09], [-0.1, 0.32, -0.02, 0.06], [0.1, 0.3, -0.08, 0.07]]) {
+      const shard = new THREE.Mesh(new THREE.OctahedronGeometry(s), shardMat);
+      shard.position.set(dx, dy, dz);
+      shard.rotation.set(dx * 3, dy * 2, dz);
+      g.add(shard);
+    }
+    const brow = new THREE.Mesh(new THREE.OctahedronGeometry(0.045), shardMat);
+    brow.position.set(0, 0.14, 0.14); head.add(brow);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.26, 5), lam('#cfeaf8'));
+    tail.position.set(0, 0.28, -0.24); tail.rotation.x = -1.0;
+    const glow = new THREE.PointLight(0xa8d8f0, 0.9, 3, 2);
+    glow.position.y = 0.35;
+    g.add(tail, glow);
+    return g;
+  },
+  nox() {
+    const { g, head } = basePet('#4a3a66', '#6a4a8a', 'nox',
+      { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, eye: '#ffd24a', mouth: 'fang' });
+    // shadow imp: curved horns, bat winglets, glowing eyes, wispy tail
+    for (const sx of [-1, 1]) {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 4), lam('#2c2440'));
+      horn.position.set(sx * 0.11, 0.2, 0);
+      horn.rotation.z = -sx * 0.5;
+      head.add(horn);
+      const wingM = new THREE.Mesh(new THREE.CircleGeometry(0.12, 3),
+        new THREE.MeshLambertMaterial({ color: 0x38294e, side: THREE.DoubleSide }));
+      wingM.position.set(sx * 0.18, 0.28, -0.1);
+      wingM.rotation.y = sx * 0.7;
+      g.add(wingM);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.3, 4), lam('#38294e'));
+    tail.position.set(0, 0.26, -0.22); tail.rotation.x = -1.1;
+    const glow = new THREE.PointLight(0x8a5ae8, 0.8, 3, 2);
+    glow.position.y = 0.35;
+    g.add(tail, glow);
+    return g;
+  },
+  seraphi() {
+    const { g, head } = basePet('#f0d8a0', '#faecc8', 'seraphi',
+      { eyeW: 3, eyeH: 5, gap: 4, eyeY: 1, mouth: 'smile', cheeks: 'rgba(240,170,120,0.6)' });
+    // tiny golden dragon: snout, horns, wings, flame-tip tail, star sparkle
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.1), lam('#faecc8'));
+    snout.position.set(0, -0.06, 0.18); head.add(snout);
+    for (const sx of [-1, 1]) {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12, 4), lam('#e8c24a'));
+      horn.position.set(sx * 0.09, 0.2, -0.04);
+      horn.rotation.z = -sx * 0.35;
+      head.add(horn);
+      const wingM = new THREE.Mesh(new THREE.CircleGeometry(0.17, 8),
+        new THREE.MeshLambertMaterial({ color: 0xf5e0b0, side: THREE.DoubleSide, transparent: true, opacity: 0.95 }));
+      wingM.position.set(sx * 0.19, 0.32, -0.08);
+      wingM.rotation.y = sx * 0.6;
+      wingM.scale.set(1, 1.4, 1);
+      g.add(wingM);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.28, 5), lam('#f0d8a0'));
+    tail.position.set(0, 0.26, -0.24); tail.rotation.x = -1.0;
+    const flame = new THREE.Mesh(new THREE.OctahedronGeometry(0.05),
+      new THREE.MeshBasicMaterial({ color: 0xffb055 }));
+    flame.position.set(0, 0.36, -0.36);
+    const glow = new THREE.PointLight(0xffd88a, 1.1, 3.5, 2);
+    glow.position.y = 0.4;
+    g.add(tail, flame, glow);
     return g;
   },
 };

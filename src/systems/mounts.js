@@ -36,6 +36,11 @@ export const MOUNT_DEFS = {
     desc: 'GACHA EXCLUSIVE — a sakura-fawn that sheds petals as she runs.',
     speedMult: 1.7, jumpMult: 1.35, seatH: 0.58, petals: true,
   },
+  aurora: {
+    name: 'Aurora', item: 'mount_aurora', color: '#8ae0d8',
+    desc: 'MYTHIC — a spirit elk woven from the northern lights. Leaves shimmer where it steps.',
+    speedMult: 1.95, jumpMult: 1.5, seatH: 0.66, floats: true, shimmer: true,
+  },
 };
 
 const faceCache = new Map();
@@ -275,6 +280,63 @@ const BUILDERS = {
     g.userData.legs = [];
     return g;
   },
+  aurora() {
+    // spirit elk woven from the northern lights — translucent teal body,
+    // glowing branching antlers, drifting light ribbons instead of a tail
+    const g = new THREE.Group();
+    const spirit = new THREE.MeshLambertMaterial({
+      color: 0x8ae0d8, transparent: true, opacity: 0.85, emissive: 0x1a5a55,
+    });
+    const bright = new THREE.MeshBasicMaterial({ color: 0xc8fff5, transparent: true, opacity: 0.9 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.38, 0.82), spirit);
+    body.position.y = 0.52;
+    body.castShadow = true;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.3), spirit);
+    head.position.set(0, 0.76, 0.5);
+    addFace(head, 'aurora', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, eye: '#ffffff', mouth: 'smile' }, 0.32, 0.24, 0, 0.02, 0.16);
+    // branching antlers
+    for (const sx of [-1, 1]) {
+      const main = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3, 0.05), bright);
+      main.position.set(sx * 0.13, 0.3, -0.04);
+      main.rotation.z = -sx * 0.25;
+      head.add(main);
+      for (const [ty, tz, rot] of [[0.08, 0.06, 0.8], [0.16, -0.04, -0.7]]) {
+        const tine = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.04), bright);
+        tine.position.set(0, ty, tz);
+        tine.rotation.x = rot;
+        main.add(tine);
+      }
+    }
+    // aurora ribbons trailing behind
+    const ribbons = [];
+    const ribbonCols = [0x8ae0d8, 0xa8c8f5, 0xd8a8f0];
+    for (let i = 0; i < 3; i++) {
+      const rib = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.5),
+        new THREE.MeshBasicMaterial({
+          color: ribbonCols[i], transparent: true, opacity: 0.55,
+          side: THREE.DoubleSide, depthWrite: false,
+        }));
+      rib.position.set((i - 1) * 0.14, 0.6, -0.52 - i * 0.08);
+      rib.rotation.x = 0.5;
+      g.add(rib); ribbons.push(rib);
+    }
+    // hoof-light puffs (floats — no legs)
+    const puffs = [];
+    for (const [dx, dz] of [[-0.16, 0.26], [0.16, 0.26], [-0.16, -0.24], [0.16, -0.24]]) {
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), bright);
+      puff.position.set(dx, 0.2, dz);
+      g.add(puff); puffs.push(puff);
+    }
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.3), lam('#3a6a8a'));
+    saddle.position.y = 0.74;
+    const glow = new THREE.PointLight(0x8ae0d8, 1.2, 4.5, 2);
+    glow.position.y = 0.6;
+    g.add(body, head, saddle, glow);
+    g.userData.puffs = puffs;
+    g.userData.ribbons = ribbons;
+    g.userData.legs = [];
+    return g;
+  },
 };
 
 export function createMounts(particles) {
@@ -324,6 +386,17 @@ export function createMounts(particles) {
       puffs.forEach((p, i) => {
         p.scale.setScalar(1 + Math.sin(state.anim * 3 + i) * 0.08);
       });
+    }
+    // aurora ribbons wave + shimmer sparkles where it steps
+    const ribbons = state.mesh.userData.ribbons || [];
+    ribbons.forEach((r, i) => {
+      r.rotation.x = 0.5 + Math.sin(state.anim * 2 + i * 1.6) * 0.3;
+      r.material.opacity = 0.4 + Math.sin(state.anim * 3 + i * 2.1) * 0.15;
+    });
+    if (def.shimmer && moving && Math.random() < dt * 6) {
+      const cols = ['#8ae0d8', '#a8c8f5', '#d8a8f0'];
+      particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.15, 0)),
+        cols[(Math.random() * 3) | 0], 2, 1.2, 1.2, 0.6);
     }
     // dust trail while galloping (petals for Blossom)
     if (moving && !def.floats && Math.random() < dt * 8 && player.state.grounded) {

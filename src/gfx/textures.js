@@ -83,7 +83,7 @@ export const TILE = {
   GRASS_A: 0, GRASS_B: 1, GRASS_C: 2, PATH: 3,
   DIRT: 4, STONE: 5, GRASS_SIDE: 6, DIRT_SIDE: 7,
   STONE_SIDE: 8, PATH_SIDE: 9, MOSS: 10, SHORE: 11,
-  FLOWER_A: 12, FLOWER_B: 13, PATH_EDGE: 14,
+  FLOWER_A: 12, FLOWER_B: 13, PATH_EDGE: 14, SNOW: 15,
 };
 const ATLAS_GRID = 4, TILE_PX = 16;
 
@@ -166,6 +166,18 @@ export function makeTerrainAtlas() {
   { // wet shore edge
     const [x, y] = at(TILE.SHORE);
     noisyFill(ctx, x, y, 16, 16, [PALETTE.dirtDark, PALETTE.dirt[2], '#5c4436'], rng, 0.4); }
+  { // fresh snow — soft white with pale blue shading and sparkles
+    const [x, y] = at(TILE.SNOW);
+    noisyFill(ctx, x, y, 16, 16, ['#eef4f8', '#e2ecf4', '#f6fafc'], rng, 0.2);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = '#cddeee';
+      ctx.fillRect(x + Math.floor(rng() * 15), y + Math.floor(rng() * 15), 2, 1);
+    }
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + Math.floor(rng() * 16), y + Math.floor(rng() * 16), 1, 1);
+    }
+  }
   // flowery grass variants
   for (const [ti, seedOff] of [[TILE.FLOWER_A, 0], [TILE.FLOWER_B, 3]]) {
     const [x, y] = at(ti);
@@ -769,6 +781,9 @@ export const CHARM_COLORS = {
   charm_hopps: '#8ac86a',
   charm_wooly: '#f0eae0',
   charm_koko: '#f0c05a',
+  charm_glimmer: '#a8d8f0',
+  charm_nox: '#6a4a8a',
+  charm_seraphi: '#f0d8a0',
 };
 
 export const MOUNT_ICON_COLORS = {
@@ -778,6 +793,7 @@ export const MOUNT_ICON_COLORS = {
   mount_shellsworth: '#6aa86a',
   mount_nimbus: '#b8d0f0',
   mount_blossom: '#f0a8c8',
+  mount_aurora: '#8ae0d8',
 };
 
 const SEED_COLORS = {
@@ -809,6 +825,41 @@ function paintCoinIcon(ctx) {
   px(6, 5, 2, 2, '#ffe9a8');
   px(7, 6, 2, 4, '#c8963a'); // "c" mark
   px(6, 7, 1, 2, '#a87a2a');
+}
+
+// wardrobe cosmetic icons — glyph per slot, tinted by the item's rarity color
+function paintCosmeticIcon(ctx, id) {
+  const def = ITEMS[id];
+  const rar = def?.rarity || 'common';
+  const rc = ({
+    common: '#b8c4b0', uncommon: '#6fc25e', rare: '#5aa8e8',
+    epic: '#b06ae8', legendary: '#f0c455', mythic: '#f05a9a',
+  })[rar];
+  const px = (x, y, w = 1, h = 1, cc) => { ctx.fillStyle = cc; ctx.fillRect(x, y, w, h); };
+  if (def.cosmetic === 'hat') {
+    // wide brim + dome + rarity band
+    px(2, 10, 12, 2, shade(rc, -0.35));
+    px(3, 9, 10, 1, rc);
+    px(5, 4, 6, 6, rc);
+    px(6, 3, 4, 1, rc);
+    px(5, 8, 6, 2, shade(rc, -0.3));
+    px(6, 5, 2, 2, '#ffffff');
+  } else if (def.cosmetic === 'back') {
+    // twin wings
+    for (const [ox, flip] of [[1, 1], [9, -1]]) {
+      px(ox + (flip > 0 ? 0 : 2), 4, 4, 6, rc);
+      px(ox + (flip > 0 ? 1 : 1), 3, 3, 1, rc);
+      px(ox + (flip > 0 ? 0 : 3), 10, 3, 2, shade(rc, -0.3));
+    }
+    px(7, 5, 2, 6, shade(rc, -0.45));
+    px(2, 5, 1, 1, '#ffffff'); px(12, 5, 1, 1, '#ffffff');
+  } else { // trail
+    for (const [sx, sy, s2] of [[3, 11, 2], [6, 8, 2], [9, 5, 3], [12, 2, 2]]) {
+      px(sx, sy, s2, s2, rc);
+      px(sx, sy, 1, 1, '#ffffff');
+    }
+    px(2, 13, 3, 1, shade(rc, -0.3));
+  }
 }
 
 function paintWhistleIcon(ctx, id) {
@@ -978,6 +1029,8 @@ export function makeItemIconCanvas(id) {
     paintCharmIcon(ctx, id);
   } else if (id.startsWith('mount_')) {
     paintWhistleIcon(ctx, id);
+  } else if (ITEMS[id]?.cosmetic) {
+    paintCosmeticIcon(ctx, id);
   } else if (id.startsWith('seed_')) {
     paintSeedIcon(ctx, id);
   } else if (id === 'coin') {

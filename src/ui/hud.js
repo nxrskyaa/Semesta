@@ -9,10 +9,12 @@ import { CLASSES, SKIN_TONES, HAIR_COLORS, EYE_COLORS, BALD_STYLE } from '../sys
 const CSS = `
 #hud { font-family: inherit; }
 #hud .frame {
-  background: linear-gradient(180deg, var(--panel-1), var(--panel-2));
-  border: 2px solid var(--line);
-  box-shadow: inset 0 0 0 1px var(--gold-glow), 0 0 0 1px var(--ink);
-  clip-path: var(--cut);
+  background:
+    var(--dither) 0 0/4px 4px,
+    linear-gradient(180deg, var(--panel-1), var(--panel-2));
+  border: 0;
+  box-shadow: var(--pix-frame);
+  margin: 6px; /* room for the stepped pixel border */
 }
 
 /* ---- character plate (top left) ---- */
@@ -66,10 +68,12 @@ const CSS = `
 #hud .iconbtn {
   pointer-events: auto; cursor: pointer;
   background: linear-gradient(180deg, #2a3522, #1a2215);
-  border: 1px solid #5a6a4a; box-shadow: 0 0 0 1px var(--ink);
-  color: #c2cbb0; font-family: inherit; font-size: 11px; padding: 4px 9px;
+  border: 0; box-shadow: var(--pix-btn), 0 0 0 1px var(--ink);
+  color: #c2cbb0; font-family: inherit; font-size: 11px; padding: 5px 9px;
+  margin: 2px;
 }
-#hud .iconbtn:hover { border-color: var(--gold); color: #f0e9cc; }
+#hud .iconbtn:hover { color: #ffe9b0; filter: brightness(1.2); }
+#hud .iconbtn:active { transform: translateY(2px); }
 #hud .iconbtn small { color: var(--gold-dim); }
 #hud .iconbtn.autobtn.on {
   border-color: #e8574a; color: #ffd0c0;
@@ -187,6 +191,53 @@ const CSS = `
 #hud .banner::before, #hud .banner::after {
   content: '◆'; font-size: 14px; color: var(--gold-dim); vertical-align: 4px; margin: 0 12px;
 }
+/* ---- level up celebration ---- */
+#hud .lvlup {
+  position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%);
+  display: none; flex-direction: column; align-items: center; gap: 10px;
+  pointer-events: none; z-index: 40;
+}
+#hud .lvlup.show { display: flex; }
+#hud .lvlup .rays {
+  position: absolute; width: 340px; height: 340px; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: conic-gradient(from 0deg,
+    transparent 0deg 14deg, rgba(255,210,62,0.18) 14deg 22deg,
+    transparent 22deg 50deg, rgba(255,210,62,0.14) 50deg 58deg,
+    transparent 58deg 86deg, rgba(255,226,122,0.18) 86deg 94deg,
+    transparent 94deg 122deg, rgba(255,210,62,0.14) 122deg 130deg,
+    transparent 130deg 158deg, rgba(255,226,122,0.16) 158deg 166deg,
+    transparent 166deg 194deg, rgba(255,210,62,0.16) 194deg 202deg,
+    transparent 202deg 230deg, rgba(255,226,122,0.14) 230deg 238deg,
+    transparent 238deg 266deg, rgba(255,210,62,0.18) 266deg 274deg,
+    transparent 274deg 302deg, rgba(255,226,122,0.14) 302deg 310deg,
+    transparent 310deg 338deg, rgba(255,210,62,0.16) 338deg 346deg, transparent 346deg);
+  border-radius: 50%; animation: lvl-rays 6s linear infinite;
+  -webkit-mask-image: radial-gradient(circle, #000 30%, transparent 68%);
+  mask-image: radial-gradient(circle, #000 30%, transparent 68%);
+}
+@keyframes lvl-rays { to { transform: translate(-50%, -50%) rotate(360deg); } }
+#hud .lvlup .lu-title {
+  font-size: 15px; letter-spacing: 6px; color: #fff6c8;
+  text-shadow: 0 0 14px var(--gold-glow), 1px 1px 0 #5e3c10;
+  animation: lvl-pop 0.4s cubic-bezier(0.2, 2.4, 0.4, 1);
+}
+#hud .lvlup .lu-num {
+  font-size: 52px; color: var(--gold); letter-spacing: 4px;
+  text-shadow: 0 3px 0 #5e3c10, 0 6px 14px #000, 0 0 34px var(--gold-glow);
+  animation: lvl-pop 0.5s cubic-bezier(0.2, 2.6, 0.4, 1);
+}
+#hud .lvlup .lu-rewards { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+#hud .lvlup .lu-r {
+  display: flex; align-items: center; gap: 7px; font-size: 11px; color: #ffe9a8;
+  background: rgba(20,20,10,0.82); border: 1px solid #6a5a2a; padding: 4px 12px;
+  animation: lvl-rise 0.4s backwards;
+  text-shadow: 1px 1px 0 #000;
+}
+#hud .lvlup .lu-r img { width: 18px; height: 18px; image-rendering: pixelated; }
+@keyframes lvl-pop { from { transform: scale(0.2); opacity: 0; } }
+@keyframes lvl-rise { from { transform: translateY(10px); opacity: 0; } }
+
 #hud .deadwrap {
   position: absolute; inset: 0;
   background: radial-gradient(ellipse at center, #300606aa 30%, #1a0303dd 100%);
@@ -274,16 +325,19 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <button class="iconbtn" data-menu="cra">CRAFT <small>[C]</small></button>
       <button class="iconbtn" data-menu="forge">FORGE <small>[V]</small></button>
       <button class="iconbtn" data-menu="pets">PETS <small>[P]</small></button>
+      <button class="iconbtn" data-menu="ward">STYLE <small>[O]</small></button>
       <button class="iconbtn" data-menu="skills">SKILLS <small>[K]</small></button>
+      <button class="iconbtn" data-menu="home">⌂ <small>[T]</small></button>
       <button class="iconbtn autobtn" data-menu="auto">⚔ AUTO <small>[B]</small></button>
       <button class="iconbtn" data-menu="help">?</button>
     </div>
     <div class="hint-desktop">
       <b>LMB</b> Attack (auto-aim) · <b>RMB</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
-      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Camera
+      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>O</b> Wardrobe · <b>T</b> Home · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Camera
     </div>
     <div class="toasts"></div>
     <div class="banner"></div>
+    <div class="lvlup"><div class="rays"></div><span class="lu-title">◆ LEVEL UP ◆</span><span class="lu-num"></span><div class="lu-rewards"></div></div>
     <div class="deadwrap"><h2>YOU FELL</h2><button>RISE AT THE VILLAGE</button></div>
   `;
 
@@ -460,8 +514,25 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   const autoBtn = root.querySelector('.autobtn');
   function setAuto(on) { autoBtn?.classList.toggle('on', !!on); }
 
+  // level-up celebration: golden rays + big level number + reward chips
+  const lvlEl = root.querySelector('.lvlup');
+  let lvlT = null;
+  function levelUp(lv, rewards = []) {
+    lvlEl.querySelector('.lu-num').textContent = `LEVEL ${lv}`;
+    lvlEl.querySelector('.lu-rewards').innerHTML = rewards.map((r, i) =>
+      `<div class="lu-r" style="animation-delay:${0.35 + i * 0.18}s">
+        ${r.icon ? `<img src="${itemIconUrl(r.icon)}">` : '✦'} ${r.label}
+      </div>`).join('');
+    // retrigger the pop animations
+    lvlEl.classList.remove('show');
+    void lvlEl.offsetWidth;
+    lvlEl.classList.add('show');
+    clearTimeout(lvlT);
+    lvlT = setTimeout(() => lvlEl.classList.remove('show'), 3400);
+  }
+
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
-    showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto,
+    showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp,
   };
 }

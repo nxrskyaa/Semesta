@@ -49,6 +49,7 @@ export function buildDecor(terrain, scene) {
         trees.push({
           x: wx, y, z: wz,
           s: 0.9 + rng() * 0.35, seed: rng(), sakura: rng() < 0.42,
+          snowy: terrain.snow[i] === 1,
         });
         blocked.add(`${ix},${iz}`);
         continue;
@@ -98,6 +99,10 @@ export function buildDecor(terrain, scene) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
   const YUP = new THREE.Vector3(0, 1, 0);
 
+  // hoisted refs so clearArea() can remove props that clip buildings later
+  let treeTrunk = null, treeCanopy = null, treeAcc = null, treeBPT = 6, rockMesh = null, bushMesh = null;
+  const treeAccMap = [];
+
   // --- trees: full, organic rounded crowns (a cluster of overlapping leaf
   // blobs, not two stacked balls) — cheerful green or pink SAKURA, per-tree
   // instance colors. Reads as lush foliage, still cheap (all instanced).
@@ -116,6 +121,8 @@ export function buildDecor(terrain, scene) {
     const shade = (col, f) => col.clone().multiplyScalar(f);
     const GREEN = { base: '#6fc25e', hi: '#8ad86e', trunk: '#7a5638', accent: '#e8474e' };
     const PINK = { base: '#f2a6cc', hi: '#fbcfe4', trunk: '#8a6a5c', accent: '#ffffff' };
+    // winter-biome trees: frosted white-blue crowns on dark cold trunks
+    const FROST = { base: '#dceef4', hi: '#ffffff', trunk: '#5a4a48', accent: '#a8d8f0' };
 
     // canopy blob layout (offset x,y,z, scale, colorRole) around the crown centre
     const BLOBS = [
@@ -127,6 +134,7 @@ export function buildDecor(terrain, scene) {
       [0.06, 1.02, -0.06, 0.74, 'hi'],
     ];
     const BPT = BLOBS.length;
+    treeBPT = BPT;
 
     const tGeo = new THREE.CylinderGeometry(0.14, 0.22, 1, 6);
     const trunk = new THREE.InstancedMesh(tGeo, trunkMat, trees.length);
@@ -138,7 +146,7 @@ export function buildDecor(terrain, scene) {
     let ai = 0, ci = 0;
 
     trees.forEach((tr, ti) => {
-      const P = tr.sakura ? PINK : GREEN;
+      const P = tr.snowy ? FROST : tr.sakura ? PINK : GREEN;
       const base = C(P.base), hi = C(P.hi), dark = shade(base, 0.8);
       const s = tr.s, th = 0.85 * s, ry = tr.seed * 6.28;
       setInst(trunk, ti, tr.x, tr.y + th * 0.5, tr.z, s, th, s, ry, C(P.trunk));
@@ -149,6 +157,7 @@ export function buildDecor(terrain, scene) {
       }
       if (tr.seed > 0.5) {
         const acol = C(P.accent);
+        treeAccMap[ti] = { start: ai, count: 3 };
         for (let k = 0; k < 3; k++) {
           const a = tr.seed * 20 + k * 2.1;
           setInst(acc, ai++, tr.x + Math.cos(a) * 0.95 * s, cy + 0.5 * s + (k - 1) * 0.3 * s, tr.z + Math.sin(a) * 0.95 * s, 1, 1, 1, 0, acol);
@@ -159,13 +168,14 @@ export function buildDecor(terrain, scene) {
     [trunk, canopy, acc].forEach((mesh) => { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; });
     group.add(trunk, canopy);
     if (accented.length) group.add(acc);
+    treeTrunk = trunk; treeCanopy = canopy; treeAcc = acc;
   }
 
   // --- rocks: faceted lumps ---
   if (rocks.length) {
     const rockGeo = new THREE.IcosahedronGeometry(0.62, 0);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-    const rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, rocks.length);
+    rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, rocks.length);
     rockMesh.castShadow = true; rockMesh.receiveShadow = true;
     const rockColors = [PALETTE.stone[0], PALETTE.stone[1], PALETTE.stone[2]].map((c) => new THREE.Color(c));
     rocks.forEach((rk, i) => {
@@ -227,17 +237,17 @@ export function buildDecor(terrain, scene) {
   if (bushes.length) {
     const bGeo = new THREE.IcosahedronGeometry(0.6, 0);
     const bMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-    const bMesh = new THREE.InstancedMesh(bGeo, bMat, bushes.length);
-    bMesh.castShadow = true;
+    bushMesh = new THREE.InstancedMesh(bGeo, bMat, bushes.length);
+    bushMesh.castShadow = true;
     const bushColors = ['#4a8a50', '#3e7d47'].map((c) => new THREE.Color(c));
     bushes.forEach((b, i) => {
       q.setFromAxisAngle(YUP, b.seed * 9);
       m.compose(v.set(b.x, b.y + b.s * 0.3, b.z), q, sc.set(b.s * 1.3, b.s * 0.8, b.s * 1.2));
-      bMesh.setMatrixAt(i, m);
-      bMesh.setColorAt(i, bushColors[Math.floor(b.seed * 2)]);
+      bushMesh.setMatrixAt(i, m);
+      bushMesh.setColorAt(i, bushColors[Math.floor(b.seed * 2)]);
     });
-    if (bMesh.instanceColor) bMesh.instanceColor.needsUpdate = true;
-    group.add(bMesh);
+    if (bushMesh.instanceColor) bushMesh.instanceColor.needsUpdate = true;
+    group.add(bushMesh);
   }
 
   // --- retro street lamps: iron post + glass lantern + flame + warm halo ---
@@ -398,7 +408,40 @@ export function buildDecor(terrain, scene) {
     }
   }
 
-  return { group, blocked, torches, trees, update };
+  // remove trees / rocks / bushes whose footprint overlaps a building so nothing
+  // clips through houses, camps, shrines, etc. Also frees their blocked cells.
+  const GONE = new THREE.Matrix4().makeTranslation(0, -9999, 0);
+  function clearArea(x, z, r) {
+    const r2 = r * r;
+    let td = false, rd = false, bd = false;
+    if (treeTrunk) {
+      trees.forEach((tr, ti) => {
+        if ((tr.x - x) ** 2 + (tr.z - z) ** 2 > r2) return;
+        treeTrunk.setMatrixAt(ti, GONE);
+        for (let k = 0; k < treeBPT; k++) treeCanopy.setMatrixAt(ti * treeBPT + k, GONE);
+        const am = treeAccMap[ti];
+        if (am && treeAcc) for (let k = 0; k < am.count; k++) treeAcc.setMatrixAt(am.start + k, GONE);
+        const [ix, iz] = terrain.cellOf(tr.x, tr.z);
+        blocked.delete(`${ix},${iz}`);
+        td = true;
+      });
+    }
+    if (rockMesh) rocks.forEach((rk, i) => {
+      if ((rk.x - x) ** 2 + (rk.z - z) ** 2 > r2) return;
+      rockMesh.setMatrixAt(i, GONE);
+      const [ix, iz] = terrain.cellOf(rk.x, rk.z); blocked.delete(`${ix},${iz}`);
+      rd = true;
+    });
+    if (bushMesh) bushes.forEach((b, i) => {
+      if ((b.x - x) ** 2 + (b.z - z) ** 2 > r2) return;
+      bushMesh.setMatrixAt(i, GONE); bd = true;
+    });
+    if (td) { treeTrunk.instanceMatrix.needsUpdate = true; treeCanopy.instanceMatrix.needsUpdate = true; if (treeAcc) treeAcc.instanceMatrix.needsUpdate = true; }
+    if (rd) rockMesh.instanceMatrix.needsUpdate = true;
+    if (bd) bushMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  return { group, blocked, torches, trees, update, clearArea };
 }
 
 function nearTree(trees, x, z, minD) {

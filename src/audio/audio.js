@@ -279,6 +279,53 @@ export function createAudio() {
     land:       () => { tone('sine', 150, 60, 0.1, 0.1); noise(0.08, 0.08, 'lowpass', 600); },
     roar:       () => { tone('sawtooth', 90, 40, 1.0, 0.22); tone('sawtooth', 130, 55, 0.9, 0.16, ctx ? ctx.currentTime + 0.1 : null); noise(0.8, 0.14, 'lowpass', 500, 120); },
     mount:      () => { tone('square', 400, 700, 0.08, 0.1); tone('square', 700, 1000, 0.1, 0.1, ctx ? ctx.currentTime + 0.09 : null); },
+    // gacha — a rattling crank, then a reveal fanfare that scales with rarity
+    gacha_crank: () => {
+      if (!ctx) return;
+      for (let i = 0; i < 6; i++) {
+        noise(0.05, 0.1, 'bandpass', 1400 + i * 180, null, ctx.currentTime + i * 0.11);
+        tone('square', 220 + i * 40, 200, 0.04, 0.06, ctx.currentTime + i * 0.11);
+      }
+    },
+    gacha_pop: () => { tone('sine', 300, 900, 0.12, 0.14); noise(0.08, 0.12, 'highpass', 2200); },
+    reveal_common:   () => { [523, 659].forEach((f, i) => tone('triangle', f, f, 0.12, 0.11, ctx ? ctx.currentTime + i * 0.08 : null)); },
+    reveal_uncommon: () => { [523, 659, 784].forEach((f, i) => tone('triangle', f, f, 0.12, 0.12, ctx ? ctx.currentTime + i * 0.08 : null)); },
+    reveal_rare:     () => { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.13, 0.13, ctx ? ctx.currentTime + i * 0.08 : null)); },
+    reveal_epic:     () => {
+      [440, 554, 659, 880, 1108].forEach((f, i) => tone('triangle', f, f, 0.15, 0.13, ctx ? ctx.currentTime + i * 0.08 : null));
+      noise(0.3, 0.08, 'highpass', 3500);
+    },
+    reveal_legendary: () => {
+      if (!ctx) return;
+      [523, 659, 784, 1046, 1318, 1568].forEach((f, i) => tone('triangle', f, f, 0.18, 0.14, ctx.currentTime + i * 0.09));
+      tone('sine', 2093, 2093, 0.5, 0.07, ctx.currentTime + 0.54);
+      noise(0.5, 0.09, 'highpass', 4000, null, ctx.currentTime + 0.3);
+    },
+    reveal_mythic: () => {
+      if (!ctx) return;
+      // shimmering rising arpeggio + deep boom + sparkle tail
+      tone('sine', 60, 30, 0.5, 0.2);
+      [392, 523, 659, 784, 1046, 1318, 1568, 2093].forEach((f, i) =>
+        tone('triangle', f, f * 1.01, 0.2, 0.13, ctx.currentTime + 0.1 + i * 0.08));
+      [2637, 3136, 3520].forEach((f, i) => tone('sine', f, f, 0.3, 0.05, ctx.currentTime + 0.8 + i * 0.12));
+      noise(0.9, 0.08, 'highpass', 5000, null, ctx.currentTime + 0.4);
+    },
+    // level up — big two-bar fanfare with sparkle tail
+    levelup_big: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      [[392, 0], [523, 0.1], [659, 0.2], [784, 0.3], [1046, 0.42], [784, 0.56], [1046, 0.66], [1318, 0.78]]
+        .forEach(([f, dt]) => tone('triangle', f, f, 0.2, 0.15, t0 + dt));
+      tone('sine', 1568, 1568, 0.5, 0.06, t0 + 0.95);
+      tone('sine', 100, 45, 0.35, 0.16, t0);
+      noise(0.6, 0.07, 'highpass', 4200, null, t0 + 0.5);
+    },
+    teleport: () => {
+      if (!ctx) return;
+      tone('sine', 1400, 200, 0.3, 0.12);
+      tone('sine', 200, 1600, 0.3, 0.12, ctx.currentTime + 0.28);
+      noise(0.4, 0.08, 'highpass', 3000);
+    },
   };
 
   function sfx(name) {

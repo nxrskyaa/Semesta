@@ -1,5 +1,16 @@
 // Item definitions, per-class weapons, and enemy drop tables.
 
+// The six-tier rarity ladder used by gacha, cosmetics and reveal FX.
+export const RARITY = {
+  common:    { name: 'Common',    color: '#b8c4b0', refund: 10 },
+  uncommon:  { name: 'Uncommon',  color: '#6fc25e', refund: 30 },
+  rare:      { name: 'Rare',      color: '#5aa8e8', refund: 60 },
+  epic:      { name: 'Epic',      color: '#b06ae8', refund: 120 },
+  legendary: { name: 'Legendary', color: '#f0c455', refund: 300 },
+  mythic:    { name: 'Mythic',    color: '#f05a9a', refund: 800 },
+};
+export const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+
 export const ITEMS = {
   // materials (sell = coin value at Pip's shop)
   slime_gel:    { name: 'Slime Gel', sell: 2 },
@@ -49,13 +60,43 @@ export const ITEMS = {
   charm_wooly:   { name: 'Wooly Charm', petCharm: 'wooly' },
   charm_koko:    { name: 'Koko Charm', petCharm: 'koko' },
 
+  // gacha-exclusive pet charms (never in chests)
+  charm_glimmer: { name: 'Glimmer Charm', petCharm: 'glimmer', rarity: 'legendary' },
+  charm_nox:     { name: 'Nox Charm', petCharm: 'nox', rarity: 'legendary' },
+  charm_seraphi: { name: 'Seraphi Charm', petCharm: 'seraphi', rarity: 'mythic' },
+
+  // ---- WARDROBE COSMETICS (gacha & level rewards) ----
+  // hats
+  hat_straw:   { name: 'Straw Hat', cosmetic: 'hat', rarity: 'common' },
+  hat_leaf:    { name: 'Leaf Cap', cosmetic: 'hat', rarity: 'common' },
+  hat_bandana: { name: 'Scout Bandana', cosmetic: 'hat', rarity: 'uncommon' },
+  hat_miner:   { name: 'Miner Helm', cosmetic: 'hat', rarity: 'uncommon' },
+  hat_wizard:  { name: 'Wizard Hat', cosmetic: 'hat', rarity: 'rare' },
+  hat_catears: { name: 'Cat Ears', cosmetic: 'hat', rarity: 'rare' },
+  hat_viking:  { name: 'Viking Helm', cosmetic: 'hat', rarity: 'epic' },
+  hat_crown:   { name: 'Royal Crown', cosmetic: 'hat', rarity: 'legendary' },
+  hat_halo:    { name: 'Radiant Halo', cosmetic: 'hat', rarity: 'mythic' },
+  // back
+  back_pack:      { name: 'Traveler Pack', cosmetic: 'back', rarity: 'common' },
+  back_sprout:    { name: 'Sprout Wings', cosmetic: 'back', rarity: 'uncommon' },
+  back_bubble:    { name: 'Bubble Wings', cosmetic: 'back', rarity: 'rare' },
+  back_butterfly: { name: 'Butterfly Wings', cosmetic: 'back', rarity: 'epic' },
+  back_phoenix:   { name: 'Phoenix Wings', cosmetic: 'back', rarity: 'legendary' },
+  back_prism:     { name: 'Prism Wings', cosmetic: 'back', rarity: 'mythic' },
+  // movement trails
+  trail_petal:   { name: 'Petal Trail', cosmetic: 'trail', rarity: 'rare' },
+  trail_ember:   { name: 'Ember Trail', cosmetic: 'trail', rarity: 'epic' },
+  trail_star:    { name: 'Star Trail', cosmetic: 'trail', rarity: 'legendary' },
+  trail_rainbow: { name: 'Rainbow Trail', cosmetic: 'trail', rarity: 'mythic' },
+
   // mount whistles — starter one is free, the rest come from villager quests
   mount_sprig:      { name: 'Sprig Whistle', mountId: 'sprig' },
   mount_trotter:    { name: 'Trotter Whistle', mountId: 'trotter' },
   mount_clucky:     { name: 'Clucky Whistle', mountId: 'clucky' },
   mount_shellsworth:{ name: 'Shellsworth Whistle', mountId: 'shellsworth' },
   mount_nimbus:     { name: 'Nimbus Whistle', mountId: 'nimbus' },
-  mount_blossom:    { name: 'Blossom Whistle', mountId: 'blossom' },
+  mount_blossom:    { name: 'Blossom Whistle', mountId: 'blossom', rarity: 'legendary' },
+  mount_aurora:     { name: 'Aurora Whistle', mountId: 'aurora', rarity: 'mythic' },
 
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },

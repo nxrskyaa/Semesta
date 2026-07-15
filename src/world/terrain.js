@@ -19,7 +19,8 @@ export class Terrain {
     const S = WORLD_SIZE;
     this.size = S;
     this.height = new Int8Array(S * S);
-    this.type = new Uint8Array(S * S); // 0 grass,1 path,2 dirt,3 stone,4 moss,5 shore,6 flowers
+    this.type = new Uint8Array(S * S); // 0 grass,1 path,2 dirt,3 stone,4 moss,5 shore,6 flowers,7 snow
+    this.snow = new Uint8Array(S * S); // 1 = inside the winter biome (drives decor/weather/FX)
     this._generate();
     this._buildCorners();
   }
@@ -89,6 +90,9 @@ export class Terrain {
   isWaterCell(ix, iz) { return this.heightCell(ix, iz) <= WATER_LEVEL; }
   isWater(x, z) { const [ix, iz] = this.cellOf(x, z); return this.isWaterCell(ix, iz); }
 
+  isSnowCell(ix, iz) { return this.inBounds(ix, iz) && this.snow[this.idx(ix, iz)] === 1; }
+  inSnow(x, z) { const [ix, iz] = this.cellOf(x, z); return this.isSnowCell(ix, iz); }
+
   typeAt(x, z) {
     const [ix, iz] = this.cellOf(x, z);
     if (!this.inBounds(ix, iz)) return 3;
@@ -150,6 +154,22 @@ export class Terrain {
         const flowers = valueNoise2(nx * 23, nz * 23, SEED + 63);
         if (flowers > 0.72) { this.type[i] = 6; continue; }
         this.type[i] = 0;
+      }
+    }
+
+    // WINTER BIOME — the far north-west corner is blanketed in snow. A wavy
+    // fBm boundary keeps the treeline organic; paths stay visible so roads
+    // still read, water stays water. Everything else turns snowy.
+    for (let iz = 0; iz < S; iz++) {
+      for (let ix = 0; ix < S; ix++) {
+        const nx = ix / S, nz = iz / S;
+        const wave = (fbm2(nx * 6, nz * 6, SEED + 77, 3) - 0.5) * 0.18;
+        if (nx + nz + wave >= 0.66) continue;
+        const i = this.idx(ix, iz);
+        this.snow[i] = 1;
+        const t = this.type[i];
+        if (t === 1 || t === 5) continue; // roads & shoreline keep their tile
+        this.type[i] = 7;
       }
     }
 
@@ -219,7 +239,7 @@ export class Terrain {
   }
 }
 
-const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE, TILE.FLOWER_A];
+const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE, TILE.FLOWER_A, TILE.SNOW];
 
 export function buildTerrainMesh(terrain, atlas) {
   const S = terrain.size;
@@ -261,7 +281,7 @@ export function buildTerrainMesh(terrain, atlas) {
             }
           }
           if (steep > BLOCK_H * 2.6) tile = TILE.STONE_SIDE;
-          else if (steep > BLOCK_H * 1.5) tile = TILE.DIRT_SIDE;
+          else if (steep > BLOCK_H * 1.5 && t !== 7) tile = TILE.DIRT_SIDE;
 
           const r = atlas.uv(tile);
           // two triangles, duplicated verts => faceted low-poly shading
