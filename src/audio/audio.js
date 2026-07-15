@@ -18,8 +18,10 @@ export function createAudio() {
   const SCALES = {
     day: [0, 3, 5, 7, 10, 12, 15, 17],      // A minor pentatonic-ish, hangat
     night: [0, 2, 3, 7, 8, 12, 14, 15],     // harmonic minor color, tegang
+    menu: [0, 4, 7, 9, 12, 16, 19, 21],     // major pentatonic — dreamy music box
   };
-  const ROOT = { day: 220, night: 196 };     // A3 / G3
+  const ROOT = { day: 220, night: 196, menu: 262 }; // A3 / G3 / C4
+  const BPM = { day: 72, night: 72, menu: 54 };     // menu drifts slower
 
   function ensureCtx() {
     if (ctx) return;
@@ -62,6 +64,7 @@ export function createAudio() {
   const CHORDS = {
     day: [[0, 5, 9], [0, 3, 7], [-2, 3, 7], [0, 5, 10]],
     night: [[0, 3, 8], [-2, 2, 7], [0, 3, 6], [-4, 0, 5]],
+    menu: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]], // I - vi - IV - ii, cozy
   };
   let bar = 0;
 
@@ -69,7 +72,7 @@ export function createAudio() {
 
   function scheduleMusic() {
     if (!ctx || muted) { return; }
-    const stepDur = 60 / 72 / 2; // 8th note @72bpm
+    const stepDur = 60 / (BPM[mood] || 72) / 2; // 8th notes
     while (nextNoteTime < ctx.currentTime + 0.35) {
       playStep(step, nextNoteTime, stepDur);
       step = (step + 1) % 8;
@@ -82,6 +85,25 @@ export function createAudio() {
     const root = ROOT[mood];
     const scale = SCALES[mood];
     const chord = CHORDS[mood][bar];
+
+    // MENU: dreamy music-box waltz — soft pad swells, sparse bell melody,
+    // no percussion. Deliberately different from the in-world tracks.
+    if (mood === 'menu') {
+      if (s === 0) {
+        for (const semi of chord) pad(noteHz(root, semi), t, dur * 8.6, 0.038);
+        bassPluck(noteHz(root / 2, chord[0]), t, dur * 8, 0.07);
+      }
+      // gentle fixed arpeggio: root-3rd-5th-octave rising through the bar
+      if (s % 2 === 0) {
+        const arp = [chord[0], chord[1], chord[2], chord[0] + 12][s / 2];
+        bell(noteHz(root * 2, arp), t, 0.045);
+      }
+      // occasional high twinkle
+      if (s === 5 && Math.random() < 0.5) {
+        bell(noteHz(root * 4, scale[Math.floor(Math.random() * scale.length)]), t, 0.025);
+      }
+      return;
+    }
 
     // pad akor di awal bar
     if (s === 0) {
@@ -99,6 +121,19 @@ export function createAudio() {
       if (s === 0 || (s === 4 && combat > 0.5)) kick(t, 0.16 * combat);
       if (s % 2 === 1) hat(t, 0.05 * combat);
     }
+  }
+
+  // music-box bell: sine + soft 3rd harmonic with a long shimmering decay
+  function bell(freq, t, vol) {
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 3.01;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    const g2 = ctx.createGain(); g2.gain.value = 0.25;
+    o.connect(g); o2.connect(g2).connect(g); g.connect(musicBus);
+    o.start(t); o2.start(t);
+    o.stop(t + 1.5); o2.stop(t + 1.5);
   }
 
   function pad(freq, t, dur, vol) {
@@ -163,7 +198,8 @@ export function createAudio() {
     return b;
   }
 
-  function setMood(isNight) { mood = isNight ? 'night' : 'day'; }
+  // setMood(true/false) = night/day (in-world); setMood('menu') = title/creation music
+  function setMood(v) { mood = v === 'menu' ? 'menu' : (v ? 'night' : 'day'); }
   function setCombat(level) { combat += (level - combat) * 0.05; }
 
   // --- rain loop: looped noise through a lowpass, faded by intensity ---
@@ -288,6 +324,19 @@ export function createAudio() {
       }
     },
     gacha_pop: () => { tone('sine', 300, 900, 0.12, 0.14); noise(0.08, 0.12, 'highpass', 2200); },
+    // rising tension sweep while the capsule tumbles
+    gacha_riser: () => {
+      if (!ctx) return;
+      tone('sine', 220, 880, 0.85, 0.06);
+      [330, 392, 494, 587].forEach((f, i) => tone('triangle', f, f, 0.1, 0.05, ctx.currentTime + 0.15 + i * 0.18));
+    },
+    // capsule falls out & bounces
+    gacha_drop: () => {
+      if (!ctx) return;
+      tone('sine', 500, 180, 0.12, 0.12);
+      tone('sine', 400, 160, 0.09, 0.09, ctx.currentTime + 0.18);
+      tone('sine', 350, 150, 0.06, 0.06, ctx.currentTime + 0.32);
+    },
     reveal_common:   () => { [523, 659].forEach((f, i) => tone('triangle', f, f, 0.12, 0.11, ctx ? ctx.currentTime + i * 0.08 : null)); },
     reveal_uncommon: () => { [523, 659, 784].forEach((f, i) => tone('triangle', f, f, 0.12, 0.12, ctx ? ctx.currentTime + i * 0.08 : null)); },
     reveal_rare:     () => { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.13, 0.13, ctx ? ctx.currentTime + i * 0.08 : null)); },

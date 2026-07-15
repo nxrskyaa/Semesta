@@ -465,6 +465,14 @@ export function createPanels(hudRoot, {
           <div class="g-body">◈</div><div class="g-crank">✦</div>
         </div>
         <div class="g-hint">The capsule tumbles...</div>`;
+    } else if (phase === 'drop' && result) {
+      // the won capsule falls out, bounces, and cracks open in rarity light
+      const R = RARITY[result.rarity];
+      stage = `<div class="g-dropzone" style="--rc:${R.color}">
+          <div class="g-fallcap"><div class="g-captop"></div><div class="g-capbot"></div></div>
+          <div class="g-crackglow"></div>
+        </div>
+        <div class="g-hint" style="color:${R.color}">It's opening...</div>`;
     } else if (phase === 'reveal' && result) {
       const R = RARITY[result.rarity];
       const high = result.rarity === 'legendary' || result.rarity === 'mythic';
@@ -516,6 +524,28 @@ export function createPanels(hudRoot, {
         @keyframes g-jump { 50% { transform: translateY(-14px); } }
         @keyframes g-spin { to { transform: rotate(360deg); } }
         .g-hint { font-size: 10px; color: var(--muted); margin-top: 10px; letter-spacing: 1px; }
+        /* capsule drop + crack-open phase */
+        .g-dropzone { position: relative; height: 130px; }
+        .g-fallcap { position: absolute; left: 50%; top: 0; width: 44px; height: 44px; margin-left: -22px;
+          animation: g-fall 0.62s cubic-bezier(0.3, 0, 0.6, 1.4) forwards; }
+        .g-captop, .g-capbot { position: absolute; left: 0; width: 44px; height: 22px; }
+        .g-captop { top: 0; border-radius: 22px 22px 0 0; background: var(--rc);
+          animation: g-crack-top 0.3s ease-in 0.66s forwards; }
+        .g-capbot { bottom: 0; border-radius: 0 0 22px 22px; background: #f4f0e4;
+          animation: g-crack-bot 0.3s ease-in 0.66s forwards; }
+        @keyframes g-fall {
+          0% { transform: translateY(-8px); }
+          55% { transform: translateY(72px); }
+          75% { transform: translateY(52px) rotate(8deg); }
+          100% { transform: translateY(70px) rotate(-4deg); }
+        }
+        @keyframes g-crack-top { to { transform: translate(-14px, -26px) rotate(-38deg); opacity: 0.15; } }
+        @keyframes g-crack-bot { to { transform: translate(14px, 12px) rotate(30deg); opacity: 0.15; } }
+        .g-crackglow { position: absolute; left: 50%; top: 74px; width: 10px; height: 10px; margin-left: -5px;
+          border-radius: 50%; background: var(--rc); opacity: 0;
+          box-shadow: 0 0 30px 16px var(--rc);
+          animation: g-glowup 0.34s ease-out 0.66s forwards; }
+        @keyframes g-glowup { to { opacity: 0.95; transform: scale(2.4); } }
         /* rarity flash + reveal card */
         .g-flash { position: absolute; inset: -15px; pointer-events: none;
           background: radial-gradient(circle at 50% 45%, var(--rc) 0%, transparent 55%);
@@ -547,7 +577,7 @@ export function createPanels(hudRoot, {
       </style>
       <div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
       <div class="g-stage">${stage}</div>
-      <button class="act g-rollbtn" data-roll ${(!afford || phase === 'spin') ? 'disabled' : ''}>
+      <button class="act g-rollbtn" data-roll ${(!afford || phase === 'spin' || phase === 'drop') ? 'disabled' : ''}>
         ◈ SPIN — ${gacha.price}c
       </button>
       <div class="g-pity"><div style="width:${pityPct}%"></div></div>
@@ -558,15 +588,21 @@ export function createPanels(hudRoot, {
       const prize = gacha.roll();
       if (!prize) { audio.sfx('deny'); return; }
       gachaBusy = true;
+      // show: crank rattle -> capsule drops & cracks open -> rarity reveal
       audio.sfx('gacha_crank');
+      audio.sfx('gacha_riser');
       renderGacha('spin');
-      setTimeout(() => { audio.sfx('gacha_pop'); }, 750);
+      setTimeout(() => {
+        audio.sfx('gacha_drop');
+        renderGacha('drop', prize);
+      }, 900);
+      setTimeout(() => { audio.sfx('gacha_pop'); }, 1560);
       setTimeout(() => {
         gachaHistory.push(prize);
         gachaBusy = false;
         audio.sfx(`reveal_${prize.rarity}`);
         renderGacha('reveal', prize);
-      }, 950);
+      }, 1860);
     });
   }
 

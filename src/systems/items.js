@@ -26,6 +26,9 @@ export const ITEMS = {
   wisp_essence: { name: 'Wisp Essence', sell: 8 },
   golem_core:   { name: 'Golem Core', sell: 40 },
   forge_stone:  { name: 'Forge Stone', sell: 6 },
+  frost_shard:  { name: 'Frost Shard', sell: 9 },
+  static_fluff: { name: 'Static Fluff', sell: 6 },
+  soft_plume:   { name: 'Soft Plume', sell: 8 },
 
   // fish (fishing)
   fish_minnow: { name: 'Mossy Minnow', fish: true, sell: 4 },
@@ -176,6 +179,21 @@ export const DROP_TABLES = {
     ['golem_core', 1.0, 1, 1],
     ['forge_stone', 1.0, 2, 4],
     ['chitin_shell', 0.6, 2, 4],
+  ],
+  frostling: [
+    ['frost_shard', 0.9, 1, 2],
+    ['green_herb', 0.25, 1, 1],
+    ['forge_stone', 0.1, 1, 1],
+  ],
+  sparkit: [
+    ['static_fluff', 0.85, 1, 2],
+    ['wheat_seed', 0.2, 1, 1],
+    ['forge_stone', 0.06, 1, 1],
+  ],
+  puffowl: [
+    ['soft_plume', 0.9, 1, 2],
+    ['feather', 0.5, 1, 2],
+    ['forge_stone', 0.12, 1, 1],
   ],
 };
 

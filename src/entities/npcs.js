@@ -639,17 +639,24 @@ function buildFencedGarden() {
 }
 
 function buildLamp() {
+  // village lamps match the wild Japanese stone lanterns (ishidōrō) so lighting
+  // reads as one aesthetic: stone base + pillar + warm light box + pyramid cap
   const g = new THREE.Group();
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.6, 5), lam('#4a3a2c'));
-  pole.position.y = 0.8;
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, 0.06), lam('#4a3a2c'));
-  arm.position.set(0.12, 1.56, 0);
-  const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16),
-    new THREE.MeshBasicMaterial({ color: 0xffd88a }));
-  lantern.position.set(0.26, 1.44, 0);
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.2), lam('#4a3a2c'));
-  cap.position.set(0.26, 1.56, 0);
-  g.add(pole, arm, lantern, cap);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.4), lam('#5c605a'));
+  base.position.y = 0.06;
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.13), lam('#787c76'));
+  post.position.y = 0.37;
+  const house = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.3), lam('#787c76'));
+  house.position.y = 0.73;
+  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.22),
+    new THREE.MeshBasicMaterial({ color: 0xf5d9a0 }));
+  pane.position.y = 0.73;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.17, 4), lam('#5c605a'));
+  roof.position.y = 0.92;
+  roof.rotation.y = Math.PI / 4;
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.06), lam('#787c76'));
+  cap.position.y = 1.03;
+  g.add(base, post, house, pane, roof, cap);
   return g;
 }
 
@@ -794,8 +801,10 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
   place(buildHut(0.75, '#c8b090', '#8a5a88'), 0.5, -8);
 
   place(buildWell(), 2.8, 2.8, false, 1);
-  const stallSpot = place(buildStall(), 4.6, 0.6, true, 1);
-  const forgeSpot = place(buildForgeCorner(), -3.6, -2.2, true, 1);
+  // landmarks are spread apart with a clear approach lane each — the shop,
+  // forge and gacha machine should never crowd each other or the huts
+  const stallSpot = place(buildStall(), 5.4, 2.4, true, 1);
+  const forgeSpot = place(buildForgeCorner(), -4.4, -2.6, true, 1);
   const gardenSpot = place(buildFencedGarden(), -4.2, 3.4, false, 1);
   place(buildClutter(rng), -5.2, -3.4, false, 0);
   place(buildClutter(rng), 5.6, -2.6, false, 0);
@@ -806,7 +815,7 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
   }
 
   // Master NXR's wonder-capsule machine
-  const gachaSpot = place(buildGachaMachine(), 6.2, -1.4, true, 0);
+  const gachaSpot = place(buildGachaMachine(), 7.8, -1.8, true, 0);
 
   // cheerful flower beds by the huts
   for (const [fx, fz] of [[-4.6, -5.8], [5, -5.4], [-6.6, 4.4], [5.6, 4], [2, -7.2], [-1.8, 4.8]]) {

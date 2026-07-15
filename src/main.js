@@ -79,6 +79,7 @@ async function main() {
   // opening: loading splash -> main menu (New / Continue / About)
   const { action } = await showOpening(saved);
   audio.start(); // menu click = first gesture, safe for autoplay
+  audio.setMood('menu'); // dreamy title/creation track — the world flips it to day/night
   audio.sfx('ui');
 
   let config, continued;
@@ -982,6 +983,13 @@ async function init(character, saved, audio) {
     if (fishing.state.phase === 'bite') return { label: 'Reel in!', run: () => fishing.strike() };
     if (fishing.state.phase === 'waiting') return { label: 'Wait for it...', run: () => fishing.strike() };
 
+    // standing right AT a landmark always wins — a villager wandering in front
+    // of the stall/gacha/anvil can't hijack the F button anymore
+    const near = (spot, r = 3.2) => spot && ((spot.x - player.state.pos.x) ** 2 + (spot.z - player.state.pos.z) ** 2 < r * r);
+    if (near(npcs.stallSpot, 2.0)) return { label: 'Shop — buy & sell', run: () => { audio.sfx('ui'); panels.toggle('shop'); } };
+    if (near(npcs.gachaSpot, 2.0)) return { label: 'Wonder Capsules (gacha)', run: () => { audio.sfx('ui'); panels.toggle('gacha'); } };
+    if (near(npcs.forgeSpot, 2.0)) return { label: 'Forge your weapon', run: () => { audio.sfx('ui'); panels.toggle('forge'); } };
+
     // quest-giving NPCs take priority when you're near them (so you never
     // miss a quest); ambient chatter is a fallback near the bottom
     const npc = npcs.nearest(player.state.pos, 2.3);
@@ -1060,9 +1068,8 @@ async function init(character, saved, audio) {
       };
     }
 
-    // village landmarks you can walk right up to (no chasing wandering NPCs):
+    // village landmarks, looser radius fallback (tight pass ran at the top):
     // Pip's market stall = shop, the capsule machine = gacha, the anvil = forge
-    const near = (spot, r = 2.6) => spot && ((spot.x - player.state.pos.x) ** 2 + (spot.z - player.state.pos.z) ** 2 < r * r);
     if (near(npcs.stallSpot)) return { label: 'Shop — buy & sell', run: () => { audio.sfx('ui'); panels.toggle('shop'); } };
     if (near(npcs.gachaSpot)) return { label: 'Wonder Capsules (gacha)', run: () => { audio.sfx('ui'); panels.toggle('gacha'); } };
     if (near(npcs.forgeSpot)) return { label: 'Forge your weapon', run: () => { audio.sfx('ui'); panels.toggle('forge'); } };
@@ -1111,7 +1118,7 @@ async function init(character, saved, audio) {
       if (fishing.toggleAfk()) hud.toastText('AFK fishing on — common fish only. Move to stop.');
     }
     if (e.code === 'KeyB') toggleAutoBattle(); // AFK auto-battle grinding
-    if (e.code === 'Escape') { panels.closeAll(); dialog.hide(); fishing.cancel(); worldmap.hide(); }
+    if (e.code === 'Escape') { panels.closeAll(); dialog.hide(); fishing.cancel(); worldmap.hide(); hud.closeMenu?.(); }
     if (e.code === 'Digit1') castSkill(skillIds[0]);
     if (e.code === 'Digit2') castSkill(skillIds[1]);
     if (e.code === 'Digit3') castSkill(skillIds[2]);
@@ -1148,6 +1155,7 @@ async function init(character, saved, audio) {
     onMenu: (which) => {
       if (which === 'auto') { toggleAutoBattle(); return; }
       if (which === 'home') { teleportHome(); return; }
+      if (which === 'map') { toggleWorldMap(); return; }
       audio.sfx('ui'); panels.toggle(which);
     },
     onRespawn: () => {
@@ -1361,7 +1369,28 @@ async function init(character, saved, audio) {
       hudT = 0;
       hud.setWeather(weather.state.intensity > 0.4);
       hud.setClock(lighting.clockText(), isNight);
-      minimap.update(player.state.pos, player.state.facing, enemyMgr.enemies, { lands: housing.lands });
+      minimap.update(player.state.pos, player.state.facing, enemyMgr.enemies,
+        { lands: housing.lands, pin: worldmap.getPin() });
+      // waypoint beacon: arrow + distance to the player's map mark
+      const pin = worldmap.getPin();
+      if (pin) {
+        const dx = pin.x - player.state.pos.x, dz = pin.z - player.state.pos.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 2.5) { // arrived — clear the mark with a little celebration
+          worldmap.clearPin();
+          hud.setBeacon(null);
+          hud.toastText('You reached your mark!');
+          particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#ff8a5e', 12);
+          audio.sfx('catch');
+        } else {
+          // rotate the arrow relative to the camera heading (screen-up)
+          const worldAng = Math.atan2(dx, dz);
+          const camAng = cam.yaw + Math.PI;
+          hud.setBeacon({ angle: -(worldAng - camAng) - Math.PI / 2, dist });
+        }
+      } else {
+        hud.setBeacon(null);
+      }
       touchUI?.update(skillSys, inventory.count('tonic'));
       // interact prompt
       const it = currentInteraction();

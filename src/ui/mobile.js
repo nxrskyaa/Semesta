@@ -61,18 +61,20 @@ const CSS = `
     inset 0 0 0 2px rgba(200,160,58,0.75), 0 0 0 2px rgba(6,9,6,0.8),
     0 0 14px rgba(200,160,58,0.25), 0 3px 6px rgba(0,0,0,0.4);
 }
-#touchui .roll { width: 50px; height: 50px; right: 86px; bottom: 0; font-size: 18px; }
-#touchui .jump { width: 46px; height: 46px; right: 140px; bottom: 52px; font-size: 17px; }
-#touchui .sk { width: 46px; height: 46px; }
-#touchui .sk1 { right: 92px; bottom: 58px; }
-#touchui .sk2 { right: 62px; bottom: 104px; }
-#touchui .sk3 { right: 6px; bottom: 122px; }
-#touchui .pot { width: 42px; height: 42px; right: 142px; bottom: 4px; }
+/* bottom row: attack (big) · roll · jump · potion — evenly spaced */
+#touchui .roll { width: 52px; height: 52px; right: 92px; bottom: 4px; font-size: 18px; }
+#touchui .jump { width: 52px; height: 52px; right: 156px; bottom: 4px; font-size: 18px; }
+#touchui .pot { width: 46px; height: 46px; right: 220px; bottom: 6px; }
 #touchui .pot .cnt { position: absolute; bottom: -1px; right: 3px; font-size: 10px; }
+/* skill arc: a clean diagonal above the attack button, nothing overlapping */
+#touchui .sk { width: 50px; height: 50px; }
+#touchui .sk1 { right: 8px; bottom: 96px; }
+#touchui .sk2 { right: 68px; bottom: 78px; }
+#touchui .sk3 { right: 126px; bottom: 66px; }
 
 /* contextual interact button (talk / chest / fish) */
 #touchui .ctx {
-  position: absolute; right: 148px; bottom: 64px; width: 56px; height: 56px;
+  position: absolute; right: 30px; bottom: 162px; width: 58px; height: 58px;
   border-radius: 12px; border: 0; background: linear-gradient(180deg, rgba(96,80,28,0.9), rgba(50,40,14,0.92));
   color: #ffe9a8; font-size: 21px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -86,7 +88,7 @@ const CSS = `
   inset 0 2px 0 0 rgba(255,230,160,0.35), inset 0 -3px 0 0 rgba(0,0,0,0.5),
   inset 0 0 0 2px #ffe27a, 0 0 0 2px rgba(6,9,6,0.8), 0 0 22px rgba(255,210,62,0.6); } }
 #touchui .afk {
-  position: absolute; right: 212px; bottom: 72px; width: 42px; height: 42px;
+  position: absolute; right: 102px; bottom: 170px; width: 44px; height: 44px;
   border-radius: 10px; border: 0; background: linear-gradient(180deg, rgba(34,48,66,0.9), rgba(18,26,38,0.92));
   color: #b8d0f0; font-size: 15px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;

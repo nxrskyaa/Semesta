@@ -78,13 +78,24 @@ export function createMinimap(canvas, terrain, decor) {
         const off = lx < 4 || lz < 4 || lx > canvas.width - 4 || lz > canvas.height - 4;
         lx = Math.max(6, Math.min(canvas.width - 6, lx));
         lz = Math.max(6, Math.min(canvas.height - 6, lz));
-        if (l.built) { // your home — bright gold house icon
+        if (l.built) { // your home — big pulsing gold house icon
+          const pu = 1 + Math.sin(performance.now() / 260) * 0.15;
+          ctx.save();
+          ctx.translate(lx, lz);
+          ctx.scale(pu, pu);
           ctx.fillStyle = '#ffd23e';
-          ctx.fillRect(lx - 2.5, lz - 1, 5, 4);
+          ctx.fillRect(-4, -1, 8, 6);
           ctx.beginPath();
-          ctx.moveTo(lx - 4, lz - 1); ctx.lineTo(lx, lz - 5); ctx.lineTo(lx + 4, lz - 1);
+          ctx.moveTo(-6, -1); ctx.lineTo(0, -7); ctx.lineTo(6, -1);
           ctx.closePath(); ctx.fill();
-          ctx.strokeStyle = '#5e3c10'; ctx.lineWidth = 1; ctx.strokeRect(lx - 2.5, lz - 1, 5, 4);
+          ctx.strokeStyle = '#5e3c10'; ctx.lineWidth = 1.4;
+          ctx.strokeRect(-4, -1, 8, 6);
+          ctx.beginPath();
+          ctx.moveTo(-6, -1); ctx.lineTo(0, -7); ctx.lineTo(6, -1);
+          ctx.stroke();
+          ctx.fillStyle = '#5e3c10';
+          ctx.fillRect(-1, 1, 3, 4); // little door
+          ctx.restore();
         } else { // for-sale plot — hollow amber diamond
           ctx.strokeStyle = l.owned ? '#a8e06a' : '#c8b060';
           ctx.lineWidth = 1.4;
@@ -93,6 +104,19 @@ export function createMinimap(canvas, terrain, decor) {
           ctx.closePath(); ctx.stroke();
         }
       }
+    }
+    // player-placed waypoint mark (orange flag, clamped to the edge)
+    if (extras?.pin) {
+      let mx = (extras.pin.x + S / 2 - sx) * k;
+      let mz = (extras.pin.z + S / 2 - sz) * k;
+      mx = Math.max(6, Math.min(canvas.width - 6, mx));
+      mz = Math.max(8, Math.min(canvas.height - 6, mz));
+      ctx.strokeStyle = '#ff8a5e'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(mx, mz + 5); ctx.lineTo(mx, mz - 5); ctx.stroke();
+      ctx.fillStyle = '#ff8a5e';
+      ctx.beginPath();
+      ctx.moveTo(mx, mz - 5); ctx.lineTo(mx + 6, mz - 2.5); ctx.lineTo(mx, mz);
+      ctx.closePath(); ctx.fill();
     }
     // world boss: big pulsing gold marker, clamped to the map edge if far
     for (const e of enemies) {

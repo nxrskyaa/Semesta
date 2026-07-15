@@ -12,7 +12,7 @@ import { rollDrops } from '../systems/items.js';
 export const ENEMY_TYPES = {
   slime: {
     name: 'Slime', hp: 14, dmg: 4, speed: 1.5, xp: 8, aggro: 4.0, attackRange: 1.0,
-    attackCd: 1.5, weight: 0.34, behavior: 'melee',
+    attackCd: 1.5, weight: 0.28, behavior: 'melee',
   },
   nibbit: {
     name: 'Nibbit', hp: 9, dmg: 3, speed: 2.7, xp: 7, aggro: 3.4, attackRange: 0.9,
@@ -41,6 +41,19 @@ export const ENEMY_TYPES = {
   golem: {
     name: 'Golem', hp: 160, dmg: 20, speed: 0.6, xp: 90, aggro: 5.0, attackRange: 1.7,
     attackCd: 2.6, weight: 0.03, behavior: 'melee', minDist: 38, boss: true,
+  },
+  // --- newer species: biome & time-of-day exclusives for variety ---
+  frostling: { // winter-biome fox cub that spits frost shards
+    name: 'Frostling', hp: 22, dmg: 7, speed: 1.6, xp: 24, aggro: 5.5, attackRange: 6.0,
+    attackCd: 2.2, weight: 0, behavior: 'ranged', keepDist: 4.5, snowOnly: true,
+  },
+  sparkit: { // zippy static-charged squirrel — fast, fragile, darts around
+    name: 'Sparkit', hp: 12, dmg: 5, speed: 3.3, xp: 13, aggro: 4.5, attackRange: 0.9,
+    attackCd: 1.0, weight: 0.07, behavior: 'melee',
+  },
+  puffowl: { // round night owl that drifts above the grass and swoops
+    name: 'Puffowl', hp: 17, dmg: 8, speed: 2.3, xp: 25, aggro: 5.5, attackRange: 1.1,
+    attackCd: 1.7, weight: 0, behavior: 'melee', nightOnly: true, floats: true,
   },
 };
 
@@ -294,10 +307,104 @@ function buildGolemMesh() {
   return g;
 }
 
+function buildFrostlingMesh() {
+  const g = new THREE.Group();
+  const fur = lam('#cfe6f2');
+  const furDeep = lam('#a8ccdf');
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.36, 0.56), fur);
+  body.position.y = 0.3;
+  body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.32), fur);
+  head.position.set(0, 0.58, 0.2);
+  const face = facePlane('frostling', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, eye: '#5aa8e8', mouth: 'w', cheeks: 'rgba(150,200,240,0.6)' }, 0.38, 0.28);
+  face.position.set(0, 0.6, 0.37);
+  // crystal ears + icy tail tip
+  const crystalMat = new THREE.MeshBasicMaterial({ color: 0xdff4ff, transparent: true, opacity: 0.9 });
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 4), crystalMat);
+    ear.position.set(sx * 0.13, 0.82, 0.16);
+    g.add(ear);
+  }
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.3), furDeep);
+  tail.position.set(0, 0.4, -0.36); tail.rotation.x = -0.5;
+  const tailTip = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), crystalMat);
+  tailTip.position.set(0, 0.52, -0.48);
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.44), furDeep);
+  legs.position.y = 0.1;
+  g.add(body, head, face, tail, tailTip, legs);
+  g.userData.body = body;
+  return g;
+}
+
+function buildSparkitMesh() {
+  const g = new THREE.Group();
+  const fur = lam('#f0d060');
+  const furDark = lam('#d0a840');
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.32, 0.42), fur);
+  body.position.y = 0.26;
+  body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.28), fur);
+  head.position.set(0, 0.52, 0.14);
+  const face = facePlane('sparkit', { eyeW: 3, eyeH: 5, gap: 4, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,160,90,0.8)' }, 0.32, 0.24);
+  face.position.set(0, 0.54, 0.29);
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.05), furDark);
+    ear.position.set(sx * 0.11, 0.72, 0.1);
+    g.add(ear);
+  }
+  // zigzag lightning tail
+  const boltMat = new THREE.MeshBasicMaterial({ color: 0xfff2a0 });
+  const tail = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 0.07), boltMat);
+    seg.position.set((i % 2 ? 0.08 : -0.08), 0.1 + i * 0.13, 0);
+    tail.add(seg);
+  }
+  tail.position.set(0, 0.3, -0.26);
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.34), furDark);
+  legs.position.y = 0.08;
+  g.add(body, head, face, tail, legs);
+  g.userData.body = body;
+  g.userData.tail = tail;
+  return g;
+}
+
+function buildPuffowlMesh() {
+  const g = new THREE.Group();
+  const feather = lam('#8a7aa8');
+  const featherLight = lam('#b8a8cc');
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.52, 0.44), feather);
+  body.position.y = 0.42;
+  body.castShadow = true;
+  const belly = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.06), featherLight);
+  belly.position.set(0, 0.36, 0.23);
+  const face = facePlane('puffowl', { eyeW: 5, eyeH: 5, gap: 3, eyeY: 2, eye: '#ffd24a', mouth: 'none' }, 0.44, 0.32);
+  face.position.set(0, 0.56, 0.24);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.1, 4), lam('#e8a33d'));
+  beak.position.set(0, 0.48, 0.27); beak.rotation.x = Math.PI / 2;
+  for (const sx of [-1, 1]) {
+    const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.14, 4), feather);
+    tuft.position.set(sx * 0.16, 0.74, 0.08);
+    tuft.rotation.z = -sx * 0.3;
+    g.add(tuft);
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.34, 0.3), featherLight);
+    wing.position.set(sx * 0.3, 0.44, -0.02);
+    g.add(wing);
+    g.userData.wings = g.userData.wings || [];
+    g.userData.wings.push(wing);
+  }
+  const feet = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.12), lam('#e8a33d'));
+  feet.position.y = 0.14;
+  g.add(body, belly, face, beak, feet);
+  g.userData.body = body;
+  return g;
+}
+
 const BUILDERS = {
   slime: buildSlimeMesh, nibbit: buildNibbitMesh, armorbug: buildArmorbugMesh,
   fungling: buildFunglingMesh, boarling: buildBoarlingMesh, wisp: buildWispMesh,
   treant: buildTreantMesh, golem: buildGolemMesh,
+  frostling: buildFrostlingMesh, sparkit: buildSparkitMesh, puffowl: buildPuffowlMesh,
 };
 
 // --- world bosses: giant variants that appear on a timer ---
@@ -366,12 +473,14 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     return 1 + Math.floor(d / 26);
   }
 
-  function pickType(rng, nearWater, distFromSpawn, isNight) {
-    if (isNight && rng() < 0.28) return 'wisp';
+  function pickType(rng, nearWater, distFromSpawn, isNight, snowy) {
+    if (snowy && rng() < 0.5) return 'frostling'; // the winter biome is theirs
+    if (isNight && rng() < 0.24) return 'wisp';
+    if (isNight && rng() < 0.24) return 'puffowl';
     if (nearWater && rng() < 0.4) return 'armorbug';
     let r = rng(), acc = 0;
     for (const [id, def] of Object.entries(ENEMY_TYPES)) {
-      if (def.nightOnly) continue;
+      if (def.nightOnly || def.snowOnly) continue;
       if (def.minDist && distFromSpawn < def.minDist) continue;
       acc += def.weight;
       if (r <= acc) return id;
@@ -398,15 +507,30 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         }
       }
       const distFromSpawn = Math.hypot(x - terrain.spawn.x, z - terrain.spawn.z);
-      const type = pickType(Math.random, nearWater, distFromSpawn, isNight);
+      const snowy = terrain.isSnowCell?.(ix, iz) || false;
+      const type = pickType(Math.random, nearWater, distFromSpawn, isNight, snowy);
       const def = ENEMY_TYPES[type];
       if (h <= WATER_LEVEL && !def.water) continue;
       if (h <= WATER_LEVEL - 1) continue;
 
       const level = Math.max(1, levelFor(x, z) + (def.boss ? 2 : 0));
       const mesh = BUILDERS[type]();
-      const hpMax = Math.round(def.hp * (1 + (level - 1) * 0.35));
-      const np = makeNameplate(def.name, level, def.boss);
+      // ELITE variant: rarer, bigger, gilded aura ring — much tougher, pays more
+      const elite = !def.boss && level >= 2 && Math.random() < 0.08;
+      let hpMax = Math.round(def.hp * (1 + (level - 1) * 0.35));
+      let dmg = Math.round(def.dmg * (1 + (level - 1) * 0.3));
+      let xp = Math.round(def.xp * (1 + (level - 1) * 0.4));
+      if (elite) {
+        hpMax = Math.round(hpMax * 2.6); dmg = Math.round(dmg * 1.5); xp = Math.round(xp * 2.5);
+        mesh.scale.setScalar(1.32);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.05, 6, 18),
+          new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false }));
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.1;
+        mesh.add(ring);
+        mesh.userData.eliteRing = ring;
+      }
+      const np = makeNameplate(elite ? `★ ${def.name}` : def.name, level, def.boss || elite);
       np.sprite.position.y = type === 'treant' ? 2.1 : (type === 'golem' ? 2.4 : 1.15);
       np.sprite.visible = false;
       mesh.add(np.sprite);
@@ -414,10 +538,9 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       scene.add(mesh);
 
       enemies.push({
-        type, def, level, mesh, np,
+        type, def, level, mesh, np, elite,
         hp: hpMax, hpMax,
-        dmg: Math.round(def.dmg * (1 + (level - 1) * 0.3)),
-        xp: Math.round(def.xp * (1 + (level - 1) * 0.4)),
+        dmg, xp,
         state: 'wander', wanderT: 0, dir: Math.random() * Math.PI * 2,
         attackCd: 0, hurtFlash: 0, anim: Math.random() * 10,
         knock: new THREE.Vector2(0, 0),
@@ -505,6 +628,10 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         e.type === 'slime' ? '#6de0a0' : e.type === 'wisp' ? '#9adcf0' : '#a08a6a', 18, 3.2);
       particles.shockwave?.(e.mesh.position, e.def.boss ? '#f0a848' : '#ffffff', e.def.boss ? 4 : 1.6, 0.35);
       const drops = rollDrops(e.type);
+      if (e.elite) { // elites pay out a bonus haul
+        drops.push({ id: 'forge_stone', count: 2 + Math.floor(Math.random() * 2) });
+        if (Math.random() < 0.5) drops.push({ id: 'tonic', count: 1 });
+      }
       onKill(e, drops);
       scene.remove(e.mesh);
     }
@@ -616,6 +743,22 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         }
       } else if (e.type === 'boarling' && e.chargeT > 0) {
         e.mesh.position.y += Math.abs(Math.sin(e.anim * 22)) * 0.03;
+      } else if (e.type === 'sparkit') {
+        // twitchy hop + crackling tail wiggle
+        e.mesh.position.y += Math.max(0, Math.sin(e.anim * 13)) * 0.05;
+        if (e.mesh.userData.tail) e.mesh.userData.tail.rotation.y = Math.sin(e.anim * 18) * 0.4;
+      } else if (e.type === 'puffowl') {
+        e.mesh.position.y = terrain.surfaceY(p.x, p.z) + 0.55 + Math.sin(e.anim * 2.0) * 0.18;
+        if (e.mesh.userData.wings) {
+          const flap = Math.sin(e.anim * 7) * 0.55;
+          e.mesh.userData.wings[0].rotation.z = flap;
+          e.mesh.userData.wings[1].rotation.z = -flap;
+        }
+      }
+      // elite aura ring slowly spins & pulses
+      if (e.mesh.userData.eliteRing) {
+        e.mesh.userData.eliteRing.rotation.z += dt * 1.4;
+        e.mesh.userData.eliteRing.material.opacity = 0.55 + Math.sin(e.anim * 3) * 0.2;
       }
       if (e.hurtFlash > 0) {
         e.hurtFlash -= dt;
@@ -661,12 +804,12 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       const from = p.clone().add(new THREE.Vector3(0, e.type === 'wisp' ? 0.5 : 0.6, 0));
       const target = playerPos.clone().add(new THREE.Vector3(0, 0.6, 0));
       const dir = target.sub(from).normalize();
-      hooks.sfx?.(e.type === 'wisp' ? 'wisp_shot' : 'spit');
+      hooks.sfx?.(e.type === 'wisp' ? 'wisp_shot' : e.type === 'frostling' ? 'icenova' : 'spit');
       projectiles.spawn({
         pos: from, dir, speed: e.type === 'wisp' ? 9 : 7.5, range: e.def.attackRange + 3, radius: 0.35,
-        kind: e.type === 'wisp' ? 'orb' : 'arrow',
-        color: e.type === 'wisp' ? '#9adcf0' : '#e090ac',
-        scale: e.type === 'wisp' ? 0.8 : 1.2,
+        kind: e.type === 'wisp' || e.type === 'frostling' ? 'orb' : 'arrow',
+        color: e.type === 'wisp' ? '#9adcf0' : e.type === 'frostling' ? '#dff4ff' : '#e090ac',
+        scale: e.type === 'wisp' ? 0.8 : e.type === 'frostling' ? 0.7 : 1.2,
         fromEnemy: true,
         onHitPlayer: () => hooks.onPlayerHit(e, e.dmg),
       });

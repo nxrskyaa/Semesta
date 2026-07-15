@@ -35,6 +35,15 @@ const CSS = `
 }
 #worldmap .legend span b { font-size: 11px; margin-right: 4px; }
 #worldmap .hint { text-align: center; font-size: 9px; color: var(--muted); margin-top: 8px; letter-spacing: 2px; }
+#worldmap .frame { position: relative; }
+#worldmap .wm-close {
+  position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; cursor: pointer;
+  font-family: inherit; font-size: 15px; color: #ffd8d0; border: 0;
+  background: linear-gradient(180deg, #5a2622, #3a1a16);
+  box-shadow: 0 0 0 2px #c88, 0 0 0 4px var(--ink);
+}
+#worldmap .wm-close:hover { filter: brightness(1.3); }
+#worldmap canvas { cursor: crosshair; }
 `;
 
 export function createWorldMap({ minimap, terrain }) {
@@ -47,6 +56,7 @@ export function createWorldMap({ minimap, terrain }) {
   root.innerHTML = `
     <div class="frame">
       <h3>◆ WORLD MAP ◆</h3>
+      <button class="wm-close">✕</button>
       <canvas width="480" height="480"></canvas>
       <div class="legend">
         <span><b style="color:#ffe27a">⌂</b>Village</span>
@@ -54,12 +64,13 @@ export function createWorldMap({ minimap, terrain }) {
         <span><b style="color:#f0a8c8">◈</b>Gacha</span>
         <span><b style="color:#e8a35d">⚒</b>Forge</span>
         <span><b style="color:#8ac86a">▲</b>Rest Camp</span>
-        <span><b style="color:#f0c455">◎</b>Land / Home</span>
-        <span><b style="color:#ffd23e">!</b>Quest</span>
+        <span><b style="color:#f0c455">⌂</b>Your Home</span>
+        <span><b style="color:#c8b494">◎</b>Land</span>
         <span><b style="color:#ffd23e">◆</b>Boss</span>
+        <span><b style="color:#ff8a5e">⚑</b>Your Mark</span>
         <span><b style="color:#f0f0e0">▸</b>You</span>
       </div>
-      <div class="hint">[N] OR TAP MAP TO CLOSE</div>
+      <div class="hint">TAP THE MAP TO DROP A ⚑ MARK (TAP IT AGAIN TO CLEAR) · [N] / ✕ CLOSES</div>
     </div>
   `;
   document.body.appendChild(root);
@@ -70,8 +81,20 @@ export function createWorldMap({ minimap, terrain }) {
   const S = WORLD_SIZE;
   let open = false;
   let refs = null; // { player, npcs, camps, lands, enemies, quests }
+  let pin = null;  // { x, z } — player-placed waypoint mark
 
-  root.addEventListener('click', () => hide());
+  // click the dimmed backdrop or ✕ to close; clicking the MAP drops a mark
+  root.addEventListener('click', (e) => { if (e.target === root) hide(); });
+  root.querySelector('.wm-close').addEventListener('click', () => hide());
+  canvas.addEventListener('click', (e) => {
+    const r = canvas.getBoundingClientRect();
+    const wx = ((e.clientX - r.left) / r.width) * S - S / 2;
+    const wz = ((e.clientY - r.top) / r.height) * S - S / 2;
+    // tapping on (or near) the current mark clears it
+    if (pin && Math.hypot(pin.x - wx, pin.z - wz) < 7) pin = null;
+    else pin = { x: wx, z: wz };
+    draw();
+  });
 
   function toXY(wx, wz) {
     return [((wx + S / 2) / S) * canvas.width, ((wz + S / 2) / S) * canvas.height];
@@ -89,12 +112,29 @@ export function createWorldMap({ minimap, terrain }) {
       ctx.fillStyle = '#0a0f0a'; ctx.fillText('▲', x + 1, y + 1);
       ctx.fillStyle = '#8ac86a'; ctx.fillText('▲', x, y);
     }
-    // land plots / built homes
+    // land plots / built homes — big glyphs with a text label so your home is
+    // impossible to miss
     for (const l of refs.lands.lands) {
       const [x, y] = toXY(l.x, l.z);
-      ctx.fillStyle = '#0a0f0a'; ctx.fillText(l.built ? '⌂' : '◎', x + 1, y + 1);
-      ctx.fillStyle = l.built ? '#f0c455' : (l.owned ? '#c8dc6a' : '#c8b494');
-      ctx.fillText(l.built ? '⌂' : '◎', x, y);
+      if (l.built) {
+        const pulse = 22 + Math.sin(performance.now() / 300) * 2;
+        ctx.font = `bold ${pulse}px monospace`;
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('⌂', x + 1.5, y + 1.5);
+        ctx.fillStyle = '#ffd23e'; ctx.fillText('⌂', x, y);
+        ctx.font = 'bold 9px monospace';
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('YOUR HOME', x + 1, y + 13);
+        ctx.fillStyle = '#ffe9a8'; ctx.fillText('YOUR HOME', x, y + 12);
+      } else {
+        ctx.font = 'bold 16px monospace';
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('◎', x + 1, y + 1);
+        ctx.fillStyle = l.owned ? '#c8dc6a' : '#c8b494';
+        ctx.fillText('◎', x, y);
+        ctx.font = 'bold 8px monospace';
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText(l.owned ? 'YOUR LAND' : 'FOR SALE', x + 1, y + 12);
+        ctx.fillStyle = l.owned ? '#c8dc6a' : '#d8c8a8';
+        ctx.fillText(l.owned ? 'YOUR LAND' : 'FOR SALE', x, y + 11);
+      }
+      ctx.font = 'bold 15px monospace';
     }
     // villagers with quests get a gold !
     ctx.font = 'bold 13px monospace';
@@ -132,6 +172,20 @@ export function createWorldMap({ minimap, terrain }) {
       ctx.fillStyle = '#0a0f0a'; ctx.fillText('◆', x + 1, y + 1);
       ctx.fillStyle = '#ffd23e'; ctx.fillText('◆', x, y);
     }
+    // player-placed mark: bouncing flag + ping ring
+    if (pin) {
+      const [x, y] = toXY(pin.x, pin.z);
+      const t = performance.now() / 1000;
+      const ring = 6 + ((t % 1.2) / 1.2) * 14;
+      ctx.strokeStyle = `rgba(255,138,94,${1 - (t % 1.2) / 1.2})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, ring, 0, Math.PI * 2); ctx.stroke();
+      const bob = Math.sin(t * 5) * 2;
+      ctx.font = 'bold 20px monospace';
+      ctx.fillStyle = '#0a0f0a'; ctx.fillText('⚑', x + 1.5, y - 3 + bob + 1.5);
+      ctx.fillStyle = '#ff8a5e'; ctx.fillText('⚑', x, y - 3 + bob);
+      ctx.font = 'bold 15px monospace';
+    }
     // player arrow
     const p = refs.player.state;
     const [px, py] = toXY(p.pos.x, p.pos.z);
@@ -164,8 +218,11 @@ export function createWorldMap({ minimap, terrain }) {
     return open;
   }
 
-  // light periodic refresh while open (player/boss move)
-  setInterval(() => { if (open) draw(); }, 400);
+  // light periodic refresh while open (player/boss move, pin ping animates)
+  setInterval(() => { if (open) draw(); }, 120);
 
-  return { show, hide, toggle, isOpen: () => open };
+  return {
+    show, hide, toggle, isOpen: () => open,
+    getPin: () => pin, clearPin: () => { pin = null; },
+  };
 }

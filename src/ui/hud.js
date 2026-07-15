@@ -157,8 +157,37 @@ const CSS = `
 #hud .weapon-chip img { width: 18px; height: 18px; image-rendering: pixelated; }
 #hud .weapon-chip .plus { color: #ffd23e; }
 
-/* ---- menu (bottom right) ---- */
-#hud .menubar { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 5px; }
+/* ---- menu: ONE button that opens a popup grid (no more button soup) ---- */
+#hud .menubar { position: absolute; right: 10px; bottom: 10px; }
+#hud .menubtn {
+  pointer-events: auto; cursor: pointer;
+  background: linear-gradient(180deg, #2a3522, #1a2215);
+  border: 0; box-shadow: var(--pix-btn), 0 0 0 1px var(--ink);
+  color: #ffe9b0; font-family: inherit; font-size: 13px; padding: 9px 16px;
+  letter-spacing: 2px; margin: 2px;
+}
+#hud .menubtn:hover { filter: brightness(1.25); }
+#hud .menubtn:active { transform: translateY(2px); }
+#hud .menupop {
+  position: absolute; right: 8px; bottom: 54px; width: 264px;
+  display: none; grid-template-columns: 1fr 1fr; gap: 7px; padding: 12px;
+  background:
+    var(--dither) 0 0/4px 4px,
+    linear-gradient(180deg, var(--panel-1), var(--panel-2));
+  box-shadow: var(--pix-frame);
+  pointer-events: auto; z-index: 35;
+}
+#hud .menupop.show { display: grid; animation: pop-in 0.12s ease-out; }
+@keyframes pop-in { from { transform: translateY(6px); opacity: 0; } }
+#hud .menupop .mtile {
+  display: flex; align-items: center; gap: 8px; padding: 9px 10px; cursor: pointer;
+  background: #141a12; border: 0; box-shadow: inset 0 0 0 2px #2c352c;
+  color: #cfd8c8; font-family: inherit; font-size: 10px; letter-spacing: 1px; text-align: left;
+}
+#hud .menupop .mtile:hover { box-shadow: inset 0 0 0 2px var(--gold); color: #ffe9b0; }
+#hud .menupop .mtile .mi { font-size: 14px; width: 18px; text-align: center; }
+#hud .menupop .mtile small { margin-left: auto; color: var(--gold-dim); font-size: 8px; }
+#hud .menupop .mtile.auto-on { box-shadow: inset 0 0 0 2px #e8574a; color: #ffd0c0; }
 
 /* ---- toasts (bottom left) ---- */
 #hud .toasts { position: absolute; left: 10px; bottom: 10px; display: flex; flex-direction: column-reverse; gap: 3px; }
@@ -191,6 +220,18 @@ const CSS = `
 #hud .banner::before, #hud .banner::after {
   content: '◆'; font-size: 14px; color: var(--gold-dim); vertical-align: 4px; margin: 0 12px;
 }
+/* ---- waypoint beacon (from the world-map mark) ---- */
+#hud .pinbeacon {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  display: none; align-items: center; gap: 8px;
+  font-size: 11px; color: #ffb896; letter-spacing: 1px;
+  background: rgba(20,14,10,0.85); padding: 5px 12px;
+  box-shadow: 0 0 0 2px #8a4a34, 0 0 0 4px var(--ink);
+  pointer-events: none;
+}
+#hud .pinbeacon.show { display: flex; }
+#hud .pinbeacon .arr { font-size: 14px; color: #ff8a5e; display: inline-block; transition: transform 0.12s linear; }
+
 /* ---- level up celebration ---- */
 #hud .lvlup {
   position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%);
@@ -261,7 +302,8 @@ body.touch #hud .weapon-chip { bottom: 30px; }
 body.touch #hud .actionbar { bottom: 8px; }
 body.touch #hud .hint-desktop { display: none; }
 body.touch #hud .prompt { display: none !important; } /* mobile uses the context button */
-body.touch #hud .menubar { right: unset; left: 10px; bottom: unset; top: 74px; flex-direction: column; }
+body.touch #hud .menubar { right: unset; left: 10px; bottom: unset; top: 78px; }
+body.touch #hud .menupop { right: unset; left: 0; bottom: unset; top: 46px; width: min(264px, calc(100vw - 40px)); }
 body.touch #hud .buffs { top: unset; bottom: 64px; left: 10px; }
 
 @media (max-width: 760px) {
@@ -306,6 +348,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       </div>
     </div>
     <div class="quests"></div>
+    <div class="pinbeacon"><span class="arr">➤</span><span class="txt"></span></div>
     <div class="prompt"></div>
     <div class="weapon-chip"></div>
     <div class="actionbar">
@@ -321,15 +364,19 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       </div>
     </div>
     <div class="menubar">
-      <button class="iconbtn" data-menu="inv">BAG <small>[Tab]</small></button>
-      <button class="iconbtn" data-menu="cra">CRAFT <small>[C]</small></button>
-      <button class="iconbtn" data-menu="forge">FORGE <small>[V]</small></button>
-      <button class="iconbtn" data-menu="pets">PETS <small>[P]</small></button>
-      <button class="iconbtn" data-menu="ward">STYLE <small>[O]</small></button>
-      <button class="iconbtn" data-menu="skills">SKILLS <small>[K]</small></button>
-      <button class="iconbtn" data-menu="home">⌂ <small>[T]</small></button>
-      <button class="iconbtn autobtn" data-menu="auto">⚔ AUTO <small>[B]</small></button>
-      <button class="iconbtn" data-menu="help">?</button>
+      <div class="menupop">
+        <button class="mtile" data-menu="inv"><span class="mi">🎒</span>BAG<small>Tab</small></button>
+        <button class="mtile" data-menu="cra"><span class="mi">🔧</span>CRAFT<small>C</small></button>
+        <button class="mtile" data-menu="forge"><span class="mi">⚒</span>FORGE<small>V</small></button>
+        <button class="mtile" data-menu="pets"><span class="mi">🐾</span>PETS<small>P</small></button>
+        <button class="mtile" data-menu="ward"><span class="mi">🧢</span>WARDROBE<small>O</small></button>
+        <button class="mtile" data-menu="skills"><span class="mi">✦</span>SKILLS<small>K</small></button>
+        <button class="mtile" data-menu="map"><span class="mi">🗺</span>MAP<small>N</small></button>
+        <button class="mtile" data-menu="home"><span class="mi">⌂</span>TELEPORT<small>T</small></button>
+        <button class="mtile autobtn" data-menu="auto"><span class="mi">⚔</span>AUTO-BATTLE<small>B</small></button>
+        <button class="mtile" data-menu="help"><span class="mi">?</span>GUIDE<small>H</small></button>
+      </div>
+      <button class="menubtn">☰ MENU</button>
     </div>
     <div class="hint-desktop">
       <b>LMB</b> Attack (auto-aim) · <b>RMB</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
@@ -389,10 +436,18 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     if (sk) callbacks.onSkill?.(sk.dataset.skill);
     if (e.target.closest('[data-potion]')) callbacks.onPotion?.();
   });
+  const menuPop = root.querySelector('.menupop');
+  root.querySelector('.menubtn').addEventListener('click', () => {
+    menuPop.classList.toggle('show');
+  });
   root.querySelector('.menubar').addEventListener('click', (e) => {
     const b = e.target.closest('[data-menu]');
-    if (b) callbacks.onMenu?.(b.dataset.menu);
+    if (b) {
+      menuPop.classList.remove('show');
+      callbacks.onMenu?.(b.dataset.menu);
+    }
   });
+  function closeMenu() { menuPop.classList.remove('show'); }
   els.deadBtn.addEventListener('click', () => callbacks.onRespawn?.());
   els.muteBtn.addEventListener('click', () => {
     const m = audio.toggleMute();
@@ -512,7 +567,19 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   function setWeather(r) { raining = r; }
   function showDead(show) { els.dead.classList.toggle('show', show); }
   const autoBtn = root.querySelector('.autobtn');
-  function setAuto(on) { autoBtn?.classList.toggle('on', !!on); }
+  function setAuto(on) { autoBtn?.classList.toggle('auto-on', !!on); }
+
+  // waypoint beacon: arrow rotates toward the mark, shows remaining distance
+  const beaconEl = root.querySelector('.pinbeacon');
+  const beaconArr = beaconEl.querySelector('.arr');
+  const beaconTxt = beaconEl.querySelector('.txt');
+  function setBeacon(b) {
+    if (!b) { beaconEl.classList.remove('show'); return; }
+    beaconEl.classList.add('show');
+    beaconArr.style.transform = `rotate(${b.angle}rad)`;
+    const txt = `MARK · ${Math.round(b.dist)}m`;
+    if (beaconTxt.textContent !== txt) beaconTxt.textContent = txt;
+  }
 
   // level-up celebration: golden rays + big level number + reward chips
   const lvlEl = root.querySelector('.lvlup');
@@ -533,6 +600,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
 
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
-    showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp,
+    showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
   };
 }
