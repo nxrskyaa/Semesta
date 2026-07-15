@@ -309,11 +309,28 @@ export function buildCharacterMesh(config) {
       const pommel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.09), goldMat);
       pommel.position.y = -0.09;
       g.add(lower, upper, tip, fuller, guardMid, guardL, guardR, grip, pommel);
+      // bright cutting edge — a thin glint strip along the blade's front
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.92 * s, 0.02),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.85 }));
+      edge.position.set(0, 0.62 * s, 0.115 * s);
+      g.add(edge);
       if (tier >= 2) { // rune glow stripe
         const rune = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.5 * s, 0.02),
           new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
         rune.position.set(0, 0.6 * s, 0);
         g.add(rune);
+      }
+      if (def.glow) { // gacha blade: glowing guard gem + twin rune notches
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.055),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow) }));
+        gem.position.set(0, 0.16, 0.17 * s);
+        g.add(gem);
+        for (const sy of [0.38, 0.82]) {
+          const notch = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.05, 0.03),
+            new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow), transparent: true, opacity: 0.9 }));
+          notch.position.set(0, sy * s, 0.1 * s);
+          g.add(notch);
+        }
       }
       handR.add(g);
     } else if (def.type === 'dagger') {
@@ -334,11 +351,22 @@ export function buildCharacterMesh(config) {
         guard.position.y = 0.08;
         const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.07), lam('#4a3626'));
         d.add(b1, b2, tip, guard, grip);
+        // glinting edge along the curve
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.26 * (s / 0.72), 0.02),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.85 }));
+        edge.position.set(0, 0.24, 0.065);
+        d.add(edge);
         if (tier >= 2 && !isOff) {
           const rune = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.2, 0.02),
             new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
           rune.position.set(0, 0.24, 0.055);
           d.add(rune);
+        }
+        if (def.glow) { // gacha fangs: glowing venom bead on each guard
+          const bead = new THREE.Mesh(new THREE.OctahedronGeometry(0.035),
+            new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow) }));
+          bead.position.set(0, 0.09, 0.09);
+          d.add(bead);
         }
         return d;
       };
@@ -359,7 +387,9 @@ export function buildCharacterMesh(config) {
         g.add(seg);
       }
       for (const sy of [-1, 1]) {
-        const tip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.04), goldMat);
+        const tip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.04),
+          def.glow ? new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow) }) : goldMat);
+        if (def.glow) tip.scale.setScalar(1.5); // gacha bows: glowing limb tips
         tip.position.set(-0.06 * s, sy * 0.47 * s, 0);
         g.add(tip);
       }
@@ -398,6 +428,7 @@ export function buildCharacterMesh(config) {
         ring.position.y = 1.18;
         ring.rotation.x = Math.PI / 2;
         g.add(ring);
+        g.userData.anim = { ring, orb: staffOrb }; // spins & pulses in update
       }
       handR.add(g);
     }
@@ -431,6 +462,7 @@ export function buildCharacterMesh(config) {
     getBowArrow: () => bowArrow,
     getStaffOrb: () => staffOrb,
     getWeaponSparks: () => weaponGroup?.userData.sparks || null,
+    getWeaponAnim: () => weaponGroup?.userData.anim || null,
   };
 }
 
@@ -659,6 +691,16 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
         sp.position.set(Math.cos(a) * 0.17, Math.sin(state.idleT * 2.2 + i * 1.7) * 0.12, Math.sin(a) * 0.17);
         sp.rotation.y = state.idleT * 3;
       });
+    }
+    // staff jewelry: the orbit ring precesses (a flat torus spinning on its
+    // own axis would be invisible), the orb breathes
+    const wAnim = rig.getWeaponAnim?.();
+    if (wAnim) {
+      if (wAnim.ring) {
+        wAnim.ring.rotation.x = Math.PI / 2 + Math.sin(state.idleT * 2.0) * 0.35;
+        wAnim.ring.rotation.z = state.idleT * 1.4;
+      }
+      if (wAnim.orb) wAnim.orb.scale.setScalar(1 + Math.sin(state.idleT * 3.4) * 0.1);
     }
 
     if (state.rolling > 0) {

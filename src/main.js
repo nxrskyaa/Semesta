@@ -410,6 +410,28 @@ async function init(character, saved, audio) {
     pity: saved?.gachaPity ?? 0, // rolls since the last epic-or-better
     RARITY, RARITY_ORDER,
     odds: GACHA_WEIGHTS,
+    // full prize catalogue per rarity — powers the panel's PRIZES browser
+    prizeList() {
+      const out = {};
+      for (const [rarity, pool] of Object.entries(GACHA_POOLS)) {
+        out[rarity] = pool.map((entry) => {
+          if (typeof entry === 'object' && entry.bundle) {
+            return { iconId: entry.bundle, name: `${ITEMS[entry.bundle].name} x${entry.count}`, kind: 'SUPPLY' };
+          }
+          if (typeof entry === 'object' && entry.petCharm) {
+            return { iconId: 'charm_moku', name: 'Pet Charm (random)', kind: 'PET', note: 'a pet you don\'t own yet' };
+          }
+          if (typeof entry === 'object' && entry.gweapon) {
+            const wid = GACHA_WEAPONS[entry.gweapon][cls.weaponType];
+            return { iconId: wid, name: ITEMS[wid].name, kind: 'WEAPON', owned: inventory.state.weapons.has(wid) };
+          }
+          const d = ITEMS[entry];
+          const kind = d.cosmetic ? 'COSMETIC' : d.petCharm ? 'PET' : d.mountId ? 'MOUNT' : 'ITEM';
+          return { iconId: entry, name: d.name, kind, owned: inventory.count(entry) > 0 };
+        });
+      }
+      return out;
+    },
     rollRarity() {
       // soft pity: every roll past 8 without epic+ adds weight to the top tiers
       const bonus = Math.max(0, this.pity - 8) * 4;
@@ -741,11 +763,19 @@ async function init(character, saved, audio) {
     const dur = player.state.attackDur * 1000;
     const p = player.state;
 
+    // glow (gacha) weapons trail colored sparks with every swing
+    const glowFx = def.glow ? () => {
+      const f = p.facing;
+      particles.burst(p.pos.clone().add(new THREE.Vector3(Math.sin(f) * 0.9, 0.8, Math.cos(f) * 0.9)),
+        def.glow, 5, 2.2, 2, 0.5);
+    } : null;
+
     if (def.type === 'bow') {
       audio.sfx('swing_bow');
       setTimeout(() => {
         if (p.dead) return;
         autoFace(); // re-acquire the nearest enemy at release
+        glowFx?.();
         projectiles.spawn({
           pos: p.pos.clone().add(new THREE.Vector3(0, 0.75, 0)),
           dir: new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing)),
@@ -759,6 +789,7 @@ async function init(character, saved, audio) {
       setTimeout(() => {
         if (p.dead) return;
         autoFace();
+        glowFx?.();
         projectiles.spawn({
           pos: p.pos.clone().add(new THREE.Vector3(0, 0.85, 0)),
           dir: new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing)),
@@ -782,6 +813,7 @@ async function init(character, saved, audio) {
       const stab = () => {
         if (p.dead) return;
         autoFace(); // track the target through both stabs
+        glowFx?.();
         const hits = resolveMeleeHit(p, def, enemyMgr.enemies, 1);
         for (const h of hits) dealHit(h.enemy, 1);
       };
@@ -792,6 +824,7 @@ async function init(character, saved, audio) {
       setTimeout(() => {
         if (p.dead) return;
         autoFace();
+        glowFx?.();
         const hits = resolveMeleeHit(p, def, enemyMgr.enemies, 1);
         for (const h of hits) dealHit(h.enemy, 1);
       }, dur * 0.45);

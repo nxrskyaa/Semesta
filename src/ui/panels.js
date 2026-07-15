@@ -455,12 +455,62 @@ export function createPanels(hudRoot, {
   // --- Wonder Capsules v2: six-tier reveal show with a real capsule machine ---
   let gachaHistory = [];
   let gachaBusy = false; // don't let inventory refreshes stomp the animation
+  let gachaView = 'machine'; // machine | prizes (the full pull catalogue)
   function renderGacha(phase = 'idle', result = null) {
     if (!gacha) return;
     if (gachaBusy && phase === 'idle') return;
     const coins = inventory.state.coins;
     const afford = coins >= gacha.price;
     const rc = (r) => RARITY[r].color;
+
+    // PRIZES view: browse everything the machine can drop, grouped by rarity
+    if (gachaView === 'prizes' && phase === 'idle' && gacha.prizeList) {
+      const list = gacha.prizeList();
+      let rows = '';
+      for (const rarity of [...RARITY_ORDER].reverse()) {
+        const R = RARITY[rarity];
+        const w = gacha.odds.find(([r]) => r === rarity)?.[1] ?? 0;
+        rows += `<div class="gp-tier" style="--rc:${R.color}">
+          <span class="gp-tn">${'◆'.repeat(RARITY_ORDER.indexOf(rarity) + 1)} ${R.name.toUpperCase()}</span>
+          <span class="gp-odds">${w}% · dupes refund ${R.refund}c</span>
+        </div>`;
+        for (const p of list[rarity]) {
+          rows += `<div class="gp-row" style="--rc:${R.color}">
+            <div class="gp-ic"><img src="${itemIconUrl(p.iconId)}"></div>
+            <div class="gp-nm">${p.name}${p.note ? `<small>${p.note}</small>` : ''}</div>
+            <span class="gp-kind">${p.kind}</span>
+            ${p.owned ? '<span class="gp-own">✓ OWNED</span>' : ''}
+          </div>`;
+        }
+      }
+      panels.gacha.innerHTML = `<h3>WONDER CAPSULES <small>[Esc] close</small></h3>
+        <style>
+          .gp-tier { display: flex; justify-content: space-between; align-items: baseline; margin: 12px 0 6px;
+            padding: 6px 10px; background: linear-gradient(90deg, color-mix(in srgb, var(--rc) 18%, transparent), transparent);
+            box-shadow: inset 2px 0 0 var(--rc); }
+          .gp-tn { font-size: 11px; letter-spacing: 2px; color: var(--rc); text-shadow: 0 0 8px var(--rc); }
+          .gp-odds { font-size: 8px; color: var(--muted); letter-spacing: 1px; }
+          .gp-row { display: flex; align-items: center; gap: 9px; padding: 5px 8px; margin-bottom: 4px;
+            background: #141a12; box-shadow: inset 0 0 0 2px #232c22; }
+          .gp-ic { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.4); box-shadow: inset 0 0 0 1px var(--rc); flex-shrink: 0; }
+          .gp-ic img { width: 24px; height: 24px; image-rendering: pixelated; }
+          .gp-nm { flex: 1; font-size: 11px; color: #e5ead8; }
+          .gp-nm small { display: block; font-size: 8px; color: var(--muted); margin-top: 2px; }
+          .gp-kind { font-size: 7px; letter-spacing: 1px; color: var(--muted); padding: 2px 6px;
+            box-shadow: inset 0 0 0 1px #39443a; }
+          .gp-own { font-size: 8px; color: #8ac86a; letter-spacing: 1px; }
+          .gp-back { width: 100%; margin-top: 12px; }
+        </style>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:2px">
+          EVERYTHING THE MACHINE CAN DROP — weapons match your class</div>
+        ${rows}
+        <button class="act gp-back" data-gback>◈ BACK TO THE MACHINE</button>`;
+      panels.gacha.querySelector('[data-gback]').addEventListener('click', () => {
+        gachaView = 'machine'; audio.sfx('ui'); renderGacha();
+      });
+      return;
+    }
 
     let stage;
     if (phase === 'spin') {
@@ -584,10 +634,15 @@ export function createPanels(hudRoot, {
       <button class="act g-rollbtn" data-roll ${(!afford || phase === 'spin' || phase === 'drop') ? 'disabled' : ''}>
         ◈ SPIN — ${gacha.price}c
       </button>
+      <button class="eq g-prizesbtn" data-prizes ${(phase === 'spin' || phase === 'drop') ? 'disabled' : ''}
+        style="width:100%;margin-top:6px;letter-spacing:2px">📜 VIEW ALL PRIZES</button>
       <div class="g-pity"><div style="width:${pityPct}%"></div></div>
       <div class="g-pitylbl">LUCK CHARGE ${Math.min(gacha.pity, 9)}/9 — charged spins pull higher tiers · dupes refund coins</div>
       <div class="g-odds">${oddsLine}</div>
       ${hist ? `<div class="g-hist">${hist}</div>` : ''}`;
+    panels.gacha.querySelector('[data-prizes]')?.addEventListener('click', () => {
+      gachaView = 'prizes'; audio.sfx('ui'); renderGacha();
+    });
     panels.gacha.querySelector('[data-roll]')?.addEventListener('click', () => {
       const prize = gacha.roll();
       if (!prize) { audio.sfx('deny'); return; }
