@@ -282,7 +282,7 @@ export function paintRialoMark(ctx, W = 128) {
   ctx.fillStyle = '#e8e2d2';
   ctx.fillRect(0, 0, W, W);
   ctx.strokeStyle = '#141414';
-  ctx.lineWidth = 10.5 * k;
+  ctx.lineWidth = 12 * k; // fat blobby strokes, exactly like the brand mark
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   const P = (pts) => {
@@ -291,14 +291,14 @@ export function paintRialoMark(ctx, W = 128) {
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * k, pts[i][1] * k);
     ctx.stroke();
   };
-  P([[50, 33], [73, 33], [73, 45], [90, 45]]);  // top bar → step down → right nub
-  P([[34, 66], [73, 66], [80, 54]]);            // long mid bar → up-right hook
-  P([[74, 68], [74, 97]]);                      // tail from the junction, straight down
+  P([[50, 32], [73, 32], [73, 43], [91, 43]]);  // top bar → step down → right nub
+  P([[33, 67], [72, 67], [78, 57]]);            // long mid bar → up-right hook
+  P([[74, 69], [74, 96]]);                      // tail from the junction, straight down
 }
 
 // The mark itself is NEVER stretched: it's painted into a square region and
 // centered on whatever canvas aspect the target surface needs (the banner is
-// 1.5:0.95, so a square texture would distort the glyph — this fixes that).
+// 2.0:1.27, so a square texture would distort the glyph — this fixes that).
 function makeRialoTexture(w = 256, h = 256) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
@@ -329,20 +329,30 @@ function buildRialoMonument() {
   pole.position.y = 2.8; pole.castShadow = true;
   const finial = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), lam('#e8c45a'));
   finial.position.y = 5.05;
-  // waving banner — left edge pinned to the pole
-  const flagGeo = new THREE.PlaneGeometry(1.5, 0.95, 12, 6);
-  flagGeo.translate(0.78, 0, 0);
+  // waving banner — left edge pinned to the pole. TWO single-sided layers
+  // sharing one deforming geometry: the back layer carries a horizontally
+  // mirrored texture so the mark reads CORRECTLY from both sides (a plain
+  // DoubleSide plane would show the logo mirrored from behind).
+  const flagGeo = new THREE.PlaneGeometry(2.0, 1.27, 12, 6);
+  flagGeo.translate(1.04, 0, 0);
+  const flagTexF = makeRialoTexture(320, 203); // canvas aspect = 2.0 : 1.27
   const flag = new THREE.Mesh(flagGeo, new THREE.MeshLambertMaterial({
-    // canvas aspect matches the 1.5 x 0.95 banner so the mark stays square
-    map: makeRialoTexture(303, 192), side: THREE.DoubleSide,
+    map: flagTexF, side: THREE.FrontSide,
   }));
-  flag.position.y = 4.4;
+  flag.position.y = 4.3;
   flag.castShadow = true;
+  const flagTexB = makeRialoTexture(320, 203);
+  flagTexB.wrapS = THREE.RepeatWrapping;
+  flagTexB.repeat.x = -1; // mirror so the back view reads the mark correctly
+  const flagBack = new THREE.Mesh(flagGeo, new THREE.MeshLambertMaterial({
+    map: flagTexB, side: THREE.BackSide,
+  }));
+  flagBack.position.y = 4.3;
   const flagBase = Float32Array.from(flagGeo.attributes.position.array);
-  // plaque with the mark on the plinth face
-  const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7),
+  // plaque with the mark on the plinth face — big & readable
+  const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.95),
     new THREE.MeshLambertMaterial({ map: makeRialoTexture() }));
-  plaque.position.set(0, 0.5, 0.71);
+  plaque.position.set(0, 0.52, 0.71);
   // crossbar with two swaying paper lanterns (chōchin)
   const bar = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.07, 0.07), lam('#5a4a3a'));
   bar.position.y = 2.0;
@@ -366,7 +376,7 @@ function buildRialoMonument() {
   }
   const light = new THREE.PointLight(0xffc27a, 1.2, 6, 2);
   light.position.y = 1.7;
-  g.add(base, step, pole, finial, flag, plaque, bar, light);
+  g.add(base, step, pole, finial, flag, flagBack, plaque, bar, light);
   g.userData.flag = flag;
   g.userData.flagBase = flagBase;
   g.userData.lanterns = lanterns;
@@ -916,8 +926,8 @@ export function createLandmarks(scene, terrain, decorBlocked) {
       for (let i = 0; i < pos.count; i++) {
         const bx = base[i * 3];
         // the further from the pole, the bigger the ripple
-        pos.array[i * 3 + 2] = Math.sin(bx * 4.2 - time * 5) * 0.1 * (bx / 1.56)
-          + Math.sin(bx * 8 - time * 8.4) * 0.025 * (bx / 1.56);
+        pos.array[i * 3 + 2] = Math.sin(bx * 4.2 - time * 5) * 0.1 * (bx / 2.08)
+          + Math.sin(bx * 8 - time * 8.4) * 0.025 * (bx / 2.08);
       }
       pos.needsUpdate = true;
       rialo.userData.flag.geometry.computeVertexNormals();
