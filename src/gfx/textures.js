@@ -84,8 +84,9 @@ export const TILE = {
   DIRT: 4, STONE: 5, GRASS_SIDE: 6, DIRT_SIDE: 7,
   STONE_SIDE: 8, PATH_SIDE: 9, MOSS: 10, SHORE: 11,
   FLOWER_A: 12, FLOWER_B: 13, PATH_EDGE: 14, SNOW: 15,
+  PLAZA: 16,
 };
-const ATLAS_GRID = 4, TILE_PX = 16;
+const ATLAS_GRID = 5, TILE_PX = 16;
 
 export function makeTerrainAtlas() {
   const rng = mulberry32(1337);
@@ -176,6 +177,25 @@ export function makeTerrainAtlas() {
     for (let i = 0; i < 3; i++) {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(x + Math.floor(rng() * 16), y + Math.floor(rng() * 16), 1, 1);
+    }
+  }
+  { // town plaza — warm terracotta pavers with dark grout (cozy scalloped read)
+    const [x, y] = at(TILE.PLAZA);
+    ctx.fillStyle = '#6a4438';
+    ctx.fillRect(x, y, 16, 16);
+    const pavers = ['#b06a52', '#bd7860', '#a35c48'];
+    for (let r = 0; r < 4; r++) {
+      const ox = (r % 2) * 2;
+      for (let q = 0; q < 5; q++) {
+        const px = q * 4 + ox - 2;
+        const w = Math.min(3, 16 - Math.max(0, px)) - (px < 0 ? -px : 0);
+        if (w <= 0) continue;
+        const sx2 = x + Math.max(0, px);
+        ctx.fillStyle = pavers[(r + q) % 3];
+        ctx.fillRect(sx2, y + r * 4, Math.min(w, 3), 3);
+        ctx.fillStyle = 'rgba(255,232,205,0.28)';
+        ctx.fillRect(sx2, y + r * 4, Math.min(w, 3), 1);
+      }
     }
   }
   // flowery grass variants

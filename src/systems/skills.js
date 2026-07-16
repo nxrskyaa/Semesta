@@ -525,6 +525,11 @@ export function createSkillSystem(deps) {
     p.stamina -= def.cost;
     castLvl = levelOf(id);
     cooldowns[id] = effCd(id);
+    // every cast blooms a rotating rune sigil + spark ring in the skill's
+    // color under the hero — the per-skill FX layers on top of this
+    deps.particles.runeCircle?.(p.pos, def.icon.color, 2.4 + castLvl * 0.15, 0.7);
+    deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.25, 0)), def.icon.color, 8, 2.2, 2, 0.5);
+    deps.particles.flash(p.pos, def.icon.color, 3.5, 0.25);
     FX[id]();
     return true;
   }

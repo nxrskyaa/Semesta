@@ -888,6 +888,14 @@ export function createPanels(hudRoot, {
         ${touch ? '★' : '<b>F</b>'} ×3 → <span class="tip">Hardwood</span>.<br>
         The prompt tells you which one you're facing ("Mine ore (3)" / "Chop birch (3)"). Nodes regrow after ~2 min.
         <b>You need Iron Ore & Hardwood to BUILD A HOUSE</b>, to forge, and to sell for coins — so mine plenty!
+        <h4>RARE MATERIALS — WHERE TO HUNT THEM 🌙</h4>
+        Some crafting materials only drop from specific monsters at specific times/places:<br>
+        • <span class="tip">Wisp Essence</span> — <b>Wisps only appear at NIGHT</b> (glowing blue spirits in the wilds).
+        Wait for dark (see the clock by the minimap), hunt them, sleep-safe by day.<br>
+        • <span class="tip">Frost Shard</span> — Frostlings roam the <b>snowy north-west corner</b> of the map.<br>
+        • <span class="tip">Soft Plume</span> — Puffowls float above the grass <b>at night</b>.<br>
+        • <span class="tip">Golem Core</span> — the Golem mini-boss lives <b>far from the village</b>.<br>
+        • <span class="tip">★ Elite monsters</span> (gold ring) drop bonus Forge Stones & tonics.
         <h4>FISHING & AFK MODE</h4>
         Press <b>F</b> at a shore to fish manually (best rarity). Press <b>G</b> for
         <span class="tip">AFK fishing</span> — hands-free, but almost only common fish. Moving stops it.

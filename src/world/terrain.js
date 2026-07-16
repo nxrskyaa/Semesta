@@ -19,7 +19,7 @@ export class Terrain {
     const S = WORLD_SIZE;
     this.size = S;
     this.height = new Int8Array(S * S);
-    this.type = new Uint8Array(S * S); // 0 grass,1 path,2 dirt,3 stone,4 moss,5 shore,6 flowers,7 snow
+    this.type = new Uint8Array(S * S); // 0 grass,1 path,2 dirt,3 stone,4 moss,5 shore,6 flowers,7 snow,8 plaza
     this.snow = new Uint8Array(S * S); // 1 = inside the winter biome (drives decor/weather/FX)
     this._generate();
     this._buildCorners();
@@ -195,6 +195,21 @@ export class Terrain {
       this.heightCell(sx, sz) * BLOCK_H + BLOCK_H,
       sz - this.size / 2 + 0.5,
     );
+
+    // the town centre is PAVED — warm terracotta plaza tiles instead of dirt,
+    // with a wobbled edge so the paving melts organically into the grass
+    const PR = 7.5;
+    for (let dz = -9; dz <= 9; dz++) {
+      for (let dx = -9; dx <= 9; dx++) {
+        const ix = sx + dx, iz = sz + dz;
+        if (!this.inBounds(ix, iz)) continue;
+        const i = this.idx(ix, iz);
+        if (this.height[i] <= WATER_LEVEL) continue;
+        const wobble = valueNoise2(ix * 0.6, iz * 0.6, SEED + 91) * 1.6;
+        if (Math.hypot(dx, dz) > PR + wobble - 0.8) continue;
+        this.type[i] = 8;
+      }
+    }
   }
 
   _carvePath(seed, horizontal) {
@@ -239,7 +254,7 @@ export class Terrain {
   }
 }
 
-const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE, TILE.FLOWER_A, TILE.SNOW];
+const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE, TILE.FLOWER_A, TILE.SNOW, TILE.PLAZA];
 
 export function buildTerrainMesh(terrain, atlas) {
   const S = terrain.size;

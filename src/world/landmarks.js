@@ -296,10 +296,20 @@ export function paintRialoMark(ctx, W = 128) {
   P([[74, 68], [74, 97]]);                      // tail from the junction, straight down
 }
 
-function makeRialoTexture() {
+// The mark itself is NEVER stretched: it's painted into a square region and
+// centered on whatever canvas aspect the target surface needs (the banner is
+// 1.5:0.95, so a square texture would distort the glyph — this fixes that).
+function makeRialoTexture(w = 256, h = 256) {
   const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
-  paintRialoMark(c.getContext('2d'), 128);
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#e8e2d2';
+  ctx.fillRect(0, 0, w, h);
+  const s = Math.min(w, h);
+  const sq = document.createElement('canvas');
+  sq.width = sq.height = s;
+  paintRialoMark(sq.getContext('2d'), s);
+  ctx.drawImage(sq, (w - s) / 2, (h - s) / 2);
   const tex = new THREE.CanvasTexture(c);
   tex.magFilter = THREE.NearestFilter;
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -323,7 +333,8 @@ function buildRialoMonument() {
   const flagGeo = new THREE.PlaneGeometry(1.5, 0.95, 12, 6);
   flagGeo.translate(0.78, 0, 0);
   const flag = new THREE.Mesh(flagGeo, new THREE.MeshLambertMaterial({
-    map: makeRialoTexture(), side: THREE.DoubleSide,
+    // canvas aspect matches the 1.5 x 0.95 banner so the mark stays square
+    map: makeRialoTexture(303, 192), side: THREE.DoubleSide,
   }));
   flag.position.y = 4.4;
   flag.castShadow = true;
@@ -564,6 +575,239 @@ function buildFishingDock() {
   return g;
 }
 
+// tiny canvas-sprite helper for Zzz / chat bubbles
+function makeGlyphSprite(glyph, color = '#f0f0e8') {
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 32;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 24px monospace';
+  ctx.textAlign = 'center';
+  ctx.strokeStyle = '#20242a'; ctx.lineWidth = 5;
+  ctx.strokeText(glyph, 16, 24);
+  ctx.fillStyle = color;
+  ctx.fillText(glyph, 16, 24);
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  spr.scale.set(0.34, 0.34, 1);
+  return spr;
+}
+
+// swimming pool — tiled deck, clear blue water, umbrella, lounge chair, and
+// critters actually SWIMMING laps (this is a pool, not a fishing spot!)
+function buildPool() {
+  const g = new THREE.Group();
+  const tile = lam('#dce8ec'), trim = lam('#7ab8d8');
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.22, 4.4), tile);
+  deck.position.y = 0.11;
+  deck.receiveShadow = true;
+  const rim = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.26, 3.2), trim);
+  rim.position.y = 0.13;
+  const water = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.16, 2.8),
+    new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.8 }));
+  water.position.y = 0.2;
+  // ladder
+  for (const sz of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), lam('#c8d4d8'));
+    rail.position.set(2.05, 0.42, sz * 0.16);
+    g.add(rail);
+  }
+  for (let i = 0; i < 2; i++) {
+    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.36), lam('#c8d4d8'));
+    rung.position.set(2.05, 0.3 + i * 0.2, 0);
+    g.add(rung);
+  }
+  // umbrella + lounge chair on the deck corner
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.5, 6), lam('#e8e2d2'));
+  pole.position.set(-2.4, 0.95, -1.7);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.4, 8), lam('#f0716a'));
+  shade.position.set(-2.4, 1.75, -1.7);
+  const chair = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1.1), lam('#f0d8a0'));
+  seat.position.y = 0.24;
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), lam('#f0d8a0'));
+  back.position.set(0, 0.4, -0.68); back.rotation.x = -0.7;
+  chair.add(seat, back);
+  chair.position.set(-1.6, 0.22, -1.6);
+  // swimmers! two critters doing lazy laps, one on a pink floatie
+  const SWIM_LOOKS = [
+    ['#e8b878', '#f8e8c8', 's_cap', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'smile', cheeks: 'rgba(240,150,140,0.6)' }],
+    ['#a8d8c8', '#e0f5ec', 's_duck', { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'open' }],
+  ];
+  const swimmers = [];
+  SWIM_LOOKS.forEach((look, i) => {
+    const sw = buildCritter(...look);
+    sw.scale.setScalar(0.85);
+    sw.position.y = -0.14; // chest-deep in the water
+    const holder = new THREE.Group();
+    holder.add(sw);
+    if (i === 1) { // floatie ring
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.09, 6, 12), lam('#f0a8c8'));
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.22;
+      holder.add(ring);
+    }
+    const foam = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 4, 10),
+      new THREE.MeshBasicMaterial({ color: 0xeafaff, transparent: true, opacity: 0.7 }));
+    foam.rotation.x = Math.PI / 2;
+    foam.position.y = 0.26;
+    holder.add(foam);
+    g.add(holder);
+    swimmers.push({ h: holder, seed: i * 2.6, r: 0.7 + i * 0.45 });
+  });
+  const light = new THREE.PointLight(0x8ad8f0, 0.8, 6, 2);
+  light.position.y = 1.4;
+  g.add(deck, rim, water, pole, shade, chair, light);
+  g.userData.swimmers = swimmers;
+  return g;
+}
+
+// spring waterfall — a mossy rock face with a rushing white-blue sheet, foam
+// clouds at the base and a clear plunge pool
+function buildWaterfall() {
+  const g = new THREE.Group();
+  const rock = lam('#8d9294'), rockDark = lam('#6a7074');
+  for (const [x, y, z, w, h, d] of [
+    [0, 1.1, -0.6, 2.6, 2.2, 1.2], [-1.1, 0.7, -0.3, 1.2, 1.4, 1.4],
+    [1.1, 0.8, -0.35, 1.3, 1.6, 1.3], [0, 2.35, -0.8, 1.8, 0.5, 0.9],
+  ]) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), Math.random() < 0.5 ? rock : rockDark);
+    b.position.set(x, y, z);
+    b.castShadow = true;
+    g.add(b);
+  }
+  // mossy toppers
+  for (const [x, z] of [[-0.9, -0.3], [0.9, -0.4], [0, -0.7]]) {
+    const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 0), lam('#6fa05a'));
+    moss.position.set(x, 2.5, z);
+    moss.scale.y = 0.55;
+    g.add(moss);
+  }
+  // the falling water: a scrolling striped sheet
+  const wc = document.createElement('canvas');
+  wc.width = 32; wc.height = 64;
+  {
+    const ctx = wc.getContext('2d');
+    ctx.fillStyle = '#7ad0e8'; ctx.fillRect(0, 0, 32, 64);
+    ctx.fillStyle = '#b8ecf8';
+    for (let i = 0; i < 7; i++) ctx.fillRect((i * 7) % 32, (i * 19) % 64, 4, 14);
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 5; i++) ctx.fillRect((i * 13 + 3) % 32, (i * 27 + 8) % 64, 3, 9);
+  }
+  const fallTex = new THREE.CanvasTexture(wc);
+  fallTex.wrapS = fallTex.wrapT = THREE.RepeatWrapping;
+  fallTex.magFilter = THREE.NearestFilter;
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.3),
+    new THREE.MeshBasicMaterial({ map: fallTex, transparent: true, opacity: 0.85, depthWrite: false }));
+  sheet.position.set(0, 1.35, 0.02);
+  // plunge pool + foam
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.6, 0.18, 12),
+    new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.8 }));
+  pool.position.set(0, 0.09, 0.9);
+  const foams = [];
+  for (let i = 0; i < 5; i++) {
+    const foam = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16 + Math.random() * 0.1, 0),
+      new THREE.MeshBasicMaterial({ color: 0xf0fbff, transparent: true, opacity: 0.85 }));
+    foam.position.set(-0.6 + i * 0.3, 0.22, 0.35 + (i % 2) * 0.25);
+    g.add(foam);
+    foams.push(foam);
+  }
+  const light = new THREE.PointLight(0x9ae0f0, 0.9, 6, 2);
+  light.position.set(0, 1.2, 1);
+  g.add(sheet, pool, light);
+  g.userData.fallTex = fallTex;
+  g.userData.foams = foams;
+  return g;
+}
+
+// nap nest — a cozy grass bed where a critter snoozes with drifting Zzz,
+// waking now and then to look around before flopping back down
+function buildNapNest() {
+  const g = new THREE.Group();
+  const nest = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.2, 6, 12), lam('#8a7a4a'));
+  nest.rotation.x = Math.PI / 2;
+  nest.position.y = 0.12;
+  const bed = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 10), lam('#a8985a'));
+  bed.position.y = 0.08;
+  const looks = [
+    ['#e8a86a', '#f5dcb8', 'n_fox', { eyeW: 3, eyeH: 1, gap: 5, eyeY: 3, mouth: 'w' }],
+    ['#b8a8cc', '#e8e0f0', 'n_puff', { eyeW: 3, eyeH: 1, gap: 4, eyeY: 3, mouth: 'smile' }],
+    ['#a8c8a0', '#e0f0d8', 'n_leaf', { eyeW: 3, eyeH: 1, gap: 5, eyeY: 3, mouth: 'none' }],
+  ];
+  const sleeper = buildCritter(...looks[Math.floor(Math.random() * looks.length)]);
+  const pivot = new THREE.Group(); // rotates to lie down / sit up
+  pivot.add(sleeper);
+  sleeper.position.z = 0.18;
+  pivot.rotation.x = -Math.PI * 0.42; // lying on its back
+  pivot.position.y = 0.16;
+  g.add(nest, bed, pivot);
+  const zs = [];
+  for (let i = 0; i < 3; i++) {
+    const z = makeGlyphSprite('z');
+    z.position.set(0.2, 0.7, 0);
+    g.add(z);
+    zs.push(z);
+  }
+  g.userData.nap = { pivot, zs, seed: Math.random() * 20 };
+  return g;
+}
+
+// kickabout — three critters passing a ball around a worn grass patch,
+// hopping with excitement whenever they kick it
+function buildKickabout() {
+  const g = new THREE.Group();
+  const patch = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.2, 0.06, 12), lam('#9aa860'));
+  patch.position.y = 0.03;
+  patch.receiveShadow = true;
+  g.add(patch);
+  const LOOKS = [
+    ['#e8b878', '#f8e8c8', 'k_pup', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,140,120,0.7)' }],
+    ['#a8c8e8', '#e0eef8', 'k_bun', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'smile' }],
+    ['#d8a8a0', '#f5e0dc', 'k_pig', { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'w', cheeks: 'rgba(240,150,140,0.8)' }],
+  ];
+  const players = [];
+  LOOKS.forEach((look, i) => {
+    const p = buildCritter(...look);
+    const a = (i / LOOKS.length) * Math.PI * 2;
+    p.position.set(Math.cos(a) * 1.35, 0.05, Math.sin(a) * 1.35);
+    g.add(p);
+    players.push({ g: p, a });
+  });
+  // the ball: white with black patches
+  const ball = new THREE.Group();
+  const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 0), lam('#f0f0e8'));
+  ball.add(orb);
+  for (let i = 0; i < 4; i++) {
+    const patch2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.02), lam('#2a2e32'));
+    patch2.position.setFromSphericalCoords(0.165, (i * 1.3) % Math.PI, i * 2.4);
+    patch2.lookAt(0, 0, 0);
+    ball.add(patch2);
+  }
+  ball.position.y = 0.17;
+  g.add(ball);
+  g.userData.kick = { players, ball, from: 0, to: 1, t: 0, dur: 1.1 };
+  return g;
+}
+
+// two friends deep in conversation — bobbing at each other with little
+// speech bubbles taking turns
+function buildChatterPair(lookA, lookB) {
+  const g = new THREE.Group();
+  const a = buildCritter(...lookA);
+  const b = buildCritter(...lookB);
+  a.position.set(-0.45, 0.02, 0);
+  b.position.set(0.45, 0.02, 0);
+  a.rotation.y = Math.PI / 2;
+  b.rotation.y = -Math.PI / 2;
+  const bubbleA = makeGlyphSprite('…', '#ffe9a8');
+  bubbleA.position.set(-0.45, 1.0, 0);
+  const bubbleB = makeGlyphSprite('♪', '#a8e0ff');
+  bubbleB.position.set(0.45, 1.0, 0);
+  g.add(a, b, bubbleA, bubbleB);
+  g.userData.chat = { a, b, bubbleA, bubbleB, seed: Math.random() * 10 };
+  return g;
+}
+
 export function createLandmarks(scene, terrain, decorBlocked) {
   const S2 = terrain.size / 2;
   const built = [];
@@ -638,6 +882,32 @@ export function createLandmarks(scene, terrain, decorBlocked) {
     }
   }
 
+  // --- Pokopia-style life for the quiet stretches (all far from the village):
+  // a swimming pool, a spring waterfall, a kickabout, gossip pairs & nap nests
+  const pool = buildPool();
+  if (place(pool, -S2 * 0.28, S2 * 0.42, 2)) built.push(pool);
+  const falls = buildWaterfall();
+  if (place(falls, S2 * 0.32, -S2 * 0.35, 2)) built.push(falls);
+  const kick = buildKickabout();
+  if (place(kick, -S2 * 0.38, -S2 * 0.15, 0)) built.push(kick);
+  const CHAT_LOOKS = [
+    [['#e8c8a0', '#f8ecd8', 'c_cub', { eyeW: 3, eyeH: 5, gap: 4, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,150,140,0.7)' }],
+     ['#b8d888', '#e8f5cc', 'c_frog', { eyeW: 4, eyeH: 4, gap: 4, eyeY: 2, mouth: 'smile' }]],
+    [['#a8c8e8', '#e0eef8', 'c_bun', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'w', cheeks: 'rgba(240,150,170,0.6)' }],
+     ['#d8a8a0', '#f5e0dc', 'c_pig', { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'smile' }]],
+  ];
+  const chats = [];
+  const chatSpots = [[S2 * 0.25, S2 * 0.35], [-S2 * 0.12, -S2 * 0.62]];
+  CHAT_LOOKS.forEach((pairLooks, i) => {
+    const pair = buildChatterPair(pairLooks[0], pairLooks[1]);
+    if (place(pair, chatSpots[i][0], chatSpots[i][1], 0, 8)) { built.push(pair); chats.push(pair); }
+  });
+  const nests = [];
+  for (const [nx, nz] of [[S2 * 0.2, -S2 * 0.2], [-S2 * 0.3, S2 * 0.58], [S2 * 0.55, S2 * 0.4], [-S2 * 0.05, S2 * 0.3]]) {
+    const nest = buildNapNest();
+    if (place(nest, nx, nz, 0, 8)) { built.push(nest); nests.push(nest); }
+  }
+
   function update(dt, time) {
     // Rialo banner ripples in the wind; the paper lanterns sway
     if (rialo.userData.flag) {
@@ -696,6 +966,74 @@ export function createLandmarks(scene, terrain, decorBlocked) {
     for (const d of docks) {
       const m = d.mesh.userData.monger;
       if (m) m.position.y = 0.05 + Math.abs(Math.sin(time * 2.2 + d.x)) * 0.03;
+    }
+    // swimmers do lazy laps around the pool, bobbing in the water
+    if (pool.userData.swimmers) {
+      for (const sw of pool.userData.swimmers) {
+        const a = time * 0.45 + sw.seed;
+        sw.h.position.set(Math.cos(a) * sw.r, 0.2 + Math.sin(time * 2.4 + sw.seed) * 0.035, Math.sin(a) * sw.r * 0.55);
+        sw.h.rotation.y = -a + Math.PI / 2; // face the direction of travel
+      }
+    }
+    // the waterfall rushes & its foam clouds churn
+    if (falls.userData.fallTex) {
+      falls.userData.fallTex.offset.y += dt * 1.7;
+      falls.userData.foams.forEach((f, i) => {
+        f.position.y = 0.2 + Math.abs(Math.sin(time * 3.2 + i * 1.4)) * 0.09;
+        f.scale.setScalar(1 + Math.sin(time * 4 + i) * 0.15);
+      });
+    }
+    // the kickabout: the ball hops between players, the receiver bounces
+    if (kick.userData.kick) {
+      const K = kick.userData.kick;
+      K.t += dt;
+      const A = K.players[K.from].g.position, B2 = K.players[K.to].g.position;
+      const w = Math.min(1, K.t / K.dur);
+      K.ball.position.set(
+        A.x + (B2.x - A.x) * w,
+        0.17 + Math.sin(w * Math.PI) * 0.75,
+        A.z + (B2.z - A.z) * w,
+      );
+      K.ball.rotation.x += dt * 9;
+      // receiver does an excited hop as the pass lands
+      K.players[K.to].g.position.y = 0.05 + Math.max(0, Math.sin(w * Math.PI * 2)) * 0.1 * w;
+      if (K.t >= K.dur) {
+        K.from = K.to;
+        let next = Math.floor(Math.random() * K.players.length);
+        if (next === K.from) next = (next + 1) % K.players.length;
+        K.to = next;
+        K.t = 0;
+        K.dur = 0.9 + Math.random() * 0.7;
+      }
+    }
+    // gossip pairs: bubbles take turns, both friends bob along
+    for (const c of chats) {
+      const C = c.userData.chat;
+      const phase = (time * 0.4 + C.seed) % 2;
+      C.bubbleA.visible = phase < 1;
+      C.bubbleB.visible = phase >= 1;
+      C.bubbleA.position.y = 1.0 + Math.sin(time * 3) * 0.04;
+      C.bubbleB.position.y = 1.0 + Math.sin(time * 3 + 1) * 0.04;
+      C.a.position.y = 0.02 + Math.abs(Math.sin(time * 2.6 + C.seed)) * 0.03;
+      C.b.position.y = 0.02 + Math.abs(Math.sin(time * 2.6 + C.seed + 1.3)) * 0.03;
+    }
+    // nappers: mostly asleep with drifting Zzz — now and then they sit up,
+    // look around, and flop back down
+    for (const n of nests) {
+      const N = n.userData.nap;
+      const c = (time * 0.085 + N.seed) % 1;
+      const awake = c > 0.84;
+      const target = awake ? -0.08 : -Math.PI * 0.42;
+      N.pivot.rotation.x += (target - N.pivot.rotation.x) * Math.min(1, dt * 5);
+      if (awake) N.pivot.rotation.y = Math.sin(time * 1.8) * 0.5; // looking around
+      for (let i = 0; i < N.zs.length; i++) {
+        const z = N.zs[i];
+        z.visible = !awake;
+        const f = (time * 0.4 + i * 0.33) % 1;
+        z.position.set(0.2 + f * 0.14, 0.62 + f * 0.55, 0);
+        z.material.opacity = Math.sin(f * Math.PI);
+        z.scale.setScalar(0.24 + f * 0.16);
+      }
     }
   }
 

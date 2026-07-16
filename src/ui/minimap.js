@@ -3,7 +3,7 @@ import { WATER_LEVEL } from '../world/terrain.js';
 
 const TYPE_COLOR = {
   0: '#5e9448', 1: '#b3925c', 2: '#8a654a', 3: '#8d9294', 4: '#568a42', 5: '#41a0c8', 6: '#6aa84f',
-  7: '#e8f0f5',
+  7: '#e8f0f5', 8: '#b06a52',
 };
 
 export function createMinimap(canvas, terrain, decor) {

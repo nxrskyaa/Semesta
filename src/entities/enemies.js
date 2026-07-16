@@ -669,8 +669,11 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       // NEVER be inside the safe radius. They retreat, and if they somehow end
       // up within it (knockback, chasing the player in) they're hard-clamped to
       // just outside the boundary — basecamp is truly monster-free.
+      // EVERY monster respects sanctuaries — world bosses included. The
+      // basecamp, camps and homes are truly safe; bosses stalk the boundary
+      // instead of barging in.
       const zone = hooks.inSafeZone?.(p.x, p.z);
-      if (zone && !e.isWorldBoss) {
+      if (zone) {
         const dx = p.x - zone.x, dz = p.z - zone.z;
         let l = Math.hypot(dx, dz);
         // dead-center degenerate case: pick a stable outward heading

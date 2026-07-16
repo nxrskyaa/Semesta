@@ -93,6 +93,68 @@ export function createParticles(scene) {
     r.mesh.visible = true;
   }
 
+  // --- rune circle: a rotating magic sigil that blooms under skill casts ---
+  const runeCanvas = document.createElement('canvas');
+  runeCanvas.width = runeCanvas.height = 128;
+  {
+    const c = runeCanvas.getContext('2d');
+    c.strokeStyle = '#ffffff';
+    c.translate(64, 64);
+    c.lineWidth = 4;
+    c.beginPath(); c.arc(0, 0, 56, 0, Math.PI * 2); c.stroke();
+    c.lineWidth = 2.5;
+    c.beginPath(); c.arc(0, 0, 44, 0, Math.PI * 2); c.stroke();
+    // tick notches + orbiting diamonds + inner triangle — reads as a sigil
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      c.beginPath();
+      c.moveTo(Math.cos(a) * 46, Math.sin(a) * 46);
+      c.lineTo(Math.cos(a) * 54, Math.sin(a) * 54);
+      c.stroke();
+    }
+    c.fillStyle = '#ffffff';
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      c.save();
+      c.translate(Math.cos(a) * 50, Math.sin(a) * 50);
+      c.rotate(a);
+      c.fillRect(-4, -4, 8, 8);
+      c.restore();
+    }
+    c.lineWidth = 2;
+    c.beginPath();
+    for (let i = 0; i <= 3; i++) {
+      const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
+      const x = Math.cos(a) * 34, y = Math.sin(a) * 34;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+  const runeTex = new THREE.CanvasTexture(runeCanvas);
+  const runes = [];
+  const MAX_RUNES = 5;
+  for (let i = 0; i < MAX_RUNES; i++) {
+    const m = new THREE.MeshBasicMaterial({
+      color: 0xffffff, map: runeTex, transparent: true, opacity: 0,
+      depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.visible = false;
+    scene.add(mesh);
+    runes.push({ mesh, m, t: 0, dur: 0, size: 2, spin: 1 });
+  }
+  let runeCursor = 0;
+
+  function runeCircle(pos, colorHex, size = 2.6, dur = 0.7) {
+    const r = runes[runeCursor]; runeCursor = (runeCursor + 1) % MAX_RUNES;
+    r.m.color.set(colorHex);
+    r.mesh.position.set(pos.x, pos.y + 0.1, pos.z);
+    r.t = dur; r.dur = dur; r.size = size;
+    r.spin = Math.random() < 0.5 ? -1 : 1;
+    r.mesh.visible = true;
+  }
+
   // --- flash: pooled point light for casts/explosions ---
   const flashes = [];
   for (let i = 0; i < MAX_FLASH; i++) {
@@ -136,7 +198,17 @@ export function createParticles(scene) {
       f.t -= dt;
       f.L.intensity = f.peak * Math.max(0, f.t / f.dur);
     }
+
+    for (const r of runes) {
+      if (r.t <= 0) { r.mesh.visible = false; continue; }
+      r.t -= dt;
+      const k = 1 - Math.max(0, r.t / r.dur); // 0..1
+      const grow = 0.4 + 0.6 * (1 - (1 - k) * (1 - k));
+      r.mesh.scale.setScalar(r.size * grow);
+      r.mesh.rotation.z += dt * 2.6 * r.spin;
+      r.m.opacity = k < 0.18 ? k / 0.18 : 1 - (k - 0.18) / 0.82;
+    }
   }
 
-  return { burst, fountain, ring, shockwave, flash, update };
+  return { burst, fountain, ring, shockwave, flash, runeCircle, update };
 }
