@@ -312,15 +312,34 @@ const CSS = `
 }
 #hud .hint-desktop b { background: #202a20; border: 1px solid #39443a; padding: 0 4px; color: #c5cdbd; }
 
-/* touch devices: skills live on the right-hand buttons, hide the center bar */
+/* touch devices: skills live on the right-hand buttons. The ENTIRE bottom of
+   the screen belongs to the thumb buttons — every status readout (XP bar,
+   weapon chip) stacks in a tidy column under the character plate instead,
+   so nothing ever collides with the action cluster. */
 body.touch #hud .skillrow { display: none; }
-body.touch #hud .weapon-chip { bottom: 30px; }
-body.touch #hud .actionbar { bottom: 8px; }
 body.touch #hud .hint-desktop { display: none; }
 body.touch #hud .prompt { display: none !important; } /* mobile uses the context button */
-body.touch #hud .menubar { right: unset; left: 10px; bottom: unset; top: 78px; }
+/* left column: plate (top 10) → XP bar → ☰ MENU → weapon chip */
+body.touch #hud .actionbar {
+  left: 12px; right: unset; bottom: unset; top: 74px;
+  transform: none; align-items: flex-start; gap: 0;
+}
+body.touch #hud .xpline { gap: 5px; }
+body.touch #hud .xpbar { width: 132px; height: 5px; }
+body.touch #hud .xplvl { font-size: 8px; }
+body.touch #hud .menubar { right: unset; left: 10px; bottom: unset; top: 92px; }
 body.touch #hud .menupop { right: unset; left: 0; bottom: unset; top: 46px; width: min(264px, calc(100vw - 40px)); }
-body.touch #hud .buffs { top: unset; bottom: 64px; left: 10px; }
+body.touch #hud .weapon-chip {
+  left: 12px; right: unset; bottom: unset; top: 138px; transform: none;
+  font-size: 9px; padding: 2px 7px; max-width: 44vw;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+body.touch #hud .weapon-chip img { width: 14px; height: 14px; }
+body.touch #hud .buffs { top: 168px; left: 12px; bottom: unset; }
+body.touch #hud .buffs .bf { width: 20px; height: 20px; }
+/* toasts float above the button cluster so pickups never hide behind thumbs */
+body.touch #hud .toasts { bottom: 235px; }
+body.touch #hud .toast { font-size: 10px; }
 
 @media (max-width: 760px) {
   #hud .mapbox { width: 96px; }
