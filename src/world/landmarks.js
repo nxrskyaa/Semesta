@@ -772,16 +772,42 @@ function buildKickabout() {
     g.add(p);
     players.push({ g: p, a });
   });
-  // the ball: white with black patches
-  const ball = new THREE.Group();
-  const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 0), lam('#f0f0e8'));
-  ball.add(orb);
-  for (let i = 0; i < 4; i++) {
-    const patch2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.02), lam('#2a2e32'));
-    patch2.position.setFromSphericalCoords(0.165, (i * 1.3) % Math.PI, i * 2.4);
-    patch2.lookAt(0, 0, 0);
-    ball.add(patch2);
+  // a REAL soccer ball: smooth white sphere with the classic black-pentagon
+  // panel pattern painted onto its texture (not floating patches)
+  const bc = document.createElement('canvas');
+  bc.width = 64; bc.height = 32;
+  {
+    const ctx = bc.getContext('2d');
+    ctx.fillStyle = '#f4f4ec';
+    ctx.fillRect(0, 0, 64, 32);
+    const pent = (cx, cy, r, rot = 0) => {
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = rot + (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    };
+    ctx.fillStyle = '#22262a';
+    // evenly spread pentagons (equirect layout, wraps seamlessly-ish)
+    pent(8, 10, 5); pent(30, 8, 5, 0.5); pent(52, 11, 5, 1);
+    pent(19, 22, 5, 0.8); pent(41, 23, 5, 0.2); pent(62, 24, 5, 0.6); pent(-2, 24, 5, 0.6);
+    // faint grey seams between panels
+    ctx.strokeStyle = 'rgba(120,126,132,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(8, 10); ctx.lineTo(19, 22); ctx.lineTo(30, 8); ctx.lineTo(41, 23);
+    ctx.lineTo(52, 11); ctx.lineTo(62, 24);
+    ctx.stroke();
   }
+  const ballTex = new THREE.CanvasTexture(bc);
+  ballTex.magFilter = THREE.NearestFilter;
+  ballTex.colorSpace = THREE.SRGBColorSpace;
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10),
+    new THREE.MeshLambertMaterial({ map: ballTex }));
+  ball.castShadow = true;
   ball.position.y = 0.17;
   g.add(ball);
   g.userData.kick = { players, ball, from: 0, to: 1, t: 0, dur: 1.1 };
@@ -807,19 +833,54 @@ function buildChatterPair(lookA, lookB) {
   return g;
 }
 
-export function createLandmarks(scene, terrain, decorBlocked) {
+export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   const S2 = terrain.size / 2;
   const built = [];
 
-  function place(mesh, tx, tz, blockR = 1, jitter = 12) {
-    for (let tries = 0; tries < 80; tries++) {
-      const x = tx + (Math.random() - 0.5) * jitter;
-      const z = tz + (Math.random() - 0.5) * jitter;
+  // FOOTPRINT-AWARE placement: every structure registers a circle, and no
+  // new structure may overlap any existing one (or the village core, or the
+  // avoid list — rest camps etc). This is what stops buildings merging into
+  // each other: a single center-cell check is nowhere near enough when
+  // footprints span 4-6 units.
+  const foots = avoid.map((a) => ({ x: a.x, z: a.z, r: a.r ?? 4 }));
+  foots.push({ x: terrain.spawn.x, z: terrain.spawn.z, r: 10 }); // village core
+
+  function clearOfFoots(x, z, footR) {
+    for (const f of foots) {
+      if (Math.hypot(f.x - x, f.z - z) < f.r + footR) return false;
+    }
+    return true;
+  }
+  function cellsClear(x, z, footR) {
+    // the whole footprint must be dry land in-bounds; blocked cells only
+    // matter in the 3x3 core (outer blocked cells are usually just trees,
+    // which decor.clearArea scrubs from around every landmark afterwards —
+    // real structures are covered by the footprint circles above)
+    const cr = Math.ceil(footR);
+    const [cx, cz] = terrain.cellOf(x, z);
+    for (let dz = -cr; dz <= cr; dz++) {
+      for (let dx = -cr; dx <= cr; dx++) {
+        if (dx * dx + dz * dz > footR * footR) continue;
+        const ix = cx + dx, iz = cz + dz;
+        if (!terrain.inBounds(ix, iz)) return false;
+        if (terrain.heightCell(ix, iz) <= WATER_LEVEL) return false;
+        if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1 && decorBlocked.has(`${ix},${iz}`)) return false;
+      }
+    }
+    return true;
+  }
+  function place(mesh, tx, tz, blockR = 1, jitter = 12, footR = blockR + 2.5) {
+    for (let tries = 0; tries < 140; tries++) {
+      // widen the search ring if the neighbourhood is crowded
+      const j = jitter + tries * 0.12;
+      const x = tx + (Math.random() - 0.5) * j;
+      const z = tz + (Math.random() - 0.5) * j;
       const [ix, iz] = terrain.cellOf(x, z);
       if (!terrain.inBounds(ix, iz)) continue;
       const h = terrain.heightCell(ix, iz);
       if (h <= WATER_LEVEL || h >= 9) continue;
-      if (decorBlocked.has(`${ix},${iz}`)) continue;
+      if (!clearOfFoots(x, z, footR)) continue;
+      if (!cellsClear(x, z, footR)) continue;
       const y = terrain.surfaceY(x, z);
       mesh.position.set(x, y, z);
       mesh.rotation.y = Math.random() * Math.PI * 2;
@@ -827,34 +888,35 @@ export function createLandmarks(scene, terrain, decorBlocked) {
       for (let dz = -blockR; dz <= blockR; dz++) {
         for (let dx = -blockR; dx <= blockR; dx++) decorBlocked.add(`${ix + dx},${iz + dz}`);
       }
+      foots.push({ x, z, r: footR });
       return true;
     }
     return false;
   }
 
   const windmill = buildWindmill();
-  if (place(windmill, S2 * 0.5, -S2 * 0.15)) built.push(windmill);
+  if (place(windmill, S2 * 0.5, -S2 * 0.15, 1, 12, 3.5)) built.push(windmill);
   const shrine = buildShrine();
-  if (place(shrine, -S2 * 0.45, S2 * 0.2)) built.push(shrine);
+  if (place(shrine, -S2 * 0.45, S2 * 0.2, 1, 12, 3.5)) built.push(shrine);
   const tower = buildRuinTower();
-  if (place(tower, S2 * 0.15, S2 * 0.5)) built.push(tower);
+  if (place(tower, S2 * 0.15, S2 * 0.5, 1, 12, 3)) built.push(tower);
   const school = buildSchool();
-  if (place(school, -S2 * 0.2, -S2 * 0.42, 2)) built.push(school);
+  if (place(school, -S2 * 0.2, -S2 * 0.42, 2, 12, 5)) built.push(school);
   const heart = buildHeartTorches();
-  if (place(heart, S2 * 0.38, S2 * 0.22, 2)) built.push(heart);
+  if (place(heart, S2 * 0.38, S2 * 0.22, 2, 12, 4)) built.push(heart);
   // the Rialo monument stands right at the basecamp so nobody misses it —
   // just outside the village circle, plaque facing the well
   const rialo = buildRialoMonument();
-  if (place(rialo, terrain.spawn.x + 10.5, terrain.spawn.z - 9, 2, 4)) {
+  if (place(rialo, terrain.spawn.x + 12, terrain.spawn.z - 10, 2, 5, 3)) {
     rialo.rotation.y = Math.atan2(
       terrain.spawn.x - rialo.position.x, terrain.spawn.z - rialo.position.z);
     built.push(rialo);
   }
   // festival plaza (south) & watchtower (east) fill the quieter stretches
   const festival = buildFestival();
-  if (place(festival, S2 * 0.05, S2 * 0.6, 2)) built.push(festival);
+  if (place(festival, S2 * 0.05, S2 * 0.6, 2, 12, 4.5)) built.push(festival);
   const watch = buildWatchtower();
-  if (place(watch, S2 * 0.6, S2 * 0.06, 1)) built.push(watch);
+  if (place(watch, S2 * 0.6, S2 * 0.06, 1, 12, 3)) built.push(watch);
 
   // a lantern-lit fishing dock on the shore of EVERY lake, each with its own
   // fishmonger — walk up to sell the day's catch
@@ -870,11 +932,14 @@ export function createLandmarks(scene, terrain, decorBlocked) {
       const dx2 = x + Math.sin(dir) * 1.2, dz2 = z + Math.cos(dir) * 1.2;
       const [ix, iz] = terrain.cellOf(dx2, dz2);
       if (!terrain.inBounds(ix, iz)) break;
+      // never merge into another structure — keep walking inland instead
+      if (!clearOfFoots(dx2, dz2, 3.5)) continue;
       const dock = buildFishingDock();
       dock.position.set(dx2, Math.max(terrain.surfaceY(dx2, dz2), WATER_Y + 0.1), dz2);
       dock.rotation.y = Math.atan2(wx0 - dx2, wz0 - dz2); // pier reaches the water
       scene.add(dock);
       decorBlocked.add(`${ix},${iz}`);
+      foots.push({ x: dx2, z: dz2, r: 3.5 });
       built.push(dock);
       docks.push({ x: dx2, z: dz2, mesh: dock });
       break;
@@ -884,11 +949,11 @@ export function createLandmarks(scene, terrain, decorBlocked) {
   // --- Pokopia-style life for the quiet stretches (all far from the village):
   // a swimming pool, a spring waterfall, a kickabout, gossip pairs & nap nests
   const pool = buildPool();
-  if (place(pool, -S2 * 0.28, S2 * 0.42, 2)) built.push(pool);
+  if (place(pool, -S2 * 0.28, S2 * 0.42, 2, 12, 5)) built.push(pool);
   const falls = buildWaterfall();
-  if (place(falls, S2 * 0.32, -S2 * 0.35, 2)) built.push(falls);
+  if (place(falls, S2 * 0.32, -S2 * 0.35, 2, 12, 4)) built.push(falls);
   const kick = buildKickabout();
-  if (place(kick, -S2 * 0.38, -S2 * 0.15, 0)) built.push(kick);
+  if (place(kick, -S2 * 0.38, -S2 * 0.15, 0, 12, 3.5)) built.push(kick);
   const CHAT_LOOKS = [
     [['#e8c8a0', '#f8ecd8', 'c_cub', { eyeW: 3, eyeH: 5, gap: 4, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,150,140,0.7)' }],
      ['#b8d888', '#e8f5cc', 'c_frog', { eyeW: 4, eyeH: 4, gap: 4, eyeY: 2, mouth: 'smile' }]],
@@ -899,12 +964,12 @@ export function createLandmarks(scene, terrain, decorBlocked) {
   const chatSpots = [[S2 * 0.25, S2 * 0.35], [-S2 * 0.12, -S2 * 0.62]];
   CHAT_LOOKS.forEach((pairLooks, i) => {
     const pair = buildChatterPair(pairLooks[0], pairLooks[1]);
-    if (place(pair, chatSpots[i][0], chatSpots[i][1], 0, 8)) { built.push(pair); chats.push(pair); }
+    if (place(pair, chatSpots[i][0], chatSpots[i][1], 0, 8, 2)) { built.push(pair); chats.push(pair); }
   });
   const nests = [];
   for (const [nx, nz] of [[S2 * 0.2, -S2 * 0.2], [-S2 * 0.3, S2 * 0.58], [S2 * 0.55, S2 * 0.4], [-S2 * 0.05, S2 * 0.3]]) {
     const nest = buildNapNest();
-    if (place(nest, nx, nz, 0, 8)) { built.push(nest); nests.push(nest); }
+    if (place(nest, nx, nz, 0, 8, 1.8)) { built.push(nest); nests.push(nest); }
   }
 
   function update(dt, time) {
@@ -1036,5 +1101,5 @@ export function createLandmarks(scene, terrain, decorBlocked) {
     }
   }
 
-  return { built, update, heart, docks };
+  return { built, update, heart, docks, foots };
 }

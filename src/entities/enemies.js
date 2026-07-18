@@ -12,23 +12,23 @@ import { rollDrops } from '../systems/items.js';
 export const ENEMY_TYPES = {
   slime: {
     name: 'Slime', hp: 14, dmg: 4, speed: 1.5, xp: 8, aggro: 4.0, attackRange: 1.0,
-    attackCd: 1.5, weight: 0.28, behavior: 'melee',
+    attackCd: 1.5, weight: 0.22, behavior: 'melee',
   },
   nibbit: {
     name: 'Nibbit', hp: 9, dmg: 3, speed: 2.7, xp: 7, aggro: 3.4, attackRange: 0.9,
-    attackCd: 1.2, weight: 0.14, behavior: 'melee',
+    attackCd: 1.2, weight: 0.11, behavior: 'melee',
   },
   armorbug: {
     name: 'Armorbug', hp: 34, dmg: 8, speed: 1.0, xp: 18, aggro: 3.2, attackRange: 1.1,
-    attackCd: 1.8, weight: 0.1, behavior: 'melee', water: true,
+    attackCd: 1.8, weight: 0.08, behavior: 'melee', water: true,
   },
   fungling: {
     name: 'Fungling', hp: 18, dmg: 6, speed: 1.2, xp: 14, aggro: 5.5, attackRange: 6.0,
-    attackCd: 2.5, weight: 0.14, behavior: 'ranged', keepDist: 4.5,
+    attackCd: 2.5, weight: 0.11, behavior: 'ranged', keepDist: 4.5,
   },
   boarling: {
     name: 'Boarling', hp: 26, dmg: 9, speed: 1.8, xp: 16, aggro: 5.0, attackRange: 1.2,
-    attackCd: 1.6, weight: 0.13, behavior: 'charge',
+    attackCd: 1.6, weight: 0.10, behavior: 'charge',
   },
   wisp: {
     name: 'Wisp', hp: 15, dmg: 7, speed: 1.9, xp: 20, aggro: 6.0, attackRange: 6.5,
@@ -36,7 +36,7 @@ export const ENEMY_TYPES = {
   },
   treant: {
     name: 'Treant', hp: 65, dmg: 13, speed: 0.75, xp: 32, aggro: 4.0, attackRange: 1.4,
-    attackCd: 2.1, weight: 0.08, behavior: 'melee',
+    attackCd: 2.1, weight: 0.07, behavior: 'melee',
   },
   golem: {
     name: 'Golem', hp: 160, dmg: 20, speed: 0.6, xp: 90, aggro: 5.0, attackRange: 1.7,
@@ -54,6 +54,18 @@ export const ENEMY_TYPES = {
   puffowl: { // round night owl that drifts above the grass and swoops
     name: 'Puffowl', hp: 17, dmg: 8, speed: 2.3, xp: 25, aggro: 5.5, attackRange: 1.1,
     attackCd: 1.7, weight: 0, behavior: 'melee', nightOnly: true, floats: true,
+  },
+  embercub: { // toasty little fire-fox cub — quick pounces, warm cheeks
+    name: 'Embercub', hp: 19, dmg: 7, speed: 2.5, xp: 18, aggro: 4.5, attackRange: 1.0,
+    attackCd: 1.3, weight: 0.06, behavior: 'melee',
+  },
+  thornling: { // grumpy walking cactus that flicks needles from afar
+    name: 'Thornling', hp: 24, dmg: 7, speed: 0.9, xp: 20, aggro: 5.5, attackRange: 6.5,
+    attackCd: 2.4, weight: 0.05, behavior: 'ranged', keepDist: 5,
+  },
+  mossback: { // ancient moss-covered shell-beast: slow, stubborn, very tanky
+    name: 'Mossback', hp: 55, dmg: 11, speed: 0.65, xp: 30, aggro: 3.5, attackRange: 1.3,
+    attackCd: 2.2, weight: 0.05, behavior: 'melee',
   },
 };
 
@@ -400,11 +412,108 @@ function buildPuffowlMesh() {
   return g;
 }
 
+function buildEmbercubMesh() {
+  const g = new THREE.Group();
+  const fur = lam('#e8935a');
+  const furDeep = lam('#c46a3a');
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.36, 0.54), fur);
+  body.position.y = 0.3;
+  body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.32), fur);
+  head.position.set(0, 0.58, 0.18);
+  const face = facePlane('embercub', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, mouth: 'open', cheeks: 'rgba(255,140,80,0.85)' }, 0.38, 0.28);
+  face.position.set(0, 0.6, 0.35);
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 4), furDeep);
+    ear.position.set(sx * 0.13, 0.82, 0.14);
+    g.add(ear);
+  }
+  // little flame tail
+  const tail = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0),
+    new THREE.MeshBasicMaterial({ color: 0xffa844 }));
+  tail.position.set(0, 0.46, -0.36);
+  const tailCore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 0),
+    new THREE.MeshBasicMaterial({ color: 0xffe08a }));
+  tailCore.position.set(0, 0.5, -0.38);
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.42), furDeep);
+  legs.position.y = 0.1;
+  const glow = new THREE.PointLight(0xff9a44, 0.6, 2.5, 2);
+  glow.position.set(0, 0.5, -0.35);
+  g.add(body, head, face, tail, tailCore, legs, glow);
+  g.userData.body = body;
+  g.userData.flame = tail;
+  return g;
+}
+
+function buildThornlingMesh() {
+  const g = new THREE.Group();
+  const green = lam('#5a9a58');
+  const greenDeep = lam('#3f7a42');
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.38), green);
+  body.position.y = 0.42;
+  body.castShadow = true;
+  const face = facePlane('thornling', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'w' }, 0.36, 0.28);
+  face.position.set(0, 0.52, 0.2);
+  for (const [sx, sy] of [[-1, 0.36], [1, 0.5]]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.3, 0.13), greenDeep);
+    arm.position.set(sx * 0.3, sy, 0);
+    arm.rotation.z = -sx * 0.5;
+    g.add(arm);
+  }
+  // needles
+  for (let i = 0; i < 8; i++) {
+    const n = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1, 4), lam('#e8e8d0'));
+    n.position.set((Math.sin(i * 2.4) * 0.2), 0.25 + (i % 4) * 0.14, (Math.cos(i * 2.4) * 0.17));
+    n.rotation.z = Math.sin(i) * 1.2;
+    g.add(n);
+  }
+  const flower = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.14), lam('#f0a8c8'));
+  flower.position.y = 0.78;
+  const pot = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.3), lam('#a8654a'));
+  pot.position.y = 0.07;
+  g.add(body, face, flower, pot);
+  g.userData.body = body;
+  return g;
+}
+
+function buildMossbackMesh() {
+  const g = new THREE.Group();
+  const skin = lam('#8a9a6a');
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.72), skin);
+  body.position.y = 0.26;
+  body.castShadow = true;
+  // mossy dome shell
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), lam('#5a7a4a'));
+  shell.position.y = 0.46;
+  shell.scale.set(1, 0.6, 1.15);
+  shell.castShadow = true;
+  for (const [dx, dz] of [[-0.15, 0.1], [0.18, -0.05], [0, -0.25]]) {
+    const tuft = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), lam('#6fa05a'));
+    tuft.position.set(dx, 0.66, dz);
+    tuft.scale.y = 0.6;
+    g.add(tuft);
+  }
+  const sprout = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), lam('#4f9857'));
+  sprout.position.y = 0.78;
+  const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.08), lam('#7ac866'));
+  leaf.position.set(0.05, 0.86, 0);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.26), skin);
+  head.position.set(0, 0.36, 0.5);
+  const face = facePlane('mossback', { eyeW: 3, eyeH: 3, gap: 4, eyeY: 3, mouth: 'smile' }, 0.28, 0.22);
+  face.position.set(0, 0.38, 0.64);
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.6), lam('#6a7a52'));
+  legs.position.y = 0.1;
+  g.add(body, shell, sprout, leaf, head, face, legs);
+  g.userData.body = body;
+  return g;
+}
+
 const BUILDERS = {
   slime: buildSlimeMesh, nibbit: buildNibbitMesh, armorbug: buildArmorbugMesh,
   fungling: buildFunglingMesh, boarling: buildBoarlingMesh, wisp: buildWispMesh,
   treant: buildTreantMesh, golem: buildGolemMesh,
   frostling: buildFrostlingMesh, sparkit: buildSparkitMesh, puffowl: buildPuffowlMesh,
+  embercub: buildEmbercubMesh, thornling: buildThornlingMesh, mossback: buildMossbackMesh,
 };
 
 // --- world bosses: giant variants that appear on a timer ---
@@ -513,7 +622,10 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (h <= WATER_LEVEL && !def.water) continue;
       if (h <= WATER_LEVEL - 1) continue;
 
-      const level = Math.max(1, levelFor(x, z) + (def.boss ? 2 : 0));
+      // monsters grow with the hero: +1 tier for every 5 player levels, on
+      // top of the distance-based tier — the wilds never fall behind you
+      const heroBonus = Math.floor((hooks.getPlayerLevel?.() || 1) / 5);
+      const level = Math.max(1, levelFor(x, z) + heroBonus + (def.boss ? 2 : 0));
       const mesh = BUILDERS[type]();
       // ELITE variant: rarer, bigger, gilded aura ring — much tougher, pays more
       const elite = !def.boss && level >= 2 && Math.random() < 0.08;
@@ -693,6 +805,13 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         continue;
       }
 
+      // the player is BUSY (fishing, chatting) — cozy rule: nothing hunts
+      // you mid-hobby. Everyone, world bosses included, loses interest.
+      if (playerState.busy && e.state === 'aggro') {
+        e.state = 'wander';
+        e.np.sprite.visible = e.hp < e.hpMax;
+      }
+
       // stun / freeze halts the AI
       if (e.stunT > 0 || e.frozenT > 0) {
         e.stunT = Math.max(0, e.stunT - dt);
@@ -712,7 +831,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (e.state === 'wander') {
         e.wanderT -= dt;
         if (e.wanderT <= 0) { e.wanderT = 1.5 + Math.random() * 3; e.dir = Math.random() * Math.PI * 2; }
-        if (distP < e.def.aggro) e.state = 'aggro';
+        if (distP < e.def.aggro && !playerState.busy) e.state = 'aggro';
         moveEnemy(e, Math.cos(e.dir) * e.def.speed * 0.5, Math.sin(e.dir) * e.def.speed * 0.5, dt);
       } else if (e.def.behavior === 'ranged') {
         rangedAI(e, playerState, distP, dt);
@@ -757,6 +876,9 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
           e.mesh.userData.wings[0].rotation.z = flap;
           e.mesh.userData.wings[1].rotation.z = -flap;
         }
+      }
+      if (e.type === 'embercub' && e.mesh.userData.flame) {
+        e.mesh.userData.flame.scale.setScalar(1 + Math.sin(e.anim * 7) * 0.25);
       }
       // elite aura ring slowly spins & pulses
       if (e.mesh.userData.eliteRing) {

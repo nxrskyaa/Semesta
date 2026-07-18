@@ -362,12 +362,13 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       }
     } else if (state.phase === 'bite') {
       state.t -= dt;
-      // firm rhythmic TUGS (readable pulls, not a vibrating blur)
-      const tug = Math.max(0, Math.sin(time * 7));
-      bobber.position.y = WATER_Y - 0.06 - tug * 0.12;
-      alert.scale.setScalar(0.5 + Math.sin(time * 6) * 0.06);
-      rod.rotation.x = ROD_REST - 0.25 - tug * 0.28;
-      tailPivot.rotation.y = Math.sin(time * 9) * 0.7;
+      // calm rhythmic TUGS — eased pulls with a beat of rest between them
+      const cycle = (time * 1.4) % 1;
+      const tug = cycle < 0.35 ? Math.sin((cycle / 0.35) * Math.PI) : 0;
+      bobber.position.y = WATER_Y - 0.05 - tug * 0.13;
+      alert.scale.setScalar(0.5 + Math.sin(time * 3.2) * 0.05);
+      rod.rotation.x += ((ROD_REST - 0.22 - tug * 0.3) - rod.rotation.x) * Math.min(1, dt * 10);
+      tailPivot.rotation.y = Math.sin(time * 5.5) * 0.6;
       shadow.position.x = bobber.position.x + Math.sin(time * 5) * 0.1;
       shadow.position.z = bobber.position.z + Math.cos(time * 4.2) * 0.1;
       if (Math.random() < dt * 3) {

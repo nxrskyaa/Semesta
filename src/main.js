@@ -130,14 +130,17 @@ async function init(character, saved, audio) {
   const chests = createChests(scene, terrain, decor.blocked, particles);
   const camps = createCamps(scene, terrain, decor.blocked, particles);
   const gathering = createGathering(scene, terrain, decor.blocked, particles);
-  const landmarks = createLandmarks(scene, terrain, decor.blocked);
+  // landmarks avoid the rest camps (footprint circles), and housing parcels
+  // avoid BOTH — no more buildings merging into each other
+  const landmarks = createLandmarks(scene, terrain, decor.blocked,
+    camps.camps.map((c) => ({ x: c.x, z: c.z, r: 4.5 })));
 
   // scrub any scenery (trees/rocks/bushes) that would clip through structures —
   // camps, landmarks and land parcels were placed AFTER the forest grew
   for (const c of camps.camps) decor.clearArea(c.x, c.z, 3.6);
   for (const b of landmarks.built) decor.clearArea(b.position.x, b.position.z, 4.6);
   const farming = createFarming(scene, terrain, decor.blocked, particles);
-  const housing = createHousing(scene, terrain, decor.blocked, particles);
+  const housing = createHousing(scene, terrain, decor.blocked, particles, landmarks.foots);
   // keep land parcels free of clipping scenery too (covers houses loaded from save)
   for (const l of housing.lands) decor.clearArea(l.x, l.z, 3.8);
 
@@ -180,6 +183,17 @@ async function init(character, saved, audio) {
     if (saved.pos) {
       player.state.pos.set(saved.pos[0], saved.pos[1], saved.pos[2]);
     }
+    // the world regenerates every boot (landmarks/camps land in new spots) —
+    // if the saved position now sits inside a fresh structure footprint,
+    // free the hero instead of leaving them stuck in a wall
+    {
+      const [ix, iz] = terrain.cellOf(player.state.pos.x, player.state.pos.z);
+      if (decor.blocked.has(`${ix},${iz}`)
+        || !terrain.walkable(player.state.pos.x, player.state.pos.z, terrain.surfaceY(player.state.pos.x, player.state.pos.z))) {
+        moveToClearSpot(player.state.pos.x, player.state.pos.z, 1.2);
+      }
+      player.state.pos.y = terrain.surfaceY(player.state.pos.x, player.state.pos.z);
+    }
   } else {
     // starter kit: a faithful mount, a couple of seeds and pocket change
     inventory.add('mount_sprig', 1);
@@ -205,6 +219,7 @@ async function init(character, saved, audio) {
     },
     sfx: (n) => audio.sfx(n),
     inSafeZone,
+    getPlayerLevel: () => leveling.state.level, // monsters scale every 5 levels
   });
   for (let i = 0; i < 14; i++) enemyMgr.spawnOne(player.state.pos);
 
@@ -763,11 +778,16 @@ async function init(character, saved, audio) {
     const dur = player.state.attackDur * 1000;
     const p = player.state;
 
-    // glow (gacha) weapons trail colored sparks with every swing
-    const glowFx = def.glow ? () => {
+    // swing FX: gacha weapons erupt in their aura color (sparks + a snappy
+    // ring); crafted tier-2+ weapons get a lighter burst in their blade color
+    const fxColor = def.glow || (def.tier >= 2 ? def.blade[1] : null);
+    const glowFx = fxColor ? () => {
       const f = p.facing;
-      particles.burst(p.pos.clone().add(new THREE.Vector3(Math.sin(f) * 0.9, 0.8, Math.cos(f) * 0.9)),
-        def.glow, 5, 2.2, 2, 0.5);
+      const at = p.pos.clone().add(new THREE.Vector3(Math.sin(f) * 0.9, 0.8, Math.cos(f) * 0.9));
+      particles.burst(at, fxColor, def.glow ? 9 : 4, 2.6, 2, 0.5);
+      if (def.glow) {
+        particles.shockwave(new THREE.Vector3(at.x, p.pos.y + 0.15, at.z), def.glow, 1.4, 0.25);
+      }
     } : null;
 
     if (def.type === 'bow') {

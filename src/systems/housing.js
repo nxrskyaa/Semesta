@@ -139,9 +139,18 @@ function buildHouse(designId) {
   return g;
 }
 
-export function createHousing(scene, terrain, decorBlocked, particles) {
+export function createHousing(scene, terrain, decorBlocked, particles, avoid = []) {
   const lands = [];
   const S2 = terrain.size / 2;
+  // a parcel (future house ~3x3 cells) must never overlap a landmark/camp
+  // footprint — checking just the center cell is not enough
+  const HOUSE_FOOT = 3.4;
+  const clearOfFoots = (x, z) => {
+    for (const f of avoid) {
+      if (Math.hypot(f.x - x, f.z - z) < (f.r ?? 4) + HOUSE_FOOT) return false;
+    }
+    return true;
+  };
 
   // 4 scenic parcels, one per quadrant (closer in than the camps)
   const targets = [
@@ -149,13 +158,16 @@ export function createHousing(scene, terrain, decorBlocked, particles) {
     [-S2 * 0.32, S2 * 0.3], [S2 * 0.28, S2 * 0.34],
   ];
   targets.forEach((t, idx) => {
-    for (let tries = 0; tries < 80; tries++) {
-      const x = t[0] + (Math.random() - 0.5) * 14;
-      const z = t[1] + (Math.random() - 0.5) * 14;
+    for (let tries = 0; tries < 120; tries++) {
+      const x = t[0] + (Math.random() - 0.5) * (14 + tries * 0.1);
+      const z = t[1] + (Math.random() - 0.5) * (14 + tries * 0.1);
       const [ix, iz] = terrain.cellOf(x, z);
       if (!terrain.inBounds(ix, iz)) continue;
       const h = terrain.heightCell(ix, iz);
       if (h <= WATER_LEVEL || h >= 8) continue;
+      // structures live in the avoid list (footprint circles); blocked cells
+      // here are mostly trees, which decor.clearArea scrubs after placement
+      if (!clearOfFoots(x, z)) continue;
       if (decorBlocked.has(`${ix},${iz}`)) continue;
       const y = terrain.surfaceY(x, z);
       const sign = buildSaleSign();

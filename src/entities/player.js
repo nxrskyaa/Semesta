@@ -462,14 +462,15 @@ export function buildCharacterMesh(config) {
         color: new THREE.Color(def.glow), transparent: true, opacity: 0.9,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
-      for (let i = 0; i < 4; i++) {
-        const sp = new THREE.Mesh(new THREE.OctahedronGeometry(0.03), sMat);
-        sp.userData.a0 = (i / 4) * Math.PI * 2;
+      for (let i = 0; i < 6; i++) {
+        const sp = new THREE.Mesh(new THREE.OctahedronGeometry(0.022 + (i % 3) * 0.011), sMat);
+        sp.userData.a0 = (i / 6) * Math.PI * 2;
         sparks.add(sp);
       }
       sparks.position.y = auraY;
       g.add(sparks);
       g.userData.sparks = sparks;
+      g.userData.auraLight = aura; // breathes in update
     }
     weaponGroup = g;
   }
@@ -958,14 +959,17 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     state.idleT += dt;
     if (state.landSquash > 0) state.landSquash = Math.max(0, state.landSquash - dt * 0.8);
 
-    // gacha-weapon aura: sparks orbit the blade
+    // gacha-weapon aura: sparks orbit the blade, the light breathes
     const sparks = rig.getWeaponSparks?.();
     if (sparks) {
       sparks.children.forEach((sp, i) => {
-        const a = sp.userData.a0 + state.idleT * 1.8;
-        sp.position.set(Math.cos(a) * 0.17, Math.sin(state.idleT * 2.2 + i * 1.7) * 0.12, Math.sin(a) * 0.17);
+        const a = sp.userData.a0 + state.idleT * (1.6 + (i % 2) * 0.7);
+        const r = 0.15 + (i % 3) * 0.035;
+        sp.position.set(Math.cos(a) * r, Math.sin(state.idleT * 2.2 + i * 1.7) * 0.13, Math.sin(a) * r);
         sp.rotation.y = state.idleT * 3;
       });
+      const aura = sparks.parent?.userData.auraLight;
+      if (aura) aura.intensity = 0.75 + Math.sin(state.idleT * 3.1) * 0.3;
     }
     // weapon jewelry: rings precess (a flat torus spinning on its own axis
     // would be invisible), orbs breathe, loose fragments hover & twirl

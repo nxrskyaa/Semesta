@@ -21,7 +21,7 @@ export function createAudio() {
     menu: [0, 4, 7, 9, 12, 16, 19, 21],     // major pentatonic — dreamy music box
   };
   const ROOT = { day: 220, night: 196, menu: 262 }; // A3 / G3 / C4
-  const BPM = { day: 72, night: 72, menu: 54 };     // menu drifts slower
+  const BPM = { day: 64, night: 66, menu: 54 };     // lazy, hammock-y tempos
 
   function ensureCtx() {
     if (ctx) return;
@@ -66,7 +66,15 @@ export function createAudio() {
     night: [[0, 3, 8], [-2, 2, 7], [0, 3, 6], [-4, 0, 5]],
     menu: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]], // I - vi - IV - ii, cozy
   };
+  // a SECOND progression per mood — the track alternates every 4 bars so it
+  // never loops into sameness
+  const CHORDS_B = {
+    day: [[0, 3, 7], [-4, 0, 5], [-2, 3, 7], [0, 5, 9]],
+    night: [[-2, 2, 7], [0, 3, 8], [-4, 0, 5], [0, 2, 7]],
+    menu: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]],
+  };
   let bar = 0;
+  let progB = false; // which progression is playing
 
   function noteHz(root, semi) { return root * Math.pow(2, semi / 12); }
 
@@ -76,7 +84,10 @@ export function createAudio() {
     while (nextNoteTime < ctx.currentTime + 0.35) {
       playStep(step, nextNoteTime, stepDur);
       step = (step + 1) % 8;
-      if (step === 0) bar = (bar + 1) % 4;
+      if (step === 0) {
+        bar = (bar + 1) % 4;
+        if (bar === 0) progB = !progB; // swap progressions every 4 bars
+      }
       nextNoteTime += stepDur;
     }
   }
@@ -84,7 +95,7 @@ export function createAudio() {
   function playStep(s, t, dur) {
     const root = ROOT[mood];
     const scale = SCALES[mood];
-    const chord = CHORDS[mood][bar];
+    const chord = (progB ? CHORDS_B : CHORDS)[mood][bar];
 
     // MENU: dreamy music-box waltz — soft pad swells, sparse bell melody,
     // no percussion. Deliberately different from the in-world tracks.
@@ -107,20 +118,41 @@ export function createAudio() {
 
     // pad akor di awal bar
     if (s === 0) {
-      for (const semi of chord) pad(noteHz(root, semi), t, dur * 8.4, 0.05);
-      bassPluck(noteHz(root / 2, chord[0]), t, dur * 7, 0.11);
+      for (const semi of chord) pad(noteHz(root, semi), t, dur * 8.4, 0.046);
+      bassPluck(noteHz(root / 2, chord[0]), t, dur * 7, 0.1);
     }
-    // arpeggio pluck jarang (lebih sering saat combat)
-    const density = 0.34 + combat * 0.4 + (mood === 'night' ? -0.08 : 0);
+    // melody: warm kalimba by day, softer pluck by night — sparse & lazy
+    const density = 0.3 + combat * 0.4 + (mood === 'night' ? -0.08 : 0);
     if (Math.random() < density && s % 2 === (mood === 'day' ? 0 : 1)) {
       const semi = scale[Math.floor(Math.random() * scale.length)];
-      pluck(noteHz(root * 2, semi), t, 0.06 + Math.random() * 0.02);
+      if (mood === 'day') kalimba(noteHz(root * 2, semi), t, 0.055 + Math.random() * 0.02);
+      else pluck(noteHz(root * 2, semi), t, 0.05 + Math.random() * 0.02);
     }
-    // perkusi saat combat
+    // occasional playful grace pair (two quick kalimba 16ths) in the day
+    if (mood === 'day' && s === 5 && Math.random() < 0.2 && combat < 0.2) {
+      const a = scale[Math.floor(Math.random() * 4)];
+      const b = scale[Math.min(scale.length - 1, Math.floor(Math.random() * 4) + 2)];
+      kalimba(noteHz(root * 2, a), t, 0.04);
+      kalimba(noteHz(root * 2, b), t + dur * 0.5, 0.04);
+    }
+    // perkusi saat combat (gentler than before)
     if (combat > 0.15) {
-      if (s === 0 || (s === 4 && combat > 0.5)) kick(t, 0.16 * combat);
-      if (s % 2 === 1) hat(t, 0.05 * combat);
+      if (s === 0 || (s === 4 && combat > 0.5)) kick(t, 0.13 * combat);
+      if (s % 2 === 1) hat(t, 0.035 * combat);
     }
+  }
+
+  // kalimba: rounded thumb-piano pluck — triangle body + airy octave overtone
+  function kalimba(freq, t, vol) {
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = freq;
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 2.004;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+    const g2 = ctx.createGain(); g2.gain.value = 0.35;
+    o.connect(g); o2.connect(g2).connect(g); g.connect(musicBus);
+    o.start(t); o2.start(t);
+    o.stop(t + 0.9); o2.stop(t + 0.9);
   }
 
   // music-box bell: sine + soft 3rd harmonic with a long shimmering decay
@@ -299,11 +331,11 @@ export function createAudio() {
     wisp_shot:  () => tone('sine', 1200, 500, 0.18, 0.1),
     boar_charge:() => { tone('sawtooth', 140, 90, 0.3, 0.18); noise(0.25, 0.12, 'lowpass', 500); },
     death_player:() => { [330, 262, 196, 131].forEach((f, i) => tone('sawtooth', f, f, 0.3, 0.14, ctx ? ctx.currentTime + i * 0.22 : null)); },
-    // fishing — soft & watery, no buzzy squares
-    cast:       () => { noise(0.16, 0.07, 'bandpass', 900, 2000); tone('sine', 420, 220, 0.2, 0.06, ctx ? ctx.currentTime + 0.12 : null); },
-    splash:     () => { noise(0.3, 0.11, 'lowpass', 700, 200); tone('sine', 240, 100, 0.18, 0.06); },
-    bite:       () => { tone('sine', 620, 660, 0.09, 0.13); tone('sine', 880, 930, 0.12, 0.13, ctx ? ctx.currentTime + 0.11 : null); },
-    catch:      () => { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.12, 0.12, ctx ? ctx.currentTime + i * 0.07 : null)); noise(0.2, 0.1, 'lowpass', 1000, 400); },
+    // fishing — gentle & watery: pure soft sines, NO noise buzz at all
+    cast:       () => { tone('sine', 420, 190, 0.22, 0.055); tone('sine', 300, 140, 0.14, 0.035, ctx ? ctx.currentTime + 0.16 : null); },
+    splash:     () => { tone('sine', 250, 90, 0.2, 0.06); tone('sine', 170, 70, 0.16, 0.04, ctx ? ctx.currentTime + 0.05 : null); },
+    bite:       () => { tone('sine', 620, 640, 0.1, 0.11); tone('sine', 880, 900, 0.13, 0.11, ctx ? ctx.currentTime + 0.12 : null); },
+    catch:      () => { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.12, 0.11, ctx ? ctx.currentTime + i * 0.07 : null)); },
     // world & quests
     chest:      () => { tone('square', 300, 500, 0.1, 0.12); [660, 880, 1100].forEach((f, i) => tone('triangle', f, f, 0.12, 0.1, ctx ? ctx.currentTime + 0.1 + i * 0.07 : null)); },
     talk:       () => { tone('square', 520, 660, 0.05, 0.06); },

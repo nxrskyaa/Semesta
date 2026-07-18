@@ -221,6 +221,22 @@ export const DROP_TABLES = {
     ['feather', 0.5, 1, 2],
     ['forge_stone', 0.12, 1, 1],
   ],
+  embercub: [
+    ['forge_stone', 0.5, 1, 2],
+    ['green_herb', 0.3, 1, 1],
+    ['boar_tusk', 0.2, 1, 1],
+  ],
+  thornling: [
+    ['green_herb', 0.9, 1, 2],
+    ['wheat_seed', 0.35, 1, 2],
+    ['forge_stone', 0.08, 1, 1],
+  ],
+  mossback: [
+    ['hardwood', 0.7, 1, 2],
+    ['green_herb', 0.6, 1, 2],
+    ['iron_ore', 0.25, 1, 1],
+    ['forge_stone', 0.14, 1, 1],
+  ],
 };
 
 export function rollDrops(tableId, rng = Math.random) {
