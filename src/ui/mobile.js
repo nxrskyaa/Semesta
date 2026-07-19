@@ -262,11 +262,20 @@ export function createTouchControls(input, skillIds, callbacks) {
     }
   }
 
-  // show/hide the ESC-replacement close button while a menu/panel is open
+  // show/hide the ESC-replacement close button while a menu/panel/popup is open.
+  // CRUCIAL: the transparent joystick & camera capture zones live ABOVE the HUD
+  // (higher stacking context), so while any UI is open we must switch OFF their
+  // pointer-events — otherwise the joystick swallows every tap meant for a menu
+  // tile or panel button (that's why the ☰ popup was un-tappable).
   function setMenuOpen(open) {
     closeBtn.classList.toggle('show', !!open);
-    // hide the action cluster while a full-screen panel is up so it's not tappable behind
     root.querySelector('.btns').style.opacity = open ? '0.25' : '1';
+    joyzone.style.pointerEvents = open ? 'none' : 'auto';
+    camzone.style.pointerEvents = open ? 'none' : 'auto';
+    if (open) { // drop any in-progress joystick so movement doesn't stick
+      joyId = null; input.joy.active = false; input.joy.x = 0; input.joy.y = 0;
+      joyEl.style.display = 'none';
+    }
   }
 
   function update(skillSys, potionCount) {

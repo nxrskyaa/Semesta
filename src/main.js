@@ -1488,8 +1488,9 @@ async function init(character, saved, audio) {
         secondary ? { key: 'R', label: secondary.label } : null);
       touchUI?.setPrompt(primary ? { label: primary.label, afk: primary.afk } : null,
         secondary ? { label: secondary.label } : null);
-      // mobile ESC-replacement close button while any panel/dialog/map is open
-      touchUI?.setMenuOpen(panels.anyOpen() || dialog.isOpen() || worldmap.isOpen());
+      // mobile: while ANY UI is up (panel, dialog, map, OR the ☰ popup) block
+      // the joystick/camera capture zones so menu taps land on the buttons
+      touchUI?.setMenuOpen(panels.anyOpen() || dialog.isOpen() || worldmap.isOpen() || hud.isMenuPopOpen());
     }
 
     renderer.render(scene, camera);

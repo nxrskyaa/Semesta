@@ -245,8 +245,9 @@ const CSS = `
 #hud .onboard h2 {
   font-family: var(--font-display); font-size: 15px; letter-spacing: 3px; color: var(--gold);
   text-align: center; margin-bottom: 4px; text-shadow: 0 0 12px var(--gold-glow);
+  word-break: break-word;
 }
-#hud .onboard .sub { text-align: center; font-size: 9px; color: var(--muted); letter-spacing: 3px; margin-bottom: 14px; }
+#hud .onboard .sub { text-align: center; font-size: 9px; color: var(--muted); letter-spacing: 2px; margin-bottom: 14px; word-break: break-word; }
 #hud .onboard h3 {
   font-size: 10px; letter-spacing: 2px; color: var(--gold-dim); margin: 12px 0 6px;
   border-bottom: 1px solid var(--line-soft); padding-bottom: 4px;
@@ -268,6 +269,15 @@ const CSS = `
   box-shadow: 0 -3px 0 0 #c8a03a, 0 3px 0 0 #2a2210, -3px 0 0 0 #8a744a, 3px 0 0 0 #8a744a, 0 0 0 3px var(--ink) inset;
 }
 #hud .onboard .go:hover { filter: brightness(1.18); }
+/* phones: shrink type & spacing so the welcome card never gets clipped */
+body.touch #hud .onboard .card { width: 94vw; padding: 14px 13px; max-height: 92vh; }
+body.touch #hud .onboard h2 { font-size: 12px; letter-spacing: 1px; }
+body.touch #hud .onboard .sub { font-size: 8px; letter-spacing: 1px; }
+body.touch #hud .onboard h3 { font-size: 9px; }
+body.touch #hud .onboard .step { font-size: 10px; gap: 7px; }
+body.touch #hud .onboard .ctrls { grid-template-columns: auto 1fr auto 1fr; gap: 4px 6px; font-size: 9px; }
+body.touch #hud .onboard .ctrls b { padding: 1px 4px; }
+body.touch #hud .onboard .go { font-size: 11px; padding: 11px; letter-spacing: 2px; }
 
 /* ---- waypoint beacon (from the world-map mark) ---- */
 #hud .pinbeacon {
@@ -540,6 +550,10 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     }
   });
   function closeMenu() { menuPop.classList.remove('show'); }
+  // any HUD-level overlay that must block the mobile joystick/camera zones
+  function isMenuPopOpen() {
+    return menuPop.classList.contains('show') || root.querySelector('.onboard').classList.contains('show');
+  }
   els.deadBtn.addEventListener('click', () => callbacks.onRespawn?.());
   els.muteBtn.addEventListener('click', () => {
     const m = audio.toggleMute();
@@ -742,6 +756,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait, setName, showOnboarding,
+    refreshPortrait, setName, showOnboarding, isMenuPopOpen,
   };
 }
