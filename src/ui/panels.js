@@ -530,13 +530,30 @@ export function createPanels(hudRoot, {
     } else if (phase === 'reveal' && result) {
       const R = RARITY[result.rarity];
       const high = result.rarity === 'legendary' || result.rarity === 'mythic';
-      stage = `<div class="g-flash" style="--rc:${R.color}"></div>
-        <div class="g-card ${high ? 'high' : ''} r-${result.rarity}" style="--rc:${R.color}">
+      const confetti = high ? Array.from({ length: 14 }, (_, i) =>
+        `<i class="g-conf" style="left:${6 + Math.random() * 88}%;background:${['#ffd23e', R.color, '#f0f0e8'][i % 3]};animation-delay:${Math.random() * 0.5}s;animation-duration:${0.9 + Math.random() * 0.8}s"></i>`).join('') : '';
+      stage = `<div class="g-flash" style="--rc:${R.color}"></div>${confetti}
+        <div class="g-card flip ${high ? 'high' : ''} r-${result.rarity}" style="--rc:${R.color}">
           <div class="g-rarity">${'◆'.repeat(RARITY_ORDER.indexOf(result.rarity) + 1)} ${R.name.toUpperCase()}</div>
           <div class="g-icoframe"><img src="${itemIconUrl(result.iconId)}"></div>
           <div class="g-name">${result.name}</div>
           ${result.note ? `<div class="g-note">${result.note}</div>` : ''}
         </div>`;
+    } else if (phase === 'multi' && result) {
+      // 10-pull results: a staggered grid of mini cards, best rarity crowned
+      const bestIdx = Math.max(...result.map((p) => RARITY_ORDER.indexOf(p.rarity)));
+      const confetti = bestIdx >= 3 ? Array.from({ length: 16 }, (_, i) =>
+        `<i class="g-conf" style="left:${4 + Math.random() * 92}%;background:${['#ffd23e', RARITY[RARITY_ORDER[bestIdx]].color, '#f0f0e8'][i % 3]};animation-delay:${Math.random() * 0.6}s;animation-duration:${0.9 + Math.random() * 0.8}s"></i>`).join('') : '';
+      stage = `${confetti}<div class="g-grid">
+        ${result.map((p, i) => {
+          const R = RARITY[p.rarity];
+          const best = RARITY_ORDER.indexOf(p.rarity) === bestIdx && bestIdx >= 2;
+          return `<div class="g-mini ${best ? 'best' : ''}" style="--rc:${R.color};animation-delay:${i * 0.09}s">
+            <img src="${itemIconUrl(p.iconId)}">
+            <span class="g-mini-n">${p.name}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
     } else {
       stage = `<div class="g-machine">
           <div class="g-dome"><div class="g-caps a"></div><div class="g-caps b"></div><div class="g-caps c"></div></div>
@@ -569,6 +586,10 @@ export function createPanels(hudRoot, {
           color: #ffd7a8; font-size: 18px; text-shadow: 0 0 8px rgba(255,200,120,0.6); }
         .g-crank { position: absolute; right: -7px; bottom: 14px; width: 20px; height: 20px; line-height: 20px;
           background: #ffd23e; border: 2px solid #3a2e18; border-radius: 50%; font-size: 10px; color: #5e3c10; }
+        .g-machine .g-caps { animation: g-idle 2.6s ease-in-out infinite; }
+        .g-machine .g-caps.b { animation-delay: 0.5s; }
+        .g-machine .g-caps.c { animation-delay: 1.1s; }
+        @keyframes g-idle { 50% { transform: translateY(-2.5px); } }
         .g-machine.spin { animation: g-rattle 0.14s linear infinite; }
         .g-machine.spin .g-caps.a { animation: g-jump 0.22s ease-in-out infinite; }
         .g-machine.spin .g-caps.b { animation: g-jump 0.19s ease-in-out infinite 0.05s; }
@@ -609,6 +630,29 @@ export function createPanels(hudRoot, {
           background: linear-gradient(180deg, rgba(10,14,9,0.9), rgba(6,9,6,0.95));
           box-shadow: 0 0 18px var(--rc), inset 0 0 0 1px rgba(0,0,0,0.7), inset 0 0 24px rgba(0,0,0,0.5);
           animation: g-pop 0.34s cubic-bezier(0.2, 1.8, 0.4, 1); }
+        .g-card.flip { animation: g-flip 0.5s cubic-bezier(0.3, 1.4, 0.5, 1); }
+        @keyframes g-flip {
+          0% { transform: perspective(500px) rotateY(95deg) scale(0.7); opacity: 0; }
+          60% { transform: perspective(500px) rotateY(-12deg) scale(1.06); opacity: 1; }
+          100% { transform: perspective(500px) rotateY(0deg) scale(1); }
+        }
+        .g-conf { position: absolute; top: -6px; width: 6px; height: 6px; pointer-events: none;
+          animation: g-confall linear forwards; }
+        @keyframes g-confall {
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(190px) rotate(540deg); opacity: 0; }
+        }
+        .g-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; padding: 4px 2px; }
+        .g-mini { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 3px 6px;
+          background: rgba(8,12,8,0.9); box-shadow: inset 0 0 0 2px var(--rc), 0 0 8px color-mix(in srgb, var(--rc) 45%, transparent);
+          animation: g-mini-in 0.4s cubic-bezier(0.2, 1.9, 0.4, 1) backwards; }
+        .g-mini img { width: 26px; height: 26px; image-rendering: pixelated; }
+        .g-mini-n { font-size: 7px; color: #e5ead8; text-align: center; line-height: 1.3;
+          max-width: 100%; overflow: hidden; }
+        .g-mini.best { box-shadow: inset 0 0 0 2px var(--rc), 0 0 16px var(--rc); }
+        .g-mini.best::after { content: '★'; position: absolute; margin-top: -14px; margin-left: 40px;
+          color: var(--rc); font-size: 11px; text-shadow: 0 0 6px var(--rc); }
+        @keyframes g-mini-in { from { transform: scale(0.3) rotate(-6deg); opacity: 0; } }
         .g-card.high { animation: g-pop 0.44s cubic-bezier(0.2, 2.2, 0.4, 1); box-shadow: 0 0 34px var(--rc), inset 0 0 0 1px rgba(0,0,0,0.7); }
         .g-card.high::before, .g-card.high::after { content: '✦'; position: absolute; color: var(--rc); font-size: 13px;
           animation: g-tw 1.2s ease-in-out infinite; }
@@ -631,9 +675,12 @@ export function createPanels(hudRoot, {
       </style>
       <div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
       <div class="g-stage">${stage}</div>
-      <button class="act g-rollbtn" data-roll ${(!afford || phase === 'spin' || phase === 'drop') ? 'disabled' : ''}>
-        ◈ SPIN — ${gacha.price}c
-      </button>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="act g-rollbtn" data-roll ${(!afford || phase === 'spin' || phase === 'drop') ? 'disabled' : ''}
+          style="flex:1;margin-top:0">◈ SPIN — ${gacha.price}c</button>
+        <button class="act g-rollbtn" data-roll10 ${(coins < gacha.price10 || phase === 'spin' || phase === 'drop') ? 'disabled' : ''}
+          style="flex:1;margin-top:0">◈◈ 10× — ${gacha.price10}c</button>
+      </div>
       <button class="eq g-prizesbtn" data-prizes ${(phase === 'spin' || phase === 'drop') ? 'disabled' : ''}
         style="width:100%;margin-top:6px;letter-spacing:2px">📜 VIEW ALL PRIZES</button>
       <div class="g-pity"><div style="width:${pityPct}%"></div></div>
@@ -658,10 +705,29 @@ export function createPanels(hudRoot, {
       setTimeout(() => { audio.sfx('gacha_pop'); }, 1560);
       setTimeout(() => {
         gachaHistory.push(prize);
+        if (gachaHistory.length > 24) gachaHistory.splice(0, gachaHistory.length - 24);
         gachaBusy = false;
         audio.sfx(`reveal_${prize.rarity}`);
         renderGacha('reveal', prize);
       }, 1860);
+    });
+    panels.gacha.querySelector('[data-roll10]')?.addEventListener('click', () => {
+      const prizes = gacha.roll10();
+      if (!prizes) { audio.sfx('deny'); return; }
+      gachaBusy = true;
+      audio.sfx('gacha_crank');
+      audio.sfx('gacha_riser');
+      renderGacha('spin');
+      setTimeout(() => { audio.sfx('gacha_drop'); }, 900);
+      setTimeout(() => {
+        gachaHistory.push(...prizes);
+        if (gachaHistory.length > 24) gachaHistory.splice(0, gachaHistory.length - 24);
+        gachaBusy = false;
+        const best = prizes.reduce((a, b) =>
+          RARITY_ORDER.indexOf(b.rarity) > RARITY_ORDER.indexOf(a.rarity) ? b : a);
+        audio.sfx(`reveal_${best.rarity}`);
+        renderGacha('multi', prizes);
+      }, 1300);
     });
   }
 
@@ -691,6 +757,11 @@ export function createPanels(hudRoot, {
     return `
       <div style="font-size:10px;color:var(--muted);margin-bottom:10px;letter-spacing:1px">
         Restyle your hero anytime — changes apply instantly.</div>
+      <div class="w-row"><label>NAME</label>
+        <input class="w-name" type="text" maxlength="14" value="${cfg.name || ''}"
+          style="width:100%;background:#0e130d;color:#e8e8d8;outline:none;font-family:inherit;
+                 font-size:12px;padding:8px 10px;border:0;box-shadow:inset 0 0 0 2px #2c352c">
+      </div>
       ${seg('GENDER', null, GENDERS, 'gender')}
       ${sw('SKIN TONE', SKIN_TONES, 'skin')}
       ${seg('HAIR STYLE', null, HAIR_STYLES, 'hairStyle')}
@@ -763,6 +834,10 @@ export function createPanels(hudRoot, {
       ${body}`;
     panels.ward.querySelectorAll('[data-wtab]').forEach((b) => {
       b.addEventListener('click', () => { wardTab = b.dataset.wtab; audio.sfx('ui'); renderWardrobe(); });
+    });
+    // rename: applies live as you type (persists with the save)
+    panels.ward.querySelector('.w-name')?.addEventListener('input', (e) => {
+      wardrobe.appearance?.rename?.(e.target.value.trim() || 'Adventurer');
     });
     // appearance edits: parse "key:value", coerce numeric indices, apply live
     panels.ward.querySelectorAll('[data-wa]').forEach((b) => {

@@ -136,9 +136,11 @@ async function init(character, saved, audio) {
     camps.camps.map((c) => ({ x: c.x, z: c.z, r: 4.5 })));
 
   // scrub any scenery (trees/rocks/bushes) that would clip through structures —
-  // camps, landmarks and land parcels were placed AFTER the forest grew
-  for (const c of camps.camps) decor.clearArea(c.x, c.z, 3.6);
-  for (const b of landmarks.built) decor.clearArea(b.position.x, b.position.z, 4.6);
+  // camps, landmarks and land parcels were placed AFTER the forest grew.
+  // Each footprint clears its OWN radius (+margin), so big builds like the
+  // school or pool never keep a tree poking through their far corner.
+  for (const c of camps.camps) decor.clearArea(c.x, c.z, 4.2);
+  for (const f of landmarks.foots) decor.clearArea(f.x, f.z, f.r + 1.2);
   const farming = createFarming(scene, terrain, decor.blocked, particles);
   const housing = createHousing(scene, terrain, decor.blocked, particles, landmarks.foots);
   // keep land parcels free of clipping scenery too (covers houses loaded from save)
@@ -413,11 +415,11 @@ async function init(character, saved, audio) {
     ],
     uncommon: [
       { bundle: 'forge_stone', count: 6 }, { bundle: 'hardwood', count: 5 },
-      'hat_bandana', 'hat_miner', 'back_sprout',
+      'hat_bandana', 'hat_miner', 'hat_chef', 'back_sprout', 'back_shell', 'trail_leaf',
     ],
-    rare: ['hat_wizard', 'hat_catears', 'back_bubble', 'trail_petal', { petCharm: true }],
-    epic: ['hat_viking', 'back_butterfly', 'trail_ember', 'mount_trotter', 'mount_clucky', 'mount_shellsworth', { gweapon: 'epic' }],
-    legendary: ['charm_glimmer', 'charm_nox', 'hat_crown', 'back_phoenix', 'trail_star', 'mount_nimbus', 'mount_blossom', { gweapon: 'legendary' }],
+    rare: ['hat_wizard', 'hat_catears', 'hat_pirate', 'back_bubble', 'back_balloon', 'trail_petal', 'trail_frost', { petCharm: true }],
+    epic: ['hat_viking', 'hat_pumpkin', 'back_butterfly', 'back_koi', 'trail_ember', 'mount_trotter', 'mount_clucky', 'mount_shellsworth', 'mount_pebble', { gweapon: 'epic' }],
+    legendary: ['charm_glimmer', 'charm_nox', 'hat_crown', 'hat_kitsune', 'back_phoenix', 'trail_star', 'mount_nimbus', 'mount_blossom', { gweapon: 'legendary' }],
     mythic: ['charm_seraphi', 'mount_aurora', 'hat_halo', 'back_prism', 'trail_rainbow', { gweapon: 'mythic' }],
   };
   const gacha = {
@@ -459,6 +461,17 @@ async function init(character, saved, audio) {
     },
     roll() {
       if (!inventory.spendCoins(this.price)) return null;
+      return this.rollOnce();
+    },
+    // 10-pull: pay for nine, get ten — one shared reveal show in the panel
+    price10: 900,
+    roll10() {
+      if (!inventory.spendCoins(this.price10)) return null;
+      const prizes = [];
+      for (let i = 0; i < 10; i++) prizes.push(this.rollOnce());
+      return prizes;
+    },
+    rollOnce() {
       const rarity = this.rollRarity();
       this.pity = (rarity === 'epic' || rarity === 'legendary' || rarity === 'mythic') ? 0 : this.pity + 1;
 
@@ -524,6 +537,10 @@ async function init(character, saved, audio) {
     // creation, applied live to the hero (and persisted with the save)
     appearance: {
       config: character,
+      rename(name) {
+        character.name = name;
+        hud.setName(name);
+      },
       apply() {
         player.applyAppearance();
         // re-attach equipped cosmetics onto the fresh rig
@@ -625,8 +642,9 @@ async function init(character, saved, audio) {
     }
     if (lv % 5 === 0) {
       // milestone: a cosmetic you don't own yet (common → rare)
-      const pool = ['hat_straw', 'hat_leaf', 'back_pack', 'hat_bandana', 'hat_miner', 'back_sprout',
-        'hat_wizard', 'hat_catears', 'back_bubble', 'trail_petal']
+      const pool = ['hat_straw', 'hat_leaf', 'back_pack', 'hat_bandana', 'hat_miner', 'hat_chef',
+        'back_sprout', 'back_shell', 'trail_leaf', 'hat_wizard', 'hat_catears', 'hat_pirate',
+        'back_bubble', 'back_balloon', 'trail_petal', 'trail_frost']
         .filter((id) => inventory.count(id) === 0);
       if (pool.length) {
         const id = pool[Math.floor(Math.random() * pool.length)];

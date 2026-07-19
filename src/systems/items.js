@@ -79,6 +79,10 @@ export const ITEMS = {
   hat_viking:  { name: 'Viking Helm', cosmetic: 'hat', rarity: 'epic' },
   hat_crown:   { name: 'Royal Crown', cosmetic: 'hat', rarity: 'legendary' },
   hat_halo:    { name: 'Radiant Halo', cosmetic: 'hat', rarity: 'mythic' },
+  hat_chef:    { name: 'Chef Toque', cosmetic: 'hat', rarity: 'uncommon' },
+  hat_pirate:  { name: 'Pirate Tricorn', cosmetic: 'hat', rarity: 'rare' },
+  hat_pumpkin: { name: 'Pumpkin Head', cosmetic: 'hat', rarity: 'epic' },
+  hat_kitsune: { name: 'Kitsune Mask', cosmetic: 'hat', rarity: 'legendary' },
   // back
   back_pack:      { name: 'Traveler Pack', cosmetic: 'back', rarity: 'common' },
   back_sprout:    { name: 'Sprout Wings', cosmetic: 'back', rarity: 'uncommon' },
@@ -86,8 +90,13 @@ export const ITEMS = {
   back_butterfly: { name: 'Butterfly Wings', cosmetic: 'back', rarity: 'epic' },
   back_phoenix:   { name: 'Phoenix Wings', cosmetic: 'back', rarity: 'legendary' },
   back_prism:     { name: 'Prism Wings', cosmetic: 'back', rarity: 'mythic' },
+  back_shell:     { name: 'Turtle Shell', cosmetic: 'back', rarity: 'uncommon' },
+  back_balloon:   { name: 'Red Balloon', cosmetic: 'back', rarity: 'rare' },
+  back_koi:       { name: 'Koi Kite', cosmetic: 'back', rarity: 'epic' },
   // movement trails
+  trail_leaf:    { name: 'Leaf Trail', cosmetic: 'trail', rarity: 'uncommon' },
   trail_petal:   { name: 'Petal Trail', cosmetic: 'trail', rarity: 'rare' },
+  trail_frost:   { name: 'Frost Trail', cosmetic: 'trail', rarity: 'rare' },
   trail_ember:   { name: 'Ember Trail', cosmetic: 'trail', rarity: 'epic' },
   trail_star:    { name: 'Star Trail', cosmetic: 'trail', rarity: 'legendary' },
   trail_rainbow: { name: 'Rainbow Trail', cosmetic: 'trail', rarity: 'mythic' },
@@ -100,6 +109,7 @@ export const ITEMS = {
   mount_nimbus:     { name: 'Nimbus Whistle', mountId: 'nimbus' },
   mount_blossom:    { name: 'Blossom Whistle', mountId: 'blossom', rarity: 'legendary' },
   mount_aurora:     { name: 'Aurora Whistle', mountId: 'aurora', rarity: 'mythic' },
+  mount_pebble:     { name: 'Pebble Whistle', mountId: 'pebble', rarity: 'epic' },
 
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },

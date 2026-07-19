@@ -859,6 +859,7 @@ export const MOUNT_ICON_COLORS = {
   mount_nimbus: '#b8d0f0',
   mount_blossom: '#f0a8c8',
   mount_aurora: '#8ae0d8',
+  mount_pebble: '#9a9a92',
 };
 
 const SEED_COLORS = {

@@ -144,7 +144,7 @@ export function createHousing(scene, terrain, decorBlocked, particles, avoid = [
   const S2 = terrain.size / 2;
   // a parcel (future house ~3x3 cells) must never overlap a landmark/camp
   // footprint — checking just the center cell is not enough
-  const HOUSE_FOOT = 3.4;
+  const HOUSE_FOOT = 4;
   const clearOfFoots = (x, z) => {
     for (const f of avoid) {
       if (Math.hypot(f.x - x, f.z - z) < (f.r ?? 4) + HOUSE_FOOT) return false;

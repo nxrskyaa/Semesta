@@ -88,6 +88,7 @@ export function createProjectiles(scene, terrain) {
 
       if (dead) {
         scene.remove(p.mesh);
+        p.mesh.material.dispose(); // geometry is shared — material is per-shot
         list.splice(i, 1);
       }
     }

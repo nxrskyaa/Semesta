@@ -36,6 +36,11 @@ export const MOUNT_DEFS = {
     desc: 'GACHA EXCLUSIVE — a sakura-fawn that sheds petals as she runs.',
     speedMult: 1.7, jumpMult: 1.35, seatH: 0.58, petals: true,
   },
+  pebble: { // ordering matters: toggleMount rides the LAST owned def
+    name: 'Pebble', item: 'mount_pebble', color: '#9a9a92',
+    desc: 'GACHA EXCLUSIVE — a boulder puppy with a mossy back. Sturdy as a mountain.',
+    speedMult: 1.6, jumpMult: 1.2, seatH: 0.6, armor: 0.12,
+  },
   aurora: {
     name: 'Aurora', item: 'mount_aurora', color: '#8ae0d8',
     desc: 'MYTHIC — a spirit elk woven from the northern lights. Leaves shimmer where it steps.',
@@ -335,6 +340,45 @@ const BUILDERS = {
     g.userData.puffs = puffs;
     g.userData.ribbons = ribbons;
     g.userData.legs = [];
+    return g;
+  },
+  pebble() {
+    // boulder puppy: chunky faceted stone body, mossy saddle patch, pebbly tail
+    const g = new THREE.Group();
+    const stone = lam('#9a9a92');
+    const stoneDark = lam('#7a7a72');
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.42, 0.78), stone);
+    body.position.y = 0.44;
+    body.castShadow = true;
+    for (const [dx, dy, dz, s] of [[-0.2, 0.6, 0.2, 0.14], [0.22, 0.62, -0.1, 0.12], [0, 0.64, -0.3, 0.11]]) {
+      const chip = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), stoneDark);
+      chip.position.set(dx, dy, dz);
+      g.add(chip);
+    }
+    const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lam('#6fa05a'));
+    moss.position.set(0, 0.66, 0.05);
+    moss.scale.y = 0.5;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.36, 0.32), stone);
+    head.position.set(0, 0.66, 0.5);
+    head.castShadow = true;
+    addFace(head, 'pebble', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 1, mouth: 'open', cheeks: 'rgba(180,150,130,0.5)' }, 0.36, 0.28, 0, 0.02, 0.17);
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.14, 4), stoneDark);
+      ear.position.set(sx * 0.14, 0.22, -0.02);
+      head.add(ear);
+    }
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.07, 0.32), lam('#8a6a48'));
+    saddle.position.y = 0.68;
+    const legs = [];
+    for (const [dx, dz] of [[-0.18, 0.26], [0.18, 0.26], [-0.18, -0.26], [0.18, -0.26]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.28, 0.14), stoneDark);
+      leg.position.set(dx, 0.14, dz);
+      g.add(leg); legs.push(leg);
+    }
+    const tail = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09, 0), stoneDark);
+    tail.position.set(0, 0.52, -0.46);
+    g.add(body, moss, head, saddle, tail);
+    g.userData.legs = legs;
     return g;
   },
 };

@@ -55,6 +55,7 @@ export function createPickups(scene, terrain) {
       if (d < PICKUP_R) {
         onPickup(it.id, it.count);
         scene.remove(it.spr);
+        it.spr.material.dispose(); // icon texture is cached & shared — keep it
         items.splice(i, 1);
       }
     }

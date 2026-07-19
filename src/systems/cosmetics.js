@@ -9,7 +9,9 @@ function glow(color) { return new THREE.MeshBasicMaterial({ color: new THREE.Col
 
 // trail cosmetics: color + emission style consumed by main's trail emitter
 export const TRAILS = {
+  trail_leaf:    { colors: ['#7ac866', '#b8e8a8'], rate: 4, rise: 0.5 },
   trail_petal:   { colors: ['#f4a8ce', '#f9d0e4'], rate: 5, rise: 0.6 },
+  trail_frost:   { colors: ['#bfe6ff', '#e8f6ff'], rate: 5, rise: 0.4 },
   trail_ember:   { colors: ['#ff9a3a', '#ffd166'], rate: 7, rise: 1.4 },
   trail_star:    { colors: ['#ffe27a', '#fff6c8'], rate: 6, rise: 0.9 },
   trail_rainbow: { rainbow: true, rate: 9, rise: 1.0 },
@@ -138,6 +140,92 @@ const HAT_BUILDERS = {
     g.userData.spin = ring;
     return g;
   },
+  hat_chef() {
+    const g = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.28, 0.12, 9), lam('#f4f4ec'));
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.3, 9, 7), lam('#ffffff'));
+    puff.position.y = 0.22;
+    puff.scale.y = 0.8;
+    for (const a of [0.5, 2.5, 4.4]) {
+      const bump = new THREE.Mesh(new THREE.SphereGeometry(0.13, 7, 6), lam('#ffffff'));
+      bump.position.set(Math.cos(a) * 0.2, 0.3, Math.sin(a) * 0.2);
+      g.add(bump);
+    }
+    g.add(band, puff);
+    return g;
+  },
+  hat_pirate() {
+    const g = new THREE.Group();
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), lam('#2c2c30'));
+    for (const a of [0, 2.1, 4.2]) { // three cocked brims
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.16), lam('#2c2c30'));
+      brim.position.set(Math.cos(a) * 0.22, 0.08, Math.sin(a) * 0.22);
+      brim.rotation.y = -a;
+      brim.rotation.z = 0.35;
+      g.add(brim);
+    }
+    const skull = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.02), lam('#f0ead8'));
+    skull.position.set(0, 0.12, 0.27);
+    const trim = new THREE.Mesh(new THREE.CylinderGeometry(0.285, 0.29, 0.04, 8), lam('#c8a03a'));
+    trim.position.y = 0.0;
+    g.add(dome, skull, trim);
+    return g;
+  },
+  hat_pumpkin() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), lam('#e8823a'));
+    body.position.y = 0.14;
+    body.scale.y = 0.85;
+    for (let i = 0; i < 4; i++) { // ribs
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.02, 4, 12), lam('#c96a2e'));
+      rib.position.y = 0.14;
+      rib.rotation.y = (i / 4) * Math.PI;
+      rib.rotation.x = Math.PI / 2;
+      rib.scale.y = 0.85;
+      g.add(rib);
+    }
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.14, 5), lam('#4f9857'));
+    stem.position.y = 0.46;
+    stem.rotation.z = 0.2;
+    // glowing jack-o-lantern face
+    for (const [ex, ey] of [[-0.11, 0.2], [0.11, 0.2]]) {
+      const eye = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.07, 3), glow('#ffd166'));
+      eye.position.set(ex, ey, 0.31);
+      g.add(eye);
+    }
+    const grin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.02), glow('#ffd166'));
+    grin.position.set(0, 0.07, 0.33);
+    const light = new THREE.PointLight(0xff9a3a, 0.9, 3, 2);
+    light.position.y = 0.2;
+    g.add(body, stem, grin, light);
+    return g;
+  },
+  hat_kitsune() {
+    const g = new THREE.Group();
+    // white fox mask worn on the head, red markings, gold bell
+    const mask = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.16), lam('#f8f4ec'));
+    mask.position.set(0, 0.1, 0.14);
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.24, 4), lam('#f8f4ec'));
+      ear.position.set(sx * 0.16, 0.34, 0.08);
+      ear.rotation.z = -sx * 0.15;
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.13, 4), lam('#d84a4a'));
+      inner.position.set(sx * 0.16, 0.32, 0.11);
+      g.add(ear, inner);
+      const mark = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.02), lam('#d84a4a'));
+      mark.position.set(sx * 0.12, 0.14, 0.23);
+      mark.rotation.z = sx * 0.5;
+      g.add(mark);
+    }
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), lam('#f8f4ec'));
+    snout.position.set(0, 0.0, 0.24);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), lam('#d84a4a'));
+    nose.position.set(0, -0.01, 0.3);
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), glow('#ffd166'));
+    bell.position.set(0, -0.12, 0.22);
+    g.add(mask, snout, nose, bell);
+    return g;
+  },
 };
 
 function wing(colorA, colorB, opacity = 1, additive = false) {
@@ -190,6 +278,58 @@ const BACK_BUILDERS = {
     g.add(light);
     g.userData.flap = true;
     g.userData.prism = true; // hue-cycles in update
+    return g;
+  },
+  back_shell() {
+    const g = new THREE.Group();
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.26, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), lam('#5a8a52'));
+    dome.rotation.x = Math.PI / 2; // dome bulges backwards off the back
+    dome.position.z = -0.02;
+    for (const [dx, dy] of [[0, 0.06], [-0.11, -0.06], [0.11, -0.06]]) {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.03), lam('#c8b464'));
+      plate.position.set(dx, dy, -0.2);
+      g.add(plate);
+    }
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.035, 5, 12), lam('#4a7043'));
+    rim.position.z = -0.01;
+    g.add(dome, rim);
+    return g;
+  },
+  back_balloon() {
+    const g = new THREE.Group();
+    const balloon = new THREE.Mesh(new THREE.SphereGeometry(0.2, 9, 7), lam('#e05a48'));
+    balloon.position.set(0.12, 0.55, -0.12);
+    balloon.scale.y = 1.15;
+    const knot = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.06, 5), lam('#b8443a'));
+    knot.position.set(0.12, 0.32, -0.12);
+    knot.rotation.x = Math.PI;
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), glow('#ffc8c0'));
+    shine.position.set(0.06, 0.62, -0.02);
+    const string = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.34, 0.015), lam('#e8e2d2'));
+    string.position.set(0.12, 0.14, -0.12);
+    g.add(balloon, knot, shine, string);
+    g.userData.balloon = balloon; // bobs in update
+    g.userData.balloonBits = [knot, shine, string];
+    return g;
+  },
+  back_koi() {
+    const g = new THREE.Group();
+    // a koinobori windsock on a little bamboo pole
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.7, 5), lam('#8a6a48'));
+    pole.position.set(-0.12, 0.25, -0.1);
+    pole.rotation.z = 0.25;
+    const koi = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.42), lam('#f0716a'));
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.42), lam('#f8f4ec'));
+    belly.position.y = -0.05;
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.14), lam('#d84a4a'));
+    tail.position.z = -0.26;
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.05, 0.05), lam('#2c2c30'));
+    eye.position.set(0, 0.03, 0.16);
+    koi.add(body, belly, tail, eye);
+    koi.position.set(-0.24, 0.62, -0.1);
+    g.add(pole, koi);
+    g.userData.koi = koi; // swims in the wind
     return g;
   },
 };
@@ -269,6 +409,15 @@ export function createWardrobe(player) {
     if (backMesh?.userData.prism) {
       _hue.setHSL((time * 0.12) % 1, 0.7, 0.72);
       backMesh.traverse((o) => { if (o.isMesh) o.material.color.copy(_hue); });
+    }
+    if (backMesh?.userData.balloon) {
+      const bob = Math.sin(time * 1.8) * 0.05;
+      backMesh.userData.balloon.position.y = 0.55 + bob;
+      backMesh.userData.balloonBits[1].position.y = 0.62 + bob;
+    }
+    if (backMesh?.userData.koi) {
+      backMesh.userData.koi.rotation.y = Math.sin(time * 2.2) * 0.4;
+      backMesh.userData.koi.rotation.z = Math.sin(time * 3.1) * 0.15;
     }
   }
 

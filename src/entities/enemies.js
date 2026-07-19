@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { WATER_LEVEL, BLOCK_H } from '../world/terrain.js';
 import { makeCritterFaceTexture, toTexture } from '../gfx/textures.js';
 import { rollDrops } from '../systems/items.js';
+import { disposeObject } from '../util/dispose.js';
 
 // Aggro ranges are deliberately modest — monsters shouldn't dogpile players
 // who are just exploring; you mostly fight what you walk up to.
@@ -577,6 +578,14 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
   const enemies = [];
   // hooks: { onPlayerHit(enemy, dmg), sfx(name) }
 
+  // free every GPU resource a dead/despawned enemy owns (its nameplate canvas
+  // texture is per-enemy, so that map goes too; face textures stay cached)
+  function retire(e) {
+    scene.remove(e.mesh);
+    e.np?.sprite?.material?.map?.dispose();
+    disposeObject(e.mesh);
+  }
+
   function levelFor(x, z) {
     const d = Math.hypot(x - terrain.spawn.x, z - terrain.spawn.z);
     return 1 + Math.floor(d / 26);
@@ -664,7 +673,8 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     }
   }
 
-  // spawn a world boss at a random spot 20-32 away from the player
+  // spawn a world boss at a random spot 20-32 away from the player — and
+  // always well clear of the village, so it never lumbers at the basecamp
   function spawnWorldBoss(playerPos, kindId) {
     const kind = WORLD_BOSSES[kindId];
     if (!kind) return null;
@@ -678,6 +688,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (terrain.heightCell(ix, iz) <= WATER_LEVEL) continue;
       if (decorBlocked.has(`${ix},${iz}`)) continue;
       if (hooks.inSafeZone?.(x, z)) continue;
+      if (Math.hypot(x - terrain.spawn.x, z - terrain.spawn.z) < 26) continue;
 
       const mesh = BUILDERS[kind.base]();
       mesh.scale.setScalar(kind.scale);
@@ -745,7 +756,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         if (Math.random() < 0.5) drops.push({ id: 'tonic', count: 1 });
       }
       onKill(e, drops);
-      scene.remove(e.mesh);
+      retire(e);
     }
   }
 
@@ -765,13 +776,13 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         e.bossT -= dt;
         if (e.bossT <= 0) { // lumbers back into the wilds
           particles.burst(p.clone().add(new THREE.Vector3(0, 0.8, 0)), '#8a8a8a', 20, 3);
-          e.dead = true; e.expired = true; scene.remove(e.mesh); continue;
+          e.dead = true; e.expired = true; retire(e); continue;
         }
       } else if (distP > 60 || (e.def.nightOnly && !isNight)) {
         if (e.def.nightOnly && !isNight) {
           particles.burst(p.clone().add(new THREE.Vector3(0, 0.5, 0)), '#9adcf0', 10, 2);
         }
-        e.dead = true; scene.remove(e.mesh); continue;
+        e.dead = true; retire(e); continue;
       }
 
       e.anim += dt;
@@ -805,10 +816,15 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         continue;
       }
 
-      // the player is BUSY (fishing, chatting) — cozy rule: nothing hunts
-      // you mid-hobby. Everyone, world bosses included, loses interest.
-      if (playerState.busy && e.state === 'aggro') {
+      // the player is BUSY (fishing, chatting) OR standing inside a sanctuary
+      // — cozy rule: nothing hunts you. Everyone loses interest, so monsters
+      // never pile up bumping against the safe-zone boundary either.
+      const playerSafe = hooks.inSafeZone?.(playerPos.x, playerPos.z);
+      if ((playerState.busy || playerSafe) && e.state === 'aggro') {
         e.state = 'wander';
+        e.wanderT = 2 + Math.random() * 2;
+        // wander AWAY from the sanctuary instead of hugging its wall
+        if (playerSafe) e.dir = Math.atan2(p.z - playerSafe.z, p.x - playerSafe.x);
         e.np.sprite.visible = e.hp < e.hpMax;
       }
 
@@ -831,7 +847,8 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (e.state === 'wander') {
         e.wanderT -= dt;
         if (e.wanderT <= 0) { e.wanderT = 1.5 + Math.random() * 3; e.dir = Math.random() * Math.PI * 2; }
-        if (distP < e.def.aggro && !playerState.busy) e.state = 'aggro';
+        if (distP < e.def.aggro && !playerState.busy
+          && !hooks.inSafeZone?.(playerPos.x, playerPos.z)) e.state = 'aggro';
         moveEnemy(e, Math.cos(e.dir) * e.def.speed * 0.5, Math.sin(e.dir) * e.def.speed * 0.5, dt);
       } else if (e.def.behavior === 'ranged') {
         rangedAI(e, playerState, distP, dt);

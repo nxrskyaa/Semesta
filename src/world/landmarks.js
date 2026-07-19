@@ -901,7 +901,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   const tower = buildRuinTower();
   if (place(tower, S2 * 0.15, S2 * 0.5, 1, 12, 3)) built.push(tower);
   const school = buildSchool();
-  if (place(school, -S2 * 0.2, -S2 * 0.42, 2, 12, 5)) built.push(school);
+  if (place(school, -S2 * 0.2, -S2 * 0.42, 2, 12, 6)) built.push(school);
   const heart = buildHeartTorches();
   if (place(heart, S2 * 0.38, S2 * 0.22, 2, 12, 4)) built.push(heart);
   // the Rialo monument stands right at the basecamp so nobody misses it —
@@ -949,7 +949,8 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   // --- Pokopia-style life for the quiet stretches (all far from the village):
   // a swimming pool, a spring waterfall, a kickabout, gossip pairs & nap nests
   const pool = buildPool();
-  if (place(pool, -S2 * 0.28, S2 * 0.42, 2, 12, 5)) built.push(pool);
+  // blockR 3 covers the whole 5.6x4.4 deck — monsters can't clip through it
+  if (place(pool, -S2 * 0.28, S2 * 0.42, 3, 12, 5)) built.push(pool);
   const falls = buildWaterfall();
   if (place(falls, S2 * 0.32, -S2 * 0.35, 2, 12, 4)) built.push(falls);
   const kick = buildKickabout();

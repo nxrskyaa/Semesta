@@ -103,7 +103,7 @@ const CSS = `
 
 /* ---- interact prompt (bottom center, above skill bar) ---- */
 #hud .prompt {
-  position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 136px; transform: translateX(-50%);
   font-size: 12px; color: #f0ead8; background: rgba(14,18,12,0.85);
   border: 2px solid #4a5a42; padding: 6px 14px; display: none; white-space: nowrap;
   letter-spacing: 1px;
@@ -150,7 +150,7 @@ const CSS = `
 }
 #hud .skill.empty { opacity: 0.45; }
 #hud .weapon-chip {
-  position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 106px; transform: translateX(-50%);
   display: flex; gap: 6px; align-items: center; font-size: 10px; color: #cfd8c8;
   background: rgba(12,16,11,0.7); padding: 3px 9px; border: 1px solid #35422f;
 }
@@ -607,6 +607,12 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   const autoBtn = root.querySelector('.autobtn');
   function setAuto(on) { autoBtn?.classList.toggle('auto-on', !!on); }
 
+  // live rename support (Wardrobe → APPEARANCE): refresh the plate name
+  function setName(name) {
+    const el = root.querySelector('.plate .pname span');
+    if (el) el.textContent = name;
+  }
+
   // waypoint beacon: arrow rotates toward the mark, shows remaining distance
   const beaconEl = root.querySelector('.pinbeacon');
   const beaconArr = beaconEl.querySelector('.arr');
@@ -639,6 +645,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait,
+    refreshPortrait, setName,
   };
 }
