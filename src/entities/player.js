@@ -33,7 +33,7 @@ export function buildCharacterMesh(config) {
   const hairC = HAIR_COLORS[(config.hairColor ?? 0) % HAIR_COLORS.length];
   const outfit = OUTFIT_COLORS[(config.outfit ?? 0) % OUTFIT_COLORS.length];
   const eyeC = EYE_COLORS[(config.eyes ?? 0) % EYE_COLORS.length];
-  const style = (config.outfitStyle ?? 0) % 4; // 0 tunic, 1 robe, 2 leather, 3 plate
+  const style = (config.outfitStyle ?? 0) % 6; // 0 tunic 1 robe 2 leather 3 plate 4 knight 5 coat
   const female = config.gender === 'female';
   const hairStyle = config.hairStyle ?? 0;
   const bald = hairStyle === BALD_STYLE;
@@ -109,7 +109,7 @@ export function buildCharacterMesh(config) {
     const kneeL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.07, 0.18), leatherMat);
     kneeL.position.y = 0.02; legL.add(kneeL);
     const kneeR = kneeL.clone(); legR.add(kneeR);
-  } else { // plate: layered chest plates, gold trim, tasset skirt
+  } else if (style === 3) { // plate: layered chest plates, gold trim, tasset skirt
     const chest = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.22, 0.26), clothLight);
     at(chest, 0, 0.57, 0);
     const chestLow = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.1, 0.25), clothMat);
@@ -120,6 +120,54 @@ export function buildCharacterMesh(config) {
     at(emblem, 0, 0.58, 0.135);
     const tasset = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.09, 0.09, 0.28), clothDark);
     at(tasset, 0, 0.28, 0);
+  } else if (style === 4) { // knight: heavy segmented plate, gorget, ridged breastplate + fauld
+    const gorget = new THREE.Mesh(new THREE.BoxGeometry(bw - 0.02, 0.07, 0.25), goldMat);
+    at(gorget, 0, 0.665, 0);
+    const breast = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.26, 0.28), clothLight);
+    at(breast, 0, 0.55, 0);
+    breast.castShadow = true;
+    // central keel ridge + rivets
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.31), goldMat);
+    at(ridge, 0, 0.55, 0);
+    for (const sy of [0.62, 0.5]) {
+      for (const sx of [-1, 1]) {
+        const rivet = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), goldMat);
+        at(rivet, sx * (bw / 2), sy, 0.145);
+      }
+    }
+    const abs = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.02, 0.12, 0.25), clothMat);
+    at(abs, 0, 0.38, 0);
+    // fauld: two overlapping skirt plates
+    const fauld1 = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.1, 0.08, 0.29), clothDark);
+    at(fauld1, 0, 0.3, 0);
+    const fauld2 = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.12, 0.07, 0.3), clothLight);
+    at(fauld2, 0, 0.24, 0);
+    const faTrim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.13, 0.02, 0.31), goldMat);
+    at(faTrim, 0, 0.205, 0);
+  } else { // coat: long ranger duster with lapels, buttons & split tails
+    const coat = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.06, 0.4, 0.26), clothMat);
+    at(coat, 0, 0.44, 0);
+    coat.castShadow = true;
+    // open V-lapels
+    for (const sx of [-1, 1]) {
+      const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.24, 0.02), clothLight);
+      at(lapel, sx * 0.09, 0.58, 0.13);
+      lapel.rotation.z = sx * 0.3;
+    }
+    // brass buttons down the front
+    for (const by of [0.52, 0.44, 0.36]) {
+      const btn = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), goldMat);
+      at(btn, 0, by, 0.135);
+    }
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.05, 0.27), leatherMat);
+    at(belt, 0, 0.33, 0);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02), goldMat);
+    at(buckle, 0, 0.33, 0.14);
+    // two coat-tails hanging past the waist
+    for (const sx of [-1, 1]) {
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(bw / 2 + 0.02, 0.22, 0.06), clothDark);
+      at(tail, sx * (bw / 4 + 0.02), 0.13, -0.11);
+    }
   }
 
   // --- arms (pivot at the shoulder) ---
@@ -131,7 +179,7 @@ export function buildCharacterMesh(config) {
     arm.castShadow = true;
     pivot.add(arm);
     const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.13, 0.14),
-      style === 3 ? clothLight : clothMat);
+      (style === 3 || style === 4) ? clothLight : clothMat);
     sleeve.position.y = -0.04;
     pivot.add(sleeve);
     if (style === 1) { // wide robe sleeves
@@ -150,8 +198,21 @@ export function buildCharacterMesh(config) {
       pad.position.set(sx * 0.02, 0.05, 0);
       pivot.add(pad);
       const padTrim = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.2), goldMat);
-      padTrim.position.set(sx * 0.02, -0.01, 0);
+      padTrim.position.set(sx * 0.01, -0.01, 0);
       pivot.add(padTrim);
+    }
+  } else if (style === 4) { // knight: big ridged pauldrons with a spike
+    for (const [pivot, sx] of [[armL, -1], [armR, 1]]) {
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.22), clothLight);
+      pad.position.set(sx * 0.03, 0.06, 0);
+      pivot.add(pad);
+      const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.03, 0.06), goldMat);
+      ridge.position.set(sx * 0.03, 0.12, 0);
+      pivot.add(ridge);
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4), goldMat);
+      spike.position.set(sx * 0.11, 0.13, 0);
+      spike.rotation.z = sx * 0.5;
+      pivot.add(spike);
     }
   } else if (style === 2) { // leather shoulder straps
     for (const [pivot, sx] of [[armL, -1], [armR, 1]]) {

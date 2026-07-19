@@ -126,7 +126,7 @@ export const EYE_COLORS = [
 ];
 
 // outfit silhouettes handled by the mesh builder
-export const OUTFIT_STYLES = ['Tunic', 'Robe', 'Leather', 'Plate'];
+export const OUTFIT_STYLES = ['Tunic', 'Robe', 'Leather', 'Plate', 'Knight', 'Coat'];
 
 export const OUTFIT_COLORS = [
   '#b0503f', '#3f6fb0', '#4a9152', '#8a62b8', '#c8a03a',

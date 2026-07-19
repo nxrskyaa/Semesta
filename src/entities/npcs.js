@@ -13,7 +13,7 @@ export const NPC_DEFS = [
     id: 'elder', name: 'Elder Maple', species: 'bear', role: 'Village Elder',
     fur: '#a8825a', furLight: '#c8a87a', outfit: '#7a5a9a',
     dialog: [
-      'Welcome to Riverbrook, traveler. Our little village could use a hero like you.',
+      'Welcome to Anavela Universe, traveler. Our little village could use a hero like you.',
       'The wilds have grown restless lately... monsters everywhere.',
       'Rest by the torches when night falls. The Wisps come out in the dark.',
       'A great beast rises out in the wilds every few minutes. Be ready.',
@@ -115,7 +115,7 @@ export const NPC_DEFS = [
     id: 'barong', name: 'Barong', species: 'barong', role: 'Village Guardian', ambient: true,
     fur: '#c8302a', furLight: '#f0d24a', outfit: '#1a1a22',
     dialog: [
-      'RRROAR... ahem. Greetings, little one. I am Barong, guardian of Riverbrook.',
+      'RRROAR... ahem. Greetings, little one. I am Barong, guardian of Anavela Universe.',
       'For ages I have kept the dark spirits beyond the treeline. Fear not while I stand.',
       'The old dances of Bali gave me form. Honour, courage, and a very good mane.',
     ],

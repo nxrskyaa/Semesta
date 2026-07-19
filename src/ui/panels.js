@@ -1,6 +1,11 @@
 // Panels: Bag (Tab), Craft (C), Forge (V), Pets (P), Wardrobe (O), Help (?) — pixel style, touch friendly.
+import * as THREE from 'three';
 import { ITEMS, RARITY, RARITY_ORDER } from '../systems/items.js';
+import { aboutInner, paintAboutRialo, ABOUT_BADGE_CSS } from './about.js';
 import { itemIconUrl } from '../gfx/textures.js';
+import { buildCharacterMesh } from '../entities/player.js';
+import { buildCosmetic } from '../systems/cosmetics.js';
+import { CLASSES } from '../systems/classes.js';
 import { recipesFor, canCraft, craft } from '../systems/crafting.js';
 import { forgeCost, forgeChance, MAX_PLUS } from '../systems/forge.js';
 import { PET_DEFS } from '../systems/pets.js';
@@ -26,7 +31,8 @@ const CSS = `
 .panel.show { display: block; animation: panel-in 0.14s ease-out; }
 @keyframes panel-in { from { transform: translate(-50%, -50%) scale(0.97); opacity: 0; } }
 .panel h3 {
-  font-size: 14px; letter-spacing: 4px; color: var(--gold); margin: -4px -4px 12px;
+  font-family: var(--font-display);
+  font-size: 13px; letter-spacing: 3px; color: var(--gold); margin: -4px -4px 12px;
   padding: 8px 10px;
   background: linear-gradient(180deg, rgba(216,184,102,0.12), rgba(216,184,102,0.03));
   box-shadow: inset 0 0 0 1px rgba(216,184,102,0.22), inset 0 -3px 0 0 rgba(0,0,0,0.35);
@@ -137,11 +143,80 @@ export function createPanels(hudRoot, {
     gacha: document.createElement('div'),
     ward: document.createElement('div'),
     help: document.createElement('div'),
+    about: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
     p.className = 'panel';
     hudRoot.appendChild(p);
   }
+
+  // --- live 3D hero preview for the Wardrobe (rebuilt from the SAME config
+  // and equipped cosmetics, so every edit shows instantly) ---
+  const heroPreview = (() => {
+    // owns a SINGLE persistent canvas + renderer (moved between panel renders)
+    // so we never leak WebGL contexts on re-render
+    let renderer = null, scene = null, cam = null, rig = null, raf = 0, alive = false;
+    let hatMesh = null, backMesh = null, spin = 0.5;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'w-preview';
+    function ensure() {
+      if (renderer) return;
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true });
+      scene = new THREE.Scene();
+      cam = new THREE.PerspectiveCamera(34, 1, 0.1, 20);
+      cam.position.set(0, 1.05, 3.0); cam.lookAt(0, 0.62, 0);
+      scene.add(new THREE.HemisphereLight(0xcfd8c0, 0x3a443a, 1.25));
+      const key = new THREE.DirectionalLight(0xfff2dc, 1.6); key.position.set(2, 3, 2.5); scene.add(key);
+      const rim = new THREE.DirectionalLight(0xc8a03a, 0.75); rim.position.set(-2, 1.5, -2); scene.add(rim);
+      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.82, 0.14, 8),
+        new THREE.MeshLambertMaterial({ color: 0x4a5236 }));
+      ped.position.y = -0.07; scene.add(ped);
+    }
+    function rebuild() {
+      if (!wardrobe?.appearance) return;
+      ensure();
+      if (rig) { scene.remove(rig.group); }
+      hatMesh = backMesh = null;
+      rig = buildCharacterMesh(wardrobe.appearance.config);
+      rig.setWeapon(CLASSES[character.cls].startWeapon);
+      rig.group.rotation.y = spin;
+      scene.add(rig.group);
+      // mirror the currently-equipped cosmetics
+      const st = wardrobe.state;
+      if (st.hat) { const c = buildCosmetic(st.hat); if (c) { hatMesh = c.mesh; hatMesh.position.y = 0.26; rig.parts.head.add(hatMesh); } }
+      if (st.back) { const c = buildCosmetic(st.back); if (c) { backMesh = c.mesh; backMesh.position.set(0, 0.05, -0.16); rig.parts.body.add(backMesh); } }
+    }
+    function loop() {
+      if (!alive) return;
+      raf = requestAnimationFrame(loop);
+      spin += 0.006;
+      if (rig) rig.group.rotation.y = spin;
+      // keep cosmetics lively in the preview
+      const t = performance.now() / 1000;
+      if (backMesh?.userData.wingRoots) {
+        const beat = (Math.sin(t * 4) * 0.5 + 0.5) ** 1.6;
+        backMesh.userData.wingRoots[0].rotation.y = 0.15 + beat * 0.6;
+        backMesh.userData.wingRoots[1].rotation.y = -(0.15 + beat * 0.6);
+      }
+      if (hatMesh?.userData.spin) hatMesh.userData.spin.rotation.z = t * 0.8;
+      if (renderer && scene && cam) renderer.render(scene, cam);
+    }
+    return {
+      // slot = the placeholder element in the panel; we move our canvas into it
+      mount(slot) {
+        ensure();
+        slot.replaceWith(canvas);
+        const r = canvas.getBoundingClientRect();
+        const w = r.width || 220, h = r.height || 200;
+        renderer.setSize(w, h, false);
+        cam.aspect = w / h; cam.updateProjectionMatrix();
+        rebuild();
+        alive = true; if (!raf) loop();
+      },
+      refresh() { if (alive) rebuild(); },
+      stop() { alive = false; cancelAnimationFrame(raf); raf = 0; },
+    };
+  })();
 
   function renderInventory() {
     const mats = [...inventory.state.materials.entries()];
@@ -809,6 +884,11 @@ export function createPanels(hudRoot, {
       ? renderWardAppearance() : renderWardCosmetics();
     panels.ward.innerHTML = `<h3>WARDROBE <small>[O] close</small></h3>
       <style>
+        .w-preview { display: block; width: 100%; height: 200px; margin-bottom: 10px;
+          background: radial-gradient(ellipse at 50% 92%, rgba(200,176,96,0.16), transparent 55%),
+          linear-gradient(180deg, rgba(10,14,16,0.4), rgba(8,12,9,0.7));
+          box-shadow: inset 0 0 0 2px #2c352c, inset 0 0 40px rgba(0,0,0,0.5); image-rendering: auto; }
+        .w-preview-hint { text-align: center; font-size: 8px; color: #6a7a62; letter-spacing: 2px; margin: -6px 0 10px; }
         .w-tabs { display: flex; gap: 5px; margin-bottom: 12px; }
         .w-tabs button { flex: 1; font-family: inherit; font-size: 10px; letter-spacing: 2px; cursor: pointer;
           padding: 8px 4px; color: #8a967f; border: 0; background: #131a12; box-shadow: inset 0 0 0 2px #2c352c; }
@@ -827,11 +907,14 @@ export function createPanels(hudRoot, {
         .w-sw.none { background: repeating-linear-gradient(45deg, #131a12, #131a12 4px, #202a20 4px, #202a20 8px); }
         .w-sw.none::after { content: '✕'; position: absolute; inset: 0; text-align: center; line-height: 22px; font-size: 10px; color: #8a967f; }
       </style>
+      ${wardrobe.appearance ? '<div class="w-preview-slot"></div><div class="w-preview-hint">◂ LIVE PREVIEW ▸</div>' : ''}
       ${wardrobe.appearance ? `<div class="w-tabs">
         <button data-wtab="style" class="${wardTab === 'style' ? 'on' : ''}">☺ APPEARANCE</button>
         <button data-wtab="cosmetics" class="${wardTab === 'cosmetics' ? 'on' : ''}">🧢 COSMETICS</button>
       </div>` : ''}
       ${body}`;
+    const slot = panels.ward.querySelector('.w-preview-slot');
+    if (slot) heroPreview.mount(slot);
     panels.ward.querySelectorAll('[data-wtab]').forEach((b) => {
       b.addEventListener('click', () => { wardTab = b.dataset.wtab; audio.sfx('ui'); renderWardrobe(); });
     });
@@ -994,10 +1077,33 @@ export function createPanels(hudRoot, {
     `;
   }
 
+  function renderAbout() {
+    panels.about.innerHTML = `<h3>ABOUT <small>[Esc] close</small></h3>
+      <style>
+        .about-body { text-align: center; }
+        .about-body h4 { font-family: var(--font-display, monospace); font-size: 12px; letter-spacing: 3px; color: var(--gold); margin: 6px 0 10px; }
+        .about-body p { font-size: 10px; color: #cfd8c8; line-height: 1.9; letter-spacing: 1px; margin-bottom: 6px; }
+        .about-body .crew { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 2px; padding-top: 12px; border-top: 1px solid rgba(216,184,102,0.25); }
+        .about-body .ct { font-size: 9px; letter-spacing: 3px; color: #8a967f; }
+        .about-body .member { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          padding: 7px 12px; background: rgba(10,14,9,0.6); box-shadow: inset 0 0 0 1px rgba(216,184,102,0.16); }
+        .about-body .who { text-align: left; }
+        .about-body .who b { display: block; font-size: 11px; color: #ffe9b0; letter-spacing: 1px; }
+        .about-body .who small { font-size: 8px; color: #8a967f; letter-spacing: 1px; }
+        .about-body a.xmini { flex-shrink: 0; font-family: inherit; font-size: 9px; letter-spacing: 1px;
+          padding: 7px 12px; cursor: pointer; color: #e8f0f8; text-decoration: none;
+          background: linear-gradient(180deg, #1c2732, #10161e); box-shadow: var(--pix-btn); }
+        .about-body a.xmini:hover { filter: brightness(1.3); }
+        ${ABOUT_BADGE_CSS}
+      </style>
+      <div class="about-body">${aboutInner('')}</div>`;
+    paintAboutRialo(panels.about);
+  }
+
   const RENDER = {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
-    gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp,
+    gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp, about: renderAbout,
   };
 
   function toggle(which) {
@@ -1007,18 +1113,21 @@ export function createPanels(hudRoot, {
     }
     const show = !target.classList.contains('show');
     target.classList.toggle('show', show);
+    if (which !== 'ward' || !show) heroPreview.stop(); // pause the 3D preview off-panel
     if (show) RENDER[which]();
     return show;
   }
 
   function refresh() {
+    // never re-render the wardrobe from an inventory change while it's open —
+    // it would blow away the live preview & rename focus mid-edit
     for (const [k, p] of Object.entries(panels)) {
-      if (p.classList.contains('show')) RENDER[k]();
+      if (k !== 'ward' && p.classList.contains('show')) RENDER[k]();
     }
   }
 
   function anyOpen() { return Object.values(panels).some((p) => p.classList.contains('show')); }
-  function closeAll() { for (const p of Object.values(panels)) p.classList.remove('show'); }
+  function closeAll() { heroPreview.stop(); for (const p of Object.values(panels)) p.classList.remove('show'); }
 
   inventory.onChange(refresh);
 

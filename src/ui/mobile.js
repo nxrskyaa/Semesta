@@ -84,6 +84,22 @@ const CSS = `
   animation: ctx-pulse 1.6s ease-in-out infinite;
 }
 #touchui .ctx.show { display: flex; }
+/* secondary context button — sits left of the primary ★, calmer green */
+#touchui .ctx2 {
+  position: absolute; right: 100px; bottom: 158px; width: 50px; height: 50px;
+  border-radius: 12px; border: 0; background: linear-gradient(180deg, rgba(52,74,40,0.92), rgba(28,44,20,0.94));
+  color: #cdeaa8; font-size: 18px; display: none; align-items: center; justify-content: center;
+  pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  box-shadow:
+    inset 0 2px 0 0 rgba(200,240,160,0.3), inset 0 -3px 0 0 rgba(0,0,0,0.5),
+    inset 0 0 0 2px #8ac86a, 0 0 0 2px rgba(6,9,6,0.8), 0 0 12px rgba(120,200,90,0.4);
+}
+#touchui .ctx2.show { display: flex; }
+#touchui .ctx2:active { transform: translateY(2px); filter: brightness(1.2); }
+#touchui .ctx2 .lbl {
+  position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%);
+  font-size: 7px; color: #cdeaa8; white-space: nowrap; letter-spacing: 1px; text-shadow: 1px 1px 0 #000;
+}
 @keyframes ctx-pulse { 50% { box-shadow:
   inset 0 2px 0 0 rgba(255,230,160,0.35), inset 0 -3px 0 0 rgba(0,0,0,0.5),
   inset 0 0 0 2px #ffe27a, 0 0 0 2px rgba(6,9,6,0.8), 0 0 22px rgba(255,210,62,0.6); } }
@@ -141,6 +157,7 @@ export function createTouchControls(input, skillIds, callbacks) {
         style="background-image:url(${skillIconUrl(s, SKILLS[s].icon)})"><span class="cdo"></span></button>`).join('')}
       <button class="abtn pot" style="background-image:url(${itemIconUrl('tonic')})"><span class="cnt">0</span></button>
       <button class="ctx"><span class="ic">★</span><span class="lbl"></span></button>
+      <button class="ctx2"><span class="ic">✦</span><span class="lbl"></span></button>
       <button class="afk" title="AFK fishing">💤</button>
     </div>
     <button class="closebtn" title="Close">✕</button>
@@ -216,9 +233,12 @@ export function createTouchControls(input, skillIds, callbacks) {
   on('.jump', () => callbacks.onJump?.());
   on('.pot', callbacks.onPotion);
   on('.ctx', () => callbacks.onInteract?.());
+  on('.ctx2', () => callbacks.onInteract2?.());
   on('.afk', () => callbacks.onAfkFish?.());
   on('.closebtn', () => callbacks.onCloseMenu?.());
   const afkBtn = root.querySelector('.afk');
+  const ctx2Btn = root.querySelector('.ctx2');
+  const ctx2Lbl = root.querySelector('.ctx2 .lbl');
   const closeBtn = root.querySelector('.closebtn');
   root.querySelectorAll('[data-skill]').forEach((b) => {
     b.addEventListener('touchstart', (e) => {
@@ -227,12 +247,19 @@ export function createTouchControls(input, skillIds, callbacks) {
     }, { passive: false });
   });
 
-  // contextual button: pass null to hide, or { label, afk? } to show
-  function setPrompt(p) {
-    if (!p) { ctxBtn.classList.remove('show'); afkBtn.classList.remove('show'); return; }
-    ctxLbl.textContent = p.label;
-    ctxBtn.classList.add('show');
-    afkBtn.classList.toggle('show', !!p.afk);
+  // contextual buttons: primary { label, afk? } + optional secondary { label }
+  function setPrompt(p, p2 = null) {
+    if (!p) { ctxBtn.classList.remove('show'); afkBtn.classList.remove('show'); }
+    else {
+      ctxLbl.textContent = p.label;
+      ctxBtn.classList.add('show');
+      afkBtn.classList.toggle('show', !!p.afk);
+    }
+    if (!p2) { ctx2Btn.classList.remove('show'); }
+    else {
+      ctx2Lbl.textContent = p2.label;
+      ctx2Btn.classList.add('show');
+    }
   }
 
   // show/hide the ESC-replacement close button while a menu/panel is open

@@ -4,7 +4,7 @@ import { ITEMS } from './items.js';
 
 export const QUESTS = {
   welcome: {
-    giver: 'elder', name: 'Welcome to Riverbrook',
+    giver: 'elder', name: 'Welcome to Anavela',
     offer: 'You look capable, adventurer! Let me show you around. First — go say hello to Finn the fisherman by the huts.',
     done: 'You found him! Finn is the best angler this side of the lakes.',
     objective: { type: 'talk', target: 'fisher', n: 1, label: 'Talk to Finn' },
@@ -48,7 +48,7 @@ export const QUESTS = {
   golem_menace: {
     giver: 'elder', name: 'The Golem Menace', requires: ['night_lights', 'gear_up'],
     offer: 'An ancient Golem stirs far from the village. It is our greatest threat... and its core our greatest prize. End it.',
-    done: 'You... you actually did it! Riverbrook will sing of this day! Take this charm — a companion for a true hero.',
+    done: 'You... you actually did it! Anavela Universe will sing of this day! Take this charm — a companion for a true hero.',
     objective: { type: 'kill', target: 'golem', n: 1, label: 'Defeat the Golem' },
     reward: { xp: 250, items: [{ id: 'charm_moku', count: 1 }, { id: 'forge_stone', count: 3 }] },
   },
@@ -91,7 +91,7 @@ export const QUESTS = {
   // --- repeatable grind quests ---
   boss_hunter: {
     giver: 'elder', name: 'Boss Hunter', requires: ['golem_menace'], repeatable: true,
-    offer: 'A great beast stirs again — they rise every few minutes now. Bring one down for Riverbrook!',
+    offer: 'A great beast stirs again — they rise every few minutes now. Bring one down for Anavela Universe!',
     done: 'The ground shakes no more. You are the wall between us and the wilds.',
     objective: { type: 'kill', target: 'worldboss', n: 1, label: 'Defeat 1 World Boss' },
     reward: { xp: 200, items: [{ id: 'forge_stone', count: 3 }, { id: 'tonic', count: 2 }] },

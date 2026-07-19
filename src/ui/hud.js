@@ -111,6 +111,15 @@ const CSS = `
 #hud .prompt.show { display: block; animation: prompt-in 0.12s; }
 #hud .prompt b { color: #ffe27a; background: #202a20; border: 1px solid #4a5a42; padding: 0 5px; margin-right: 5px; }
 @keyframes prompt-in { from { transform: translateX(-50%) translateY(4px); opacity: 0; } }
+/* secondary interact prompt sits just under the primary */
+#hud .prompt2 {
+  position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%);
+  font-size: 11px; color: #cfd8c8; background: rgba(14,18,12,0.7);
+  border: 2px solid #3a463a; padding: 4px 12px; display: none; white-space: nowrap;
+  letter-spacing: 1px;
+}
+#hud .prompt2.show { display: block; }
+#hud .prompt2 b { color: #b8e89a; background: #1a2216; border: 1px solid #3a463a; padding: 0 5px; margin-right: 5px; }
 
 /* ---- skill bar (bottom center) ---- */
 #hud .actionbar {
@@ -214,12 +223,52 @@ const CSS = `
 @keyframes lowhp-pulse { 50% { opacity: 0.9; } }
 #hud .banner {
   position: absolute; left: 50%; top: 24%; transform: translateX(-50%);
-  font-size: 26px; color: #ffe27a; text-shadow: 0 2px 0 #5e3c10, 0 4px 10px #000, 0 0 24px var(--gold-glow);
+  font-family: var(--font-display); font-size: 24px; color: #ffe27a; text-shadow: 0 2px 0 #5e3c10, 0 4px 10px #000, 0 0 24px var(--gold-glow);
   letter-spacing: 3px; opacity: 0; transition: opacity 0.3s; white-space: nowrap;
 }
 #hud .banner::before, #hud .banner::after {
   content: '◆'; font-size: 14px; color: var(--gold-dim); vertical-align: 4px; margin: 0 12px;
 }
+/* ---- first-run onboarding overlay ---- */
+#hud .onboard {
+  position: absolute; inset: 0; z-index: 60; display: none;
+  align-items: center; justify-content: center; pointer-events: auto;
+  background: rgba(6,9,6,0.82);
+}
+#hud .onboard.show { display: flex; animation: ob-in 0.2s; }
+@keyframes ob-in { from { opacity: 0; } }
+#hud .onboard .card {
+  width: min(440px, 90vw); max-height: 86vh; overflow-y: auto; padding: 20px;
+  background: var(--dither) 0 0/4px 4px, linear-gradient(180deg, var(--panel-1), var(--panel-2));
+  box-shadow: var(--pix-frame), inset 0 0 50px rgba(0,0,0,0.45);
+}
+#hud .onboard h2 {
+  font-family: var(--font-display); font-size: 15px; letter-spacing: 3px; color: var(--gold);
+  text-align: center; margin-bottom: 4px; text-shadow: 0 0 12px var(--gold-glow);
+}
+#hud .onboard .sub { text-align: center; font-size: 9px; color: var(--muted); letter-spacing: 3px; margin-bottom: 14px; }
+#hud .onboard h3 {
+  font-size: 10px; letter-spacing: 2px; color: var(--gold-dim); margin: 12px 0 6px;
+  border-bottom: 1px solid var(--line-soft); padding-bottom: 4px;
+}
+#hud .onboard .step { display: flex; gap: 9px; align-items: flex-start; font-size: 11px; color: #cfd8c8; margin-bottom: 7px; line-height: 1.6; }
+#hud .onboard .step .n {
+  flex-shrink: 0; width: 18px; height: 18px; line-height: 18px; text-align: center; font-size: 10px;
+  color: #241c0a; background: var(--gold); border-radius: 3px;
+}
+#hud .onboard .ctrls { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; font-size: 11px; color: #cfd8c8; }
+#hud .onboard .ctrls b {
+  color: #ffe27a; background: #202a20; border: 1px solid #4a5a42; padding: 1px 6px; font-weight: normal;
+  text-align: center; white-space: nowrap;
+}
+#hud .onboard .go {
+  display: block; width: 100%; margin-top: 16px; padding: 12px; text-align: center; cursor: pointer;
+  font-family: var(--font-display); font-size: 12px; letter-spacing: 3px; color: #ffe9b0; border: 0;
+  background: linear-gradient(180deg, #6a5430, #46381e);
+  box-shadow: 0 -3px 0 0 #c8a03a, 0 3px 0 0 #2a2210, -3px 0 0 0 #8a744a, 3px 0 0 0 #8a744a, 0 0 0 3px var(--ink) inset;
+}
+#hud .onboard .go:hover { filter: brightness(1.18); }
+
 /* ---- waypoint beacon (from the world-map mark) ---- */
 #hud .pinbeacon {
   position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
@@ -267,7 +316,8 @@ const CSS = `
   text-shadow: none;
 }
 #hud .lvlup .lu-num {
-  font-size: 64px; line-height: 1; color: var(--gold); margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: 60px; line-height: 1; color: var(--gold); margin-top: 2px;
   text-shadow: 0 3px 0 #5e3c10, 0 6px 14px #000, 0 0 34px var(--gold-glow);
   animation: lvl-bounce 0.6s cubic-bezier(0.2, 2.6, 0.4, 1);
 }
@@ -385,6 +435,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     <div class="quests"></div>
     <div class="pinbeacon"><span class="arr">➤</span><span class="txt"></span></div>
     <div class="prompt"></div>
+    <div class="prompt2"></div>
+    <div class="onboard"></div>
     <div class="weapon-chip"></div>
     <div class="actionbar">
       <div class="xpline"><span class="xplvl"></span><div class="xpbar"><div></div></div></div>
@@ -410,6 +462,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="home"><span class="mi">⌂</span>TELEPORT<small>T</small></button>
         <button class="mtile autobtn" data-menu="auto"><span class="mi">⚔</span>AUTO-BATTLE<small>B</small></button>
         <button class="mtile" data-menu="help"><span class="mi">?</span>GUIDE<small>H</small></button>
+        <button class="mtile" data-menu="about"><span class="mi">✦</span>ABOUT<small></small></button>
       </div>
       <button class="menubtn">☰ MENU</button>
     </div>
@@ -446,6 +499,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     muteBtn: root.querySelector('.mute'),
     quests: root.querySelector('.quests'),
     prompt: root.querySelector('.prompt'),
+    prompt2: root.querySelector('.prompt2'),
   };
 
   // pixel portrait from the character's face texture (redrawn after a
@@ -558,12 +612,20 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     if (els.quests.innerHTML !== html) els.quests.innerHTML = html;
   }
 
-  // interact prompt: pass null to hide; { key, label } to show
-  function setPrompt(p) {
-    if (!p) { els.prompt.classList.remove('show'); return; }
-    const html = `<b>${p.key}</b>${p.label}`;
-    if (els.prompt.innerHTML !== html) els.prompt.innerHTML = html;
-    els.prompt.classList.add('show');
+  // interact prompts: primary { key, label }, optional secondary { key, label }
+  function setPrompt(p, p2 = null) {
+    if (!p) { els.prompt.classList.remove('show'); }
+    else {
+      const html = `<b>${p.key}</b>${p.label}`;
+      if (els.prompt.innerHTML !== html) els.prompt.innerHTML = html;
+      els.prompt.classList.add('show');
+    }
+    if (!p2) { els.prompt2.classList.remove('show'); }
+    else {
+      const html2 = `<b>${p2.key}</b>${p2.label}`;
+      if (els.prompt2.innerHTML !== html2) els.prompt2.innerHTML = html2;
+      els.prompt2.classList.add('show');
+    }
   }
 
   function showHurt() {
@@ -642,9 +704,44 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     lvlT = setTimeout(() => lvlEl.classList.remove('show'), 3400);
   }
 
+  // first-run "how to play" overlay — platform-aware controls + first steps
+  const onboardEl = root.querySelector('.onboard');
+  function showOnboarding(touch, onDone) {
+    const steps = [
+      touch ? 'Use the left stick to move; drag the right side to look around.'
+        : 'Move with WASD. Move the mouse to aim — attacks auto-target the nearest foe.',
+      touch ? 'Tap ⚔ to attack, the skill buttons to cast, ↺ to dodge-roll.'
+        : 'Left-click to attack, 1-3 for skills, right-click to dodge-roll.',
+      `Walk up to villagers, chests, trees & shops and press ${touch ? 'the ★ button' : 'F'} to interact${touch ? ' (a green ✦ button appears for a 2nd nearby action)' : ' (R does a 2nd nearby action)'}.`,
+      'Chase the "!" over villagers for quests. Hunt monsters for XP & loot, then craft & forge stronger gear.',
+      `Open the ${touch ? '☰ menu (top-left)' : '☰ menu (bottom-right)'} anytime for Bag, Wardrobe, Map, Guide & more.`,
+    ];
+    const controls = touch ? [
+      ['Left stick', 'Move'], ['⚔', 'Attack'], ['1·2·3', 'Skills'], ['↺', 'Roll'],
+      ['⤒', 'Jump'], ['★ / ✦', 'Interact'], ['💤', 'AFK fish'], ['☰', 'Menu'],
+    ] : [
+      ['WASD', 'Move'], ['LMB', 'Attack'], ['RMB', 'Roll'], ['Space', 'Jump'],
+      ['1-3', 'Skills'], ['4', 'Tonic'], ['F / R', 'Interact'], ['M', 'Mount'],
+      ['N', 'Map'], ['O', 'Wardrobe'], ['T', 'Home'], ['H', 'Guide'],
+    ];
+    onboardEl.innerHTML = `<div class="card">
+      <h2>WELCOME, ADVENTURER</h2>
+      <div class="sub">◆ ANAVELA UNIVERSE · BUILD FOR RIALO ◆</div>
+      <h3>HOW TO PLAY</h3>
+      ${steps.map((s, i) => `<div class="step"><span class="n">${i + 1}</span><span>${s}</span></div>`).join('')}
+      <h3>CONTROLS</h3>
+      <div class="ctrls">${controls.map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join('')}</div>
+      <button class="go">⚔ &nbsp;LET'S GO&nbsp; ⚔</button>
+    </div>`;
+    onboardEl.classList.add('show');
+    const close = () => { onboardEl.classList.remove('show'); onDone?.(); };
+    onboardEl.querySelector('.go').addEventListener('click', close);
+    onboardEl.addEventListener('click', (e) => { if (e.target === onboardEl) close(); });
+  }
+
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait, setName,
+    refreshPortrait, setName, showOnboarding,
   };
 }

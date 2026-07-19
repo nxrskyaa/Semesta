@@ -16,7 +16,7 @@ export const HOUSE_DESIGNS = {
     roof: '#5a7a4a', wall: '#a8805a',
   },
   cottage: {
-    name: 'Riverbrook Cottage',
+    name: 'Anavela Cottage',
     desc: 'A proper cottage with a chimney and a flower bed.',
     cost: { hardwood: 30, iron_ore: 12 },
     coins: 150,

@@ -228,21 +228,51 @@ const HAT_BUILDERS = {
   },
 };
 
+// layered feathered wings: each side is a fan of 4 overlapping feather quills
+// (long → short) tinted from colorA→colorB, tipped with a glowing gem. The two
+// wing roots pivot so `update` can flap them in a smooth two-stage beat.
 function wing(colorA, colorB, opacity = 1, additive = false) {
   const g = new THREE.Group();
-  for (const sx of [-1, 1]) {
-    const matOpts = { color: new THREE.Color(colorA), side: THREE.DoubleSide, transparent: opacity < 1, opacity };
+  const cA = new THREE.Color(colorA), cB = new THREE.Color(colorB);
+  const feather = (t) => {
+    // one teardrop feather: a circle body + a slim quill spine
+    const col = cA.clone().lerp(cB, t);
+    const matOpts = { color: col, side: THREE.DoubleSide, transparent: opacity < 1, opacity };
     if (additive) { matOpts.blending = THREE.AdditiveBlending; matOpts.depthWrite = false; }
-    const big = new THREE.Mesh(new THREE.CircleGeometry(0.26, 8), new THREE.MeshLambertMaterial(matOpts));
-    big.position.set(sx * 0.22, 0.08, -0.02);
-    big.rotation.y = sx * 0.5;
-    big.scale.set(1, 1.5, 1);
-    const small = new THREE.Mesh(new THREE.CircleGeometry(0.15, 8),
-      new THREE.MeshLambertMaterial({ ...matOpts, color: new THREE.Color(colorB) }));
-    small.position.set(sx * 0.18, -0.16, -0.02);
-    small.rotation.y = sx * 0.5;
-    g.add(big, small);
+    const f = new THREE.Group();
+    const vane = new THREE.Mesh(new THREE.CircleGeometry(0.1, 7), new THREE.MeshLambertMaterial(matOpts));
+    vane.scale.set(1, 2.2, 1);
+    vane.position.y = 0.12;
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.28, 0.012),
+      new THREE.MeshLambertMaterial({ ...matOpts, color: cB.clone().multiplyScalar(0.7) }));
+    spine.position.y = 0.1;
+    f.add(vane, spine);
+    return f;
+  };
+  const roots = [];
+  for (const sx of [-1, 1]) {
+    const root = new THREE.Group();
+    root.position.set(sx * 0.1, 0.02, -0.03);
+    // 4 feathers fanning outward & down, longest at the top
+    for (let i = 0; i < 4; i++) {
+      const t = i / 3;
+      const f = feather(t);
+      const len = 1 - t * 0.4;
+      f.scale.setScalar(len);
+      f.position.set(sx * (0.06 + i * 0.11), 0.16 - i * 0.13, -i * 0.012);
+      f.rotation.z = sx * (0.35 + i * 0.32);
+      f.rotation.y = sx * 0.45;
+      root.add(f);
+    }
+    // glowing gem at the wing shoulder
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.04),
+      new THREE.MeshBasicMaterial({ color: cB, transparent: true, opacity: 0.95 }));
+    gem.position.set(sx * 0.05, 0.2, 0.02);
+    root.add(gem);
+    g.add(root);
+    roots.push(root);
   }
+  g.userData.wingRoots = roots; // flapped in update
   return g;
 }
 
@@ -398,10 +428,16 @@ export function createWardrobe(player) {
         ear.rotation.z = ear.userData.baseZ + (i ? -1 : 1) * tw * 0.35;
       });
     }
-    if (backMesh?.userData.flap) {
-      const f = Math.sin(time * 6) * 0.35;
-      if (backMesh.children[0]) backMesh.children[0].rotation.y = 0.5 + f;
-      if (backMesh.children[2]) backMesh.children[2].rotation.y = -0.5 - f;
+    // layered wings: a two-stage flap (quick down-beat, slow rise) that folds
+    // the whole feather fan in and out
+    if (backMesh?.userData.wingRoots) {
+      const beat = (Math.sin(time * 4) * 0.5 + 0.5) ** 1.6; // 0..1, snappy peak
+      const open = 0.15 + beat * 0.6;
+      const roots = backMesh.userData.wingRoots;
+      roots[0].rotation.y = open;
+      roots[1].rotation.y = -open;
+      roots[0].rotation.z = beat * 0.12;
+      roots[1].rotation.z = -beat * 0.12;
     }
     if (backMesh?.userData.flicker) {
       backMesh.userData.flicker.intensity = 1.1 + Math.sin(time * 5.2) * 0.3;

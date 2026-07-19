@@ -1070,121 +1070,104 @@ async function init(character, saved, audio) {
     return null;
   }
 
-  // --- interact system: one context-sensitive action (F / mobile ★ button) ---
-  function currentInteraction() {
-    if (player.state.dead || panels.anyOpen() || dialog.isOpen()) return null;
-    if (fishing.state.afk) return { label: 'Stop AFK fishing', run: () => fishing.cancel() };
-    if (fishing.state.phase === 'bite') return { label: 'Reel in!', run: () => fishing.strike() };
-    if (fishing.state.phase === 'waiting') return { label: 'Wait for it...', run: () => fishing.strike() };
+  // --- interact system: gathers ALL nearby actions in priority order so the
+  // HUD can offer a PRIMARY (F / ★) and a distinct SECONDARY (R / ★₂) — this
+  // is what stops "Plant" and "Talk" from fighting over one button. ---
+  function gatherInteractions() {
+    if (player.state.dead || panels.anyOpen() || dialog.isOpen()) return [];
+    const list = [];
+    const add = (kind, label, run, extra = {}) => list.push({ kind, label, run, ...extra });
 
-    // standing right AT a landmark always wins — a villager wandering in front
-    // of the stall/gacha/anvil can't hijack the F button anymore
+    if (fishing.state.afk) return [{ kind: 'fish', label: 'Stop AFK fishing', run: () => fishing.cancel() }];
+    if (fishing.state.phase === 'bite') return [{ kind: 'fish', label: 'Reel in!', run: () => fishing.strike() }];
+    if (fishing.state.phase === 'waiting') return [{ kind: 'fish', label: 'Wait for it...', run: () => fishing.strike() }];
+
     const near = (spot, r = 3.2) => spot && ((spot.x - player.state.pos.x) ** 2 + (spot.z - player.state.pos.z) ** 2 < r * r);
-    if (near(npcs.stallSpot, 2.0)) return { label: 'Shop — buy & sell', run: () => { audio.sfx('ui'); panels.toggle('shop'); } };
-    if (near(npcs.gachaSpot, 2.0)) return { label: 'Wonder Capsules (gacha)', run: () => { audio.sfx('ui'); panels.toggle('gacha'); } };
-    if (near(npcs.forgeSpot, 2.0)) return { label: 'Forge your weapon', run: () => { audio.sfx('ui'); panels.toggle('forge'); } };
 
-    // quest-giving NPCs take priority when you're near them (so you never
-    // miss a quest); ambient chatter is a fallback near the bottom
+    // village landmarks (tight radius) — highest priority so a wandering
+    // villager can't hijack the stall/gacha/anvil button
+    if (near(npcs.stallSpot, 2.0)) add('shop', 'Shop — buy & sell', () => { audio.sfx('ui'); panels.toggle('shop'); });
+    if (near(npcs.gachaSpot, 2.0)) add('gacha', 'Wonder Capsules (gacha)', () => { audio.sfx('ui'); panels.toggle('gacha'); });
+    if (near(npcs.forgeSpot, 2.0)) add('forge', 'Forge your weapon', () => { audio.sfx('ui'); panels.toggle('forge'); });
+
+    // farm plots FIRST-CLASS: harvest/plant get their own slot so they never
+    // collide with a nearby villager's Talk button
+    const plot = farming.nearest(player.state.pos, 1.9);
+    if (plot && plot.owned && plot.seed && plot.stage >= 2) {
+      add('farm', 'Harvest crop', () => {
+        const crop = farming.harvest(plot);
+        if (crop) { pickups.spawn(crop.id, crop.count, new THREE.Vector3(plot.x, plot.y, plot.z)); audio.sfx('catch'); }
+      });
+    } else if (plot && plot.owned && !plot.seed) {
+      const seed = seedToPlant();
+      if (seed) add('farm', `Plant ${ITEMS[seed].name}`, () => {
+        if (farming.plant(plot, seed)) { inventory.remove(seed, 1); audio.sfx('ui'); }
+      });
+    }
+
+    // quest-giving NPCs — you should never miss a quest
     const npc = npcs.nearest(player.state.pos, 2.3);
-    if (npc && npc.questMark) return { label: `Talk to ${npc.def.name}`, run: () => openDialog(npc) };
+    if (npc && npc.questMark) add('talk', `Talk to ${npc.def.name}`, () => openDialog(npc));
 
     const chest = chests.nearest(player.state.pos, 2.1);
-    if (chest) {
-      return {
-        label: 'Open chest',
-        run: () => {
-          const loot = chests.open(chest, ownedPetSet());
-          if (!loot) return;
-          audio.sfx('chest');
-          addShake(0.12);
-          for (const d of loot) pickups.spawn(d.id, d.count, chest.mesh.position);
-          quests.event('chest');
-        },
-      };
-    }
+    if (chest) add('chest', 'Open chest', () => {
+      const loot = chests.open(chest, ownedPetSet());
+      if (!loot) return;
+      audio.sfx('chest'); addShake(0.12);
+      for (const d of loot) pickups.spawn(d.id, d.count, chest.mesh.position);
+      quests.event('chest');
+    });
 
-    // farm plots: harvest ready crops / plant seeds
-    const plot = farming.nearest(player.state.pos, 1.9);
-    if (plot) {
-      if (plot.owned && plot.seed && plot.stage >= 2) {
-        return {
-          label: 'Harvest',
-          run: () => {
-            const crop = farming.harvest(plot);
-            if (crop) { pickups.spawn(crop.id, crop.count, new THREE.Vector3(plot.x, plot.y, plot.z)); audio.sfx('catch'); }
-          },
-        };
-      }
-      if (plot.owned && !plot.seed) {
-        const seed = seedToPlant();
-        if (seed) {
-          return {
-            label: `Plant ${ITEMS[seed].name}`,
-            run: () => {
-              if (farming.plant(plot, seed)) { inventory.remove(seed, 1); audio.sfx('ui'); }
-            },
-          };
-        }
-      }
-    }
-
-    // your estates: buy land / open the build menu
     const land = housing.nearest(player.state.pos, 3.5);
     if (land && !land.built) {
-      return {
-        label: land.owned ? 'Build your house' : `Land for sale (${LAND_PRICE}c)`,
-        run: () => { audio.sfx('ui'); panels.toggle('estate'); },
-      };
+      add('estate', land.owned ? 'Build your house' : `Land for sale (${LAND_PRICE}c)`,
+        () => { audio.sfx('ui'); panels.toggle('estate'); });
     }
 
-    // gathering nodes
     const node = gathering.nearest(player.state.pos, 2.2);
-    if (node) {
-      return {
-        label: node.kind === 'birch' ? `Chop birch (${node.hits})` : `Mine ore (${node.hits})`,
-        run: () => gatherHit(node),
-      };
-    }
+    if (node) add('gather', node.kind === 'birch' ? `Chop birch (${node.hits})` : `Mine ore (${node.hits})`,
+      () => gatherHit(node));
 
-    // camp rangers: talk for a full heal
     const ranger = camps.nearestRanger(player.state.pos, 2.4);
     if (ranger && player.state.hp < player.state.maxHp) {
-      return {
-        label: 'Rest with Ranger (full heal)',
-        run: () => {
-          player.state.hp = player.state.maxHp;
-          player.state.sinceHurt = 999;
-          audio.sfx('potion');
-          particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#7dff8a', 16);
-          hud.toastText(camps.rangerLine(ranger));
-        },
-      };
+      add('heal', 'Rest with Ranger (full heal)', () => {
+        player.state.hp = player.state.maxHp; player.state.sinceHurt = 999;
+        audio.sfx('potion');
+        particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#7dff8a', 16);
+        hud.toastText(camps.rangerLine(ranger));
+      });
     }
 
-    // village landmarks, looser radius fallback (tight pass ran at the top):
-    // Pip's market stall = shop, the capsule machine = gacha, the anvil = forge
-    if (near(npcs.stallSpot)) return { label: 'Shop — buy & sell', run: () => { audio.sfx('ui'); panels.toggle('shop'); } };
-    if (near(npcs.gachaSpot)) return { label: 'Wonder Capsules (gacha)', run: () => { audio.sfx('ui'); panels.toggle('gacha'); } };
-    if (near(npcs.forgeSpot)) return { label: 'Forge your weapon', run: () => { audio.sfx('ui'); panels.toggle('forge'); } };
+    // looser landmark fallback (only if the tight pass didn't already add them)
+    if (near(npcs.stallSpot) && !list.some((i) => i.kind === 'shop')) add('shop', 'Shop — buy & sell', () => { audio.sfx('ui'); panels.toggle('shop'); });
+    if (near(npcs.gachaSpot) && !list.some((i) => i.kind === 'gacha')) add('gacha', 'Wonder Capsules (gacha)', () => { audio.sfx('ui'); panels.toggle('gacha'); });
+    if (near(npcs.forgeSpot) && !list.some((i) => i.kind === 'forge')) add('forge', 'Forge your weapon', () => { audio.sfx('ui'); panels.toggle('forge'); });
 
-    // lakeside fish markets: every dock has a fishmonger who buys the catch
     const dock = landmarks.docks?.find(
       (d) => (d.x - player.state.pos.x) ** 2 + (d.z - player.state.pos.z) ** 2 < 2.8 * 2.8);
-    if (dock) return { label: 'Fish Market — sell your catch', run: () => { audio.sfx('ui'); panels.toggle('shop'); } };
+    if (dock) add('shop', 'Fish Market — sell your catch', () => { audio.sfx('ui'); panels.toggle('shop'); });
 
-    // campfires: cook the catch of the day
     const fire = camps.nearestFire(player.state.pos, 2.6)
       || (((npcs.cookfire.x - player.state.pos.x) ** 2 + (npcs.cookfire.z - player.state.pos.z) ** 2 < 2.6 * 2.6) ? npcs.cookfire : null);
-    if (fire) return { label: 'Cook', run: () => { audio.sfx('ui'); panels.toggle('cook'); } };
+    if (fire) add('cook', 'Cook', () => { audio.sfx('ui'); panels.toggle('cook'); });
 
-    if (fishing.canFish()) {
-      return { label: touch ? 'Fish  (💤 = AFK)' : 'Fish  ·  G = AFK mode', afk: true, run: () => fishing.cast() };
-    }
-    // ambient villagers (Nyanya, Barong, etc.) — chat as the lowest-priority action
-    if (npc) return { label: `Talk to ${npc.def.name}`, run: () => openDialog(npc) };
-    return null;
+    if (fishing.canFish()) add('fish', touch ? 'Fish  (💤 = AFK)' : 'Fish  ·  G = AFK mode',
+      () => fishing.cast(), { afk: true });
+
+    // ambient villagers chat last
+    if (npc && !npc.questMark) add('talk', `Talk to ${npc.def.name}`, () => openDialog(npc));
+
+    return list;
   }
+  // primary = list[0]; secondary = first entry of a DIFFERENT kind (so the two
+  // buttons are always distinct actions, never a duplicate)
+  function interactPair() {
+    const list = gatherInteractions();
+    const primary = list[0] || null;
+    const secondary = primary ? list.find((i) => i.kind !== primary.kind) || null : null;
+    return { primary, secondary };
+  }
+  function currentInteraction() { return gatherInteractions()[0] || null; }
   function ownedPetSet() {
     const owned = new Set();
     for (const [id, def] of Object.entries(PET_DEFS)) {
@@ -1193,7 +1176,11 @@ async function init(character, saved, audio) {
     return owned;
   }
   function doInteract() {
-    const it = currentInteraction();
+    const it = interactPair().primary;
+    if (it) it.run();
+  }
+  function doInteract2() {
+    const it = interactPair().secondary;
     if (it) it.run();
   }
 
@@ -1210,6 +1197,7 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
     if (e.code === 'KeyT') teleportHome();
     if (e.code === 'KeyF') doInteract();
+    if (e.code === 'KeyR') doInteract2(); // secondary nearby action
     if (e.code === 'Space') { e.preventDefault(); doJump(); }
     if (e.code === 'KeyM') toggleMount();
     if (e.code === 'KeyN') toggleWorldMap();
@@ -1274,6 +1262,7 @@ async function init(character, saved, audio) {
       onPotion: usePotion,
       onSkill: castSkill,
       onInteract: doInteract,
+      onInteract2: doInteract2,
       onAfkFish: () => {
         if (fishing.toggleAfk()) hud.toastText('AFK fishing on — common fish only. Move to stop.');
       },
@@ -1326,9 +1315,11 @@ async function init(character, saved, audio) {
   setBoot(1); await frame();
   bootEl.classList.add('hidden');
   setTimeout(() => bootEl.remove(), 800);
-  hud.banner(`WELCOME TO RIVERBROOK, ${character.name.toUpperCase()}`);
+  hud.banner(`WELCOME TO ANAVELA UNIVERSE, ${character.name.toUpperCase()}`);
   if (!saved) {
     const hintKey = touch ? 'the ★ button' : 'F';
+    // first-run onboarding overlay (controls + first steps) before the toasts
+    hud.showOnboarding(touch);
     setTimeout(() => hud.toastText('Villagers with a "!" have quests for you. Press H anytime for the full guide.'), 2600);
     setTimeout(() => hud.toastText(`Talk to Pip at the market stall to buy & sell (${hintKey}).`), 6200);
     setTimeout(() => hud.toastText(`Master NXR the koala runs the gacha capsule machine — try your luck!`), 9800);
@@ -1491,10 +1482,12 @@ async function init(character, saved, audio) {
         hud.setBeacon(null);
       }
       touchUI?.update(skillSys, inventory.count('tonic'));
-      // interact prompt
-      const it = currentInteraction();
-      hud.setPrompt(it ? { key: 'F', label: it.label } : null);
-      touchUI?.setPrompt(it ? { label: it.label, afk: it.afk } : null);
+      // interact prompts: primary (F / ★) + distinct secondary (R / ★₂)
+      const { primary, secondary } = interactPair();
+      hud.setPrompt(primary ? { key: 'F', label: primary.label } : null,
+        secondary ? { key: 'R', label: secondary.label } : null);
+      touchUI?.setPrompt(primary ? { label: primary.label, afk: primary.afk } : null,
+        secondary ? { label: secondary.label } : null);
       // mobile ESC-replacement close button while any panel/dialog/map is open
       touchUI?.setMenuOpen(panels.anyOpen() || dialog.isOpen() || worldmap.isOpen());
     }
