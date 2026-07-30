@@ -71,31 +71,36 @@ export function buildWater(terrain, scene) {
   }
 
   // --- per-vertex depth tint -------------------------------------------------
-  // "shallowness" = how much land sits in the neighbourhood. Plane-local (x, y)
-  // maps to world (x, -y) because the plane is rotated -90deg about X.
-  const deepC = new THREE.Color('#12557f');    // offshore: deep blue
-  const midC = new THREE.Color('#2f95b8');     // the shelf
-  const shoalC = new THREE.Color('#86e0dd');   // shallows: pale turquoise
+  // Tint by ACTUAL DEPTH — how far the floor sits below the waterline — sampled
+  // and smoothed over a small neighbourhood. The previous version keyed off how
+  // much LAND was nearby, which meant a village pond (land on all sides) came
+  // out one flat colour with no gradient at all. Depth is what the eye reads as
+  // depth, in a lake exactly as much as in the sea.
+  // Plane-local (x, y) maps to world (x, -y): the plane is rotated -90deg on X.
+  const sandC = new THREE.Color('#b9e6d2');    // ankle-deep over pale sand
+  const shoalC = new THREE.Color('#79dcd8');   // wadeable turquoise
+  const midC = new THREE.Color('#2b90b6');     // the shelf
+  const deepC = new THREE.Color('#0f4a76');    // offshore, and the lake basins
   const colors = new Float32Array(pos.count * 3);
   const tmp = new THREE.Color();
-  const R = 3;
+  const MAXD = 1.9;                             // depth at which it is fully deep
   for (let i = 0; i < pos.count; i++) {
-    const cx = Math.round(baseX[i] + S / 2);
-    const cz = Math.round(-baseY[i] + S / 2);
-    let land = 0, n = 0;
-    for (let dz = -R; dz <= R; dz++) {
-      for (let dx = -R; dx <= R; dx++) {
-        const ix = cx + dx, iz = cz + dz;
-        if (ix < 0 || iz < 0 || ix >= S || iz >= S) continue;
-        n++;
-        if (!terrain.isWaterCell(ix, iz)) land++;
-      }
+    const wx = baseX[i], wz = -baseY[i];
+    // average the depth over a few samples so the ramp is smooth rather than
+    // stepping cell to cell
+    let sum = 0, n = 0;
+    for (const [ox, oz] of [[0, 0], [-1.2, 0], [1.2, 0], [0, -1.2], [0, 1.2]]) {
+      const sx = wx + ox, sz = wz + oz;
+      const [cx, cz] = terrain.cellOf(sx, sz);
+      if (!terrain.inBounds(cx, cz)) { sum += MAXD; n++; continue; }  // open sea past the map
+      sum += Math.max(0, WATER_Y - terrain.surfaceY(sx, sz));
+      n++;
     }
-    // off the grid entirely = deep open sea
-    const shallow = n ? Math.min(1, (land / n) * 2.4) : 0;
-    // three-stop ramp so the shelf gets its own colour instead of a flat blend
-    if (shallow < 0.5) tmp.copy(deepC).lerp(midC, shallow * 2);
-    else tmp.copy(midC).lerp(shoalC, (shallow - 0.5) * 2);
+    const d = Math.min(1, (sum / n) / MAXD);
+    // four stops: sand -> shoal -> shelf -> deep
+    if (d < 0.2) tmp.copy(sandC).lerp(shoalC, d / 0.2);
+    else if (d < 0.5) tmp.copy(shoalC).lerp(midC, (d - 0.2) / 0.3);
+    else tmp.copy(midC).lerp(deepC, (d - 0.5) / 0.5);
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));

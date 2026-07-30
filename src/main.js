@@ -1608,7 +1608,9 @@ async function init(character, saved, audio) {
     chests.update(dt, player.state.pos);
     camps.update(dt, player.state.pos, time);
     gathering.update(dt);
-    landmarks.update(dt, time, player.state.pos);
+    // dayFrac 0 at dawn -> 1 at dusk, so garden sunflowers can track the sun
+    landmarks.update(dt, time, player.state.pos,
+      Math.max(0, Math.min(1, (lighting.state.minutes / 60 - 6) / 12)));
     farming.update(dt);
     pets.update(dt, player.state, time);
     mounts.update(dt, player, terrain);

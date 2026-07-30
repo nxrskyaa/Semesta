@@ -348,14 +348,14 @@ export function buildDecor(terrain, scene) {
     m.compose(v.set(tc.x, tc.y + 1.3, tc.z), q, sc.set(1, 1, 1));
     capMesh.setMatrixAt(i, m);
     const glow = new THREE.Sprite(glowMat.clone());
-    glow.scale.set(1.9, 1.9, 1);
+    glow.scale.set(1.15, 1.15, 1);   // tight halo, not a pool on the ground
     glow.position.set(tc.x, tc.y + 0.97, tc.z);
     group.add(glow);
     glowSprites.push(glow);
     // a small HOT core inside the box. It is what bloom latches onto, so the
     // lantern reads as a flame rather than a yellow cube with a halo.
     const core = new THREE.Sprite(coreMat.clone());
-    core.scale.set(0.55, 0.7, 1);
+    core.scale.set(0.42, 0.55, 1);
     core.position.set(tc.x, tc.y + 0.95, tc.z);
     group.add(core);
     coreSprites.push(core);
@@ -453,15 +453,17 @@ export function buildDecor(terrain, scene) {
     // soft paper glow — visible at night, nearly invisible by day
     const glowBase = isNight ? 0.42 : 0.04;
     for (const glow of glowSprites) {
-      glow.material.opacity = glowBase + Math.sin(time * 2.6 + glow.position.x * 1.7) * (isNight ? 0.06 : 0.01);
+      glow.material.opacity = glowBase + Math.sin(time * 2.6 + glow.position.x * 1.7) * (isNight ? 0.035 : 0.008);
     }
     // the core flickers faster and harder than the halo — that difference in
     // rhythm is what makes it read as fire instead of a pulsing bulb
+    // The flame flickers in BRIGHTNESS. Scaling a glow sprite up and down is
+    // what made these read as expanding/contracting circles instead of lamps —
+    // a flame's light varies in intensity, not in radius.
     for (const core of coreSprites) {
       const ph = time * 9 + core.position.x * 3.1 + core.position.z;
-      const flick = 0.72 + Math.sin(ph) * 0.16 + Math.sin(ph * 2.7) * 0.12;
-      core.material.opacity = (isNight ? 0.95 : 0.12) * flick;
-      core.scale.set(0.5 + flick * 0.12, 0.62 + flick * 0.22, 1);
+      const flick = 0.78 + Math.sin(ph) * 0.13 + Math.sin(ph * 2.7) * 0.09;
+      core.material.opacity = (isNight ? 0.9 : 0.1) * flick;
     }
 
     // butterflies flutter in the day, roost at night

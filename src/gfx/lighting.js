@@ -93,8 +93,8 @@ export function setupLighting(scene) {
     // (0.42 / 0.62) washed the dark out — every lamp was competing with an
     // ambient glow as bright as itself, so midnight looked like an overcast
     // afternoon. Ambient now dips properly and the lanterns carry the scene.
-    sun.intensity = (0.20 + dayness * 1.24) * dim;
-    hemi.intensity = (0.34 + dayness * 0.72) * (1 - state.weatherDim * 0.25);
+    sun.intensity = (0.27 + dayness * 1.17) * dim;
+    hemi.intensity = (0.46 + dayness * 0.62) * (1 - state.weatherDim * 0.25);
 
     gradeColor(_sky, hr, nightSky, dawnSky, daySky, duskSky);
     gradeColor(_fog, hr, nightFog, dawnFog, dayFog, duskFog);

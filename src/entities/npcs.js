@@ -686,10 +686,12 @@ function buildLamp() {
   }
   g.add(flame);
 
-  // soft glow shell around the box — additive, so it reads as light spilling out
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8),
+  // A soft halo AROUND THE BOX ONLY. It is deliberately small and it never
+  // changes size: a lamp is a fixed light source, and animating its scale is
+  // exactly what made it read as a pulsing ball rather than a lantern.
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 6),
     new THREE.MeshBasicMaterial({
-      color: new THREE.Color('#ffbe6a'), transparent: true, opacity: 0.16,
+      color: new THREE.Color('#ffcf85'), transparent: true, opacity: 0.3,
       depthWrite: false, blending: THREE.AdditiveBlending,
     }));
   glow.position.y = 0.95;
@@ -724,9 +726,9 @@ export function tickFlame(userData, time, lit = 1) {
     tg.material.opacity = lit;
     tg.material.transparent = lit < 1;
   }
-  f.glow.scale.setScalar(0.9 + Math.sin(t * 0.9) * 0.12);
-  f.glow.material.opacity = 0.16 * lit;
-  f.pane.material.opacity = 0.28 + 0.34 * lit;
+  // brightness flickers, SIZE never does
+  f.glow.material.opacity = (0.2 + Math.sin(t * 0.9) * 0.04) * lit;
+  f.pane.material.opacity = 0.3 + 0.35 * lit;
 }
 
 function buildGachaMachine() {

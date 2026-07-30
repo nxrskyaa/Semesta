@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { WATER_LEVEL, WATER_Y } from './terrain.js';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
+import { getQuality } from '../gfx/quality.js';
 
 // Static prop colours are SHARED — a built world was carrying ~2,465 distinct
 // materials, which is why the LOW preset barely helped. Nothing in this file
@@ -667,59 +668,162 @@ function buildPool() {
 
 // spring waterfall — a mossy rock face with a rushing white-blue sheet, foam
 // clouds at the base and a clear plunge pool
+/**
+ * The spring waterfall, rebuilt. The old one was a single striped plane in
+ * front of some boxes — flat, and it stopped dead at the pool.
+ *
+ * What makes falling water read:
+ *   - it falls in TIERS, not one drop, with a ledge and a churn at each one
+ *   - the sheet is layered: a wide translucent body, a brighter fast core, and
+ *     a mist veil in front, all scrolling at DIFFERENT speeds
+ *   - it throws spray where it lands, and the plunge pool has expanding rings
+ *   - it carries a stream away downhill instead of stopping
+ */
 function buildWaterfall() {
   const g = new THREE.Group();
-  const rock = lam('#8d9294'), rockDark = lam('#6a7074');
-  for (const [x, y, z, w, h, d] of [
-    [0, 1.1, -0.6, 2.6, 2.2, 1.2], [-1.1, 0.7, -0.3, 1.2, 1.4, 1.4],
-    [1.1, 0.8, -0.35, 1.3, 1.6, 1.3], [0, 2.35, -0.8, 1.8, 0.5, 0.9],
+  const rock = lam('#8d9294'), rockDark = lam('#6a7074'), rockWet = lam('#5c6468');
+
+  // --- the cliff: a stack of ledges, wet and dark where the water runs ------
+  for (const [x, y, z, w, h, d, wet] of [
+    [0, 1.4, -0.9, 3.0, 2.8, 1.4, 0],
+    [-1.35, 0.9, -0.5, 1.4, 1.8, 1.5, 0],
+    [1.35, 1.0, -0.55, 1.5, 2.0, 1.4, 0],
+    [0, 3.0, -1.1, 2.2, 0.6, 1.0, 0],
+    [0, 1.75, -0.2, 1.5, 0.28, 0.6, 1],   // the mid ledge the water breaks on
+    [0, 0.55, 0.25, 1.9, 0.24, 0.7, 1],   // the lower lip
   ]) {
-    const b = new THREE.Mesh(sharedBox(w, h, d), Math.random() < 0.5 ? rock : rockDark);
+    const b = new THREE.Mesh(sharedBox(w, h, d), wet ? rockWet : (Math.random() < 0.5 ? rock : rockDark));
     b.position.set(x, y, z);
     b.castShadow = true;
     g.add(b);
   }
-  // mossy toppers
-  for (const [x, z] of [[-0.9, -0.3], [0.9, -0.4], [0, -0.7]]) {
-    const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 0), lam('#6fa05a'));
-    moss.position.set(x, 2.5, z);
-    moss.scale.y = 0.55;
+  // mossy toppers + ferns at the lip
+  for (const [x, z] of [[-1.1, -0.4], [1.1, -0.5], [0, -0.9], [-0.5, -1.0]]) {
+    const moss = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 0), lam('#6fa05a'));
+    moss.position.set(x, 3.2, z);
+    moss.scale.y = 0.5;
     g.add(moss);
   }
-  // the falling water: a scrolling striped sheet
-  const wc = document.createElement('canvas');
-  wc.width = 32; wc.height = 64;
-  {
-    const ctx = wc.getContext('2d');
-    ctx.fillStyle = '#7ad0e8'; ctx.fillRect(0, 0, 32, 64);
-    ctx.fillStyle = '#b8ecf8';
-    for (let i = 0; i < 7; i++) ctx.fillRect((i * 7) % 32, (i * 19) % 64, 4, 14);
-    ctx.fillStyle = '#ffffff';
-    for (let i = 0; i < 5; i++) ctx.fillRect((i * 13 + 3) % 32, (i * 27 + 8) % 64, 3, 9);
+  for (let i = 0; i < 6; i++) {
+    const a = -0.9 + i * 0.36;
+    const fern = new THREE.Mesh(sharedBox(0.28, 0.03, 0.1), lam('#4e8a3e'));
+    fern.position.set(a, 1.9 + (i % 2) * 0.1, 0.12);
+    fern.rotation.z = 0.5 - (i % 3) * 0.4;
+    g.add(fern);
   }
-  const fallTex = new THREE.CanvasTexture(wc);
-  fallTex.wrapS = fallTex.wrapT = THREE.RepeatWrapping;
-  fallTex.magFilter = THREE.NearestFilter;
-  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.3),
-    new THREE.MeshBasicMaterial({ map: fallTex, transparent: true, opacity: 0.85, depthWrite: false }));
-  sheet.position.set(0, 1.35, 0.02);
-  // plunge pool + foam
-  const pool = new THREE.Mesh(sharedCyl(1.5, 1.6, 0.18, 12),
-    new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.8 }));
-  pool.position.set(0, 0.09, 0.9);
+
+  // --- the water sheets ------------------------------------------------------
+  // three canvases at different densities: body, fast core, mist
+  function waterTex(bands, bright) {
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 32, 64);
+    ctx.fillStyle = bright ? 'rgba(190,240,255,0.55)' : 'rgba(122,208,232,0.75)';
+    ctx.fillRect(0, 0, 32, 64);
+    ctx.fillStyle = bright ? 'rgba(255,255,255,0.95)' : 'rgba(184,236,248,0.9)';
+    for (let i = 0; i < bands; i++) ctx.fillRect((i * 7) % 32, (i * 19) % 64, bright ? 2 : 4, 12 + (i % 3) * 6);
+    ctx.fillStyle = 'rgba(255,255,255,1)';
+    for (let i = 0; i < bands / 2; i++) ctx.fillRect((i * 13 + 3) % 32, (i * 27 + 8) % 64, 2, 8);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.magFilter = THREE.NearestFilter;
+    return t;
+  }
+  const sheets = [];
+  // upper fall: cliff lip down to the mid ledge
+  const bodyA = waterTex(8, false);
+  const upper = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.4),
+    new THREE.MeshBasicMaterial({ map: bodyA, transparent: true, opacity: 0.9, depthWrite: false }));
+  upper.position.set(0, 2.6, 0.14);
+  g.add(upper); sheets.push({ t: bodyA, sp: 2.2 });
+  // lower fall: mid ledge down into the pool, wider
+  const bodyB = waterTex(9, false);
+  const lower = new THREE.Mesh(new THREE.PlaneGeometry(1.75, 1.3),
+    new THREE.MeshBasicMaterial({ map: bodyB, transparent: true, opacity: 0.9, depthWrite: false }));
+  lower.position.set(0, 1.15, 0.34);
+  g.add(lower); sheets.push({ t: bodyB, sp: 2.6 });
+  // a bright fast core over both, scrolling quicker — this is the "rush"
+  const coreT = waterTex(14, true);
+  const core = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 2.7),
+    new THREE.MeshBasicMaterial({
+      map: coreT, transparent: true, opacity: 0.75, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }));
+  core.position.set(0, 1.85, 0.4);
+  g.add(core); sheets.push({ t: coreT, sp: 4.4 });
+  // a mist veil in front, drifting slowly the other way
+  const mistT = waterTex(5, true);
+  const mist = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.9),
+    new THREE.MeshBasicMaterial({
+      map: mistT, transparent: true, opacity: 0.16, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }));
+  mist.position.set(0, 1.7, 0.55);
+  g.add(mist); sheets.push({ t: mistT, sp: -0.8 });
+
+  // --- plunge pool -----------------------------------------------------------
+  const pool = new THREE.Mesh(sharedCyl(1.7, 1.8, 0.2, 14),
+    new THREE.MeshLambertMaterial({ color: 0x4fb8dc, transparent: true, opacity: 0.82 }));
+  pool.position.set(0, 0.1, 1.15);
+  g.add(pool);
+  // a pale shallow ring around the rim so the pool reads as having depth
+  const rim = new THREE.Mesh(sharedCyl(1.85, 1.9, 0.16, 14),
+    new THREE.MeshLambertMaterial({ color: 0x9fe0e8, transparent: true, opacity: 0.5 }));
+  rim.position.set(0, 0.08, 1.15);
+  g.add(rim);
+  // stones round the edge
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.2 + Math.random() * 0.14, 0), rockDark);
+    st.position.set(Math.cos(a) * 1.9, 0.12, 1.15 + Math.sin(a) * 1.9);
+    st.rotation.set(Math.random(), Math.random(), Math.random());
+    g.add(st);
+  }
+
+  // churn where each fall lands
   const foams = [];
-  for (let i = 0; i < 5; i++) {
-    const foam = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16 + Math.random() * 0.1, 0),
+  for (let i = 0; i < 9; i++) {
+    const at = i < 4 ? { y: 1.95, z: 0.2, spread: 0.5 } : { y: 0.28, z: 0.72, spread: 0.85 };
+    const foam = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15 + Math.random() * 0.12, 0),
       new THREE.MeshBasicMaterial({ color: 0xf0fbff, transparent: true, opacity: 0.85 }));
-    foam.position.set(-0.6 + i * 0.3, 0.22, 0.35 + (i % 2) * 0.25);
+    foam.position.set((Math.random() - 0.5) * at.spread * 2, at.y, at.z + (Math.random() - 0.5) * 0.35);
     g.add(foam);
     foams.push(foam);
   }
-  const light = new THREE.PointLight(0x9ae0f0, 0.9, 6, 2);
-  light.position.set(0, 1.2, 1);
-  g.add(sheet, pool, light);
-  g.userData.fallTex = fallTex;
-  g.userData.foams = foams;
+
+  // expanding rings on the pool surface, recycled
+  const rings = [];
+  for (let i = 0; i < 4; i++) {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 5, 14),
+      new THREE.MeshBasicMaterial({ color: 0xdff6ff, transparent: true, opacity: 0.5, depthWrite: false }));
+    r.rotation.x = Math.PI / 2;
+    r.position.set(0, 0.21, 0.9);
+    g.add(r);
+    rings.push({ m: r, t: i * 0.45 });
+  }
+
+  // --- the outflow: a stream running away downhill, so the water goes SOMEWHERE
+  const streamT = waterTex(6, false);
+  streamT.repeat.set(1, 3);
+  const stream = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 4.2),
+    new THREE.MeshBasicMaterial({ map: streamT, transparent: true, opacity: 0.72, depthWrite: false }));
+  stream.rotation.x = -Math.PI / 2;
+  stream.position.set(0, 0.13, 4.2);
+  g.add(stream);
+  sheets.push({ t: streamT, sp: 0.9 });
+  for (let i = 0; i < 8; i++) {
+    const st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16 + Math.random() * 0.1, 0), rockDark);
+    st.position.set((i % 2 ? 0.62 : -0.62) + (Math.random() - 0.5) * 0.2, 0.1, 2.4 + i * 0.5);
+    g.add(st);
+  }
+
+  const light = new THREE.PointLight(0x9ae0f0, 1.0, 7, 2);
+  light.position.set(0, 1.4, 1.1);
+  g.add(light);
+
+  g.userData.fall = { sheets, foams, rings, core, mist };
+  g.userData.foams = foams;      // kept for the old update path
   return g;
 }
 
@@ -1104,6 +1208,253 @@ function buildMarketRow() {
   return g;
 }
 
+// ---------------------------------------------------------------------------
+// FLOWER GARDENS. Three real species, each with its own build so they read as
+// different plants and not three colours of the same blob:
+//
+//   LILY       — six pointed petals swept back off a trumpet throat, on a tall
+//                slender stem with long drooping leaves. Pink and white.
+//   PINK ROSE  — a tight spiral of short cupped petals in three rings, a
+//                darker heart, thorny stem, toothed leaves.
+//   SUNFLOWER  — a big brown disc ringed by long yellow rays on a thick stem
+//                with broad heart-shaped leaves. Tall enough to tower over the
+//                rest, and it TRACKS THE SUN.
+//
+// They are planted in laid-out beds with a low border, an arch, and a bench,
+// so a garden reads as somewhere tended rather than a random scatter.
+// ---------------------------------------------------------------------------
+
+const LILY_COLS = [['#f7a8c8', '#fde3ee'], ['#ffffff', '#ffe9f2'], ['#f58fb4', '#fbcfe0']];
+const ROSE_COLS = [['#e8618f', '#c23f6d'], ['#f086ab', '#d1567f'], ['#ffb3cc', '#e07ba0']];
+
+function buildLily(rng, cols) {
+  const g = new THREE.Group();
+  const [petal, throat] = cols;
+  const H = 0.85 + rng() * 0.35;
+  const stem = new THREE.Mesh(sharedCyl(0.022, 0.03, H, 5), lam('#4e8a3e'));
+  stem.position.y = H / 2; g.add(stem);
+  // long drooping leaves down the stem
+  for (let i = 0; i < 2; i++) {
+    const a = rng() * Math.PI * 2;
+    const leaf = new THREE.Mesh(sharedBox(0.32, 0.02, 0.075), lam('#4e8a3e'));
+    leaf.position.set(Math.cos(a) * 0.15, H * (0.2 + i * 0.2), Math.sin(a) * 0.15);
+    leaf.rotation.y = a;
+    leaf.rotation.z = -0.5;
+    g.add(leaf);
+  }
+  // the head: six petals swept back from a trumpet throat
+  const head = new THREE.Group();
+  head.position.y = H;
+  g.add(head);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const p = new THREE.Mesh(sharedBox(0.2, 0.022, 0.08), lam(petal));
+    p.position.set(Math.cos(a) * 0.12, 0.03, Math.sin(a) * 0.12);
+    p.rotation.y = -a;
+    p.rotation.z = -0.55;          // swept back, which is what makes it a lily
+    head.add(p);
+  }
+  const cup = new THREE.Mesh(sharedCyl(0.055, 0.02, 0.09, 6), lam(throat));
+  cup.position.y = 0.05; head.add(cup);
+  // one bundle of stamens rather than four separate ones
+  const st = new THREE.Mesh(sharedBox(0.035, 0.09, 0.035), lam('#e8b45d'));
+  st.position.y = 0.11; head.add(st);
+  g.userData.head = head;
+  return g;
+}
+
+function buildRose(rng, cols) {
+  const g = new THREE.Group();
+  const [petal, heart] = cols;
+  const H = 0.5 + rng() * 0.25;
+  const stem = new THREE.Mesh(sharedCyl(0.02, 0.026, H, 5), lam('#3f7a34'));
+  stem.position.y = H / 2; g.add(stem);
+  // thorns
+  for (let i = 0; i < 2; i++) {
+    const th = new THREE.Mesh(sharedBox(0.03, 0.03, 0.03), lam('#2f6027'));
+    const a = rng() * Math.PI * 2;
+    th.position.set(Math.cos(a) * 0.026, H * (0.25 + i * 0.22), Math.sin(a) * 0.026);
+    g.add(th);
+  }
+  // toothed leaves
+  for (let i = 0; i < 2; i++) {
+    const a = rng() * Math.PI * 2;
+    const leaf = new THREE.Mesh(sharedBox(0.16, 0.02, 0.1), lam('#3f7a34'));
+    leaf.position.set(Math.cos(a) * 0.11, H * (0.35 + i * 0.28), Math.sin(a) * 0.11);
+    leaf.rotation.y = a; leaf.rotation.z = -0.28;
+    g.add(leaf);
+  }
+  // the bloom: three rings of short cupped petals, tightening toward the heart
+  const head = new THREE.Group();
+  head.position.y = H + 0.04;
+  g.add(head);
+  const rings = [[6, 0.115, 0.0, -0.95], [4, 0.075, 0.035, -0.6]];
+  for (let r = 0; r < rings.length; r++) {
+    const [n, rad, hy, tilt] = rings[r];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + r * 0.6;
+      const p = new THREE.Mesh(sharedBox(0.1, 0.025, 0.085), lam(r === 2 ? heart : petal));
+      p.position.set(Math.cos(a) * rad, hy, Math.sin(a) * rad);
+      p.rotation.y = -a;
+      p.rotation.z = tilt;
+      head.add(p);
+    }
+  }
+  const core = new THREE.Mesh(sharedBox(0.05, 0.05, 0.05), lam(heart));
+  core.position.y = 0.08; head.add(core);
+  const sepal = new THREE.Mesh(sharedCyl(0.06, 0.045, 0.05, 6), lam('#3f7a34'));
+  sepal.position.y = -0.03; head.add(sepal);
+  g.userData.head = head;
+  return g;
+}
+
+function buildSunflower(rng) {
+  const g = new THREE.Group();
+  const H = 1.5 + rng() * 0.6;
+  const stem = new THREE.Mesh(sharedCyl(0.045, 0.06, H, 6), lam('#4a7d33'));
+  stem.position.y = H / 2; g.add(stem);
+  // broad heart-shaped leaves
+  for (let i = 0; i < 3; i++) {
+    const a = rng() * Math.PI * 2 + i * 2.1;
+    const leaf = new THREE.Mesh(sharedBox(0.34, 0.03, 0.26), lam('#4a7d33'));
+    leaf.position.set(Math.cos(a) * 0.2, H * (0.3 + i * 0.2), Math.sin(a) * 0.2);
+    leaf.rotation.y = a;
+    leaf.rotation.z = -0.35;
+    g.add(leaf);
+    const tip = new THREE.Mesh(sharedBox(0.16, 0.03, 0.14), lam('#3f6d2b'));
+    tip.position.set(Math.cos(a) * 0.4, H * (0.3 + i * 0.2) - 0.09, Math.sin(a) * 0.4);
+    tip.rotation.y = a;
+    g.add(tip);
+  }
+  // the head, on its own pivot so it can track the sun
+  const head = new THREE.Group();
+  head.position.y = H;
+  g.add(head);
+  const disc = new THREE.Mesh(sharedCyl(0.2, 0.2, 0.07, 12), lam('#5a3a1e'));
+  disc.rotation.x = Math.PI / 2;
+  head.add(disc);
+  // seed speckle: one ring plate instead of seven boxes
+  const seeds = new THREE.Mesh(sharedCyl(0.13, 0.13, 0.02, 10), lam('#3f2a14'));
+  seeds.rotation.x = Math.PI / 2;
+  seeds.position.z = 0.045;
+  head.add(seeds);
+  // two staggered rings of long rays
+  for (let r = 0; r < 2; r++) {
+    const n = r ? 7 : 9;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + r * 0.3;
+      const ray = new THREE.Mesh(sharedBox(0.13, 0.055, 0.02), lam(r ? '#f0b429' : '#ffd34e'));
+      ray.position.set(Math.cos(a) * 0.27, Math.sin(a) * 0.27, r ? -0.01 : 0.01);
+      ray.rotation.z = a;
+      head.add(ray);
+    }
+  }
+  g.userData.head = head;
+  g.userData.sunflower = true;
+  return g;
+}
+
+/**
+ * A tended flower bed: a low stone border, mixed planting, a rose arch and a
+ * bench. `kind` biases the mix so no two gardens look alike.
+ */
+function buildGarden(rng, kind, detail = 1) {
+  const g = new THREE.Group();
+  const R = 2.9;
+  const heads = [];
+
+  // packed-earth bed with a low stone border
+  const bed = new THREE.Mesh(sharedCyl(R, R, 0.09, 14), lam('#7a5c3c'));
+  bed.position.y = 0.045; g.add(bed);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const st = new THREE.Mesh(sharedBox(0.34, 0.17, 0.24), lam(i % 2 ? '#9a9488' : '#84887e'));
+    st.position.set(Math.cos(a) * R, 0.09, Math.sin(a) * R);
+    st.rotation.y = -a;
+    g.add(st);
+  }
+  // a mown grass path in, so it reads as a place people visit
+  const path = new THREE.Mesh(sharedBox(1.0, 0.03, R * 1.5), lam('#c8b494'));
+  path.position.set(0, 0.1, R * 0.55); g.add(path);
+
+  // planting mix by kind
+  const mix = kind === 'rose' ? [0.15, 0.7, 0.15]
+    : kind === 'sun' ? [0.2, 0.15, 0.65]
+      : [0.6, 0.25, 0.15];                       // lily garden
+  // WORLD DETAIL scales the planting: a garden should still read at LOW, it
+  // just has fewer blooms in the bed
+  const N = Math.max(7, Math.round(22 * detail));
+  for (let i = 0; i < N; i++) {
+    const a = rng() * Math.PI * 2;
+    const rr = Math.sqrt(rng()) * (R - 0.45);
+    if (Math.abs(Math.cos(a) * rr) < 0.5 && Math.sin(a) * rr > 0) continue;  // keep the path clear
+    const roll = rng();
+    let f;
+    if (roll < mix[0]) f = buildLily(rng, LILY_COLS[Math.floor(rng() * LILY_COLS.length)]);
+    else if (roll < mix[0] + mix[1]) f = buildRose(rng, ROSE_COLS[Math.floor(rng() * ROSE_COLS.length)]);
+    else f = buildSunflower(rng);
+    f.position.set(Math.cos(a) * rr, 0.09, Math.sin(a) * rr);
+    f.rotation.y = rng() * Math.PI * 2;
+    const s = 0.85 + rng() * 0.35;
+    f.scale.setScalar(s);
+    g.add(f);
+    heads.push({ o: f, phase: rng() * 10, sun: !!f.userData.sunflower });
+  }
+
+  // a rose arch over the path entrance
+  const arch = new THREE.Group();
+  for (const sx of [-0.6, 0.6]) {
+    const leg = new THREE.Mesh(sharedBox(0.07, 1.7, 0.07), lam('#e8dcc0'));
+    leg.position.set(sx, 0.85, 0); arch.add(leg);
+  }
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    const seg = new THREE.Mesh(sharedBox(0.34, 0.06, 0.07), lam('#e8dcc0'));
+    seg.position.set(-0.6 + t * 1.2, 1.7 + Math.sin(t * Math.PI) * 0.22, 0);
+    seg.rotation.z = Math.cos(t * Math.PI) * 0.5;
+    arch.add(seg);
+  }
+  // roses climbing it
+  for (let i = 0; i < 9; i++) {
+    const t = i / 8;
+    const bl = new THREE.Mesh(sharedBox(0.1, 0.1, 0.1), lam(i % 2 ? '#e8618f' : '#f086ab'));
+    bl.position.set(-0.6 + t * 1.2, 1.72 + Math.sin(t * Math.PI) * 0.24, (i % 2 ? 0.06 : -0.06));
+    arch.add(bl);
+    const lf = new THREE.Mesh(sharedBox(0.1, 0.02, 0.08), lam('#3f7a34'));
+    lf.position.set(-0.6 + t * 1.2, 1.62 + Math.sin(t * Math.PI) * 0.24, 0);
+    arch.add(lf);
+  }
+  arch.position.z = R * 0.92;
+  g.add(arch);
+
+  // a bench facing the bed
+  const bench = new THREE.Group();
+  const seat = new THREE.Mesh(sharedBox(1.2, 0.08, 0.36), lam('#a8804c'));
+  seat.position.y = 0.42; bench.add(seat);
+  const back = new THREE.Mesh(sharedBox(1.2, 0.36, 0.07), lam('#a8804c'));
+  back.position.set(0, 0.62, -0.16); bench.add(back);
+  for (const sx of [-0.5, 0.5]) {
+    const lg = new THREE.Mesh(sharedBox(0.08, 0.42, 0.3), lam('#84633a'));
+    lg.position.set(sx, 0.21, 0); bench.add(lg);
+  }
+  bench.position.set(-R * 0.72, 0.09, -R * 0.55);
+  bench.rotation.y = 2.4;
+  g.add(bench);
+
+  // butterflies over the bed — a garden should have something moving in it
+  const flutter = [];
+  for (let i = 0; i < Math.max(2, Math.round(5 * detail)); i++) {
+    const b = new THREE.Mesh(sharedBox(0.11, 0.02, 0.16),
+      lam(['#f0b8d8', '#f5e88a', '#a8c8f0'][i % 3]));
+    b.position.set(0, 1, 0);
+    g.add(b);
+    flutter.push({ o: b, a: rng() * 6.28, r: 0.8 + rng() * 1.6, y: 0.6 + rng() * 0.7, sp: 0.5 + rng() * 0.6 });
+  }
+
+  g.userData.garden = { heads, flutter };
+  return g;
+}
+
 export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   const S2 = terrain.size / 2;
   const built = [];
@@ -1231,6 +1582,16 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   const bridge = buildBridge();
   if (place(bridge, S2 * 0.52, S2 * 0.44, 2, 16, 5, 0.8)) built.push(bridge);
 
+  // --- three flower gardens, each with a different planting mix ---
+  const grng = (() => { let g = 20261; return () => { g = (g * 1103515245 + 12345) & 0x7fffffff; return g / 0x7fffffff; }; })();
+  const gardens = [];
+  for (const [kind, gx, gz] of [['lily', -S2 * 0.42, -S2 * 0.55],
+                                ['rose', S2 * 0.46, -S2 * 0.2],
+                                ['sun', -S2 * 0.68, S2 * 0.2]]) {
+    const gd = buildGarden(grng, kind, getQuality().decorScale);
+    if (place(gd, gx, gz, 2, 14, 4.2, 0.55)) { built.push(gd); gardens.push(gd); }
+  }
+
   // a lantern-lit fishing dock on the shore of EVERY lake, each with its own
   // fishmonger — walk up to sell the day's catch
   const docks = [];
@@ -1298,8 +1659,11 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     return (p.x - camAt.x) ** 2 + (p.z - camAt.z) ** 2 < NEAR2;
   };
 
-  function update(dt, time, viewer) {
+  function update(dt, time, viewer, dayFrac = 0.5) {
     if (viewer) camAt = viewer;
+    // where the sun sits, so sunflowers can face it: dayFrac 0 = dawn, 1 = dusk
+    const sunAz = (dayFrac - 0.5) * 2.2;
+    const sunEl = -0.5 + Math.sin(Math.max(0, Math.min(1, dayFrac)) * Math.PI) * 0.4;
     // Rialo banner ripples in the wind; the paper lanterns sway
     if (rialo.userData.flag && near(rialo)) {
       const pos = rialo.userData.flag.geometry.attributes.position;
@@ -1344,6 +1708,33 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       }
     }
 
+    // gardens: everything sways, sunflowers turn to follow the sun, butterflies
+    // loop over the bed
+    for (const gd of gardens) {
+      if (!near(gd)) continue;
+      const G = gd.userData.garden;
+      for (const h of G.heads) {
+        const sway = Math.sin(time * 1.3 + h.phase) * 0.055;
+        h.o.rotation.z = sway;
+        h.o.rotation.x = Math.cos(time * 1.1 + h.phase) * 0.035;
+        // a sunflower head follows the sun across the sky and droops at night
+        if (h.sun && h.o.userData.head) {
+          h.o.userData.head.rotation.y = -gd.rotation.y + sunAz;
+          h.o.userData.head.rotation.x = sunEl;
+        }
+      }
+      for (const f of G.flutter) {
+        f.a += dt * f.sp;
+        f.o.position.set(
+          Math.cos(f.a) * f.r,
+          f.y + Math.sin(time * 3 + f.a) * 0.16,
+          Math.sin(f.a * 1.3) * f.r,
+        );
+        f.o.rotation.y = -f.a;
+        f.o.rotation.z = Math.sin(time * 14 + f.a) * 0.6;   // wingbeat
+      }
+    }
+
     // paper lanterns sway on every landmark that hangs them
     for (const lm of [festival, watch, ...docks.map((d) => d.mesh)]) {
       const ls = lm.userData.lanterns;
@@ -1382,12 +1773,26 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       }
     }
     // the waterfall rushes & its foam clouds churn
-    if (falls.userData.fallTex && near(falls)) {
-      falls.userData.fallTex.offset.y += dt * 1.7;
-      falls.userData.foams.forEach((f, i) => {
-        f.position.y = 0.2 + Math.abs(Math.sin(time * 3.2 + i * 1.4)) * 0.09;
-        f.scale.setScalar(1 + Math.sin(time * 4 + i) * 0.15);
+    if (falls.userData.fall && near(falls)) {
+      const F = falls.userData.fall;
+      // every layer scrolls at its own rate — that difference is what sells it
+      for (const sh of F.sheets) sh.t.offset.y -= dt * sh.sp;
+      // the bright core breathes so the rush is not a constant wall
+      F.core.material.opacity = 0.62 + Math.sin(time * 5.5) * 0.14;
+      F.mist.material.opacity = 0.12 + Math.sin(time * 1.3) * 0.05;
+      F.foams.forEach((f, i) => {
+        f.position.y += Math.sin(time * 3.2 + i * 1.4) * 0.004;
+        f.scale.setScalar(0.9 + Math.sin(time * 4.5 + i * 0.9) * 0.22);
+        f.material.opacity = 0.7 + Math.sin(time * 6 + i) * 0.2;
       });
+      // rings expand out across the plunge pool and fade
+      for (const r of F.rings) {
+        r.t += dt * 0.75;
+        if (r.t > 1) r.t -= 1;
+        const k = r.t;
+        r.m.scale.setScalar(0.35 + k * 3.4);
+        r.m.material.opacity = 0.5 * (1 - k);
+      }
     }
     // the kickabout: the ball hops between players, the receiver bounces
     if (kick.userData.kick && near(kick)) {

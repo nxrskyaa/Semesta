@@ -169,6 +169,38 @@ function buildBird(c, wingC) {
 // one shell dome shared by every turtle
 const TURTLE_SHELL_GEO = new THREE.SphereGeometry(0.42, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
 
+/** A slim fish that cruises just under the surface, body weaving as it swims. */
+function buildShoalFish(c, pale) {
+  const g = new THREE.Group();
+  const body = box(0.3, 0.16, 0.11, c);
+  g.add(body);
+  const belly = box(0.24, 0.05, 0.1, pale);
+  belly.position.y = -0.07; g.add(belly);
+  const tailPivot = new THREE.Group();
+  tailPivot.position.x = -0.16;
+  const tail = box(0.11, 0.17, 0.03, c);
+  tail.position.x = -0.05;
+  tailPivot.add(tail);
+  g.add(tailPivot);
+  const dorsal = box(0.12, 0.09, 0.025, c);
+  dorsal.position.set(0.01, 0.11, 0); g.add(dorsal);
+  for (const sz of [-0.06, 0.06]) {
+    const fin = box(0.07, 0.04, 0.05, pale);
+    fin.position.set(0.02, -0.03, sz);
+    fin.rotation.z = -0.3;
+    g.add(fin);
+  }
+  const eye = box(0.03, 0.03, 0.025, '#141414');
+  eye.position.set(0.12, 0.04, 0.06); g.add(eye);
+  const eye2 = box(0.03, 0.03, 0.025, '#141414');
+  eye2.position.set(0.12, 0.04, -0.06); g.add(eye2);
+  g.userData = { tailPivot };
+  return g;
+}
+
+const SHOAL_COLS = [['#e8934a', '#f7d7ac'], ['#5ec8e8', '#cfeef7'],
+                    ['#d8d24a', '#f4f0c0'], ['#e86a8a', '#f8ccd8']];
+
 const BUNNY_FURS = ['#e8dcc8', '#b89a78', '#8a7a6a', '#d8c0a8'];
 const DEER_FURS = ['#b8865c', '#a8764c', '#c89a6c'];
 const FISH_COLS = ['#8fd6e8', '#e8b45d', '#c8e8f0', '#e88f9a'];
@@ -182,7 +214,7 @@ export function createWildlife(scene, terrain, particles) {
   const rndState = { s: 4477 };
   const rnd = () => { rndState.s = (rndState.s * 1103515245 + 12345) & 0x7fffffff; return rndState.s / 0x7fffffff; };
 
-  const land = [], sea = [], fish = [], birds = [];
+  const land = [], sea = [], fish = [], birds = [], shoal = [];
 
   const landCell = (tries = 60) => {
     for (let i = 0; i < tries; i++) {
@@ -243,6 +275,32 @@ export function createWildlife(scene, terrain, particles) {
     group.add(m);
     fish.push({ m, x: c.x, z: c.z, t: rnd() * 8, wait: 1 + rnd() * 7, air: 0, dir: rnd() * 6.28 });
   }
+  // SHOALS: fish circling just under the surface of the lakes, which is where
+  // you actually stand and look at the water. The leaping fish live out at sea;
+  // these are the ones that make a lake feel stocked.
+  const N_SHOAL = Math.round(5 * D);
+  const centres = [];
+  for (const L of (terrain.lakes || [])) {
+    centres.push({ x: L.x - S / 2, z: L.z - S / 2, r: Math.max(2.5, L.r * 0.45) });
+  }
+  for (const c of centres) {
+    for (let k = 0; k < N_SHOAL; k++) {
+      const [cc, pale] = SHOAL_COLS[Math.floor(rnd() * SHOAL_COLS.length)];
+      const m = buildShoalFish(cc, pale);
+      const scale = 0.7 + rnd() * 0.7;
+      m.scale.setScalar(scale);
+      group.add(m);
+      shoal.push({
+        m, cx: c.x, cz: c.z,
+        r: c.r * (0.35 + rnd() * 0.6),
+        a: rnd() * 6.28,
+        sp: (0.35 + rnd() * 0.5) * (rnd() < 0.5 ? 1 : -1),
+        depth: 0.16 + rnd() * 0.3,
+        wob: rnd() * 6.28,
+      });
+    }
+  }
+
   for (let i = 0; i < N_GULL; i++) {
     // gulls circle the islands; if there is no sea they circle a lake instead
     const isl = terrain.islands?.[i % Math.max(1, terrain.islands.length)];
@@ -374,6 +432,28 @@ export function createWildlife(scene, terrain, particles) {
       }
     }
 
+    // --- LAKES: shoals cruise just under the surface, bodies weaving ---
+    for (const f of shoal) {
+      if ((f.m.position.x - playerPos.x) ** 2 + (f.m.position.z - playerPos.z) ** 2 > FAR2) continue;
+      f.a += f.sp * dt;
+      // the radius breathes so the shoal wanders rather than tracing a circle
+      const rr = f.r * (1 + Math.sin(time * 0.4 + f.wob) * 0.22);
+      const x = f.cx + Math.cos(f.a) * rr;
+      const z = f.cz + Math.sin(f.a) * rr;
+      // stay in water: if the loop wandered onto land, tighten the radius
+      if (!terrain.swimmable(x, z)) { f.r *= 0.88; continue; }
+      f.m.position.set(x, WATER_Y - f.depth - Math.sin(time * 1.6 + f.wob) * 0.05, z);
+      f.m.rotation.y = -f.a + (f.sp > 0 ? Math.PI / 2 : -Math.PI / 2);
+      // the whole body banks into the turn, the tail beats
+      f.m.rotation.z = Math.sin(time * 6 + f.wob) * 0.12;
+      f.m.userData.tailPivot.rotation.y = Math.sin(time * 9 + f.wob) * 0.55;
+      // now and then one breaks the surface for a moment
+      if (Math.random() < dt * 0.12) {
+        particles?.ring?.(
+          new THREE.Vector3(x, WATER_Y + 0.02, z), '#dff6ff', 0.5, 0.5);
+      }
+    }
+
     // --- AIR: gulls circle, beating then gliding ---
     for (const b of birds) {
       if ((b.m.position.x - playerPos.x) ** 2 + (b.m.position.z - playerPos.z) ** 2 > FAR2) continue;
@@ -398,5 +478,8 @@ export function createWildlife(scene, terrain, particles) {
     scene.remove(group);
   }
 
-  return { group, update, dispose, count: land.length + sea.length + fish.length + birds.length };
+  return {
+    group, update, dispose,
+    count: land.length + sea.length + fish.length + birds.length + shoal.length,
+  };
 }
