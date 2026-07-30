@@ -16,6 +16,10 @@ import { WATER_Y } from '../world/terrain.js';
 import { disposeObject } from '../util/dispose.js';
 import { boxMesh, cylMesh, sharedMat } from '../gfx/meshcache.js';
 
+// A hull needs water under it, not just a water-flagged cell. Anything shallower
+// than this grounds the craft — that is what stops a boat driving up the beach.
+const HULL_DRAFT = 0.42;
+
 const box = (w, h, d, c, opts) => boxMesh(w, h, d, c, opts);
 const cyl = (rt, rb, h, c, seg = 8) => cylMesh(rt, rb, h, c, seg);
 
@@ -167,7 +171,10 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     heading: 0,          // world yaw of the craft
     speed: 0,            // current forward speed
     lean: 0,
+    leanV: 0,
+    throttle: 0,
     bob: 0,
+    ringT: 0,
     moored: {},          // id -> { mesh, x, z, dir }
   };
   const group = new THREE.Group();
@@ -175,8 +182,28 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
 
   let ridden = null;     // the mesh currently under the player
 
-  /** Park a craft on the water at (x, z), facing `dir`. */
+  /** True where a hull has enough water under it to float and be driven. */
+  function floats(x, z) {
+    const [ix, iz] = terrain.cellOf(x, z);
+    return terrain.inBounds(ix, iz) && terrain.swimmable(x, z)
+      && WATER_Y - terrain.surfaceY(x, z) > HULL_DRAFT;
+  }
+
+  /**
+   * Park a craft on the water at (x, z). If that exact spot is too shallow the
+   * berth is nudged to the nearest floatable water — a craft moored on the
+   * shelf grounds out the instant you board it and feels broken.
+   */
   function moor(id, x, z, dir = 0) {
+    if (!floats(x, z)) {
+      let found = false;
+      for (let r = 0.6; r <= 10 && !found; r += 0.6) {
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+          const nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r;
+          if (floats(nx, nz)) { x = nx; z = nz; found = true; break; }
+        }
+      }
+    }
     const mesh = BUILD[id]();
     mesh.position.set(x, WATER_Y, z);
     mesh.rotation.y = dir;
@@ -256,74 +283,117 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     if (!state.active) return;
     const def = CRAFT_DEFS[state.active];
 
-    // steering: the craft turns toward the stick direction rather than snapping,
-    // which is what gives it weight
-    let throttle = 0;
+    // STEERING. The old version turned the hull toward the stick and gunned the
+    // throttle whenever the stick was touched, which made it dart and snap. A
+    // craft on water should behave like a craft: you steer it, and it keeps its
+    // momentum whether or not you are still pushing.
+    //
+    // The stick direction is a heading REQUEST. How fast the bow comes round
+    // depends on how fast you are going — a jetski at a standstill barely turns,
+    // at speed it carves. And the throttle only opens as far as the bow is
+    // pointed the way you asked, so hauling the stick 180 degrees slows you into
+    // the turn instead of teleporting the nose around.
+    let want = 0, turnAmt = 0;
     if (mv) {
-      const want = Math.atan2(mv.x, mv.z);
+      want = Math.atan2(mv.x, mv.z);
       let diff = want - state.heading;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      const turn = Math.max(-1, Math.min(1, diff / 0.9));
-      state.heading += turn * def.turn * dt;
-      throttle = 1;
-      state.lean += (-turn * def.lean - state.lean) * Math.min(1, dt * 6);
+      // authority ramps in with speed and never quite hits zero, so you can
+      // always creep the bow round when stopped
+      const grip = 0.28 + 0.72 * Math.min(1, state.speed / (def.speed * 0.55));
+      turnAmt = Math.max(-1, Math.min(1, diff / 0.7));
+      state.heading += turnAmt * def.turn * grip * dt;
+      // throttle backs off in a hard turn — that IS the handling
+      state.throttle = 1 - Math.min(0.55, Math.abs(diff) / Math.PI * 1.1);
     } else {
-      state.lean += (0 - state.lean) * Math.min(1, dt * 4);
+      state.throttle = 0;
     }
-    // throttle up fast, coast down slow — a jetski does not stop dead
-    const target = throttle * def.speed;
-    const accel = throttle ? 5.5 : 2.4;
-    state.speed += (target - state.speed) * Math.min(1, dt * accel);
 
+    // momentum: opens up quickly, coasts down slowly. Water has drag, not brakes.
+    const target = state.throttle * def.speed;
+    const accel = state.throttle > 0.02 ? 2.6 : 0.85;
+    state.speed += (target - state.speed) * Math.min(1, dt * accel);
+    if (state.speed < 0.05) state.speed = 0;
+
+    // BANK: lean into the turn, and let it settle back with a little overshoot
+    // so it rolls rather than snapping upright.
+    const wantLean = -turnAmt * def.lean * Math.min(1, state.speed / (def.speed * 0.5));
+    state.leanV += (wantLean - state.lean) * 26 * dt;
+    state.leanV *= Math.pow(0.0016, dt);          // damping
+    state.lean += state.leanV * dt;
+
+    // MOVE. A craft must never climb the beach: it needs water under the hull,
+    // not just a water-flagged cell, so it stops at the wade line the way a real
+    // hull grounds out. Probe ahead of the bow, not at the seat.
     const nx = player.state.pos.x + Math.sin(state.heading) * state.speed * dt;
     const nz = player.state.pos.z + Math.cos(state.heading) * state.speed * dt;
-    const [ix, iz] = terrain.cellOf(nx, nz);
-    if (terrain.inBounds(ix, iz) && terrain.swimmable(nx, nz)) {
+    const bowX = nx + Math.sin(state.heading) * 1.15;
+    const bowZ = nz + Math.cos(state.heading) * 1.15;
+    if (floats(nx, nz) && floats(bowX, bowZ)) {
       player.state.pos.x = nx;
       player.state.pos.z = nz;
     } else {
-      // nosed into the beach: bleed the speed off and spray, then the rider can
-      // step off with the interact button
-      if (state.speed > 4) {
-        particles?.burst(player.state.pos.clone().setY(WATER_Y + 0.1), '#eafcff', 8, 2.6, 5, 0.5);
+      // grounded: a spray of sand-coloured foam, a shove back off the bank, and
+      // the speed dumped. The rider steps off with the interact button.
+      if (state.speed > 3) {
+        particles?.burst(player.state.pos.clone().setY(WATER_Y + 0.1), '#eafcff', 10, 2.8, 5, 0.5);
+        particles?.ring?.(player.state.pos.clone().setY(WATER_Y + 0.02), '#ffffff', 1.6, 0.4);
         hooks.onBeach?.();
       }
-      state.speed *= 0.25;
+      state.speed *= 0.12;
+      // nudge back toward open water so you can never wedge into the sand
+      player.state.pos.x -= Math.sin(state.heading) * 0.06;
+      player.state.pos.z -= Math.cos(state.heading) * 0.06;
     }
     player.state.facing = state.heading;
 
-    // porpoise over the swell + bank into the turn
-    state.bob += dt * (2.5 + state.speed * 0.35);
-    const rise = Math.sin(state.bob) * def.porpoise * (0.4 + state.speed / def.speed);
+    // RIDE: porpoise over the swell, nose lifting under power
+    state.bob += dt * (2.2 + state.speed * 0.5);
+    const fast = state.speed / def.speed;
+    const rise = Math.sin(state.bob) * def.porpoise * (0.35 + fast);
     player.state.pos.y = WATER_Y + def.seatH + rise;
     if (ridden) {
       ridden.rotation.z = state.lean;
-      ridden.rotation.x = -Math.sin(state.bob * 0.7) * 0.05 - state.speed / def.speed * 0.07;
+      // planing: the bow rides up as speed builds, and dips when you back off
+      ridden.rotation.x = -fast * 0.16 - Math.sin(state.bob * 0.8) * 0.045;
+      ridden.rotation.y = state.lean * 0.12;      // a touch of yaw into the roll
     }
 
-    // WAKE: foam behind the nozzle, spray off the bow at speed, and a ripple
-    // ring dropped periodically so the trail persists on the surface
-    const fast = state.speed / def.speed;
-    if (fast > 0.12) {
-      const back = new THREE.Vector3(
-        player.state.pos.x - Math.sin(state.heading) * 1.2,
-        WATER_Y + 0.04,
-        player.state.pos.z - Math.cos(state.heading) * 1.2,
-      );
-      if (Math.random() < dt * 40 * fast * def.spray) {
-        particles?.burst(back, '#f2feff', 2, 1.5 + fast * 2.5, 3.5, 0.45);
+    // ---- WAKE ----------------------------------------------------------------
+    // Four separate effects instead of one puff of dots: a rooster tail off the
+    // nozzle, two diverging hull wakes, bow spray, and expanding ripple rings.
+    if (fast > 0.06) {
+      const sh = Math.sin(state.heading), ch = Math.cos(state.heading);
+      const px = player.state.pos.x, pz = player.state.pos.z;
+
+      // rooster tail: thrown UP and back, harder the faster you go
+      if (Math.random() < dt * 52 * fast * def.spray) {
+        const back = new THREE.Vector3(px - sh * 1.25, WATER_Y + 0.06, pz - ch * 1.25);
+        particles?.burst(back, '#f4feff', 2, 1.4 + fast * 3.4, 4.5 + fast * 3, 0.5);
       }
-      if (fast > 0.55 && Math.random() < dt * 7) {
-        particles?.ring?.(back.clone(), '#eafcff', 1.1 + fast, 0.35);
+      // hull wake: two lines of foam peeling away at an angle behind the craft
+      if (Math.random() < dt * 30 * fast) {
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const a = state.heading + side * 2.5;      // ~143 deg back off the bow
+        const p2 = new THREE.Vector3(px + Math.sin(a) * 1.0, WATER_Y + 0.04, pz + Math.cos(a) * 1.0);
+        particles?.burst(p2, '#dff6ff', 1, 0.9 + fast, 1.6, 0.75);
       }
-      if (fast > 0.4 && Math.random() < dt * 18 * def.spray) {
-        const bow = new THREE.Vector3(
-          player.state.pos.x + Math.sin(state.heading) * 1.3,
-          WATER_Y + 0.1,
-          player.state.pos.z + Math.cos(state.heading) * 1.3,
+      // bow spray: fine white mist thrown forward and out at speed
+      if (fast > 0.35 && Math.random() < dt * 26 * def.spray) {
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const a = state.heading + side * 0.55;
+        const bow = new THREE.Vector3(px + Math.sin(a) * 1.25, WATER_Y + 0.14, pz + Math.cos(a) * 1.25);
+        particles?.burst(bow, '#ffffff', 1, 2.4 * fast, 5, 0.4);
+      }
+      // ripple rings dropped on the surface, so the trail persists behind you
+      state.ringT = (state.ringT || 0) - dt;
+      if (state.ringT <= 0 && fast > 0.25) {
+        state.ringT = 0.16 / Math.max(0.4, fast);
+        particles?.ring?.(
+          new THREE.Vector3(px - sh * 1.0, WATER_Y + 0.03, pz - ch * 1.0),
+          '#eafcff', 0.9 + fast * 1.6, 0.5,
         );
-        particles?.burst(bow, '#ffffff', 1, 2.2, 4.5, 0.35);
       }
     }
     if (ridden?.userData.lamp) {

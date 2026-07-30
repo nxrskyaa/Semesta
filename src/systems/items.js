@@ -112,7 +112,7 @@ export const ITEMS = {
   mount_pebble:     { name: 'Pebble Whistle', mountId: 'pebble', rarity: 'epic' },
 
   // watercraft keys — moored at the marina, not summoned like a mount
-  craft_dinghy:  { name: 'Dinghy Oars', craftId: 'dinghy', rarity: 'common' },
+  craft_dinghy:  { name: 'Dinghy Oars', craftId: 'dinghy', buy: 120, rarity: 'common' },
   craft_jetski:  { name: 'Jetski Key', craftId: 'jetski', buy: 480, rarity: 'rare' },
 
   // consumables

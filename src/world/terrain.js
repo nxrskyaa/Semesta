@@ -21,13 +21,15 @@ const OCEAN_EDGE = 1.34;
 // Hand-placed archipelago (normalised map coords, cell radius, height above the
 // waterline). Placed by hand rather than scattered so each island reads as a
 // destination with its own silhouette, and so none of them merge.
+// `seed` drives the coastline wobble and where the peak sits, so no two
+// islands share a silhouette.
 const ISLANDS = [
-  { name: 'Palmspit',    kind: 'palm',    x: 0.795, z: 0.640, r: 8.5, h: 3.4 },
-  { name: 'Coral Rest',  kind: 'palm',    x: 0.640, z: 0.845, r: 7.0, h: 2.8 },
-  { name: 'Torii Rock',  kind: 'shrine',  x: 0.905, z: 0.795, r: 6.5, h: 4.2 },
-  { name: 'Wreck Bar',   kind: 'wreck',   x: 0.700, z: 0.720, r: 5.5, h: 2.2 },
-  { name: 'Lantern Cay', kind: 'lantern', x: 0.885, z: 0.590, r: 5.0, h: 2.6 },
-  { name: 'Bone Reef',   kind: 'rock',    x: 0.760, z: 0.925, r: 5.5, h: 3.0 },
+  { name: 'Palmspit',    kind: 'palm',    x: 0.795, z: 0.640, r: 9.5, h: 3.4, seed: 0.4 },
+  { name: 'Coral Rest',  kind: 'palm',    x: 0.640, z: 0.845, r: 8.0, h: 2.8, seed: 2.1 },
+  { name: 'Torii Rock',  kind: 'shrine',  x: 0.905, z: 0.795, r: 7.0, h: 4.4, seed: 3.9 },
+  { name: 'Wreck Bar',   kind: 'wreck',   x: 0.700, z: 0.720, r: 6.5, h: 2.4, seed: 5.2 },
+  { name: 'Lantern Cay', kind: 'lantern', x: 0.885, z: 0.590, r: 6.0, h: 2.8, seed: 1.3 },
+  { name: 'Bone Reef',   kind: 'rock',    x: 0.760, z: 0.925, r: 6.5, h: 3.2, seed: 4.6 },
 ];
 
 export class Terrain {
@@ -207,12 +209,27 @@ export class Terrain {
           this.ocean[this.idx(ix, iz)] = 1;
         }
 
-        // island bumps rise back out of the sea
+        // Islands rise back out of the sea. A plain radial dome reads as a
+        // muffin — real islands have a wandering coastline, a spit or a bay, and
+        // a peak that isn't dead centre. So the radius itself is warped by an
+        // angular fBm, the dome is offset toward a per-island peak, and a second
+        // noise breaks up the surface.
         for (const I of ISLANDS) {
-          const d = Math.hypot(ix - I.x * S, iz - I.z * S);
-          if (d > I.r) continue;
-          const t = Math.cos((d / I.r) * Math.PI * 0.5);   // smooth dome, flat top
-          const lump = valueNoise2(ix * 0.22, iz * 0.22, SEED + 200 + I.r) * 1.1;
+          const dx = ix - I.x * S, dz = iz - I.z * S;
+          const ang = Math.atan2(dz, dx);
+          // wobble the outline: lobes and inlets instead of a circle
+          const wob = 1
+            + Math.sin(ang * 3 + I.seed) * 0.22
+            + Math.sin(ang * 5 - I.seed * 1.7) * 0.12
+            + (valueNoise2(Math.cos(ang) * 2 + I.seed, Math.sin(ang) * 2, SEED + 300) - 0.5) * 0.3;
+          const R = I.r * wob;
+          // the peak sits off-centre, so one side is a cliff and the other a beach
+          const pdx = dx - Math.cos(I.seed) * I.r * 0.22;
+          const pdz = dz - Math.sin(I.seed) * I.r * 0.22;
+          const d = Math.hypot(pdx, pdz);
+          if (d > R) continue;
+          const t = Math.cos((d / R) * Math.PI * 0.5);
+          const lump = (valueNoise2(ix * 0.3, iz * 0.3, SEED + 200 + I.r) - 0.3) * 1.6;
           e = Math.max(e, WATER_LEVEL - 0.3 + t * t * (I.h + lump));
         }
 

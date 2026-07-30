@@ -11,6 +11,7 @@ import { WATER_Y, WATER_LEVEL } from './terrain.js';
 import { getQuality } from '../gfx/quality.js';
 import { disposeObject } from '../util/dispose.js';
 import { boxMesh, cylMesh, sphereMesh, sharedMat } from '../gfx/meshcache.js';
+import { makeCritterFaceTexture } from '../gfx/textures.js';
 
 // every part here is static prop geometry, so it all shares from the cache —
 // the only exceptions are the lantern shades, which pulse their own emissive
@@ -193,6 +194,151 @@ function buildPier(len, dir) {
   return g;
 }
 
+
+// ---------------------------------------------------------------------------
+// ISLAND LIFE. Scenery alone made the archipelago feel like a diorama, so every
+// island gets residents with something to do: a sunbather on a towel, a critter
+// digging in the sand, a coconut-stack merchant, a beach-ball rally. Same chibi
+// language as the mainland villagers so they read as the same world.
+// ---------------------------------------------------------------------------
+function buildIslander(fur, belly) {
+  const g = new THREE.Group();
+  const body = box(0.34, 0.3, 0.28, belly);
+  body.position.y = 0.16; g.add(body);
+  const head = box(0.44, 0.4, 0.4, fur);
+  head.position.y = 0.56; g.add(head);
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.42, 0.4),
+    new THREE.MeshLambertMaterial({ map: islandFace(), transparent: true }),
+  );
+  face.position.set(0, 0.56, 0.21); g.add(face);
+  const ears = new THREE.Group();
+  for (const sx of [-0.16, 0.16]) {
+    const ear = box(0.12, 0.14, 0.08, fur);
+    ear.position.set(sx, 0.8, 0);
+    ears.add(ear);
+  }
+  g.add(ears);
+  const arms = [];
+  for (const sx of [-0.23, 0.23]) {
+    const arm = box(0.09, 0.24, 0.09, fur);
+    arm.position.set(sx, 0.2, 0);
+    g.add(arm);
+    arms.push(arm);
+  }
+  g.userData = { head, arms, ears };
+  return g;
+}
+
+let _islandFace = null;
+function islandFace() {
+  if (!_islandFace) _islandFace = makeCritterFaceTexture({ eye: '#2a2a2a', blush: true, mouth: 'smile' });
+  return _islandFace;
+}
+
+/** A striped beach towel with a critter flat out on it. */
+function buildSunbather(rng) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const strip = box(0.9, 0.03, 0.19, i % 2 ? '#f0e6d2' : '#e8768f');
+    strip.position.set(0, 0.02, -0.38 + i * 0.19);
+    g.add(strip);
+  }
+  const c = buildIslander('#e8c88a', '#f4e2bc');
+  c.rotation.x = -Math.PI / 2 + 0.1;      // lying on their back
+  c.position.y = 0.24;
+  g.add(c);
+  // a tiny drink with a straw
+  const cup = cyl(0.07, 0.06, 0.14, '#ffd27a', 7);
+  cup.position.set(0.62, 0.09, 0.2); g.add(cup);
+  const straw = cyl(0.012, 0.012, 0.2, '#e8574a', 5);
+  straw.position.set(0.64, 0.2, 0.2); straw.rotation.z = 0.4; g.add(straw);
+  g.userData.critter = c;
+  g.userData.kind = 'sun';
+  return g;
+}
+
+/** A critter shovelling sand, with a growing pile and a bucket. */
+function buildDigger(rng) {
+  const g = new THREE.Group();
+  const c = buildIslander('#b8865c', '#e0c49a');
+  g.add(c);
+  const pile = new THREE.Mesh(sharedSphereGeo(), mat('#e8d8b0'));
+  pile.scale.set(0.42, 0.2, 0.42);
+  pile.position.set(0.42, 0.02, 0.18); g.add(pile);
+  const bucket = cyl(0.11, 0.09, 0.16, '#5ec8e8', 8);
+  bucket.position.set(-0.42, 0.08, 0.14); g.add(bucket);
+  g.userData.critter = c;
+  g.userData.kind = 'dig';
+  return g;
+}
+
+/** A stall of stacked coconuts with a vendor behind it. */
+function buildCocoStall(rng) {
+  const g = new THREE.Group();
+  const top = box(1.15, 0.09, 0.55, '#a8804c');
+  top.position.y = 0.62; g.add(top);
+  for (const sx of [-0.5, 0.5]) {
+    const leg = box(0.09, 0.62, 0.09, '#84633a');
+    leg.position.set(sx, 0.31, 0); g.add(leg);
+  }
+  // striped awning
+  for (let i = 0; i < 5; i++) {
+    const strip = box(0.24, 0.05, 0.62, i % 2 ? '#f4efe0' : '#5aa845');
+    strip.position.set(-0.48 + i * 0.24, 1.08, 0.06);
+    strip.rotation.x = -0.22;
+    g.add(strip);
+  }
+  for (const sx of [-0.5, 0.5]) {
+    const post = box(0.06, 0.5, 0.06, '#84633a');
+    post.position.set(sx, 0.86, 0.1); g.add(post);
+  }
+  // a pyramid of coconuts
+  const rows = [[-0.3, 0], [0, 0], [0.3, 0], [-0.15, 1], [0.15, 1], [0, 2]];
+  for (const [ox, row] of rows) {
+    const nut = new THREE.Mesh(sharedSphereGeo(), mat('#6b4a2c'));
+    nut.scale.setScalar(0.13);
+    nut.position.set(ox, 0.72 + row * 0.2, 0);
+    g.add(nut);
+  }
+  const v = buildIslander('#8a7a6a', '#cfc0aa');
+  v.position.set(0, 0, -0.5);
+  g.add(v);
+  g.userData.critter = v;
+  g.userData.kind = 'stall';
+  return g;
+}
+
+/** Two critters knocking a beach ball back and forth. */
+function buildBeachBall() {
+  const g = new THREE.Group();
+  const a = buildIslander('#e8a35d', '#f4d8b4');
+  const b = buildIslander('#8fd6e8', '#d4f0f8');
+  a.position.set(-1.5, 0, 0);
+  b.position.set(1.5, 0, 0);
+  a.rotation.y = Math.PI / 2; b.rotation.y = -Math.PI / 2;
+  g.add(a, b);
+  const ball = new THREE.Mesh(sharedSphereGeo(), mat('#f4efe0'));
+  ball.scale.setScalar(0.22);
+  ball.position.set(0, 0.6, 0);
+  g.add(ball);
+  // colour wedges so it reads as a beach ball, not a pearl
+  for (let i = 0; i < 4; i++) {
+    const w = box(0.06, 0.2, 0.2, ['#e8574a', '#5ec8e8', '#ffd23e', '#5aa845'][i]);
+    w.position.set(Math.cos(i * 1.57) * 0.16, 0.6, Math.sin(i * 1.57) * 0.16);
+    w.rotation.y = i * 1.57;
+    g.add(w);
+  }
+  g.userData = { kind: 'ball', a, b, ball, t: 0, dur: 1.1, from: -1, };
+  return g;
+}
+
+let _sphereGeo = null;
+function sharedSphereGeo() {
+  if (!_sphereGeo) _sphereGeo = new THREE.SphereGeometry(1, 8, 6);
+  return _sphereGeo;
+}
+
 export function createIsles(scene, terrain, decorBlocked) {
   const group = new THREE.Group();
   const QL = getQuality();
@@ -205,6 +351,7 @@ export function createIsles(scene, terrain, decorBlocked) {
   const palms = [];      // { group, crown }
   const beacons = [];
   const lights = [];
+  const folks = [];      // island residents with something to do
 
   const surf = (x, z) => terrain.surfaceY(x, z);
   const dry = (x, z) => {
@@ -271,6 +418,30 @@ export function createIsles(scene, terrain, decorBlocked) {
       scatter(isl, 1, () => buildPalm(rng), 0.5);
     }
 
+    // RESIDENTS: every island gets someone doing something, so arriving
+    // somewhere never feels like arriving at an empty postcard. The bigger the
+    // island the more it can hold.
+    const cast = big
+      ? [buildCocoStall, buildSunbather, buildDigger, buildBeachBall]
+      : [buildSunbather, buildDigger];
+    for (const make of cast) {
+      let placed = false;
+      for (let tries = 0; tries < 30 && !placed; tries++) {
+        const a = rng() * Math.PI * 2;
+        const r = 0.3 * isl.r + rng() * isl.r * 0.4;
+        const x = isl.x + Math.cos(a) * r, z = isl.z + Math.sin(a) * r;
+        if (!dry(x, z)) continue;
+        // the beach-ball rally needs room on both sides
+        if (make === buildBeachBall && !(dry(x - 1.6, z) && dry(x + 1.6, z))) continue;
+        const o = make(rng);
+        o.position.set(x, surf(x, z) - 0.02, z);
+        o.rotation.y = Math.atan2(isl.x - x, isl.z - z) + (rng() - 0.5);
+        group.add(o);
+        folks.push({ o, seed: rng() * 10 });
+        placed = true;
+      }
+    }
+
     // a landing pier on the side facing the mainland, so arriving by jetski has
     // somewhere to tie up instead of beaching in the sand
     const toward = Math.atan2(-isl.z, -isl.x);
@@ -323,7 +494,16 @@ export function createIsles(scene, terrain, decorBlocked) {
     if (best) {
       const shore = terrain.nearestShore(best.wx, best.wz);
       const out = Math.atan2(best.wz - shore.z, best.wx - shore.x);   // land -> sea
-      const pier = buildPier(5.4, out);
+      // A mooring has to FLOAT. Walk out from the sand until there is real
+      // depth under a hull — the sea floor drops fast, so this is usually two
+      // or three units, but guessing a fixed offset left craft sitting in the
+      // shallows where they instantly ground out and could not be driven.
+      let berth = 3.4;
+      for (let d = 1.5; d <= 14; d += 0.5) {
+        const x = shore.x + Math.cos(out) * d, z = shore.z + Math.sin(out) * d;
+        if (WATER_Y - terrain.surfaceY(x, z) > 0.55 && terrain.swimmable(x, z)) { berth = d; break; }
+      }
+      const pier = buildPier(Math.max(3, berth - 0.8), out);
       pier.position.set(shore.x + Math.cos(out) * 0.6, WATER_Y + 0.3, shore.z + Math.sin(out) * 0.6);
       group.add(pier);
       const b = buildBeacon();
@@ -331,9 +511,9 @@ export function createIsles(scene, terrain, decorBlocked) {
       group.add(b);
       beacons.push(b);
       marina = {
-        x: shore.x + Math.cos(out) * 3.4,
-        z: shore.z + Math.sin(out) * 3.4,
-        landX: shore.x, landZ: shore.z, dir: out,
+        x: shore.x + Math.cos(out) * berth,
+        z: shore.z + Math.sin(out) * berth,
+        landX: shore.x, landZ: shore.z, dir: out, berth,
       };
     }
   }
@@ -358,6 +538,54 @@ export function createIsles(scene, terrain, decorBlocked) {
     for (const b of beacons) {
       if (!near(b)) continue;
       b.userData.swing.rotation.z = Math.sin(time * 1.2 + b.position.x) * 0.13;
+    }
+    // island residents get on with their day
+    for (const f of folks) {
+      if (!near(f.o)) continue;
+      const u = f.o.userData;
+      const t2 = time + f.seed;
+      if (u.kind === 'sun') {
+        // breathing, with the occasional lazy stretch of one arm
+        const c = u.critter;
+        c.position.y = 0.24 + Math.sin(t2 * 1.1) * 0.012;
+        const stretch = Math.sin(t2 * 0.32) > 0.94 ? 1 : 0;
+        c.userData.arms[0].rotation.x = -stretch * 1.6;
+        c.userData.head.rotation.z = Math.sin(t2 * 0.5) * 0.08;
+      } else if (u.kind === 'dig') {
+        // shovelling: bend down, scoop, swing the sand onto the pile
+        const c = u.critter;
+        const dig = Math.sin(t2 * 3.2);
+        c.rotation.x = 0.35 + dig * 0.28;
+        c.userData.arms.forEach((a, i) => { a.rotation.x = -0.9 + dig * 1.1 - i * 0.15; });
+        c.userData.ears.rotation.z = Math.sin(t2 * 3.2 + 0.6) * 0.18;
+      } else if (u.kind === 'stall') {
+        // vendor rocks on their heels and waves when someone is near
+        const c = u.critter;
+        c.position.y = Math.abs(Math.sin(t2 * 1.6)) * 0.035;
+        const wave = Math.sin(t2 * 5);
+        c.userData.arms[1].rotation.z = -0.5 - wave * 0.7;
+        c.userData.head.rotation.y = Math.sin(t2 * 0.7) * 0.35;
+      } else if (u.kind === 'ball') {
+        // a rally: the ball arcs across, the receiver hops to meet it
+        u.t += dt;
+        const w = Math.min(1, u.t / u.dur);
+        const from = u.from < 0 ? u.a : u.b;
+        const to = u.from < 0 ? u.b : u.a;
+        u.ball.position.set(
+          from.position.x + (to.position.x - from.position.x) * w,
+          0.6 + Math.sin(w * Math.PI) * 0.95,
+          from.position.z + (to.position.z - from.position.z) * w,
+        );
+        u.ball.rotation.y += dt * 5;
+        u.ball.rotation.x += dt * 3;
+        to.position.y = Math.max(0, Math.sin(w * Math.PI * 2)) * 0.12 * w;
+        // both keep their arms up, ready
+        for (const critter of [u.a, u.b]) {
+          critter.userData.arms[0].rotation.x = -2.1;
+          critter.userData.arms[1].rotation.x = -2.1;
+        }
+        if (u.t >= u.dur) { u.t = 0; u.from = -u.from; u.dur = 0.9 + Math.random() * 0.5; }
+      }
     }
     for (const l of lights) {
       l.intensity = isNight ? 1.05 + Math.sin(time * 3 + l.position.x) * 0.12 : 0;

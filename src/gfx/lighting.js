@@ -41,17 +41,17 @@ export function setupLighting(scene) {
 
   // sky / fog / sun colors along the day
   // brighter, moonlit night — a deep blue you can actually see & play in
-  const nightSky = new THREE.Color('#3a4c74');
+  const nightSky = new THREE.Color('#1b2749');
   const dawnSky = new THREE.Color('#e8a86a');
   const daySky = new THREE.Color('#9ed4e8');
   const duskSky = new THREE.Color('#e8935a');
 
-  const nightFog = new THREE.Color('#37456a');
+  const nightFog = new THREE.Color('#1d2a4c');
   const dawnFog = new THREE.Color('#c49a74');
   const dayFog = new THREE.Color('#a8cca2');
   const duskFog = new THREE.Color('#c48a64');
 
-  const nightHemi = new THREE.Color('#7286b4');
+  const nightHemi = new THREE.Color('#5b6e9e');
   const dayHemi = new THREE.Color('#bcd8b2');
 
   const daySun = new THREE.Color('#fff2dc');
@@ -82,9 +82,13 @@ export function setupLighting(scene) {
     const dayness = Math.max(0, Math.min(1, (Math.cos(((hr - 13) / 24) * Math.PI * 2) + 0.6) / 1.3));
     const dim = 1 - state.weatherDim * 0.45;
 
-    // raised night floors so moonlit nights stay readable (was 0.22 / 0.38)
-    sun.intensity = (0.42 + dayness * 1.05) * dim;
-    hemi.intensity = (0.62 + dayness * 0.45) * (1 - state.weatherDim * 0.25);
+    // Night floors: high enough to play in, LOW enough that night reads as
+    // night and a lantern actually looks like a light source. The old floors
+    // (0.42 / 0.62) washed the dark out — every lamp was competing with an
+    // ambient glow as bright as itself, so midnight looked like an overcast
+    // afternoon. Ambient now dips properly and the lanterns carry the scene.
+    sun.intensity = (0.20 + dayness * 1.24) * dim;
+    hemi.intensity = (0.34 + dayness * 0.72) * (1 - state.weatherDim * 0.25);
 
     gradeColor(_sky, hr, nightSky, dawnSky, daySky, duskSky);
     gradeColor(_fog, hr, nightFog, dawnFog, dayFog, duskFog);

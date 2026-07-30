@@ -243,7 +243,6 @@ async function init(character, saved, audio) {
   } else {
     // starter kit: a faithful mount, a couple of seeds and pocket change
     inventory.add('mount_sprig', 1);
-    inventory.add('craft_dinghy', 1);
     inventory.add('seed_wheat', 2);
     inventory.addCoins(15);
   }
@@ -315,6 +314,7 @@ async function init(character, saved, audio) {
         { id: 'seed_berry', name: 'Berry Seeds', desc: 'Sweet profit in ~90 seconds.', price: ITEMS.seed_berry.buy },
         { id: 'seed_pumpkin', name: 'Pumpkin Seeds', desc: 'Slow, plump, premium.', price: ITEMS.seed_pumpkin.buy },
         { id: 'tonic', name: 'Health Tonic', desc: 'Restores 40 HP.', price: 15 },
+        { id: 'craft_dinghy', name: 'Dinghy Oars', desc: 'Unlocks the Bobbin Dinghy at the marina.', price: ITEMS.craft_dinghy.buy, soldout: inventory.count('craft_dinghy') > 0 },
         { id: 'craft_jetski', name: 'Jetski Key', desc: 'Unlocks the Wavedash Jetski at the marina.', price: ITEMS.craft_jetski.buy, soldout: inventory.count('craft_jetski') > 0 },
         { id: 'plot', name: 'Extra Farm Plot', desc: 'Expand your field by one plot.', icon: 'crop_wheat', price: plotPrice ?? PLOT_PRICE, soldout: plotPrice === null },
       ];
@@ -1425,27 +1425,34 @@ async function init(character, saved, audio) {
     summonMount, summonPet, inSafeZone,
   };
 
-  // --- LIGHT BUDGET: every module (village lamps, camp fires, shrines, the
-  // festival bonfire, island beacons, decor tōrō) adds its own point lights, and
-  // they summed to 26 even on LOW. Lambert shading pays for each one on every
-  // lit fragment, which is why dropping the preset alone barely helped. Prune to
-  // the preset's ceiling, keeping the ones nearest the village so the place the
-  // player actually starts stays lit. ---
-  setBoot(0.84, 'Trimming the lamplight…'); await frame();
-  {
-    const pts = [];
-    scene.traverse((o) => { if (o.isPointLight) pts.push(o); });
-    if (pts.length > qual.maxLights) {
-      pts
-        .map((l) => {
-          const w = new THREE.Vector3();
-          l.getWorldPosition(w);
-          return { l, d: (w.x - terrain.spawn.x) ** 2 + (w.z - terrain.spawn.z) ** 2 };
-        })
-        .sort((a, b) => a.d - b.d)
-        .slice(qual.maxLights)
-        .forEach(({ l }) => l.parent?.remove(l));
+  // --- LIGHT BUDGET (dynamic, not destructive) ---
+  // Every module adds its own point lights and they summed to 26+; Lambert
+  // shading pays for each on every lit fragment, which is why dropping the
+  // preset barely helped. The first attempt PRUNED the surplus at build time
+  // and that was wrong — it killed the night, because the lanterns you were
+  // walking past were the ones deleted. Instead keep every light and light only
+  // the nearest `maxLights` to the player, re-sorted a few times a second. Full
+  // night atmosphere wherever you actually are, bounded cost everywhere else.
+  setBoot(0.84, 'Hanging the lanterns…'); await frame();
+  const lightPool = [];
+  scene.traverse((o) => { if (o.isPointLight) lightPool.push({ l: o, base: o.intensity }); });
+  let lightSortT = 0;
+  function tickLights(dt) {
+    lightSortT -= dt;
+    if (lightSortT > 0) return;
+    lightSortT = 0.25;                       // 4x a second is plenty
+    if (lightPool.length <= qual.maxLights) {
+      for (const e of lightPool) e.l.visible = true;
+      return;
     }
+    const px = player.state.pos.x, pz = player.state.pos.z;
+    const w = new THREE.Vector3();
+    for (const e of lightPool) {
+      e.l.getWorldPosition(w);
+      e.d = (w.x - px) ** 2 + (w.z - pz) ** 2;
+    }
+    lightPool.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < lightPool.length; i++) lightPool[i].l.visible = i < qual.maxLights;
   }
 
   // --- PREWARM: pay the one-off costs now, while the picture is still up, so
@@ -1469,6 +1476,17 @@ async function init(character, saved, audio) {
   bootEl.remove();
   await loadScreen.done('Welcome to Anavela Universe');
   loadScreen = null;
+
+  // DAILY GREETING: the check-in and the quest board are the reason to come
+  // back, so they come to YOU on entry rather than waiting behind a menu tile.
+  // Only when something is actually claimable — a popup that says "nothing for
+  // you today" trains people to dismiss it without reading.
+  setTimeout(() => {
+    if (dailies.pending() > 0 && !panels.anyOpen() && !dialog.isOpen()) {
+      audio.sfx('ui');
+      panels.toggle('daily');
+    }
+  }, saved ? 1400 : 9000);   // a first-run player meets onboarding first
   hud.banner(`WELCOME TO ANAVELA UNIVERSE, ${character.name.toUpperCase()}`);
   if (!saved) {
     const hintKey = touch ? 'the ★ button' : 'F';
@@ -1571,6 +1589,7 @@ async function init(character, saved, audio) {
       mounts.dismiss(player);
       hud.toastText('Your mount waits on dry land.');
     }
+    tickLights(dt);
     dailies.tick(dt);
     hud.setMenuBadge?.(dailies.pending());
     // cosmetic movement trail (wardrobe slot 3)
