@@ -10,6 +10,7 @@ import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
+import { createWildlife } from './world/wildlife.js';
 import { createWatercraft, CRAFT_DEFS } from './systems/watercraft.js';
 import { setupLighting } from './gfx/lighting.js';
 import { createParticles } from './gfx/particles.js';
@@ -168,6 +169,8 @@ async function init(character, saved, audio) {
 
   // --- the archipelago: tropical island dressing + the marina pier ---
   const isles = createIsles(scene, terrain, decor.blocked);
+  // ambient wildlife: things that REACT to you, so the map isn't just decorated
+  const wildlife = createWildlife(scene, terrain, particles);
   const watercraft = createWatercraft(scene, terrain, particles, {
     owns: (item) => inventory.count(item) > 0,
     onBoard: (def) => { audio.sfx('mount'); hud.toastText(`${def.name} — steer with the stick, [F] to step off.`); },
@@ -1421,7 +1424,7 @@ async function init(character, saved, audio) {
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
-    wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft,
+    wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
     summonMount, summonPet, inSafeZone,
   };
 
@@ -1523,6 +1526,7 @@ async function init(character, saved, audio) {
     }, 1 + player.buffVal('magnet'));
     decor.update(dt, player.state.pos, time, isNight);
     isles.update(dt, time, isNight);
+    wildlife.update(dt, player.state.pos, time);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
     lighting.state.weatherDim = weather.state.intensity;
