@@ -1140,7 +1140,30 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     }
     return true;
   }
-  function place(mesh, tx, tz, blockR = 1, jitter = 12, footR = blockR + 2.5) {
+  /**
+   * Surface height range across a footprint. A structure is a rigid flat thing;
+   * if the ground under it drops away, half of it ends up buried and the grass
+   * cuts straight through the deck. This is what the pool was doing.
+   */
+  function groundRange(x, z, r) {
+    let lo = Infinity, hi = -Infinity;
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+      for (const rr of [r * 0.5, r]) {
+        const y = terrain.surfaceY(x + Math.cos(a) * rr, z + Math.sin(a) * rr);
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+      }
+    }
+    const c = terrain.surfaceY(x, z);
+    return { lo: Math.min(lo, c), hi: Math.max(hi, c) };
+  }
+
+  /**
+   * @param maxDrop how much the ground may fall across the footprint. Wide flat
+   *                builds (pool, plaza, market) need a small number; a tower or
+   *                a shrine can live on a slope quite happily.
+   */
+  function place(mesh, tx, tz, blockR = 1, jitter = 12, footR = blockR + 2.5, maxDrop = 99) {
     for (let tries = 0; tries < 140; tries++) {
       // widen the search ring if the neighbourhood is crowded
       const j = jitter + tries * 0.12;
@@ -1152,7 +1175,13 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       if (h <= WATER_LEVEL || h >= 9) continue;
       if (!clearOfFoots(x, z, footR)) continue;
       if (!cellsClear(x, z, footR)) continue;
-      const y = terrain.surfaceY(x, z);
+      const g = groundRange(x, z, footR);
+      // relax the flatness demand as the search widens — better a slightly
+      // tilted site than no site at all
+      if (g.hi - g.lo > maxDrop + tries * 0.012) continue;
+      // sit on the HIGHEST ground under the footprint, never the centre: proud
+      // of the slope on the low side beats buried on the high side
+      const y = g.hi;
       mesh.position.set(x, y, z);
       mesh.rotation.y = Math.random() * Math.PI * 2;
       scene.add(mesh);
@@ -1172,7 +1201,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   const tower = buildRuinTower();
   if (place(tower, S2 * 0.15, S2 * 0.5, 1, 12, 3)) built.push(tower);
   const school = buildSchool();
-  if (place(school, -S2 * 0.2, -S2 * 0.42, 2, 12, 6)) built.push(school);
+  if (place(school, -S2 * 0.2, -S2 * 0.42, 2, 12, 6, 0.7)) built.push(school);
   const heart = buildHeartTorches();
   if (place(heart, S2 * 0.38, S2 * 0.22, 2, 12, 4)) built.push(heart);
   // the Rialo monument stands right at the basecamp so nobody misses it —
@@ -1185,22 +1214,22 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   }
   // festival plaza (south) & watchtower (east) fill the quieter stretches
   const festival = buildFestival();
-  if (place(festival, S2 * 0.05, S2 * 0.6, 2, 12, 4.5)) built.push(festival);
+  if (place(festival, S2 * 0.05, S2 * 0.6, 2, 12, 4.5, 0.6)) built.push(festival);
   const watch = buildWatchtower();
   if (place(watch, S2 * 0.6, S2 * 0.06, 1, 12, 3)) built.push(watch);
 
   // --- five new structures so the open ground has landmarks worth walking to
   const barn = buildBarn();
-  if (place(barn, -S2 * 0.62, -S2 * 0.18, 3, 14, 6)) built.push(barn);
+  if (place(barn, -S2 * 0.62, -S2 * 0.18, 3, 14, 6, 0.7)) built.push(barn);
   const pagoda = buildPagoda();
   if (place(pagoda, S2 * 0.24, -S2 * 0.62, 2, 14, 5)) built.push(pagoda);
   const mine = buildMine();
-  if (place(mine, -S2 * 0.15, -S2 * 0.7, 2, 14, 4.5)) built.push(mine);
+  if (place(mine, -S2 * 0.15, -S2 * 0.7, 2, 14, 4.5, 1.0)) built.push(mine);
   const market = buildMarketRow();
-  if (place(market, -S2 * 0.55, S2 * 0.55, 2, 14, 4.5)) built.push(market);
+  if (place(market, -S2 * 0.55, S2 * 0.55, 2, 14, 4.5, 0.55)) built.push(market);
   // the bridge wants a stream, so it goes near a lake shore rather than mid-field
   const bridge = buildBridge();
-  if (place(bridge, S2 * 0.52, S2 * 0.44, 2, 16, 5)) built.push(bridge);
+  if (place(bridge, S2 * 0.52, S2 * 0.44, 2, 16, 5, 0.8)) built.push(bridge);
 
   // a lantern-lit fishing dock on the shore of EVERY lake, each with its own
   // fishmonger — walk up to sell the day's catch
@@ -1234,11 +1263,11 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   // a swimming pool, a spring waterfall, a kickabout, gossip pairs & nap nests
   const pool = buildPool();
   // blockR 3 covers the whole 5.6x4.4 deck — monsters can't clip through it
-  if (place(pool, -S2 * 0.28, S2 * 0.42, 3, 12, 5)) built.push(pool);
+  if (place(pool, -S2 * 0.28, S2 * 0.42, 3, 12, 5, 0.5)) built.push(pool);
   const falls = buildWaterfall();
   if (place(falls, S2 * 0.32, -S2 * 0.35, 2, 12, 4)) built.push(falls);
   const kick = buildKickabout();
-  if (place(kick, -S2 * 0.38, -S2 * 0.15, 0, 12, 3.5)) built.push(kick);
+  if (place(kick, -S2 * 0.38, -S2 * 0.15, 0, 12, 3.5, 0.5)) built.push(kick);
   const CHAT_LOOKS = [
     [['#e8c8a0', '#f8ecd8', 'c_cub', { eyeW: 3, eyeH: 5, gap: 4, eyeY: 1, mouth: 'open', cheeks: 'rgba(240,150,140,0.7)' }],
      ['#b8d888', '#e8f5cc', 'c_frog', { eyeW: 4, eyeH: 4, gap: 4, eyeY: 2, mouth: 'smile' }]],

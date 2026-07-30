@@ -15,8 +15,11 @@ const CHUNK = 16;
 const MAX_H = 11;
 
 // The sea starts where nx + nz crosses this — the south-east corner, diagonally
-// opposite the winter biome. ~19% of the map is open water.
-const OCEAN_EDGE = 1.34;
+// opposite the winter biome. Lowered from 1.34 (~19% of the map) to 1.16, which
+// puts ~35% under water: at 12.5 units/sec the jetski crossed the old sea in
+// about three seconds and grounded, so open water had to get genuinely open.
+// The village sits at nx+nz ~= 1.0, comfortably clear of the coastline.
+const OCEAN_EDGE = 1.16;
 
 // How many cells the land takes to climb into the far highlands. A narrow band
 // reads as a wall; a wide one reads as distance.
@@ -27,13 +30,16 @@ const RIM_BAND = 26;
 // destination with its own silhouette, and so none of them merge.
 // `seed` drives the coastline wobble and where the peak sits, so no two
 // islands share a silhouette.
+// Spread across the whole widened sea, with real open water between them so
+// there is something to actually travel across.
 const ISLANDS = [
-  { name: 'Palmspit',    kind: 'palm',    x: 0.795, z: 0.640, r: 9.5, h: 3.4, seed: 0.4 },
-  { name: 'Coral Rest',  kind: 'palm',    x: 0.640, z: 0.845, r: 8.0, h: 2.8, seed: 2.1 },
-  { name: 'Torii Rock',  kind: 'shrine',  x: 0.905, z: 0.795, r: 7.0, h: 4.4, seed: 3.9 },
-  { name: 'Wreck Bar',   kind: 'wreck',   x: 0.700, z: 0.720, r: 6.5, h: 2.4, seed: 5.2 },
-  { name: 'Lantern Cay', kind: 'lantern', x: 0.885, z: 0.590, r: 6.0, h: 2.8, seed: 1.3 },
-  { name: 'Bone Reef',   kind: 'rock',    x: 0.760, z: 0.925, r: 6.5, h: 3.2, seed: 4.6 },
+  { name: 'Palmspit',    kind: 'palm',    x: 0.760, z: 0.620, r: 9.5, h: 3.4, seed: 0.4 },
+  { name: 'Coral Rest',  kind: 'palm',    x: 0.585, z: 0.860, r: 8.0, h: 2.8, seed: 2.1 },
+  { name: 'Torii Rock',  kind: 'shrine',  x: 0.930, z: 0.760, r: 7.0, h: 4.4, seed: 3.9 },
+  { name: 'Wreck Bar',   kind: 'wreck',   x: 0.660, z: 0.760, r: 6.5, h: 2.4, seed: 5.2 },
+  { name: 'Lantern Cay', kind: 'lantern', x: 0.900, z: 0.520, r: 6.0, h: 2.8, seed: 1.3 },
+  { name: 'Bone Reef',   kind: 'rock',    x: 0.800, z: 0.930, r: 6.5, h: 3.2, seed: 4.6 },
+  { name: 'Far Anchor',  kind: 'lantern', x: 0.520, z: 0.720, r: 5.5, h: 2.6, seed: 6.1 },
 ];
 
 export class Terrain {
