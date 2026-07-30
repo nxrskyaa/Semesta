@@ -47,6 +47,8 @@ import { createTouchControls, isTouchDevice } from './ui/mobile.js';
 import { getQuality, onQualityChange, buildSnapshot } from './gfx/quality.js';
 import { createGfxPanel } from './ui/gfxpanel.js';
 import { createDailies } from './systems/dailies.js';
+import { createLoadScreen } from './ui/loadscreen.js';
+import { itemIconUrl } from './gfx/textures.js';
 
 const SAVE_KEY = 'semesta.save.v3';
 
@@ -58,8 +60,11 @@ function loadSave() {
 }
 
 const bootEl = document.getElementById('boot');
-const bootBar = document.getElementById('boot-bar');
-const setBoot = (p) => { if (bootBar) bootBar.style.width = `${Math.round(p * 100)}%`; };
+// The cinematic load screen replaces the plain boot bar once the menu is done
+// with the splash. `setBoot` keeps the same call shape as before so every build
+// stage below reads the same, it just reports a LABEL alongside the number now.
+let loadScreen = null;
+const setBoot = (p, label) => loadScreen?.stage(label, p);
 // rAF doesn't fire in hidden tabs — fall back to a timer so the game still
 // boots and simulates in the background (throttled).
 const schedule = (fn) => {
@@ -97,12 +102,16 @@ async function main() {
     continued = false;
   }
 
-  bootEl.style.display = '';
+  // hand over to the cinematic loader: a different pixel vignette every boot
+  bootEl.style.display = 'none';
+  loadScreen = createLoadScreen({ logoSrc: logoUrl });
+  document.body.appendChild(loadScreen.el);
+  await frame();
   await init(config, continued ? saved : null, audio);
 }
 
 async function init(character, saved, audio) {
-  setBoot(0.05); await frame();
+  setBoot(0.04, 'Opening the canvas…'); await frame();
   const cls = CLASSES[character.cls];
 
   // --- renderer & scene (sized by the GRAPHICS settings) ---
@@ -123,15 +132,16 @@ async function init(character, saved, audio) {
   // honestly tag the rest "NEXT RUN"
   const builtWith = buildSnapshot();
 
-  setBoot(0.15); await frame();
+  setBoot(0.1, 'Painting the pixel tiles…'); await frame();
 
   // --- world ---
+  setBoot(0.14, 'Raising the terrain…'); await frame();
   const terrain = new Terrain();
-  setBoot(0.35); await frame();
+  setBoot(0.28, 'Carving the coastline and the sea…'); await frame();
   scene.add(buildTerrainMesh(terrain, makeTerrainAtlas()));
-  setBoot(0.5); await frame();
+  setBoot(0.42, 'Planting the forest…'); await frame();
   const decor = buildDecor(terrain, scene);
-  setBoot(0.62); await frame();
+  setBoot(0.56, 'Filling the lakes and the ocean…'); await frame();
   const water = buildWater(terrain, scene);
   const lighting = setupLighting(scene);
   const particles = createParticles(scene);
@@ -186,7 +196,7 @@ async function init(character, saved, audio) {
     }
     return null;
   }
-  setBoot(0.78); await frame();
+  setBoot(0.74, 'Waking the villagers…'); await frame();
 
   // --- systems & entities ---
   const leveling = createLeveling();
@@ -1415,9 +1425,27 @@ async function init(character, saved, audio) {
     summonMount, summonPet, inSafeZone,
   };
 
-  setBoot(1); await frame();
-  bootEl.classList.add('hidden');
-  setTimeout(() => bootEl.remove(), 800);
+  // --- PREWARM: pay the one-off costs now, while the picture is still up, so
+  // the first bag open / first swing / first night doesn't hitch ---
+  setBoot(0.88, 'Forging every item icon…'); await frame();
+  for (const id of Object.keys(ITEMS)) {
+    try { itemIconUrl(id); } catch { /* an item without an icon painter is fine */ }
+  }
+  setBoot(0.93, 'Compiling shaders…'); await frame();
+  // three.js walks the whole scene graph and compiles every material's program,
+  // which is the single biggest source of first-seconds stutter
+  try { renderer.compile(scene, camera); } catch { /* older three: skip */ }
+  renderer.render(scene, camera);
+  setBoot(0.97, 'Tuning the orchestra…'); await frame();
+  {
+    const hrNow = lighting.state.minutes / 60;
+    audio.setMood(hrNow >= 19.5 || hrNow < 5.5);
+  }
+  await frame();
+
+  bootEl.remove();
+  await loadScreen.done('Welcome to Anavela Universe');
+  loadScreen = null;
   hud.banner(`WELCOME TO ANAVELA UNIVERSE, ${character.name.toUpperCase()}`);
   if (!saved) {
     const hintKey = touch ? 'the ★ button' : 'F';
