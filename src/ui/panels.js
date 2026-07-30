@@ -125,7 +125,7 @@ const CSS = `
 export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
-  economy, cooking, estate, gacha, wardrobe,
+  economy, cooking, estate, gacha, wardrobe, dailies, gfxPanelFactory,
 }) {
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -144,6 +144,8 @@ export function createPanels(hudRoot, {
     ward: document.createElement('div'),
     help: document.createElement('div'),
     about: document.createElement('div'),
+    daily: document.createElement('div'),
+    gfx: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
     p.className = 'panel';
@@ -1100,10 +1102,126 @@ export function createPanels(hudRoot, {
     paintAboutRialo(panels.about);
   }
 
+  // --- DAILY: 30-day check-in calendar + play-time ladder + quest board ---
+  function renderDaily() {
+    if (!dailies) return;
+    dailies.rollDay();
+    const st = dailies.state;
+    const idx = dailies.nextDayIndex();
+    const cal = dailies.CHECKIN_DAYS.map((r, i) => {
+      // streak already counts the claim, so everything before `idx` is done
+      const done = i < idx;
+      const isNext = i === idx && !st.claimedToday;
+      const cls = done ? 'done' : isNext ? 'next' : '';
+      const icon = r.coins ? itemIconUrl('coin')
+        : r.item ? itemIconUrl(r.item)
+          : r.cosmetic ? itemIconUrl(r.cosmetic)
+            : itemIconUrl(r.mount);
+      return `<div class="dc ${cls} ${r.grand ? 'grand' : r.big ? 'big' : ''}" title="${r.label}">
+        <span class="dc-d">D${r.d}</span>
+        <img src="${icon}">
+        ${done ? '<span class="dc-tick">✓</span>' : ''}
+      </div>`;
+    }).join('');
+
+    const mins = dailies.playMinutes();
+    const pt = dailies.PLAYTIME_TIERS.map((t) => {
+      const got = st.ptClaimed.includes(t.min);
+      const pct = Math.max(0, Math.min(100, (mins / t.min) * 100));
+      return `<div class="pt ${got ? 'got' : ''}">
+        <span class="pt-m">${t.min}m</span>
+        <div class="pt-bar"><div style="width:${pct}%"></div></div>
+        <span class="pt-r">${got ? '✓ ' : ''}${t.label}</span>
+      </div>`;
+    }).join('');
+
+    const quests = st.quests.map((q) => `
+      <div class="dq ${q.claimed ? 'claimed' : q.done ? 'ready' : ''}">
+        <div class="dq-n">${q.label}<small>${q.p}/${q.goal} &middot; ${q.coins}c${q.item ? ` + ${ITEMS[q.item].name} x${q.n}` : ''}</small></div>
+        ${q.claimed ? '<span class="dq-ok">CLAIMED</span>'
+          : q.done ? `<button class="act" data-dq="${q.id}">CLAIM</button>`
+            : `<div class="dq-bar"><div style="width:${(q.p / q.goal) * 100}%"></div></div>`}
+      </div>`).join('');
+
+    panels.daily.innerHTML = `<h3>DAILY REWARDS <small>[Esc] close</small></h3>
+      <style>
+        .d-streak { font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-bottom: 8px; }
+        .d-streak b { color: var(--gold); font-size: 12px; }
+        .d-cal { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 6px; }
+        .dc { position: relative; aspect-ratio: 1; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; gap: 1px; background: #141a12;
+          box-shadow: inset 0 0 0 2px #2c352c; }
+        .dc img { width: 20px; height: 20px; image-rendering: pixelated; }
+        .dc-d { font-size: 7px; color: #8a967f; letter-spacing: 0.5px; }
+        .dc.big { box-shadow: inset 0 0 0 2px #b06ae8; }
+        .dc.grand { box-shadow: inset 0 0 0 2px #f0c455, 0 0 10px rgba(240,196,85,0.4); }
+        .dc.next { box-shadow: inset 0 0 0 2px var(--gold), 0 0 12px var(--gold-glow);
+          animation: dc-pulse 1.4s ease-in-out infinite; }
+        @keyframes dc-pulse { 50% { filter: brightness(1.3); } }
+        .dc.done { opacity: 0.42; }
+        .dc-tick { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+          font-size: 18px; color: #8ac86a; text-shadow: 0 0 6px #000; }
+        .d-claim { width: 100%; margin: 6px 0 4px; font-size: 12px !important; padding: 11px !important; letter-spacing: 3px !important; }
+        .pt { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; font-size: 9px; color: #cfd8c8; }
+        .pt-m { width: 26px; color: #b9a76a; letter-spacing: 0.5px; }
+        .pt-bar { flex: 1; height: 6px; background: #141a12; box-shadow: inset 0 0 0 1px #2c352c; }
+        .pt-bar > div { height: 100%; background: linear-gradient(90deg, #58c93f, #9fe86e); }
+        .pt-r { width: 96px; text-align: right; color: #9aa890; }
+        .pt.got .pt-r { color: #8ac86a; }
+        .dq { display: flex; align-items: center; gap: 8px; padding: 7px 9px; margin-bottom: 5px;
+          background: #141a12; box-shadow: inset 0 0 0 2px #232c22; }
+        .dq.ready { box-shadow: inset 0 0 0 2px var(--gold); }
+        .dq.claimed { opacity: 0.5; }
+        .dq-n { flex: 1; font-size: 10px; color: #e5ead8; }
+        .dq-n small { display: block; font-size: 8px; color: var(--muted); margin-top: 2px; }
+        .dq-bar { width: 68px; height: 6px; background: #0e130d; box-shadow: inset 0 0 0 1px #2c352c; }
+        .dq-bar > div { height: 100%; background: linear-gradient(90deg, #d8b866, #ffe9a8); }
+        .dq-ok { font-size: 8px; color: #8ac86a; letter-spacing: 1px; }
+      </style>
+      <div class="d-streak">CHECK-IN STREAK: <b>${st.streak}</b> / 30 &nbsp;·&nbsp; ${st.claimedToday ? 'come back tomorrow!' : 'a reward is waiting'}</div>
+      <div class="d-cal">${cal}</div>
+      <button class="act d-claim" data-checkin ${st.claimedToday ? 'disabled' : ''}>
+        ${st.claimedToday ? '✓ CLAIMED TODAY' : `◆ CLAIM DAY ${dailies.CHECKIN_DAYS[idx].d}`}
+      </button>
+      <h4 class="sect">PLAY TIME — THIS SESSION (${Math.floor(mins)}m)</h4>
+      ${pt}
+      <h4 class="sect">DAILY QUESTS — NEW BOARD EVERY 24H</h4>
+      ${quests}`;
+    panels.daily.querySelector('[data-checkin]')?.addEventListener('click', () => {
+      if (dailies.checkIn()) audio.sfx('quest_done');
+      else audio.sfx('deny');
+      renderDaily();
+    });
+    panels.daily.querySelectorAll('[data-dq]').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (dailies.claimQuest(b.dataset.dq)) audio.sfx('quest_done');
+        renderDaily();
+      });
+    });
+  }
+
+  // --- GRAPHICS: the same panel the opening screen uses, in a game panel ---
+  let gfxInstance = null;
+  function renderGfx() {
+    if (!gfxPanelFactory) return;
+    if (!gfxInstance) gfxInstance = gfxPanelFactory();
+    panels.gfx.innerHTML = `<h3>GRAPHICS <small>[Esc] close</small></h3>
+      <div class="gfx-host"></div>`;
+    // the panel positions itself absolutely; inside a game panel we let it flow
+    gfxInstance.el.style.position = 'static';
+    gfxInstance.el.style.transform = 'none';
+    gfxInstance.el.style.width = '100%';
+    gfxInstance.el.style.boxShadow = 'none';
+    gfxInstance.el.style.padding = '0';
+    gfxInstance.el.style.background = 'none';
+    panels.gfx.querySelector('.gfx-host').appendChild(gfxInstance.el);
+  }
+
   const RENDER = {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
     gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp, about: renderAbout,
+    daily: renderDaily, gfx: renderGfx,
   };
 
   function toggle(which) {
@@ -1122,7 +1240,7 @@ export function createPanels(hudRoot, {
     // never re-render the wardrobe from an inventory change while it's open —
     // it would blow away the live preview & rename focus mid-edit
     for (const [k, p] of Object.entries(panels)) {
-      if (k !== 'ward' && p.classList.contains('show')) RENDER[k]();
+      if (k !== 'ward' && k !== 'gfx' && p.classList.contains('show')) RENDER[k]();
     }
   }
 

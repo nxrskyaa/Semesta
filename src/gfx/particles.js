@@ -1,12 +1,18 @@
 // Pixel-cube particles: hit sparks, water splash, slime pops, level-up glitter.
 // Plus juicy combat FX: expanding shockwave rings and pooled light flashes.
 import * as THREE from 'three';
+import { getQuality, onQualityChange } from './quality.js';
 
 const MAX = 800;
 const MAX_RINGS = 10;
 const MAX_FLASH = 6;
 
 export function createParticles(scene) {
+  // VISUAL FX scales every emitter's count. Kept live so the setting takes
+  // effect the moment it changes, without rebuilding the world.
+  let fxScale = getQuality().particleScale;
+  onQualityChange((nq) => { fxScale = nq.particleScale; });
+  const nOf = (n) => Math.max(1, Math.round(n * fxScale));
   const geo = new THREE.BufferGeometry();
   const positions = new Float32Array(MAX * 3);
   const colors = new Float32Array(MAX * 3);
@@ -38,6 +44,7 @@ export function createParticles(scene) {
 
   function burst(pos, colorHex, count = 10, speed = 2.4, grav = 6, life = 0.55) {
     const c = new THREE.Color(colorHex);
+    count = nOf(count);
     for (let i = 0; i < count; i++) {
       const p = pool[cursor]; cursor = (cursor + 1) % MAX;
       p.life = life * (0.6 + Math.random() * 0.6);
@@ -57,6 +64,7 @@ export function createParticles(scene) {
 
   function ring(pos, colorHex, count = 20, radius = 2.6) {
     const c = new THREE.Color(colorHex);
+    count = nOf(count);
     for (let i = 0; i < count; i++) {
       const p = pool[cursor]; cursor = (cursor + 1) % MAX;
       const a = (i / count) * Math.PI * 2;

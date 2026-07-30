@@ -177,6 +177,15 @@ const CSS = `
 }
 #hud .menubtn:hover { filter: brightness(1.25); }
 #hud .menubtn:active { transform: translateY(2px); }
+#hud .menubtn .badge {
+  display: none; margin-left: 6px; font-size: 9px; color: #241c0a; background: #e8574a;
+  padding: 1px 5px; border-radius: 2px; vertical-align: 1px;
+}
+#hud .menubtn.hasnew .badge { display: inline-block; animation: badge-pop 1.2s ease-in-out infinite; }
+@keyframes badge-pop { 50% { filter: brightness(1.35); } }
+#hud .menupop .mtile .dbadge {
+  margin-left: 4px; font-size: 8px; color: #241c0a; background: #e8574a; padding: 0 4px;
+}
 #hud .menupop {
   position: absolute; right: 8px; bottom: 54px; width: 264px;
   display: none; grid-template-columns: 1fr 1fr; gap: 7px; padding: 12px;
@@ -472,9 +481,11 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="home"><span class="mi">⌂</span>TELEPORT<small>T</small></button>
         <button class="mtile autobtn" data-menu="auto"><span class="mi">⚔</span>AUTO-BATTLE<small>B</small></button>
         <button class="mtile" data-menu="help"><span class="mi">?</span>GUIDE<small>H</small></button>
+        <button class="mtile" data-menu="daily"><span class="mi">🎁</span>DAILY<small>J</small></button>
+        <button class="mtile" data-menu="gfx"><span class="mi">⚙</span>GRAPHICS<small></small></button>
         <button class="mtile" data-menu="about"><span class="mi">✦</span>ABOUT<small></small></button>
       </div>
-      <button class="menubtn">☰ MENU</button>
+      <button class="menubtn">☰ MENU<span class="badge">!</span></button>
     </div>
     <div class="hint-desktop">
       <b>LMB</b> Attack (auto-aim) · <b>RMB</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
@@ -550,6 +561,21 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     }
   });
   function closeMenu() { menuPop.classList.remove('show'); }
+  // pulsing "!" on the ☰ button + a count on the DAILY tile whenever a
+  // check-in or a finished daily quest is waiting to be claimed
+  const menuBtn = root.querySelector('.menubtn');
+  const dailyTile = root.querySelector('[data-menu="daily"]');
+  let badgeN = -1;
+  function setMenuBadge(n) {
+    if (n === badgeN) return;
+    badgeN = n;
+    menuBtn.classList.toggle('hasnew', n > 0);
+    let db = dailyTile.querySelector('.dbadge');
+    if (n > 0) {
+      if (!db) { db = document.createElement('span'); db.className = 'dbadge'; dailyTile.appendChild(db); }
+      db.textContent = n;
+    } else db?.remove();
+  }
   // any HUD-level overlay that must block the mobile joystick/camera zones
   function isMenuPopOpen() {
     return menuPop.classList.contains('show') || root.querySelector('.onboard').classList.contains('show');
@@ -756,6 +782,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait, setName, showOnboarding, isMenuPopOpen,
+    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge,
   };
 }

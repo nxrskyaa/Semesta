@@ -7,6 +7,7 @@ import logoUrl from '../../logoasset/semesta.png';
 import mascotUrl from '../../logoasset/nxrmascott.png';
 import { paintRialoMark } from '../world/landmarks.js';
 import { aboutInner, paintAboutRialo } from './about.js';
+import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
 
 export { logoUrl, mascotUrl };
@@ -171,6 +172,24 @@ const CSS = `
   font-family: var(--font-display, monospace); font-size: 11px; letter-spacing: 3px; color: #e8e3d5; }
 #opening .about .rialo-badge canvas { width: 26px; height: 26px; image-rendering: pixelated; border-radius: 5px;
   box-shadow: 0 0 0 1px rgba(232,227,213,0.4), 0 2px 8px rgba(0,0,0,0.4); }
+/* roadmap modal: numbered milestone plates */
+#opening .roadmap .card { width: min(470px, 92vw); max-height: 88vh; overflow-y: auto; text-align: left; }
+#opening .roadmap h4 { text-align: center; }
+#opening .roadmap .rm-phases { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 2px; }
+#opening .roadmap .rm {
+  padding: 10px 12px; background: rgba(10,14,9,0.6);
+  box-shadow: inset 0 0 0 1px rgba(216,184,102,0.18), inset 3px 0 0 rgba(216,184,102,0.55);
+}
+#opening .roadmap .rm-h {
+  display: flex; align-items: center; gap: 8px; font-family: var(--font-display, inherit);
+  font-size: 10px; letter-spacing: 2px; color: #ffe9b0; margin-bottom: 5px;
+}
+#opening .roadmap .rm-n {
+  font-size: 9px; color: #241c0a; background: var(--gold, #d8b866);
+  padding: 2px 5px; letter-spacing: 0;
+}
+#opening .roadmap .rm p { font-size: 10px; line-height: 1.85; color: #cfd8c8; margin: 0; letter-spacing: 0.5px; }
+#opening .roadmap .rm p b { color: #ffe9b0; }
 `;
 
 // --- tiny pixel-art painters (canvas, chunky pixels) ---
@@ -348,9 +367,16 @@ export function showOpening(saved) {
       <button class="primary" data-m="new">⚔ &nbsp;NEW ADVENTURE</button>
       ${saved ? `<button data-m="continue">▶ &nbsp;CONTINUE</button>
         <div class="continfo">${saved.character?.name || 'Adventurer'} · Lv${saved.level || 1}</div>` : ''}
+      <button data-m="roadmap">◈ &nbsp;ROADMAP</button>
       <button data-m="about">✦ &nbsp;ABOUT</button>
     `;
     root.appendChild(menu);
+
+    // graphics settings live on the opening screen — pinned to the RIGHT edge,
+    // so someone on a slow machine can turn things down before the world builds
+    // (no sfx here: audio only starts on the first menu click)
+    const gfx = createGfxPanel({ collapsible: true });
+    root.appendChild(gfx.el);
 
     const credit = document.createElement('div');
     credit.className = 'credit';
@@ -365,6 +391,44 @@ export function showOpening(saved) {
     paintAboutRialo(about);
     about.querySelector('.closebtn').addEventListener('click', () => about.classList.remove('show'));
     about.addEventListener('click', (e) => { if (e.target === about) about.classList.remove('show'); });
+
+    // --- roadmap modal: where Semesta is headed ---
+    const roadmap = document.createElement('div');
+    roadmap.className = 'about roadmap';
+    roadmap.innerHTML = `<div class="card">
+      <h4>◆ SEMESTA ROADMAP ◆</h4>
+      <div class="rm-phases">
+        <div class="rm">
+          <div class="rm-h"><span class="rm-n">01</span>TOKEN LAUNCHPAD</div>
+          <p>Semesta launches its own token on the <b>Semesta Launchpad</b> with a
+          total supply of <b>1,000,000,000 (1B)</b>.</p>
+        </div>
+        <div class="rm">
+          <div class="rm-h"><span class="rm-n">02</span>HOLD TO PLAY</div>
+          <p>After launch, playing Semesta requires holding a minimum of
+          <b>1,000 SEMESTA</b> in your wallet.</p>
+        </div>
+        <div class="rm">
+          <div class="rm-h"><span class="rm-n">03</span>TOKEN GACHA</div>
+          <p>The in-game gacha accepts <b>SEMESTA token</b> alongside in-game
+          <b>gold</b> — two ways to chase the same wonders.</p>
+        </div>
+        <div class="rm">
+          <div class="rm-h"><span class="rm-n">04</span>GENESIS NFT</div>
+          <p>Once the game is live, a <b>free-mint Genesis NFT</b> drops for
+          players who actively play Semesta.</p>
+        </div>
+      </div>
+      <div class="rialo-badge">
+        <canvas class="rlogo-about" width="44" height="44"></canvas>
+        <span>BUILD FOR RIALO</span>
+      </div>
+      <button class="closebtn">BACK</button>
+    </div>`;
+    root.appendChild(roadmap);
+    paintAboutRialo(roadmap);
+    roadmap.querySelector('.closebtn').addEventListener('click', () => roadmap.classList.remove('show'));
+    roadmap.addEventListener('click', (e) => { if (e.target === roadmap) roadmap.classList.remove('show'); });
 
     // fake-but-tasty loading progress, then reveal the menu
     const fill = loadbox.querySelector('.bar > div');
@@ -385,7 +449,9 @@ export function showOpening(saved) {
       const b = e.target.closest('[data-m]');
       if (!b) return;
       if (b.dataset.m === 'about') { about.classList.add('show'); return; }
+      if (b.dataset.m === 'roadmap') { roadmap.classList.add('show'); return; }
       const action = b.dataset.m;
+      gfx.dispose();
       root.classList.add('fadeout');
       setTimeout(() => root.remove(), 750);
       resolve({ action });

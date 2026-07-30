@@ -2,16 +2,18 @@
 // Full day cycle grading: golden dawn, bright noon, orange dusk, blue night.
 // Weather can dim everything via state.weatherDim (0..1).
 import * as THREE from 'three';
+import { getQuality } from './quality.js';
 
 export function setupLighting(scene) {
-  scene.fog = new THREE.FogExp2(new THREE.Color('#9ec49a'), 0.022);
+  const q = getQuality();
+  scene.fog = new THREE.FogExp2(new THREE.Color('#9ec49a'), q.fogDensity);
 
   const hemi = new THREE.HemisphereLight(new THREE.Color('#bcd8b2'), new THREE.Color('#4a5a48'), 0.9);
   scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(new THREE.Color('#fff2dc'), 1.35);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(3072, 3072);   // sharper shadows
+  sun.castShadow = q.shadows;
+  sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 90;
   const EXT = 30;                        // tighter frustum = crisper shadows
@@ -24,7 +26,18 @@ export function setupLighting(scene) {
   scene.add(sun.target);
 
   // in-game clock: starts at 10:00, 1 game-minute per real second
-  const state = { minutes: 10 * 60, weatherDim: 0 };
+  const state = { minutes: 10 * 60, weatherDim: 0, fogBase: q.fogDensity };
+
+  // live re-apply when the SHADOWS / WORLD DETAIL knobs move
+  function applyQuality(nq) {
+    sun.castShadow = nq.shadows;
+    if (sun.shadow.mapSize.x !== nq.shadowSize) {
+      sun.shadow.mapSize.set(nq.shadowSize, nq.shadowSize);
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;   // three rebuilds it at the new size
+    }
+    state.fogBase = nq.fogDensity;
+  }
 
   // sky / fog / sun colors along the day
   // brighter, moonlit night — a deep blue you can actually see & play in
@@ -91,7 +104,9 @@ export function setupLighting(scene) {
 
     // thicker fog around dawn (morning mist)
     const mist = hr > 4.5 && hr < 8.5 ? Math.sin(((hr - 4.5) / 4) * Math.PI) : 0;
-    scene.fog.density = 0.022 + mist * 0.014 + state.weatherDim * 0.012;
+    // base density comes from the WORLD DETAIL knob (thicker fog on low, so a
+    // near draw distance still reads as haze rather than a hard cut)
+    scene.fog.density = state.fogBase + mist * 0.014 + state.weatherDim * 0.012;
 
     // sun follows the player so the shadow frustum stays relevant
     const ang = ((hr - 6) / 12) * Math.PI; // rise -> set
@@ -106,5 +121,5 @@ export function setupLighting(scene) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
-  return { update, clockText, state };
+  return { update, clockText, state, applyQuality };
 }

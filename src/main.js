@@ -42,6 +42,9 @@ import { createWorldMap } from './ui/worldmap.js';
 import { createPanels } from './ui/panels.js';
 import { createDialog } from './ui/dialog.js';
 import { createTouchControls, isTouchDevice } from './ui/mobile.js';
+import { getQuality, onQualityChange, buildSnapshot } from './gfx/quality.js';
+import { createGfxPanel } from './ui/gfxpanel.js';
+import { createDailies } from './systems/dailies.js';
 
 const SAVE_KEY = 'semesta.save.v3';
 
@@ -100,18 +103,23 @@ async function init(character, saved, audio) {
   setBoot(0.05); await frame();
   const cls = CLASSES[character.cls];
 
-  // --- renderer & scene ---
+  // --- renderer & scene (sized by the GRAPHICS settings) ---
+  let qual = getQuality();
   const renderer = new THREE.WebGLRenderer({ antialias: false });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-  renderer.shadowMap.enabled = true;
+  // render scale is quadratic on fill rate — the single biggest perf lever
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75) * qual.renderScale);
+  renderer.shadowMap.enabled = qual.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.classList.add('game');
   document.getElementById('app').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#9ed4e8');
-  const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.5, 220);
+  const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.5, qual.drawDistance);
+  // remember which non-live choices this world was built with, so the panel can
+  // honestly tag the rest "NEXT RUN"
+  const builtWith = buildSnapshot();
 
   setBoot(0.15); await frame();
 
@@ -304,6 +312,7 @@ async function init(character, saved, audio) {
       audio.sfx('craft');
       particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffb055', 8, 2);
       hud.toast(out, 1);
+      dailies?.event('cook');
     },
   };
   const estate = {
@@ -461,12 +470,14 @@ async function init(character, saved, audio) {
     },
     roll() {
       if (!inventory.spendCoins(this.price)) return null;
+      dailies.event('gacha');
       return this.rollOnce();
     },
     // 10-pull: pay for nine, get ten — one shared reveal show in the panel
     price10: 900,
     roll10() {
       if (!inventory.spendCoins(this.price10)) return null;
+      dailies?.event('gacha');
       const prizes = [];
       for (let i = 0; i < 10; i++) prizes.push(this.rollOnce());
       return prizes;
@@ -554,9 +565,30 @@ async function init(character, saved, audio) {
     },
   };
 
+  // --- retention: 30-day check-in, session play-time tiers, daily quests ---
+  // one grant() speaks for all three so the dailies module never touches the bag
+  const dailies = createDailies({
+    grant(r) {
+      if (r.coins) inventory.addCoins(r.coins);
+      if (r.item) inventory.add(r.item, r.n || 1);
+      if (r.cosmetic) inventory.add(r.cosmetic, 1);
+      if (r.mount) inventory.add(r.mount, 1);
+      audio.sfx(r.grand ? 'reveal_legendary' : r.big ? 'reveal_rare' : 'pickup');
+      if (r.big || r.grand) {
+        particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ffd23e', r.grand ? 30 : 18);
+        if (r.grand) addShake(0.26);
+      }
+    },
+    onToast: (t) => hud.toastText(t),
+    onBanner: (t) => hud.banner(t),
+  });
+  dailies.load(saved?.dailies);
+
   const panels = createPanels(hudRoot, {
     inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
-    economy, cooking, estate, gacha, wardrobe: wardrobeApi,
+    economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies,
+    // the in-game panel already has its own header, so drop the inner title
+    gfxPanelFactory: () => createGfxPanel({ builtWith, sfx: (n) => audio.sfx(n), title: false }),
     onCraft(recipe) {
       hud.banner(`${ITEMS[recipe.out].name.toUpperCase()} CRAFTED!`);
       particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffd23e', 16);
@@ -567,6 +599,7 @@ async function init(character, saved, audio) {
         hud.banner(`${weapon.name.toUpperCase()} +${res.plus}!`);
         particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffd23e', 20);
         quests.event('forge');
+        dailies.event('forge');
       } else {
         hud.banner('FORGE FAILED...');
       }
@@ -763,6 +796,8 @@ async function init(character, saved, audio) {
     }
     for (const d of drops) pickups.spawn(d.id, d.count, e.mesh.position);
     quests.event('kill', { type: e.type, worldBoss: !!e.isWorldBoss });
+    dailies.event('kill');
+    if (e.isWorldBoss) dailies.event('boss');
   }
 
   function dealHit(e, mult = 1) {
@@ -945,7 +980,7 @@ async function init(character, saved, audio) {
     if (panels.anyOpen() || dialog.isOpen() || player.state.dead) return;
     dismountIfRiding();
     player.state.dmgMult = totalMult();
-    skillSys.cast(id);
+    if (skillSys.cast(id) !== false) dailies.event('skill');
   }
 
   // --- fishing ---
@@ -960,6 +995,7 @@ async function init(character, saved, audio) {
         leveling.addXp(gained);
         dmgNums.spawn(player.state.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), `+${gained} XP`, 'xp');
         quests.event('fish');
+        dailies.event('fish');
       },
       onMiss(msg) { hud.toastText(msg); },
     },
@@ -1057,7 +1093,10 @@ async function init(character, saved, audio) {
       const drops = gathering.hit(node);
       if (drops === null) return;
       audio.sfx('hit');
-      for (const d of drops) pickups.spawn(d.id, d.count, node.mesh.position);
+      for (const d of drops) {
+        pickups.spawn(d.id, d.count, node.mesh.position);
+        dailies.event('gather', d.count);
+      }
       if (drops.length) audio.sfx(node.kind === 'birch' ? 'death_thud' : 'forge_ok');
     }, 180);
   }
@@ -1096,12 +1135,16 @@ async function init(character, saved, audio) {
     if (plot && plot.owned && plot.seed && plot.stage >= 2) {
       add('farm', 'Harvest crop', () => {
         const crop = farming.harvest(plot);
-        if (crop) { pickups.spawn(crop.id, crop.count, new THREE.Vector3(plot.x, plot.y, plot.z)); audio.sfx('catch'); }
+        if (crop) {
+          pickups.spawn(crop.id, crop.count, new THREE.Vector3(plot.x, plot.y, plot.z));
+          audio.sfx('catch');
+          dailies.event('harvest');
+        }
       });
     } else if (plot && plot.owned && !plot.seed) {
       const seed = seedToPlant();
       if (seed) add('farm', `Plant ${ITEMS[seed].name}`, () => {
-        if (farming.plant(plot, seed)) { inventory.remove(seed, 1); audio.sfx('ui'); }
+        if (farming.plant(plot, seed)) { inventory.remove(seed, 1); audio.sfx('ui'); dailies.event('plant'); }
       });
     }
 
@@ -1116,6 +1159,7 @@ async function init(character, saved, audio) {
       audio.sfx('chest'); addShake(0.12);
       for (const d of loot) pickups.spawn(d.id, d.count, chest.mesh.position);
       quests.event('chest');
+      dailies.event('chest');
     });
 
     const land = housing.nearest(player.state.pos, 3.5);
@@ -1195,6 +1239,7 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyK') { audio.sfx('ui'); panels.toggle('skills'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
+    if (e.code === 'KeyJ') { audio.sfx('ui'); panels.toggle('daily'); }
     if (e.code === 'KeyT') teleportHome();
     if (e.code === 'KeyF') doInteract();
     if (e.code === 'KeyR') doInteract2(); // secondary nearby action
@@ -1278,6 +1323,17 @@ async function init(character, saved, audio) {
     renderer.setSize(innerWidth, innerHeight);
   });
 
+  // --- GRAPHICS settings: live groups take effect immediately ---
+  onQualityChange((nq) => {
+    qual = nq;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75) * nq.renderScale);
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = nq.shadows;
+    camera.far = nq.drawDistance;
+    camera.updateProjectionMatrix();
+    lighting.applyQuality?.(nq);
+  });
+
   // --- save game ---
   function save() {
     try {
@@ -1296,6 +1352,7 @@ async function init(character, saved, audio) {
         mount: mounts.state.active,
         wardrobe: wardrobe.serialize(),
         gachaPity: gacha.pity,
+        dailies: dailies.serialize(),
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
       }));
     } catch { /* storage full/blocked: ignore */ }
@@ -1305,6 +1362,7 @@ async function init(character, saved, audio) {
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
+    dailies, gfxQuality: { getQuality, buildSnapshot },
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
@@ -1404,6 +1462,9 @@ async function init(character, saved, audio) {
     fishing.update(dt, time);
     tickTeleport(dt);
     wardrobe.update(dt, time);
+    // play-time milestones + badge the menu when a reward is waiting
+    dailies.tick(dt);
+    hud.setMenuBadge?.(dailies.pending());
     // cosmetic movement trail (wardrobe slot 3)
     if (player.state.isMoving && !player.state.dead) {
       const tr = wardrobe.trailColor(time);

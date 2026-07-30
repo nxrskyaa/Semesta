@@ -2,6 +2,7 @@
 // vertices roll in a soft double-sine swell (no longer a stiff flat sheet),
 // with a scrolling sparkle texture on top and animated shore foam.
 import * as THREE from 'three';
+import { getQuality } from '../gfx/quality.js';
 import { WATER_Y, WATER_LEVEL } from './terrain.js';
 import { makeWaterNoiseTexture, PALETTE } from '../gfx/textures.js';
 
@@ -16,7 +17,9 @@ export function buildWater(terrain, scene) {
     transparent: true, opacity: 0.86, depthWrite: false,
   });
   // subdivided plane so we can actually undulate the surface
-  const SEG = 84;
+  // WORLD DETAIL: the sea plane's vertices are rewritten every frame, so its
+  // subdivision is a real per-frame cost
+  const SEG = getQuality().waterSegments;
   const geo = new THREE.PlaneGeometry(S, S, SEG, SEG);
   const plane = new THREE.Mesh(geo, mat);
   plane.rotation.x = -Math.PI / 2;

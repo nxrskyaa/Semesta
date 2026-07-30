@@ -2,12 +2,15 @@
 // (instanced-ish line segments around the player), plus ground splashes.
 // Drives lighting.state.weatherDim and the audio rain loop.
 import * as THREE from 'three';
+import { getQuality } from '../gfx/quality.js';
 
-const DROPS = 420;
+const DROPS_MAX = 420;
 const AREA = 26;     // rain box half-size around the player
 const TOP = 14;
 
 export function createWeather(scene, terrain, particles) {
+  // VISUAL FX thins out rain & snow (particle-heavy full-screen effects)
+  const DROPS = Math.max(40, Math.round(DROPS_MAX * getQuality().weatherScale));
   // rain streaks as line segments
   const geo = new THREE.BufferGeometry();
   const pos = new Float32Array(DROPS * 2 * 3);

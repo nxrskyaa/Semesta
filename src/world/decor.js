@@ -9,6 +9,7 @@ import {
   makeGrassTuftTexture, makeFlowerTexture,
   toTexture, PALETTE,
 } from '../gfx/textures.js';
+import { getQuality } from '../gfx/quality.js';
 
 const SEED = 4242;
 
@@ -20,6 +21,11 @@ function canvasTex(draw, w = 8, h = 8) {
 }
 
 export function buildDecor(terrain, scene) {
+  // NOTE: `q` further down is a THREE.Quaternion — the quality object is QL.
+  const QL = getQuality();
+  // WORLD DETAIL scales how much scenery we instance at all — this is the
+  // single biggest lever on a weak GPU after render scale.
+  const DS = QL.decorScale;
   const S = terrain.size;
   const rng = mulberry32(SEED);
   const blocked = new Set(); // cells you can't walk through (trunks, big rocks)
@@ -45,7 +51,7 @@ export function buildDecor(terrain, scene) {
 
       // trees are spaced generously (4.4) so canopies never overlap into an
       // ugly tangled mass; ~40% are pink SAKURA, the rest bright rounded green
-      if (forest > 0.48 && r < 0.032 && dSpawn > 9 && !nearTree(trees, wx, wz, 4.4)) {
+      if (forest > 0.48 && r < 0.032 * DS && dSpawn > 9 && !nearTree(trees, wx, wz, 4.4)) {
         trees.push({
           x: wx, y, z: wz,
           s: 0.9 + rng() * 0.35, seed: rng(), sakura: rng() < 0.42,
@@ -54,15 +60,15 @@ export function buildDecor(terrain, scene) {
         blocked.add(`${ix},${iz}`);
         continue;
       }
-      if (r > 0.985 && t !== 3) {
+      if (r > 1 - 0.015 * DS && t !== 3) {
         rocks.push({ x: wx, y, z: wz, s: 0.35 + rng() * 0.55, rot: rng() * Math.PI, seed: rng() });
         if (rng() < 0.4) blocked.add(`${ix},${iz}`);
         continue;
       }
-      if ((t === 0 || t === 4) && r > 0.4 && r < 0.68) {
+      if ((t === 0 || t === 4) && r > 0.4 && r < 0.4 + 0.28 * DS) {
         tufts.push({ x: wx + (rng() - 0.5) * 0.5, y, z: wz + (rng() - 0.5) * 0.5, s: 0.5 + rng() * 0.5 });
       }
-      if ((t === 6 && r < 0.8) || (t === 0 && r > 0.94)) {
+      if ((t === 6 && r < 0.8 * DS) || (t === 0 && r > 1 - 0.06 * DS)) {
         flowers.push({
           x: wx + (rng() - 0.5) * 0.6, y, z: wz + (rng() - 0.5) * 0.6,
           s: 0.4 + rng() * 0.35, c: Math.floor(rng() * PALETTE.flowers.length),
@@ -335,7 +341,7 @@ export function buildDecor(terrain, scene) {
   if (torches.length) group.add(baseMesh, base2Mesh, postMesh, collarMesh, houseMesh, paneMesh, roofMesh, capMesh);
 
   // lantern light pool: the N nearest lanterns cast soft warm light at night
-  const LIGHTS = 12;
+  const LIGHTS = QL.lanternLights;
   const lights = [];
   for (let i = 0; i < LIGHTS; i++) {
     const L = new THREE.PointLight(0xffc27a, 0, 9, 1.8);
@@ -344,7 +350,7 @@ export function buildDecor(terrain, scene) {
   }
 
   // --- butterflies (day) ---
-  const BFLY = 22;
+  const BFLY = Math.round(22 * QL.critterScale);
   const bflyTexs = [0, 1].map((f) => canvasTex((ctx) => {
     const col = ['#f0b8d8', '#f5e88a', '#a8c8f0'][f % 3] || '#f0b8d8';
     ctx.fillStyle = '#f0b8d8';
@@ -371,7 +377,7 @@ export function buildDecor(terrain, scene) {
 
   // --- fireflies (night): soft glowing motes drifting over the meadows and
   // gathering around the stone lanterns — the night should feel enchanted
-  const FFLY = 110;
+  const FFLY = Math.round(110 * QL.fireflyScale);
   const ffTex = canvasTex((ctx) => {
     const g2 = ctx.createRadialGradient(8, 8, 0.5, 8, 8, 7.5);
     g2.addColorStop(0, 'rgba(240,255,190,1)');
