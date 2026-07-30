@@ -14,6 +14,22 @@ const SEED = 20240612;
 const CHUNK = 16;
 const MAX_H = 11;
 
+// The sea starts where nx + nz crosses this — the south-east corner, diagonally
+// opposite the winter biome. ~19% of the map is open water.
+const OCEAN_EDGE = 1.34;
+
+// Hand-placed archipelago (normalised map coords, cell radius, height above the
+// waterline). Placed by hand rather than scattered so each island reads as a
+// destination with its own silhouette, and so none of them merge.
+const ISLANDS = [
+  { name: 'Palmspit',    kind: 'palm',    x: 0.795, z: 0.640, r: 8.5, h: 3.4 },
+  { name: 'Coral Rest',  kind: 'palm',    x: 0.640, z: 0.845, r: 7.0, h: 2.8 },
+  { name: 'Torii Rock',  kind: 'shrine',  x: 0.905, z: 0.795, r: 6.5, h: 4.2 },
+  { name: 'Wreck Bar',   kind: 'wreck',   x: 0.700, z: 0.720, r: 5.5, h: 2.2 },
+  { name: 'Lantern Cay', kind: 'lantern', x: 0.885, z: 0.590, r: 5.0, h: 2.6 },
+  { name: 'Bone Reef',   kind: 'rock',    x: 0.760, z: 0.925, r: 5.5, h: 3.0 },
+];
+
 export class Terrain {
   constructor() {
     const S = WORLD_SIZE;
@@ -21,6 +37,8 @@ export class Terrain {
     this.height = new Int8Array(S * S);
     this.type = new Uint8Array(S * S); // 0 grass,1 path,2 dirt,3 stone,4 moss,5 shore,6 flowers,7 snow,8 plaza
     this.snow = new Uint8Array(S * S); // 1 = inside the winter biome (drives decor/weather/FX)
+    this.ocean = new Uint8Array(S * S); // 1 = open sea (south-east, opposite the snow)
+    this.island = new Uint8Array(S * S); // 1 = an island above the sea (tropical decor)
     this._generate();
     this._buildCorners();
   }
@@ -44,15 +62,20 @@ export class Terrain {
     this.corner = new Float32Array((S + 1) * (S + 1));
     for (let iz = 0; iz <= S; iz++) {
       for (let ix = 0; ix <= S; ix++) {
-        let sum = 0, n = 0;
+        // out-of-bounds cells normally contribute a tall wall so the world has
+        // a rim — but a wall rising out of the sea would look like a bathtub,
+        // so a corner that touches open water averages only its real cells
+        let sum = 0, n = 0, oob = 0, sea = false;
         for (let dz = -1; dz <= 0; dz++) {
           for (let dx = -1; dx <= 0; dx++) {
             const cx = ix + dx, cz = iz + dz;
-            if (cx < 0 || cz < 0 || cx >= S || cz >= S) { sum += MAX_H * 0.8; n++; }
-            else { sum += this.height[this.idx(cx, cz)]; n++; }
+            if (cx < 0 || cz < 0 || cx >= S || cz >= S) { oob++; continue; }
+            sum += this.height[this.idx(cx, cz)]; n++;
+            if (this.ocean[this.idx(cx, cz)]) sea = true;
           }
         }
-        this.corner[iz * (S + 1) + ix] = sum / n;
+        if (!sea) { sum += oob * MAX_H * 0.8; n += oob; }
+        this.corner[iz * (S + 1) + ix] = n ? sum / n : MAX_H * 0.8;
       }
     }
     // paths & village area get flattened harder toward their cell height
@@ -89,6 +112,47 @@ export class Terrain {
 
   isWaterCell(ix, iz) { return this.heightCell(ix, iz) <= WATER_LEVEL; }
   isWater(x, z) { const [ix, iz] = this.cellOf(x, z); return this.isWaterCell(ix, iz); }
+
+  // --- the sea ---------------------------------------------------------------
+  isOceanCell(ix, iz) { return this.inBounds(ix, iz) && this.ocean[this.idx(ix, iz)] === 1; }
+  inOcean(x, z) { const [ix, iz] = this.cellOf(x, z); return this.isOceanCell(ix, iz); }
+  isIslandCell(ix, iz) { return this.inBounds(ix, iz) && this.island[this.idx(ix, iz)] === 1; }
+
+  /** Any water you can actually get into — sea or lake, in bounds. */
+  swimmable(x, z) {
+    const [ix, iz] = this.cellOf(x, z);
+    return this.inBounds(ix, iz) && this.heightCell(ix, iz) <= WATER_LEVEL;
+  }
+
+  /** Deep water: the sea floor is 2+ blocks under the surface. Drives the
+   *  darker offshore tint and stops the jetski beaching itself in a puddle. */
+  deepWater(x, z) {
+    const [ix, iz] = this.cellOf(x, z);
+    return this.inBounds(ix, iz) && this.heightCell(ix, iz) <= WATER_LEVEL - 1;
+  }
+
+  /** Nearest walkable cell centre, searched in widening rings — used to wash an
+   *  exhausted swimmer ashore and to drop a rider off their craft. */
+  nearestShore(x, z, maxR = 90) {
+    const [cx, cz] = this.cellOf(x, z);
+    for (let r = 1; r <= maxR; r++) {
+      let best = null, bestD = Infinity;
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; // ring only
+          const ix = cx + dx, iz = cz + dz;
+          if (!this.inBounds(ix, iz)) continue;
+          if (this.heightCell(ix, iz) <= WATER_LEVEL) continue;
+          const wx = ix - this.size / 2 + 0.5, wz = iz - this.size / 2 + 0.5;
+          if (this.surfaceY(wx, wz) < WATER_Y) continue;   // still under water
+          const d = (wx - x) ** 2 + (wz - z) ** 2;
+          if (d < bestD) { bestD = d; best = new THREE.Vector3(wx, this.surfaceY(wx, wz), wz); }
+        }
+      }
+      if (best) return best;
+    }
+    return this.spawn.clone();
+  }
 
   isSnowCell(ix, iz) { return this.inBounds(ix, iz) && this.snow[this.idx(ix, iz)] === 1; }
   inSnow(x, z) { const [ix, iz] = this.cellOf(x, z); return this.isSnowCell(ix, iz); }
@@ -128,13 +192,46 @@ export class Terrain {
             e -= t * t * 7.5;
           }
         }
+        // THE SEA occupies the south-east corner, mirroring the snow biome in
+        // the north-west. A wobbled diagonal coastline keeps it organic, and the
+        // floor ramps down from a wadeable shelf at the beach to open water.
+        const seaWave = (fbm2(nx * 5.5, nz * 5.5, SEED + 131, 3) - 0.5) * 0.2;
+        const sea = nx + nz + seaWave - OCEAN_EDGE;
+        if (sea > 0) {
+          const depth = Math.min(1, sea / 0.16);           // 0 at the beach, 1 offshore
+          e = Math.min(e, WATER_LEVEL + 0.4 - depth * 3.2);
+          this.ocean[this.idx(ix, iz)] = 1;
+        }
+
+        // island bumps rise back out of the sea
+        for (const I of ISLANDS) {
+          const d = Math.hypot(ix - I.x * S, iz - I.z * S);
+          if (d > I.r) continue;
+          const t = Math.cos((d / I.r) * Math.PI * 0.5);   // smooth dome, flat top
+          const lump = valueNoise2(ix * 0.22, iz * 0.22, SEED + 200 + I.r) * 1.1;
+          e = Math.max(e, WATER_LEVEL - 0.3 + t * t * (I.h + lump));
+        }
+
         const edge = Math.min(ix, iz, S - 1 - ix, S - 1 - iz);
-        if (edge < 6) e += (6 - edge) * 1.1;
+        // the rim wall is LAND only — a hill rising out of the sea would look
+        // like a bathtub, so the ocean just runs to the map bound instead
+        if (edge < 6 && sea <= 0) e += (6 - edge) * 1.1;
 
         let h = Math.max(0, Math.min(MAX_H, Math.round(e)));
         this.height[this.idx(ix, iz)] = h;
+        if (h > WATER_LEVEL && this.ocean[this.idx(ix, iz)]) {
+          this.island[this.idx(ix, iz)] = 1;   // dry land inside the sea
+          this.ocean[this.idx(ix, iz)] = 0;
+        }
       }
     }
+
+    // island world-space records for the map, spawns and decor
+    this.islands = ISLANDS.map((I) => {
+      const wx = I.x * S - S / 2 + 0.5, wz = I.z * S - S / 2 + 0.5;
+      const [cx, cz] = this.cellOf(wx, wz);
+      return { name: I.name, kind: I.kind, x: wx, z: wz, r: I.r, y: this.heightCell(cx, cz) * BLOCK_H + BLOCK_H };
+    });
 
     this._carvePath(SEED + 5, true);
     this._carvePath(SEED + 9, false);

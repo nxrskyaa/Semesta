@@ -9,6 +9,8 @@ import { createWeather } from './world/weather.js';
 import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
 import { createLandmarks } from './world/landmarks.js';
+import { createIsles } from './world/isles.js';
+import { createWatercraft, CRAFT_DEFS } from './systems/watercraft.js';
 import { setupLighting } from './gfx/lighting.js';
 import { createParticles } from './gfx/particles.js';
 import { makeTerrainAtlas } from './gfx/textures.js';
@@ -154,6 +156,23 @@ async function init(character, saved, audio) {
   // keep land parcels free of clipping scenery too (covers houses loaded from save)
   for (const l of housing.lands) decor.clearArea(l.x, l.z, 3.8);
 
+  // --- the archipelago: tropical island dressing + the marina pier ---
+  const isles = createIsles(scene, terrain, decor.blocked);
+  const watercraft = createWatercraft(scene, terrain, particles, {
+    owns: (item) => inventory.count(item) > 0,
+    onBoard: (def) => { audio.sfx('mount'); hud.toastText(`${def.name} — steer with the stick, [F] to step off.`); },
+    onLeave: () => { audio.sfx('ui'); },
+    onBeach: () => audio.sfx('hit'),
+    onDenied: (def) => hud.toastText(`${def.name} is locked — buy the key at Pip's Shop.`),
+  });
+  if (isles.marina) {
+    // both craft wait at the marina, a stride apart along the pier
+    const { x, z, dir } = isles.marina;
+    const off = dir + Math.PI / 2;
+    watercraft.moor('dinghy', x + Math.cos(off) * 1.5, z + Math.sin(off) * 1.5, dir);
+    watercraft.moor('jetski', x - Math.cos(off) * 1.5, z - Math.sin(off) * 1.5, dir);
+  }
+
   // --- safe zones: the village, rest camps and your homes repel monsters ---
   const VILLAGE_SAFE_R = 13;
   function inSafeZone(x, z) {
@@ -174,7 +193,14 @@ async function init(character, saved, audio) {
   const inventory = createInventory(cls.startWeapon);
   const forge = createForge(inventory);
   const quests = createQuests({ inventory, leveling });
-  const player = createPlayer(terrain, decor.blocked, character, particles);
+  const player = createPlayer(terrain, decor.blocked, character, particles, {
+    // out of breath at sea: tow the hero to the nearest beach rather than drown
+    // them — the sea should be inviting, not a death trap
+    onSwimExhausted: () => {
+      hud.toastText('Out of breath — swimming back to shore!');
+      audio.sfx('deny');
+    },
+  });
   scene.add(player.state.group);
   const projectiles = createProjectiles(scene, terrain);
   const pickups = createPickups(scene, terrain);
@@ -207,6 +233,7 @@ async function init(character, saved, audio) {
   } else {
     // starter kit: a faithful mount, a couple of seeds and pocket change
     inventory.add('mount_sprig', 1);
+    inventory.add('craft_dinghy', 1);
     inventory.add('seed_wheat', 2);
     inventory.addCoins(15);
   }
@@ -278,6 +305,7 @@ async function init(character, saved, audio) {
         { id: 'seed_berry', name: 'Berry Seeds', desc: 'Sweet profit in ~90 seconds.', price: ITEMS.seed_berry.buy },
         { id: 'seed_pumpkin', name: 'Pumpkin Seeds', desc: 'Slow, plump, premium.', price: ITEMS.seed_pumpkin.buy },
         { id: 'tonic', name: 'Health Tonic', desc: 'Restores 40 HP.', price: 15 },
+        { id: 'craft_jetski', name: 'Jetski Key', desc: 'Unlocks the Wavedash Jetski at the marina.', price: ITEMS.craft_jetski.buy, soldout: inventory.count('craft_jetski') > 0 },
         { id: 'plot', name: 'Extra Farm Plot', desc: 'Expand your field by one plot.', icon: 'crop_wheat', price: plotPrice ?? PLOT_PRICE, soldout: plotPrice === null },
       ];
     },
@@ -1117,6 +1145,12 @@ async function init(character, saved, audio) {
     const list = [];
     const add = (kind, label, run, extra = {}) => list.push({ kind, label, run, ...extra });
 
+    // RIDING: while you're on a hull, the only thing the button does is get off
+    if (watercraft.state.active) {
+      const def = CRAFT_DEFS[watercraft.state.active];
+      return [{ kind: 'craft', label: `Step off the ${def.name}`, run: () => watercraft.leave(player) }];
+    }
+
     if (fishing.state.afk) return [{ kind: 'fish', label: 'Stop AFK fishing', run: () => fishing.cancel() }];
     if (fishing.state.phase === 'bite') return [{ kind: 'fish', label: 'Reel in!', run: () => fishing.strike() }];
     if (fishing.state.phase === 'waiting') return [{ kind: 'fish', label: 'Wait for it...', run: () => fishing.strike() }];
@@ -1125,6 +1159,17 @@ async function init(character, saved, audio) {
 
     // village landmarks (tight radius) — highest priority so a wandering
     // villager can't hijack the stall/gacha/anvil button
+    // a moored craft beats a wandering villager for the button, same as a landmark
+    {
+      const m = watercraft.nearest(player.state.pos, 2.8);
+      if (m) {
+        const def = CRAFT_DEFS[m.id];
+        const owned = inventory.count(def.item) > 0;
+        add('craft', owned ? `Ride the ${def.name}` : `${def.name} — key sold at Pip's Shop`,
+          () => { if (owned) watercraft.board(m.id, player); else { audio.sfx('deny'); hud.toastText(`${def.name} needs its key — Pip stocks it for ${def.item === 'craft_jetski' ? ITEMS.craft_jetski.buy : '?'}c.`); } });
+      }
+    }
+
     if (near(npcs.stallSpot, 2.0)) add('shop', 'Shop — buy & sell', () => { audio.sfx('ui'); panels.toggle('shop'); });
     if (near(npcs.gachaSpot, 2.0)) add('gacha', 'Wonder Capsules (gacha)', () => { audio.sfx('ui'); panels.toggle('gacha'); });
     if (near(npcs.forgeSpot, 2.0)) add('forge', 'Forge your weapon', () => { audio.sfx('ui'); panels.toggle('forge'); });
@@ -1275,7 +1320,7 @@ async function init(character, saved, audio) {
   const worldmap = createWorldMap({ minimap, terrain });
   function toggleWorldMap() {
     audio.sfx('ui');
-    worldmap.toggle({ player, npcs, camps, lands: housing, enemies: enemyMgr.enemies, quests, docks: landmarks.docks });
+    worldmap.toggle({ player, npcs, camps, lands: housing, enemies: enemyMgr.enemies, quests, docks: landmarks.docks, isles });
   }
   hud.els.minimapCanvas.style.pointerEvents = 'auto';
   hud.els.minimapCanvas.style.cursor = 'pointer';
@@ -1366,7 +1411,7 @@ async function init(character, saved, audio) {
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
-    wardrobe, wardrobeApi, teleportHome, tele, panels,
+    wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft,
     summonMount, summonPet, inSafeZone,
   };
 
@@ -1424,6 +1469,11 @@ async function init(character, saved, audio) {
 
     player.state.dmgMult = totalMult();
     player.update(dt, input, cam.yaw);
+    // riding: watercraft owns the hull's heading, speed, height and wake
+    if (watercraft.state.active) {
+      watercraft.drive(dt, player, player.moveVecFor(input, cam.yaw), time);
+    }
+    watercraft.update(dt, time);
     autoBattleTick(dt);
 
     // moving cancels an in-progress fishing session
@@ -1444,6 +1494,7 @@ async function init(character, saved, audio) {
       audio.sfx('pickup');
     }, 1 + player.buffVal('magnet'));
     decor.update(dt, player.state.pos, time, isNight);
+    isles.update(dt, time, isNight);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
     lighting.state.weatherDim = weather.state.intensity;
@@ -1463,6 +1514,11 @@ async function init(character, saved, audio) {
     tickTeleport(dt);
     wardrobe.update(dt, time);
     // play-time milestones + badge the menu when a reward is waiting
+    // wading into water dunks a land mount — it can't swim
+    if (player.state.swimming && mounts.state.active) {
+      mounts.dismiss(player);
+      hud.toastText('Your mount waits on dry land.');
+    }
     dailies.tick(dt);
     hud.setMenuBadge?.(dailies.pending());
     // cosmetic movement trail (wardrobe slot 3)

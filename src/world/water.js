@@ -30,7 +30,38 @@ export function buildWater(terrain, scene) {
   const pos = geo.attributes.position;
   const baseX = new Float32Array(pos.count);
   const baseY = new Float32Array(pos.count);
-  for (let i = 0; i < pos.count; i++) { baseX[i] = pos.getX(i); baseY[i] = pos.getY(i); }
+  // per-vertex swell gain: the open sea heaves, a village pond barely ripples.
+  // plane is rotated -90deg about X, so local (x, y) lands at world (x, -y).
+  const amp = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    baseX[i] = pos.getX(i); baseY[i] = pos.getY(i);
+    amp[i] = terrain.inOcean(baseX[i], -baseY[i]) ? 2.3 : 1;
+  }
+
+  // deeper offshore water reads bluer — a tinted skin over the ocean cells only,
+  // so lakes keep the bright turquoise the village is used to
+  const deepPos = [], deepIdx = [];
+  let dvi = 0;
+  for (let iz = 0; iz < S; iz++) {
+    for (let ix = 0; ix < S; ix++) {
+      if (!terrain.isOceanCell(ix, iz)) continue;
+      if (terrain.heightCell(ix, iz) > WATER_LEVEL - 1) continue;  // keep the shelf light
+      const x = ix - S / 2, z = iz - S / 2, y = WATER_Y + 0.015;
+      deepPos.push(x, y, z + 1, x + 1, y, z + 1, x + 1, y, z, x, y, z);
+      deepIdx.push(dvi, dvi + 1, dvi + 2, dvi, dvi + 2, dvi + 3);
+      dvi += 4;
+    }
+  }
+  let deepMat = null;
+  if (dvi > 0) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(deepPos, 3));
+    g.setIndex(deepIdx);
+    deepMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#2f7fb0'), transparent: true, opacity: 0.34, depthWrite: false,
+    });
+    group.add(new THREE.Mesh(g, deepMat));
+  }
 
   // foam: small quads on water cells adjacent to land
   const foamPos = [], foamIdx = [];
@@ -72,11 +103,14 @@ export function buildWater(terrain, scene) {
       const wave = Math.sin(x * 0.35 + time * 1.4) * 0.055
         + Math.cos(y * 0.3 - time * 1.1) * 0.05
         + Math.sin((x + y) * 0.18 + time * 0.7) * 0.03;
-      pos.setZ(i, wave);
+      // out at sea a long slow ground swell rides under the small chop
+      const swell = amp[i] > 1 ? Math.sin((x - y) * 0.075 + time * 0.5) * 0.075 : 0;
+      pos.setZ(i, wave * amp[i] + swell);
     }
     pos.needsUpdate = true;
 
     if (foamMat) foamMat.opacity = 0.24 + (Math.sin(time * 1.7) * 0.5 + 0.5) * 0.2;
+    if (deepMat) deepMat.opacity = 0.3 + Math.sin(time * 0.55) * 0.05;
   }
 
   return { group, update };

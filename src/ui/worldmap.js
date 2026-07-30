@@ -65,6 +65,8 @@ export function createWorldMap({ minimap, terrain }) {
         <span><b style="color:#e8a35d">⚒</b>Forge</span>
         <span><b style="color:#8ac86a">▲</b>Rest Camp</span>
         <span><b style="color:#6ad0e8">⚓</b>Fish Dock</span>
+        <span><b style="color:#5ad8a8">≈</b>Island</span>
+        <span><b style="color:#ff9a5e">⛵</b>Marina</span>
         <span><b style="color:#f0c455">⌂</b>Your Home</span>
         <span><b style="color:#c8b494">◎</b>Land</span>
         <span><b style="color:#ffd23e">◆</b>Boss</span>
@@ -155,6 +157,27 @@ export function createWorldMap({ minimap, terrain }) {
         const [x, y] = toXY(d.x, d.z);
         ctx.fillStyle = '#0a0f0a'; ctx.fillText('⚓', x + 1, y + 1);
         ctx.fillStyle = '#6ad0e8'; ctx.fillText('⚓', x, y);
+      }
+    }
+    // the archipelago: named islands out at sea + the marina you launch from
+    if (refs.isles) {
+      ctx.font = 'bold 15px monospace';
+      for (const isl of refs.isles.islands) {
+        const [x, y] = toXY(isl.x, isl.z);
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('≈', x + 1, y + 1);
+        ctx.fillStyle = '#5ad8a8'; ctx.fillText('≈', x, y);
+        ctx.font = 'bold 8px monospace';
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText(isl.name.toUpperCase(), x - 16, y + 13);
+        ctx.fillStyle = '#bff0dc'; ctx.fillText(isl.name.toUpperCase(), x - 17, y + 12);
+        ctx.font = 'bold 15px monospace';
+      }
+      if (refs.isles.marina) {
+        const [x, y] = toXY(refs.isles.marina.x, refs.isles.marina.z);
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('⛵', x + 1, y + 1);
+        ctx.fillStyle = '#ff9a5e'; ctx.fillText('⛵', x, y);
+        ctx.font = 'bold 8px monospace';
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('MARINA', x - 12, y + 13);
+        ctx.fillStyle = '#ffd0b0'; ctx.fillText('MARINA', x - 13, y + 12);
       }
     }
     // shop, gacha & forge landmarks in the village

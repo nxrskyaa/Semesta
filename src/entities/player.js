@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { makePlayerFaceTexture, makeBladeTexture, PALETTE } from '../gfx/textures.js';
 import { ITEMS } from '../systems/items.js';
+import { WATER_Y } from '../world/terrain.js';
 import {
   CLASSES, SKIN_TONES, HAIR_COLORS, OUTFIT_COLORS, EYE_COLORS, CAPE_COLORS, BALD_STYLE,
 } from '../systems/classes.js';
@@ -17,6 +18,11 @@ const SHIELD_BLOCK = 0.8;
 const STAM_REGEN = 26;
 const GRAVITY = 16;
 const JUMP_V = 5.6;
+// swimming: slower than a walk, costs stamina, and when the tank runs dry the
+// hero is washed ashore instead of drowned — this is a cozy game
+const SWIM_SPEED_MULT = 0.62;
+const SWIM_STAM_DRAIN = 5.4;
+const SWIM_SINK = 0.30;          // how deep the waterline sits on the body
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 function shadeHex(hex, amt) {
@@ -806,7 +812,8 @@ function buildExoticWeapon(g, def, s) {
 // ---------------------------------------------------------------------------
 // Player runtime
 // ---------------------------------------------------------------------------
-export function createPlayer(terrain, decorBlocked, config, particles) {
+export function createPlayer(terrain, decorBlocked, config, particles, hooks = {}) {
+  const onSwimExhausted = hooks.onSwimExhausted;
   const cls = CLASSES[config.cls];
   let rig = buildCharacterMesh(config);
   const group = rig.group;   // persistent root: scene/mounts/trail attach here
@@ -851,6 +858,11 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     isMoving: false,
     // vertical physics
     vy: 0, grounded: true, landSquash: 0,
+    // water: `swimming` is the live state, `swimT` drives the stroke animation
+    swimming: false, swimT: 0, splashT: 0, washingAshore: null,
+    // watercraft: set while riding a jetski/dinghy — watercraft.js owns the
+    // horizontal movement and the height, so player.update stands down
+    craft: null,
     // mount
     mount: null, // { speedMult, jumpMult, seatH }
     equipWeapon: (id) => {
@@ -893,9 +905,32 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
     return false;
   }
 
+  /** True where the smooth ground actually sits below the waterline. */
+  function isDeepEnough(x, z) {
+    return !!terrain.swimmable?.(x, z) && terrain.surfaceY(x, z) < WATER_Y - 0.06;
+  }
+
+  // nearestShore already returns a dry cell CENTRE, so the tow aims straight at
+  // it and plants the hero there on arrival.
+  function shoreTarget() { return terrain.nearestShore(state.pos.x, state.pos.z); }
+
+  /** Sit the hero on a watercraft: knees up, hands out on the bars. */
+  function setCraftPose(on) {
+    state.craftPose = !!on;
+    if (!on) {
+      parts.legL.rotation.x = 0; parts.legR.rotation.x = 0;
+      parts.armL.rotation.set(0, 0, 0); parts.armR.rotation.set(0, 0, 0);
+      vis.rotation.set(0, 0, 0);
+    }
+  }
+
   const tryMove = (nx, nz) => {
     const [ix, iz] = terrain.cellOf(nx, nz);
     if (decorBlocked.has(`${ix},${iz}`)) return false;
+    // water is enterable: wading in starts a swim instead of hitting a wall.
+    // Cell flags say "water" but the SMOOTHED surface is what you stand on, so
+    // only genuinely submerged ground counts — a shelved beach stays a walk.
+    if (isDeepEnough(nx, nz)) return true;
     return terrain.walkable(nx, nz, state.pos.y);
   };
 
@@ -928,6 +963,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
 
   function tryJump() {
     if (!state.grounded || state.dead || state.busy || state.rolling > 0) return false;
+    if (state.swimming) return false;    // you can't jump out of open water
     state.vy = JUMP_V * (state.mount?.jumpMult || 1);
     state.grounded = false;
     return true;
@@ -970,9 +1006,32 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
       let sp = cls.speed * (1 + buffVal('speed')) * (state.mount?.speedMult || 1);
       if (state.shielding) sp *= 0.45;
       if (state.attackT > 0) sp *= 0.55;
+      if (state.swimming && !state.craft) sp *= SWIM_SPEED_MULT;
       vx = mv.x * sp; vz = mv.z * sp;
       state.facing = Math.atan2(mv.x, mv.z);
     }
+
+    // an exhausted swimmer is towed to the beach — no drowning, just a nudge
+    if (state.washingAshore) {
+      const to = state.washingAshore;
+      const dx = to.x - state.pos.x, dz = to.z - state.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (!state.swimming) state.washingAshore = null;   // feet on sand: done
+      else if (d < 0.5) {
+        // arrived at the beach cell — plant them on it rather than letting the
+        // last few centimetres of drift leave them bobbing one cell short
+        state.pos.x = to.x; state.pos.z = to.z;
+        state.pos.y = terrain.surfaceY(to.x, to.z);
+        state.washingAshore = null;
+        state.splashT = 0.3;
+      }
+      // a rescue current, not a swim — brisk enough that a long haul back from
+      // the far reef doesn't turn into a minute of staring at the horizon
+      else { vx = (dx / d) * 7.5; vz = (dz / d) * 7.5; state.facing = Math.atan2(dx, dz); }
+    }
+
+    // watercraft.js drives the hull; the hero just holds on
+    if (state.craft) { vx = 0; vz = 0; }
 
     if (vx || vz) {
       const nx = state.pos.x + vx * dt, nz = state.pos.z + vz * dt;
@@ -981,9 +1040,46 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
       else if (tryMove(state.pos.x, nz)) { state.pos.z = nz; }
     }
 
+    // --- water: swim state, buoyancy, stamina, rescue ---
+    const inWater = isDeepEnough(state.pos.x, state.pos.z);
+    // riding keeps you dry and out of the swim branch entirely
+    const wasSwimming = state.swimming;
+    // riding a watercraft keeps you dry and on top of the surface
+    state.swimming = inWater && !state.craft;
+    if (state.swimming && !wasSwimming) {
+      state.vy = 0;
+      state.splashT = 0.5;
+      particles?.burst(state.pos.clone().setY(WATER_Y), '#cdf2ff', 12, 2.6, 4, 0.45);
+      particles?.ring?.(state.pos.clone().setY(WATER_Y + 0.02), '#eaffff', 1.4, 0.4);
+    } else if (!state.swimming && wasSwimming) {
+      state.splashT = 0.35;
+      particles?.burst(state.pos.clone().setY(WATER_Y), '#cdf2ff', 8, 2.2, 4, 0.4);
+    }
+    if (state.swimming) {
+      state.grounded = true;             // buoyant: no gravity, no fall damage
+      state.vy = 0;
+      state.swimT += dt * (moving ? 7.5 : 2.4);
+      state.stamina = Math.max(0, state.stamina - SWIM_STAM_DRAIN * dt);
+      if (state.stamina <= 0 && !state.washingAshore) {
+        state.washingAshore = shoreTarget();
+        onSwimExhausted?.();
+      }
+      // wake bubbles behind a moving swimmer
+      if (moving && Math.random() < dt * 14) {
+        particles?.burst(state.pos.clone().setY(WATER_Y + 0.05), '#e6fbff', 1, 0.9, 1.5, 0.35);
+      }
+    }
+    if (state.splashT > 0) state.splashT = Math.max(0, state.splashT - dt);
+
     // --- vertical: jump / gravity / ground follow ---
-    const targetY = terrain.surfaceY(state.pos.x, state.pos.z);
-    if (state.grounded) {
+    const targetY = state.swimming
+      ? WATER_Y - SWIM_SINK + Math.sin(state.swimT * 0.9) * 0.05
+      : terrain.surfaceY(state.pos.x, state.pos.z);
+    if (state.craft) {
+      /* height is owned by watercraft.drive */
+    } else if (state.swimming) {
+      state.pos.y += (targetY - state.pos.y) * Math.min(1, dt * 9);
+    } else if (state.grounded) {
       if (state.pos.y - targetY > 0.4) {
         state.grounded = false; // walked off a ledge
         state.vy = 0;
@@ -991,7 +1087,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
         state.pos.y += (targetY - state.pos.y) * Math.min(1, dt * 14);
       }
     }
-    if (!state.grounded) {
+    if (!state.grounded && !state.craft) {
       state.vy -= GRAVITY * dt;
       state.pos.y += state.vy * dt;
       if (state.vy <= 0 && state.pos.y <= targetY) {
@@ -1005,13 +1101,13 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
 
     // shield
     state.shielding = cls.hasShield && input.keys.has('ShiftLeft') && state.stamina > 1
-      && state.rolling <= 0 && !state.mount;
+      && state.rolling <= 0 && !state.mount && !state.swimming;
     parts.shieldMesh.visible = state.shielding;
     if (state.shielding) {
       state.stamina = Math.max(0, state.stamina - SHIELD_DRAIN * dt);
       parts.armL.rotation.x = -1.2;
     }
-    if (!state.shielding) {
+    if (!state.shielding && !state.swimming) {
       state.stamina = Math.min(state.maxStamina, state.stamina + STAM_REGEN * (1 + buffVal('stamRegen')) * dt);
     }
 
@@ -1062,11 +1158,49 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
       vis.position.y = visBase;
       const squash = state.landSquash > 0 ? Math.sin((state.landSquash / 0.16) * Math.PI) * 0.14 : 0;
       vis.scale.set(1 + squash * 0.5, 1 - squash, 1 + squash * 0.5);
+      if (!state.swimming) {
+        // shake off the swim pose the moment we're back on dry land
+        vis.rotation.z = 0;
+        parts.head.rotation.x = 0;
+      }
     }
 
     const mounted = !!state.mount;
 
-    if (!state.grounded && state.rolling <= 0) {
+    if (state.craftPose) {
+      // seated: knees up over the footwells, arms forward on the bars, body
+      // leaning into the ride so the hero looks like they're driving it
+      vis.rotation.x = 0.16;
+      vis.position.y = visBase;
+      parts.legL.rotation.x = 1.35; parts.legR.rotation.x = 1.35;
+      if (state.attackT <= 0) {
+        parts.armL.rotation.x = -1.15; parts.armR.rotation.x = -1.15;
+        parts.armL.rotation.z = 0.22; parts.armR.rotation.z = -0.22;
+      }
+      parts.head.rotation.x = -0.1;
+      parts.head.rotation.z = 0;
+      if (parts.capeMesh) parts.capeMesh.rotation.x = 1.35 + Math.sin(state.idleT * 6) * 0.12;
+    } else if (state.swimming && state.rolling <= 0) {
+      // FRONT CRAWL: the body pitches forward until it lies on the surface, the
+      // arms windmill a half-cycle apart, the legs flutter fast and shallow, and
+      // the whole hero rolls a little into each stroke the way a swimmer does.
+      const st = state.swimT;
+      const pitch = moving ? 1.02 : 0.42;              // treading water sits up
+      vis.rotation.x = pitch;
+      vis.rotation.z = Math.sin(st) * (moving ? 0.16 : 0.05);
+      vis.position.y = visBase - 0.16 + Math.sin(st * 0.9) * 0.045;
+      if (state.attackT <= 0) {
+        parts.armL.rotation.x = -1.5 + Math.sin(st) * 1.9;
+        parts.armR.rotation.x = -1.5 + Math.sin(st + Math.PI) * 1.9;
+        parts.armL.rotation.z = 0.5; parts.armR.rotation.z = -0.5;
+      }
+      const flut = Math.sin(st * 2.1) * (moving ? 0.42 : 0.16);
+      parts.legL.rotation.x = flut;
+      parts.legR.rotation.x = -flut;
+      parts.head.rotation.x = -pitch * 0.75;           // face stays out of the water
+      parts.head.rotation.z = Math.sin(st) * 0.12;     // breathing to the side
+      if (parts.capeMesh) parts.capeMesh.rotation.x = 1.1 + Math.sin(st * 0.7) * 0.12;
+    } else if (!state.grounded && state.rolling <= 0) {
       // airborne pose: legs tucked, arms out
       parts.legL.rotation.x = mounted ? 1.25 : -0.55;
       parts.legR.rotation.x = mounted ? 1.25 : -0.75;
@@ -1308,6 +1442,7 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
 
   function tryRoll(input, camYaw) {
     if (state.rolling > 0 || state.stamina < ROLL_COST || state.dead || state.busy || state.mount) return false;
+    if (state.swimming) return false;    // no dodge-rolling mid-stroke
     const mv = moveVec(input, camYaw);
     let dx, dz;
     if (mv) { dx = mv.x; dz = mv.z; }
@@ -1348,7 +1483,9 @@ export function createPlayer(terrain, decorBlocked, config, particles) {
 
   return {
     state, parts, update, tryAttack, tryRoll, tryJump, takeDamage, respawn,
-    addBuff, consumeCritBuff, buffVal, setMountState, applyAppearance,
+    addBuff, consumeCritBuff, buffVal, setMountState, applyAppearance, setCraftPose,
+    // watercraft.js steers with the same camera-relative vector the legs use
+    moveVecFor: (input, camYaw) => moveVec(input, camYaw),
     playSwing, playSpin, playBowDraw, playStaffCast, playCast,
   };
 }

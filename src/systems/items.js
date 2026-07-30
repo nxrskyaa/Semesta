@@ -111,6 +111,10 @@ export const ITEMS = {
   mount_aurora:     { name: 'Aurora Whistle', mountId: 'aurora', rarity: 'mythic' },
   mount_pebble:     { name: 'Pebble Whistle', mountId: 'pebble', rarity: 'epic' },
 
+  // watercraft keys — moored at the marina, not summoned like a mount
+  craft_dinghy:  { name: 'Dinghy Oars', craftId: 'dinghy', rarity: 'common' },
+  craft_jetski:  { name: 'Jetski Key', craftId: 'jetski', buy: 480, rarity: 'rare' },
+
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },
 
