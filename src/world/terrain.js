@@ -198,8 +198,12 @@ export class Terrain {
         const seaWave = (fbm2(nx * 5.5, nz * 5.5, SEED + 131, 3) - 0.5) * 0.2;
         const sea = nx + nz + seaWave - OCEAN_EDGE;
         if (sea > 0) {
-          const depth = Math.min(1, sea / 0.16);           // 0 at the beach, 1 offshore
-          e = Math.min(e, WATER_LEVEL + 0.4 - depth * 3.2);
+          // The floor has to drop FAST. A gentle shelf sounds realistic but it
+          // meant ~18 cells of ankle-deep water: you could wade forever and
+          // never be deep enough to swim. This reaches real depth about two or
+          // three cells past the sand, leaving a thin wading fringe.
+          const depth = Math.min(1, sea / 0.03);            // 0 at the beach, 1 offshore
+          e = Math.min(e, WATER_LEVEL + 0.45 - depth * 3.6);
           this.ocean[this.idx(ix, iz)] = 1;
         }
 

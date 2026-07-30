@@ -5,8 +5,12 @@
 import * as THREE from 'three';
 import { makeCritterFaceTexture, PALETTE } from '../gfx/textures.js';
 import { WATER_LEVEL } from '../world/terrain.js';
+import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 
-function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
+// Static prop colours are SHARED — a built world was carrying ~2,465 distinct
+// materials, which is why the LOW preset barely helped. Nothing in this file
+// mutates a material at runtime, so one material per colour is safe here.
+function lam(color) { return sharedMat(color); }
 
 export const NPC_DEFS = [
   {
@@ -161,23 +165,23 @@ function buildBarong(def) {
   const g = new THREE.Group();
   const red = lam('#c8302a'), gold = lam('#f0c840'), white = lam('#f4f0e4'), black = lam('#1a1a22');
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 0.36), lam('#8a1e1a'));
+  const body = new THREE.Mesh(sharedBox(0.5, 0.42, 0.36), lam('#8a1e1a'));
   body.position.y = 0.42; body.castShadow = true;
-  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.1, 0.4), gold);
+  const sash = new THREE.Mesh(sharedBox(0.54, 0.1, 0.4), gold);
   sash.position.y = 0.5; g.add(sash);
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.24, 0.16), black);
+  const legL = new THREE.Mesh(sharedBox(0.15, 0.24, 0.16), black);
   legL.position.set(-0.13, 0.12, 0);
   const legR = legL.clone(); legR.position.x = 0.13;
   for (const leg of [legL, legR]) {
-    const anklet = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.18), gold);
+    const anklet = new THREE.Mesh(sharedBox(0.17, 0.05, 0.18), gold);
     anklet.position.y = -0.09; leg.add(anklet);
   }
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.13), red);
+  const armL = new THREE.Mesh(sharedBox(0.12, 0.26, 0.13), red);
   armL.position.set(-0.32, 0.44, 0);
   const armR = armL.clone(); armR.position.x = 0.32;
 
   // big ornate head
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.58, 0.5), red);
+  const head = new THREE.Mesh(sharedBox(0.66, 0.58, 0.5), red);
   head.position.y = 0.9; head.castShadow = true;
   // layered mane: rings of pointed tufts around the head (red -> gold -> white)
   const maneRing = (radius, len, mat, ry0, count, y) => {
@@ -202,13 +206,13 @@ function buildBarong(def) {
     const rim = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.02, 6, 12), gold);
     rim.position.set(sx * 0.16, 0.08, 0.26); head.add(rim);
     // bushy brow
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.06), white);
+    const brow = new THREE.Mesh(sharedBox(0.16, 0.06, 0.06), white);
     brow.position.set(sx * 0.16, 0.2, 0.24); brow.rotation.z = sx * 0.3; head.add(brow);
   }
   // fanged grin
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.06), black);
+  const mouth = new THREE.Mesh(sharedBox(0.34, 0.12, 0.06), black);
   mouth.position.set(0, -0.16, 0.25); head.add(mouth);
-  const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.04), lam('#e05a6a'));
+  const tongue = new THREE.Mesh(sharedBox(0.14, 0.06, 0.04), lam('#e05a6a'));
   tongue.position.set(0, -0.17, 0.28); head.add(tongue);
   for (const sx of [-1, 1]) {
     const fang = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 4), white);
@@ -234,20 +238,20 @@ function buildVillagerMesh(def) {
   const furLight = lam(def.furLight);
   const cloth = lam(def.outfit);
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.24), cloth);
+  const body = new THREE.Mesh(sharedBox(0.34, 0.3, 0.24), cloth);
   body.position.y = 0.34;
   body.castShadow = true;
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.2, 0.13), fur);
+  const legL = new THREE.Mesh(sharedBox(0.11, 0.2, 0.13), fur);
   legL.position.set(-0.08, 0.1, 0);
   const legR = legL.clone(); legR.position.x = 0.08;
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.22, 0.11), fur);
+  const armL = new THREE.Mesh(sharedBox(0.09, 0.22, 0.11), fur);
   armL.position.set(-0.21, 0.36, 0);
   const armR = armL.clone(); armR.position.x = 0.21;
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.44, 0.46), fur);
+  const head = new THREE.Mesh(sharedBox(0.5, 0.44, 0.46), fur);
   head.position.y = 0.72;
   head.castShadow = true;
-  const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.04), furLight);
+  const muzzle = new THREE.Mesh(sharedBox(0.24, 0.16, 0.04), furLight);
   muzzle.position.set(0, -0.08, 0.24);
   head.add(muzzle);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.33),
@@ -257,73 +261,73 @@ function buildVillagerMesh(def) {
 
   if (def.species === 'cat') {
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.08), fur);
+      const ear = new THREE.Mesh(sharedBox(0.12, 0.16, 0.08), fur);
       ear.position.set(sx * 0.17, 0.28, 0);
       ear.rotation.z = -sx * 0.25;
       head.add(ear);
-      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.02), furLight);
+      const inner = new THREE.Mesh(sharedBox(0.06, 0.08, 0.02), furLight);
       inner.position.set(0, 0, 0.04); ear.add(inner);
     }
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.08), fur);
+    const tail = new THREE.Mesh(sharedBox(0.08, 0.3, 0.08), fur);
     tail.position.set(0.12, 0.3, -0.16);
     tail.rotation.x = -0.5;
     g.add(tail);
   } else if (def.species === 'catgirl') {
     // pink cat-girl: ears, tail, a hair bow and a soft fringe
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.08), fur);
+      const ear = new THREE.Mesh(sharedBox(0.12, 0.16, 0.08), fur);
       ear.position.set(sx * 0.17, 0.28, 0);
       ear.rotation.z = -sx * 0.25;
       head.add(ear);
-      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.02), lam('#ffe0ec'));
+      const inner = new THREE.Mesh(sharedBox(0.06, 0.08, 0.02), lam('#ffe0ec'));
       inner.position.set(0, 0, 0.04); ear.add(inner);
     }
     // hair fringe across the brow + side locks (deeper pink)
     const hairC = lam('#f28ab8');
-    const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.08), hairC);
+    const fringe = new THREE.Mesh(sharedBox(0.5, 0.12, 0.08), hairC);
     fringe.position.set(0, 0.16, 0.2); head.add(fringe);
     for (const sx of [-1, 1]) {
-      const lock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.34, 0.12), hairC);
+      const lock = new THREE.Mesh(sharedBox(0.09, 0.34, 0.12), hairC);
       lock.position.set(sx * 0.26, -0.02, 0.06); head.add(lock);
     }
     // a cute bow on one ear
-    const bow = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.06), lam('#ffd24a'));
+    const bow = new THREE.Mesh(sharedBox(0.14, 0.08, 0.06), lam('#ffd24a'));
     bow.position.set(0.2, 0.4, 0.02); head.add(bow);
-    const bowKnot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), lam('#e8a83a'));
+    const bowKnot = new THREE.Mesh(sharedBox(0.05, 0.05, 0.05), lam('#e8a83a'));
     bowKnot.position.set(0.2, 0.4, 0.05); head.add(bowKnot);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.32, 0.08), fur);
+    const tail = new THREE.Mesh(sharedBox(0.08, 0.32, 0.08), fur);
     tail.position.set(0.12, 0.3, -0.16); tail.rotation.x = -0.4;
-    const tailTip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), lam('#ffd6e6'));
+    const tailTip = new THREE.Mesh(sharedBox(0.09, 0.09, 0.09), lam('#ffd6e6'));
     tailTip.position.set(0.12, 0.46, -0.22);
     g.add(tail, tailTip);
   } else if (def.species === 'bear') {
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.08), fur);
+      const ear = new THREE.Mesh(sharedBox(0.14, 0.12, 0.08), fur);
       ear.position.set(sx * 0.2, 0.26, 0);
       head.add(ear);
     }
   } else if (def.species === 'rabbit') {
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.34, 0.06), fur);
+      const ear = new THREE.Mesh(sharedBox(0.1, 0.34, 0.06), fur);
       ear.position.set(sx * 0.13, 0.4, 0);
       ear.rotation.z = -sx * 0.12;
       head.add(ear);
-      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.24, 0.02), furLight);
+      const inner = new THREE.Mesh(sharedBox(0.05, 0.24, 0.02), furLight);
       inner.position.set(0, 0, 0.035); ear.add(inner);
     }
-    const puff = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.1), furLight);
+    const puff = new THREE.Mesh(sharedBox(0.12, 0.12, 0.1), furLight);
     puff.position.set(0, 0.32, -0.16);
     g.add(puff);
   } else if (def.species === 'bird') {
-    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.12), lam('#f0a83d'));
+    const beak = new THREE.Mesh(sharedBox(0.09, 0.07, 0.12), lam('#f0a83d'));
     beak.position.set(0, -0.05, 0.28);
     head.add(beak);
-    const tuft = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14, 0.07), furLight);
+    const tuft = new THREE.Mesh(sharedBox(0.07, 0.14, 0.07), furLight);
     tuft.position.set(0, 0.28, 0);
     tuft.rotation.z = 0.2;
     head.add(tuft);
     for (const sx of [-1, 1]) {
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.2), furLight);
+      const wing = new THREE.Mesh(sharedBox(0.06, 0.18, 0.2), furLight);
       wing.position.set(sx * 0.21, 0.36, -0.02);
       g.add(wing);
     }
@@ -338,7 +342,7 @@ function buildVillagerMesh(def) {
       const earFluff = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), fur);
       earFluff.position.set(sx * 0.34, 0.28, -0.02);
       head.add(earFluff);
-      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.04), lam('#f0b8c0'));
+      const inner = new THREE.Mesh(sharedBox(0.1, 0.1, 0.04), lam('#f0b8c0'));
       inner.position.set(sx * 0.26, 0.19, 0.08);
       head.add(inner);
     }
@@ -353,49 +357,49 @@ function buildVillagerMesh(def) {
     vctx.fillText('NXR', 16, 9);
     const visorTex = new THREE.CanvasTexture(visorC);
     visorTex.magFilter = THREE.NearestFilter;
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.1),
+    const visor = new THREE.Mesh(sharedBox(0.46, 0.16, 0.1),
       [lam('#2a2a30'), lam('#2a2a30'), lam('#2a2a30'), lam('#2a2a30'),
         new THREE.MeshBasicMaterial({ map: visorTex }), lam('#2a2a30')]);
     visor.position.set(0, 0.04, 0.22);
     head.add(visor);
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.1, 0.46), lam('#1e1e24'));
+    const strap = new THREE.Mesh(sharedBox(0.52, 0.1, 0.46), lam('#1e1e24'));
     strap.position.set(0, 0.04, -0.02);
     head.add(strap);
     // golden batik headband with a knot on top
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.09, 0.48), lam('#c8963a'));
+    const band = new THREE.Mesh(sharedBox(0.52, 0.09, 0.48), lam('#c8963a'));
     band.position.set(0, 0.18, 0);
-    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.12), lam('#e8b84a'));
+    const knot = new THREE.Mesh(sharedBox(0.14, 0.12, 0.12), lam('#e8b84a'));
     knot.position.set(0, 0.28, 0.06);
     head.add(band, knot);
     // koala nose
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.05), lam('#2a2a30'));
+    const nose = new THREE.Mesh(sharedBox(0.1, 0.13, 0.05), lam('#2a2a30'));
     nose.position.set(0, -0.1, 0.25);
     head.add(nose);
     // golden ornate collar + batik sarong hem
-    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.28), lam('#c8963a'));
+    const collar = new THREE.Mesh(sharedBox(0.38, 0.08, 0.28), lam('#c8963a'));
     collar.position.y = 0.5;
-    const sarong = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.26), lam('#c8963a'));
+    const sarong = new THREE.Mesh(sharedBox(0.36, 0.12, 0.26), lam('#c8963a'));
     sarong.position.y = 0.18;
-    const sarongDark = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.06, 0.27), lam('#1e1e24'));
+    const sarongDark = new THREE.Mesh(sharedBox(0.37, 0.06, 0.27), lam('#1e1e24'));
     sarongDark.position.y = 0.23;
     // golden anklets
     for (const sx of [-1, 1]) {
-      const anklet = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.05, 0.15), lam('#e8b84a'));
+      const anklet = new THREE.Mesh(sharedBox(0.13, 0.05, 0.15), lam('#e8b84a'));
       anklet.position.set(sx * 0.08, 0.04, 0);
       g.add(anklet);
     }
     g.add(collar, sarong, sarongDark);
   } else if (def.species === 'squirrel') {
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.06), fur);
+      const ear = new THREE.Mesh(sharedBox(0.1, 0.12, 0.06), fur);
       ear.position.set(sx * 0.16, 0.27, 0);
       head.add(ear);
     }
     // big fluffy tail curling up the back
-    const tail1 = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 0.14), fur);
+    const tail1 = new THREE.Mesh(sharedBox(0.14, 0.3, 0.14), fur);
     tail1.position.set(0, 0.35, -0.22);
     tail1.rotation.x = -0.3;
-    const tail2 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16), furLight);
+    const tail2 = new THREE.Mesh(sharedBox(0.16, 0.2, 0.16), furLight);
     tail2.position.set(0, 0.58, -0.28);
     g.add(tail1, tail2);
   } else if (def.species === 'turtle') {
@@ -404,37 +408,37 @@ function buildVillagerMesh(def) {
     shell.scale.set(1, 0.75, 0.8);
     g.add(shell);
   } else if (def.species === 'duck') {
-    const bill = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.12), lam('#f0a83d'));
+    const bill = new THREE.Mesh(sharedBox(0.16, 0.05, 0.12), lam('#f0a83d'));
     bill.position.set(0, -0.07, 0.28);
     head.add(bill);
-    const tailNub = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.1), furLight);
+    const tailNub = new THREE.Mesh(sharedBox(0.12, 0.1, 0.1), furLight);
     tailNub.position.set(0, 0.36, -0.18);
     tailNub.rotation.x = 0.5;
     g.add(tailNub);
   } else if (def.species === 'dog') {
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.06), lam('#8a6a48'));
+      const ear = new THREE.Mesh(sharedBox(0.1, 0.16, 0.06), lam('#8a6a48'));
       ear.position.set(sx * 0.19, 0.2, 0.04);
       ear.rotation.z = -sx * 0.5;
       head.add(ear);
     }
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.08), furLight);
+    const snout = new THREE.Mesh(sharedBox(0.14, 0.1, 0.08), furLight);
     snout.position.set(0, -0.1, 0.26);
     head.add(snout);
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.03), lam('#2a2620'));
+    const nose = new THREE.Mesh(sharedBox(0.06, 0.05, 0.03), lam('#2a2620'));
     nose.position.set(0, -0.08, 0.3);
     head.add(nose);
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.07), fur);
+    const tail = new THREE.Mesh(sharedBox(0.07, 0.22, 0.07), fur);
     tail.position.set(0, 0.36, -0.18);
     tail.rotation.x = -0.7;
     g.add(tail);
   } else if (def.species === 'badger') {
     for (const sx of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.06), lam('#4a4650'));
+      const ear = new THREE.Mesh(sharedBox(0.1, 0.1, 0.06), lam('#4a4650'));
       ear.position.set(sx * 0.18, 0.26, 0);
       head.add(ear);
     }
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.44, 0.02), furLight);
+    const stripe = new THREE.Mesh(sharedBox(0.1, 0.44, 0.02), furLight);
     stripe.position.set(0, 0, 0.235);
     head.add(stripe);
   }
@@ -454,57 +458,57 @@ function buildHut(scale = 1, wallColor = '#c8b090', roofColor = '#a85a48') {
   const roof = lam(roofColor);
   const roofDark = lam('#8a4638');
 
-  const base = new THREE.Mesh(new THREE.BoxGeometry(2.4 * scale, 1.5 * scale, 2.2 * scale), wall);
+  const base = new THREE.Mesh(sharedBox(2.4 * scale, 1.5 * scale, 2.2 * scale), wall);
   base.position.y = 0.75 * scale;
   base.castShadow = true;
   base.receiveShadow = true;
   for (const [dx, dz] of [[-1.15, -1.05], [1.15, -1.05], [-1.15, 1.05], [1.15, 1.05]]) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.5 * scale, 0.16), beam);
+    const b = new THREE.Mesh(sharedBox(0.16, 1.5 * scale, 0.16), beam);
     b.position.set(dx * scale, 0.75 * scale, dz * scale);
     g.add(b);
   }
   // cross beam under the roof
-  const cross = new THREE.Mesh(new THREE.BoxGeometry(2.5 * scale, 0.12, 0.12), beam);
+  const cross = new THREE.Mesh(sharedBox(2.5 * scale, 0.12, 0.12), beam);
   cross.position.set(0, 1.45 * scale, 1.08 * scale);
   g.add(cross);
   for (let i = 0; i < 3; i++) {
     const w = (2.8 - i * 0.7) * scale;
-    const r = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3 * scale, (2.6 - i * 0.6) * scale), i % 2 ? roofDark : roof);
+    const r = new THREE.Mesh(sharedBox(w, 0.3 * scale, (2.6 - i * 0.6) * scale), i % 2 ? roofDark : roof);
     r.position.y = (1.6 + i * 0.3) * scale;
     r.castShadow = true;
     g.add(r);
   }
   // chimney
-  const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.3 * scale, 0.6 * scale, 0.3 * scale), lam('#8d9294'));
+  const chimney = new THREE.Mesh(sharedBox(0.3 * scale, 0.6 * scale, 0.3 * scale), lam('#8d9294'));
   chimney.position.set(0.7 * scale, 2.1 * scale, -0.4 * scale);
   g.add(chimney);
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.55 * scale, 0.95 * scale, 0.08), beam);
+  const door = new THREE.Mesh(sharedBox(0.55 * scale, 0.95 * scale, 0.08), beam);
   door.position.set(0, 0.5 * scale, 1.12 * scale);
-  const knob = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.04), lam('#d8a83a'));
+  const knob = new THREE.Mesh(sharedBox(0.07, 0.07, 0.04), lam('#d8a83a'));
   knob.position.set(0.16 * scale, 0.45 * scale, 1.17 * scale);
-  const win = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.45 * scale, 0.06), lam('#8ac4d8'));
+  const win = new THREE.Mesh(sharedBox(0.5 * scale, 0.45 * scale, 0.06), lam('#8ac4d8'));
   win.position.set(0.75 * scale, 0.95 * scale, 1.12 * scale);
-  const winFrame = new THREE.Mesh(new THREE.BoxGeometry(0.56 * scale, 0.51 * scale, 0.04), beam);
+  const winFrame = new THREE.Mesh(sharedBox(0.56 * scale, 0.51 * scale, 0.04), beam);
   winFrame.position.set(0.75 * scale, 0.95 * scale, 1.1 * scale);
   // flower box under the window
-  const flowerBox = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.12, 0.14), beam);
+  const flowerBox = new THREE.Mesh(sharedBox(0.5 * scale, 0.12, 0.14), beam);
   flowerBox.position.set(0.75 * scale, 0.66 * scale, 1.16 * scale);
   for (let i = 0; i < 3; i++) {
-    const fl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07),
+    const fl = new THREE.Mesh(sharedBox(0.07, 0.07, 0.07),
       lam(PALETTE.flowers[i % PALETTE.flowers.length]));
     fl.position.set((0.6 + i * 0.15) * scale, 0.76 * scale, 1.16 * scale);
     g.add(fl);
   }
   // door step + a little lantern by the door
-  const step = new THREE.Mesh(new THREE.BoxGeometry(0.7 * scale, 0.08, 0.4 * scale), lam('#9aa0a2'));
+  const step = new THREE.Mesh(sharedBox(0.7 * scale, 0.08, 0.4 * scale), lam('#9aa0a2'));
   step.position.set(0, 0.04, 1.3 * scale);
-  const lanternPost = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5 * scale, 0.06), beam);
+  const lanternPost = new THREE.Mesh(sharedBox(0.06, 0.5 * scale, 0.06), beam);
   lanternPost.position.set(-0.55 * scale, 0.25 * scale, 1.25 * scale);
-  const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.13),
+  const lantern = new THREE.Mesh(sharedBox(0.13, 0.15, 0.13),
     new THREE.MeshBasicMaterial({ color: 0xffd88a }));
   lantern.position.set(-0.55 * scale, 0.56 * scale, 1.25 * scale);
   // roof ridge beam
-  const ridge = new THREE.Mesh(new THREE.BoxGeometry(1.5 * scale, 0.1, 0.18), lam('#6a4a30'));
+  const ridge = new THREE.Mesh(sharedBox(1.5 * scale, 0.1, 0.18), lam('#6a4a30'));
   ridge.position.y = 2.36 * scale;
   g.add(base, door, knob, win, winFrame, flowerBox, step, lanternPost, lantern, ridge);
   return g;
@@ -514,26 +518,26 @@ function buildWell() {
   const g = new THREE.Group();
   const stone = lam('#8d9294');
   const beam = lam('#6a4a30');
-  const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.5, 8), stone);
+  const ring = new THREE.Mesh(sharedCyl(0.55, 0.6, 0.5, 8), stone);
   ring.position.y = 0.25;
   ring.castShadow = true;
-  const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.52, 8),
+  const inner = new THREE.Mesh(sharedCyl(0.4, 0.4, 0.52, 8),
     lam('#1c2a34'));
   inner.position.y = 0.26;
   for (const sx of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), beam);
+    const post = new THREE.Mesh(sharedBox(0.1, 1.0, 0.1), beam);
     post.position.set(sx * 0.5, 0.9, 0);
     g.add(post);
   }
-  const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.05, 5), beam);
+  const axle = new THREE.Mesh(sharedCyl(0.04, 0.04, 1.05, 5), beam);
   axle.rotation.z = Math.PI / 2;
   axle.position.y = 1.3;
-  const bucket = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.18), beam);
+  const bucket = new THREE.Mesh(sharedBox(0.18, 0.16, 0.18), beam);
   bucket.position.y = 0.85;
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.14, 1.0), lam('#a85a48'));
+  const roof = new THREE.Mesh(sharedBox(1.4, 0.14, 1.0), lam('#a85a48'));
   roof.position.y = 1.5;
   roof.castShadow = true;
-  const roofTop = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.6), lam('#8a4638'));
+  const roofTop = new THREE.Mesh(sharedBox(0.9, 0.12, 0.6), lam('#8a4638'));
   roofTop.position.y = 1.62;
   g.add(ring, inner, axle, bucket, roof, roofTop);
   return g;
@@ -542,19 +546,19 @@ function buildWell() {
 function buildStall(awningA = '#c85a4a', awningB = '#f0e8d0') {
   const g = new THREE.Group();
   const beam = lam('#6a4a30');
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.7), lam('#8a6a48'));
+  const counter = new THREE.Mesh(sharedBox(1.7, 0.5, 0.7), lam('#8a6a48'));
   counter.position.y = 0.45;
   counter.castShadow = true;
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.8), lam('#a8805a'));
+  const top = new THREE.Mesh(sharedBox(1.8, 0.08, 0.8), lam('#a8805a'));
   top.position.y = 0.74;
   for (const sx of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.5, 0.09), beam);
+    const post = new THREE.Mesh(sharedBox(0.09, 1.5, 0.09), beam);
     post.position.set(sx * 0.82, 0.75, -0.28);
     g.add(post);
   }
   // striped awning
   for (let i = 0; i < 5; i++) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.05, 0.95),
+    const stripe = new THREE.Mesh(sharedBox(0.38, 0.05, 0.95),
       lam(i % 2 ? awningB : awningA));
     stripe.position.set(-0.76 + i * 0.38, 1.55 - 0.02 * Math.abs(i - 2), 0.05);
     stripe.rotation.x = -0.18;
@@ -563,7 +567,7 @@ function buildStall(awningA = '#c85a4a', awningB = '#f0e8d0') {
   // goods on the counter
   const goods = [['#e87a9a', 0.12], ['#f5e88a', 0.1], ['#8ac86a', 0.13]];
   goods.forEach(([c, s], i) => {
-    const item = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), lam(c));
+    const item = new THREE.Mesh(sharedBox(s, s, s), lam(c));
     item.position.set(-0.5 + i * 0.5, 0.83, 0.05);
     g.add(item);
   });
@@ -575,23 +579,23 @@ function buildForgeCorner() {
   const g = new THREE.Group();
   // anvil
   const anvil = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), lam('#6a4a30'));
+  const base = new THREE.Mesh(sharedBox(0.3, 0.3, 0.3), lam('#6a4a30'));
   base.position.y = 0.15;
-  const bodyA = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.24), lam('#4a4e52'));
+  const bodyA = new THREE.Mesh(sharedBox(0.5, 0.16, 0.24), lam('#4a4e52'));
   bodyA.position.y = 0.38;
-  const horn = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.14), lam('#3a3e42'));
+  const horn = new THREE.Mesh(sharedBox(0.18, 0.1, 0.14), lam('#3a3e42'));
   horn.position.set(0.32, 0.4, 0);
   anvil.add(base, bodyA, horn);
   anvil.position.set(0, 0, 0);
   // furnace with glowing coals
   const furnace = new THREE.Group();
-  const stones = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.7), lam('#7d8284'));
+  const stones = new THREE.Mesh(sharedBox(0.9, 0.8, 0.7), lam('#7d8284'));
   stones.position.y = 0.4;
   stones.castShadow = true;
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.1),
+  const mouth = new THREE.Mesh(sharedBox(0.5, 0.34, 0.1),
     new THREE.MeshBasicMaterial({ color: 0xff8a3a }));
   mouth.position.set(0, 0.3, 0.33);
-  const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.3), lam('#646a6c'));
+  const chimney = new THREE.Mesh(sharedBox(0.3, 0.5, 0.3), lam('#646a6c'));
   chimney.position.set(0, 0.95, -0.1);
   const glow = new THREE.PointLight(0xff8a3a, 1.6, 4, 2);
   glow.position.set(0, 0.5, 0.5);
@@ -606,12 +610,12 @@ function buildFencedGarden() {
   const g = new THREE.Group();
   const beam = lam('#8a6a48');
   // dirt plot with sprout rows
-  const plot = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 1.6), lam(PALETTE.dirt[0]));
+  const plot = new THREE.Mesh(sharedBox(2.2, 0.1, 1.6), lam(PALETTE.dirt[0]));
   plot.position.y = 0.05;
   g.add(plot);
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 5; c++) {
-      const sprout = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16 + (c % 2) * 0.06, 0.08), lam('#6fbf55'));
+      const sprout = new THREE.Mesh(sharedBox(0.08, 0.16 + (c % 2) * 0.06, 0.08), lam('#6fbf55'));
       sprout.position.set(-0.85 + c * 0.42, 0.18, -0.5 + r * 0.5);
       g.add(sprout);
     }
@@ -621,17 +625,17 @@ function buildFencedGarden() {
   for (let i = 0; i <= 4; i++) { posts.push([-1.2 + i * 0.6, -0.95]); posts.push([-1.2 + i * 0.6, 0.95]); }
   for (let i = 1; i <= 2; i++) { posts.push([-1.2, -0.95 + i * 0.633]); posts.push([1.2, -0.95 + i * 0.633]); }
   for (const [px, pz] of posts) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), beam);
+    const post = new THREE.Mesh(sharedBox(0.08, 0.4, 0.08), beam);
     post.position.set(px, 0.2, pz);
     g.add(post);
   }
   for (const rz of [-0.95, 0.95]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.06), beam);
+    const rail = new THREE.Mesh(sharedBox(2.4, 0.06, 0.06), beam);
     rail.position.set(0, 0.3, rz);
     g.add(rail);
   }
   for (const rx of [-1.2, 1.2]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.9), beam);
+    const rail = new THREE.Mesh(sharedBox(0.06, 0.06, 1.9), beam);
     rail.position.set(rx, 0.3, 0);
     g.add(rail);
   }
@@ -642,17 +646,17 @@ function buildLamp() {
   // village lamps match the wild Japanese stone lanterns (ishidōrō) so lighting
   // reads as one aesthetic: stone base + pillar + warm light box + pyramid cap
   const g = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.1, 0.46), lam('#5e625a'));
+  const base = new THREE.Mesh(sharedBox(0.46, 0.1, 0.46), lam('#5e625a'));
   base.position.y = 0.05;
-  const base2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.3), lam('#84887e'));
+  const base2 = new THREE.Mesh(sharedBox(0.3, 0.08, 0.3), lam('#84887e'));
   base2.position.y = 0.13;
-  const post = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.62, 0.11), lam('#84887e'));
+  const post = new THREE.Mesh(sharedBox(0.11, 0.62, 0.11), lam('#84887e'));
   post.position.y = 0.46;
-  const collar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.3), lam('#5e625a'));
+  const collar = new THREE.Mesh(sharedBox(0.3, 0.06, 0.3), lam('#5e625a'));
   collar.position.y = 0.79;
-  const house = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.24, 0.26), lam('#84887e'));
+  const house = new THREE.Mesh(sharedBox(0.26, 0.24, 0.26), lam('#84887e'));
   house.position.y = 0.95;
-  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.2),
+  const pane = new THREE.Mesh(sharedBox(0.2, 0.18, 0.2),
     new THREE.MeshBasicMaterial({ color: 0xf5d9a0 }));
   pane.position.y = 0.95;
   const roof = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.22, 4), lam('#5e625a'));
@@ -667,10 +671,10 @@ function buildLamp() {
 function buildGachaMachine() {
   const g = new THREE.Group();
   // gold-trimmed cabinet
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.6), lam('#a83a4a'));
+  const base = new THREE.Mesh(sharedBox(0.7, 0.8, 0.6), lam('#a83a4a'));
   base.position.y = 0.4;
   base.castShadow = true;
-  const trim = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.08, 0.64), lam('#c8963a'));
+  const trim = new THREE.Mesh(sharedBox(0.74, 0.08, 0.64), lam('#c8963a'));
   trim.position.y = 0.78;
   // glass dome full of capsules
   const dome = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8),
@@ -684,11 +688,11 @@ function buildGachaMachine() {
     g.add(ball);
   });
   // crank + coin slot + dispenser
-  const crank = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.08), lam('#e8b84a'));
+  const crank = new THREE.Mesh(sharedBox(0.16, 0.16, 0.08), lam('#e8b84a'));
   crank.position.set(0, 0.5, 0.33);
-  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), lam('#8a6a2a'));
+  const handle = new THREE.Mesh(sharedBox(0.05, 0.14, 0.05), lam('#8a6a2a'));
   handle.position.set(0, 0.56, 0.37);
-  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.05), lam('#1e1e24'));
+  const slot = new THREE.Mesh(sharedBox(0.2, 0.12, 0.05), lam('#1e1e24'));
   slot.position.set(0, 0.24, 0.31);
   g.add(base, trim, dome, crank, handle, slot);
   return g;
@@ -697,28 +701,28 @@ function buildGachaMachine() {
 function buildFlowerBed(rng) {
   const g = new THREE.Group();
   // low stone border + a cluster of bright blooms
-  const bed = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 0.75), lam(PALETTE.dirt[1]));
+  const bed = new THREE.Mesh(sharedBox(1.1, 0.08, 0.75), lam(PALETTE.dirt[1]));
   bed.position.y = 0.04;
   g.add(bed);
   for (const [sx, sz] of [[-0.55, 0], [0.55, 0]]) {
-    const stone = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.75), lam('#9aa0a2'));
+    const stone = new THREE.Mesh(sharedBox(0.1, 0.14, 0.75), lam('#9aa0a2'));
     stone.position.set(sx, 0.07, sz);
     g.add(stone);
   }
   for (const sz of [-0.38, 0.38]) {
-    const stone = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 0.1), lam('#8d9294'));
+    const stone = new THREE.Mesh(sharedBox(1.1, 0.14, 0.1), lam('#8d9294'));
     stone.position.set(0, 0.07, sz);
     g.add(stone);
   }
   for (let i = 0; i < 6; i++) {
     const col = PALETTE.flowers[Math.floor(rng() * PALETTE.flowers.length)];
-    const stem = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.04), lam('#4f9857'));
+    const stem = new THREE.Mesh(sharedBox(0.04, 0.16, 0.04), lam('#4f9857'));
     const px = -0.4 + (i % 3) * 0.4 + (rng() - 0.5) * 0.1;
     const pz = -0.16 + Math.floor(i / 3) * 0.32 + (rng() - 0.5) * 0.08;
     stem.position.set(px, 0.16, pz);
-    const bloom = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.09, 0.11), lam(col));
+    const bloom = new THREE.Mesh(sharedBox(0.11, 0.09, 0.11), lam(col));
     bloom.position.set(px, 0.27, pz);
-    const center = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.05), lam('#f5e88a'));
+    const center = new THREE.Mesh(sharedBox(0.05, 0.1, 0.05), lam('#f5e88a'));
     center.position.set(px, 0.28, pz);
     g.add(stem, bloom, center);
   }
@@ -728,15 +732,15 @@ function buildFlowerBed(rng) {
 function buildClutter(rng) {
   const g = new THREE.Group();
   // barrel
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.5, 8), lam('#8a6a48'));
+  const barrel = new THREE.Mesh(sharedCyl(0.2, 0.22, 0.5, 8), lam('#8a6a48'));
   barrel.position.y = 0.25;
   barrel.castShadow = true;
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.215, 0.215, 0.06, 8), lam('#4a4e52'));
+  const band = new THREE.Mesh(sharedCyl(0.215, 0.215, 0.06, 8), lam('#4a4e52'));
   band.position.y = 0.3;
   g.add(barrel, band);
   // crate
   if (rng() < 0.7) {
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), lam('#a8805a'));
+    const crate = new THREE.Mesh(sharedBox(0.36, 0.36, 0.36), lam('#a8805a'));
     crate.position.set(0.45, 0.18, 0.1);
     crate.rotation.y = rng();
     crate.castShadow = true;
@@ -833,16 +837,16 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     const vf = new THREE.Group();
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2;
-      const stone = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.13), lam('#8d9294'));
+      const stone = new THREE.Mesh(sharedBox(0.15, 0.12, 0.13), lam('#8d9294'));
       stone.position.set(Math.cos(a) * 0.38, 0.06, Math.sin(a) * 0.38);
       vf.add(stone);
     }
     const flame = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 0),
       new THREE.MeshBasicMaterial({ color: 0xffaa33 }));
     flame.position.y = 0.24;
-    const spit = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.9), lam('#6a4a30'));
+    const spit = new THREE.Mesh(sharedBox(0.05, 0.05, 0.9), lam('#6a4a30'));
     spit.position.y = 0.42;
-    const fishOnSpit = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.12), lam('#c8863a'));
+    const fishOnSpit = new THREE.Mesh(sharedBox(0.2, 0.1, 0.12), lam('#c8863a'));
     fishOnSpit.position.y = 0.42;
     const light = new THREE.PointLight(0xffaa44, 2.6, 7, 1.8);
     light.position.y = 0.6;

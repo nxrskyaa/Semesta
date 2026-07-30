@@ -2,6 +2,7 @@
 // materials. Finished homes are personal safe zones that heal you quickly.
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../world/terrain.js';
+import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 
 export const LAND_PRICE = 250;
 export const HOUSE_SAFE_R = 8;
@@ -31,7 +32,10 @@ export const HOUSE_DESIGNS = {
   },
 };
 
-function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
+// Static prop colours are SHARED — a built world was carrying ~2,465 distinct
+// materials, which is why the LOW preset barely helped. Nothing in this file
+// mutates a material at runtime, so one material per colour is safe here.
+function lam(color) { return sharedMat(color); }
 
 // a floating billboard label so land parcels are obvious from a distance
 function makeLabel(title, sub, color) {
@@ -56,19 +60,19 @@ function makeLabel(title, sub, color) {
 
 function buildSaleSign() {
   const g = new THREE.Group();
-  const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), lam('#8a6a48'));
+  const post = new THREE.Mesh(sharedBox(0.1, 1.0, 0.1), lam('#8a6a48'));
   post.position.y = 0.5;
-  const board = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.08), lam('#c8a06a'));
+  const board = new THREE.Mesh(sharedBox(0.9, 0.5, 0.08), lam('#c8a06a'));
   board.position.y = 1.05;
-  const coin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.05), lam('#f0c455'));
+  const coin = new THREE.Mesh(sharedBox(0.16, 0.16, 0.05), lam('#f0c455'));
   coin.position.set(-0.2, 1.05, 0.05);
-  const home = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.05), lam('#a85a48'));
+  const home = new THREE.Mesh(sharedBox(0.2, 0.16, 0.05), lam('#a85a48'));
   home.position.set(0.15, 1.0, 0.05);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.06), lam('#6a4a30'));
+  const roof = new THREE.Mesh(sharedBox(0.26, 0.08, 0.06), lam('#6a4a30'));
   roof.position.set(0.15, 1.12, 0.05);
   // corner pegs marking the parcel
   for (const [dx, dz] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
-    const peg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.35, 0.12), lam('#c8a06a'));
+    const peg = new THREE.Mesh(sharedBox(0.12, 0.35, 0.12), lam('#c8a06a'));
     peg.position.set(dx, 0.17, dz);
     g.add(peg);
   }
@@ -87,51 +91,51 @@ function buildHouse(designId) {
   const twoStory = designId === 'villa';
 
   const H = twoStory ? 2.4 : 1.5;
-  const base = new THREE.Mesh(new THREE.BoxGeometry(2.8, H, 2.5), wall);
+  const base = new THREE.Mesh(sharedBox(2.8, H, 2.5), wall);
   base.position.y = H / 2;
   base.castShadow = true;
   base.receiveShadow = true;
   g.add(base);
   for (const [dx, dz] of [[-1.35, -1.2], [1.35, -1.2], [-1.35, 1.2], [1.35, 1.2]]) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.18, H, 0.18), beam);
+    const b = new THREE.Mesh(sharedBox(0.18, H, 0.18), beam);
     b.position.set(dx, H / 2, dz);
     g.add(b);
   }
   if (twoStory) {
-    const band = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.14, 2.6), gold);
+    const band = new THREE.Mesh(sharedBox(2.9, 0.14, 2.6), gold);
     band.position.y = 1.25;
     g.add(band);
   }
   // roof stack
   for (let i = 0; i < 3; i++) {
     const w = 3.3 - i * 0.8;
-    const r = new THREE.Mesh(new THREE.BoxGeometry(w, 0.32, 3.0 - i * 0.7), i % 2 ? roofDark : roofM);
+    const r = new THREE.Mesh(sharedBox(w, 0.32, 3.0 - i * 0.7), i % 2 ? roofDark : roofM);
     r.position.y = H + 0.16 + i * 0.3;
     r.castShadow = true;
     g.add(r);
   }
   // chimney (cottage & villa)
   if (designId !== 'cabin') {
-    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.7, 0.34), lam('#8d9294'));
+    const chimney = new THREE.Mesh(sharedBox(0.34, 0.7, 0.34), lam('#8d9294'));
     chimney.position.set(0.85, H + 0.85, -0.5);
     g.add(chimney);
   }
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.0, 0.09), beam);
+  const door = new THREE.Mesh(sharedBox(0.6, 1.0, 0.09), beam);
   door.position.set(0, 0.5, 1.28);
-  const knob = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.04), gold);
+  const knob = new THREE.Mesh(sharedBox(0.08, 0.08, 0.04), gold);
   knob.position.set(0.18, 0.48, 1.33);
-  const step = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.09, 0.45), lam('#9aa0a2'));
+  const step = new THREE.Mesh(sharedBox(0.8, 0.09, 0.45), lam('#9aa0a2'));
   step.position.set(0, 0.04, 1.5);
-  const win = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.07), lam('#8ac4d8'));
+  const win = new THREE.Mesh(sharedBox(0.55, 0.5, 0.07), lam('#8ac4d8'));
   win.position.set(0.85, 0.95, 1.28);
-  const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.18, 0.15),
+  const lantern = new THREE.Mesh(sharedBox(0.15, 0.18, 0.15),
     new THREE.MeshBasicMaterial({ color: 0xffd88a }));
   lantern.position.set(-0.55, 1.1, 1.32);
   const glow = new THREE.PointLight(0xffc878, 1.4, 6, 2);
   glow.position.set(0, 1.2, 1.6);
   g.add(door, knob, step, win, lantern, glow);
   if (twoStory) {
-    const win2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.07), lam('#8ac4d8'));
+    const win2 = new THREE.Mesh(sharedBox(0.55, 0.5, 0.07), lam('#8ac4d8'));
     win2.position.set(-0.75, 1.9, 1.28);
     const win3 = win2.clone(); win3.position.x = 0.75;
     g.add(win2, win3);

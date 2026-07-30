@@ -10,10 +10,13 @@ import * as THREE from 'three';
 import { WATER_Y, WATER_LEVEL } from './terrain.js';
 import { getQuality } from '../gfx/quality.js';
 import { disposeObject } from '../util/dispose.js';
+import { boxMesh, cylMesh, sphereMesh, sharedMat } from '../gfx/meshcache.js';
 
-const mat = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: new THREE.Color(c), ...opts });
-const box = (w, h, d, c, opts) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, opts));
-const cyl = (rt, rb, h, c, seg = 7) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat(c));
+// every part here is static prop geometry, so it all shares from the cache —
+// the only exceptions are the lantern shades, which pulse their own emissive
+const mat = (c, opts = {}) => sharedMat(c, opts);
+const box = (w, h, d, c, opts) => boxMesh(w, h, d, c, opts);
+const cyl = (rt, rb, h, c, seg = 7) => cylMesh(rt, rb, h, c, seg);
 
 // ---------------------------------------------------------------------------
 // a palm: leaning trunk built from stacked segments + a fan of drooping fronds
@@ -24,7 +27,7 @@ function buildPalm(rng) {
   const g = new THREE.Group();
   const H = 2.6 + rng() * 1.5;
   const lean = (rng() - 0.5) * 0.55;
-  const segs = 6;
+  const segs = 4;
   const trunkC = ['#8a6a44', '#7a5c3c'][rng() < 0.5 ? 0 : 1];
   let px = 0, pz = 0;
   for (let i = 0; i < segs; i++) {
@@ -41,7 +44,7 @@ function buildPalm(rng) {
   crown.position.set(px, H, pz);
   g.add(crown);
 
-  const fronds = 7;
+  const fronds = 5;
   for (let i = 0; i < fronds; i++) {
     const a = (i / fronds) * Math.PI * 2 + rng() * 0.3;
     const pivot = new THREE.Group();
@@ -49,12 +52,13 @@ function buildPalm(rng) {
     crown.add(pivot);
     // each frond is 3 tapering blades that droop harder toward the tip
     const L = 1.15 + rng() * 0.4;
-    for (let s = 0; s < 3; s++) {
-      const st = s / 3;
-      const blade = box(L / 3 + 0.04, 0.045, 0.42 - st * 0.11,
-        s === 0 ? '#5aa845' : s === 1 ? '#4f9a3c' : '#438433');
-      blade.position.set(L / 3 * (s + 0.5), -st * st * 0.5 - 0.02, 0);
-      blade.rotation.z = -0.18 - st * 0.9;
+    // two tapering blades per frond instead of three: the droop still reads and
+    // it cuts a third of the palm's mesh count
+    for (let s = 0; s < 2; s++) {
+      const st = s / 2;
+      const blade = box(L / 2 + 0.05, 0.045, 0.42 - st * 0.14, s === 0 ? '#5aa845' : '#468c36');
+      blade.position.set(L / 2 * (s + 0.5), -st * st * 0.62 - 0.02, 0);
+      blade.rotation.z = -0.2 - st * 1.0;
       pivot.add(blade);
     }
     pivot.userData.phase = rng() * Math.PI * 2;
@@ -62,7 +66,7 @@ function buildPalm(rng) {
   // coconuts tucked under the crown
   const nuts = Math.floor(rng() * 3);
   for (let i = 0; i < nuts; i++) {
-    const n = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), mat('#6b4a2c'));
+    const n = sphereMesh(0.1, '#6b4a2c', 6, 5);
     const a = rng() * Math.PI * 2;
     n.position.set(Math.cos(a) * 0.17, -0.13, Math.sin(a) * 0.17);
     crown.add(n);
@@ -131,7 +135,7 @@ function buildCoral(rng) {
     arm.rotation.z = (rng() - 0.5) * 0.7;
     arm.rotation.x = (rng() - 0.5) * 0.7;
     g.add(arm);
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), mat(c));
+    const tip = sphereMesh(0.09, c, 6, 5);
     tip.position.copy(arm.position).y += h / 2;
     g.add(tip);
   }
@@ -145,9 +149,12 @@ function buildBeacon() {
   pole.position.y = 1.2; g.add(pole);
   const arm = box(0.5, 0.06, 0.06, '#9a8f5c');
   arm.position.set(0.2, 2.3, 0); g.add(arm);
-  const lantern = cyl(0.16, 0.16, 0.34, '#ffdca0', 8);
+  // its own material: the shade pulses its emissive, so it must not be shared
+  const lantern = new THREE.Mesh(
+    cylMesh(0.16, 0.16, 0.34, '#ffdca0', 8).geometry,
+    sharedMat('#ffdca0', { unique: true, emissive: '#ffb85c' }),
+  );
   lantern.position.set(0.4, 2.05, 0);
-  lantern.material.emissive = new THREE.Color('#ffb85c');
   lantern.material.emissiveIntensity = 0.6;
   g.add(lantern);
   const cap = cyl(0.04, 0.18, 0.07, '#c46a3a', 8);
@@ -331,9 +338,16 @@ export function createIsles(scene, terrain, decorBlocked) {
     }
   }
 
-  function update(dt, time, isNight) {
+  // Same rule as landmarks: a palm on the far reef does not need its fronds
+  // posed while you are standing in the village.
+  const NEAR2 = 80 * 80;
+
+  function update(dt, time, isNight, viewer) {
+    const vx = viewer ? viewer.x : 0, vz = viewer ? viewer.z : 0;
+    const near = (o) => (o.position.x - vx) ** 2 + (o.position.z - vz) ** 2 < NEAR2;
     // palm fronds sway; the whole crown rocks a touch behind them
     for (const p of palms) {
+      if (!near(p)) continue;
       const c = p.userData.crown;
       c.rotation.z = Math.sin(time * 0.9 + c.position.x) * 0.045;
       for (const f of c.children) {
@@ -342,6 +356,7 @@ export function createIsles(scene, terrain, decorBlocked) {
       }
     }
     for (const b of beacons) {
+      if (!near(b)) continue;
       b.userData.swing.rotation.z = Math.sin(time * 1.2 + b.position.x) * 0.13;
     }
     for (const l of lights) {

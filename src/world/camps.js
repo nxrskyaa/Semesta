@@ -3,12 +3,16 @@
 // monsters keep out, and resting near the fire heals you quickly.
 import * as THREE from 'three';
 import { WATER_LEVEL } from './terrain.js';
+import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 
 const CAMP_COUNT = 6;
 export const CAMP_SAFE_R = 7;     // monsters won't enter this radius
 export const CAMP_HEAL_R = 3.5;   // fast healing this close to the fire
 
-function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
+// Static prop colours are SHARED — a built world was carrying ~2,465 distinct
+// materials, which is why the LOW preset barely helped. Nothing in this file
+// mutates a material at runtime, so one material per colour is safe here.
+function lam(color) { return sharedMat(color); }
 
 function buildCamp() {
   const g = new THREE.Group();
@@ -17,13 +21,13 @@ function buildCamp() {
   const fire = new THREE.Group();
   for (let i = 0; i < 7; i++) {
     const a = (i / 7) * Math.PI * 2;
-    const stone = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.14), lam('#8d9294'));
+    const stone = new THREE.Mesh(sharedBox(0.16, 0.12, 0.14), lam('#8d9294'));
     stone.position.set(Math.cos(a) * 0.4, 0.06, Math.sin(a) * 0.4);
     stone.rotation.y = a;
     fire.add(stone);
   }
   for (const r of [0.6, -0.5]) {
-    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 5), lam('#6a4a30'));
+    const log = new THREE.Mesh(sharedCyl(0.06, 0.06, 0.5, 5), lam('#6a4a30'));
     log.rotation.z = Math.PI / 2;
     log.rotation.y = r;
     log.position.y = 0.1;
@@ -45,13 +49,13 @@ function buildCamp() {
 
   // tent: two leaning panels + cross poles
   const tent = new THREE.Group();
-  const clothA = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.06, 1.1), lam('#c8a06a'));
+  const clothA = new THREE.Mesh(sharedBox(1.3, 0.06, 1.1), lam('#c8a06a'));
   clothA.rotation.z = 0.85;
   clothA.position.set(-0.42, 0.55, 0);
-  const clothB = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.06, 1.1), lam('#b8905a'));
+  const clothB = new THREE.Mesh(sharedBox(1.3, 0.06, 1.1), lam('#b8905a'));
   clothB.rotation.z = -0.85;
   clothB.position.set(0.42, 0.55, 0);
-  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2, 5), lam('#6a4a30'));
+  const ridge = new THREE.Mesh(sharedCyl(0.04, 0.04, 1.2, 5), lam('#6a4a30'));
   ridge.rotation.x = Math.PI / 2;
   ridge.position.y = 0.98;
   tent.add(clothA, clothB, ridge);
@@ -60,16 +64,16 @@ function buildCamp() {
   g.add(tent);
 
   // log bench
-  const bench = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 1.1, 6), lam('#8a6a48'));
+  const bench = new THREE.Mesh(sharedCyl(0.14, 0.14, 1.1, 6), lam('#8a6a48'));
   bench.rotation.z = Math.PI / 2;
   bench.position.set(1.2, 0.14, 0.7);
   bench.rotation.y = -0.5;
   g.add(bench);
 
   // waystone lantern so camps are visible from afar
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.7, 5), lam('#4a3a2c'));
+  const post = new THREE.Mesh(sharedCyl(0.05, 0.07, 1.7, 5), lam('#4a3a2c'));
   post.position.set(1.6, 0.85, -1.0);
-  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.18),
+  const lamp = new THREE.Mesh(sharedBox(0.18, 0.22, 0.18),
     new THREE.MeshBasicMaterial({ color: 0x9adcf0 }));
   lamp.position.set(1.6, 1.75, -1.0);
   g.add(post, lamp);
@@ -101,7 +105,7 @@ function buildRanger() {
     eye.position.set(sx * 0.08, 0.02, 0.17); head.add(eye);
   }
   // ranger hat brim
-  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.16, 0.02, 8), lam('#5a4432'));
+  const hat = new THREE.Mesh(sharedCyl(0.02, 0.16, 0.02, 8), lam('#5a4432'));
   hat.position.y = 0.66; head.add(hat);
   const hatTop = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.14, 8), lam('#6a5038'));
   hatTop.position.y = 0.73; head.add(hatTop);

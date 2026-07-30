@@ -79,13 +79,10 @@ async function main() {
   const saved = loadSave();
   const audio = createAudio();
 
-  // the world-building boot screen shows the real logo art (background keyed out)
-  const bootH1 = document.querySelector('#boot h1');
-  if (bootH1) {
-    const cleanLogo = await cleanImage(logoUrl);
-    bootH1.outerHTML =
-      `<img src="${cleanLogo}" alt="SEMESTA" style="width:min(420px,80vw);image-rendering:pixelated;filter:drop-shadow(0 6px 18px #000a)">`;
-  }
+  // The shipped PNG has a solid white background, so it has to be keyed out
+  // before it goes anywhere on screen. cleanImage caches, so the menu and the
+  // load screen share one decode.
+  const cleanLogo = await cleanImage(logoUrl);
 
   // opening: loading splash -> main menu (New / Continue / About)
   const { action } = await showOpening(saved);
@@ -105,7 +102,7 @@ async function main() {
 
   // hand over to the cinematic loader: a different pixel vignette every boot
   bootEl.style.display = 'none';
-  loadScreen = createLoadScreen({ logoSrc: logoUrl });
+  loadScreen = createLoadScreen({ logoSrc: cleanLogo });
   document.body.appendChild(loadScreen.el);
   await frame();
   await init(config, continued ? saved : null, audio);
@@ -1420,13 +1417,36 @@ async function init(character, saved, audio) {
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
-    dailies, gfxQuality: { getQuality, buildSnapshot },
+    dailies, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
     summonMount, summonPet, inSafeZone,
   };
+
+  // --- LIGHT BUDGET: every module (village lamps, camp fires, shrines, the
+  // festival bonfire, island beacons, decor tōrō) adds its own point lights, and
+  // they summed to 26 even on LOW. Lambert shading pays for each one on every
+  // lit fragment, which is why dropping the preset alone barely helped. Prune to
+  // the preset's ceiling, keeping the ones nearest the village so the place the
+  // player actually starts stays lit. ---
+  setBoot(0.84, 'Trimming the lamplight…'); await frame();
+  {
+    const pts = [];
+    scene.traverse((o) => { if (o.isPointLight) pts.push(o); });
+    if (pts.length > qual.maxLights) {
+      pts
+        .map((l) => {
+          const w = new THREE.Vector3();
+          l.getWorldPosition(w);
+          return { l, d: (w.x - terrain.spawn.x) ** 2 + (w.z - terrain.spawn.z) ** 2 };
+        })
+        .sort((a, b) => a.d - b.d)
+        .slice(qual.maxLights)
+        .forEach(({ l }) => l.parent?.remove(l));
+    }
+  }
 
   // --- PREWARM: pay the one-off costs now, while the picture is still up, so
   // the first bag open / first swing / first night doesn't hitch ---
@@ -1525,7 +1545,7 @@ async function init(character, saved, audio) {
       audio.sfx('pickup');
     }, 1 + player.buffVal('magnet'));
     decor.update(dt, player.state.pos, time, isNight);
-    isles.update(dt, time, isNight);
+    isles.update(dt, time, isNight, player.state.pos);
     wildlife.update(dt, player.state.pos, time);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
@@ -1538,7 +1558,7 @@ async function init(character, saved, audio) {
     chests.update(dt, player.state.pos);
     camps.update(dt, player.state.pos, time);
     gathering.update(dt);
-    landmarks.update(dt, time);
+    landmarks.update(dt, time, player.state.pos);
     farming.update(dt);
     pets.update(dt, player.state, time);
     mounts.update(dt, player, terrain);

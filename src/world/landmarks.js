@@ -4,8 +4,12 @@
 import * as THREE from 'three';
 import { WATER_LEVEL, WATER_Y } from './terrain.js';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
+import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 
-function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
+// Static prop colours are SHARED — a built world was carrying ~2,465 distinct
+// materials, which is why the LOW preset barely helped. Nothing in this file
+// mutates a material at runtime, so one material per colour is safe here.
+function lam(color) { return sharedMat(color); }
 
 const faceCache = new Map();
 function critterFace(key, opts) {
@@ -16,12 +20,12 @@ function critterFace(key, opts) {
 // small chibi villager critter used by scenic landmarks (dancers, fishermen)
 function buildCritter(furC, bellyC, faceKey, faceOpts) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.26), lam(furC));
+  const body = new THREE.Mesh(sharedBox(0.34, 0.3, 0.26), lam(furC));
   body.position.y = 0.26;
   body.castShadow = true;
-  const belly = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.05), lam(bellyC));
+  const belly = new THREE.Mesh(sharedBox(0.26, 0.18, 0.05), lam(bellyC));
   belly.position.set(0, 0.24, 0.14);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.28), lam(furC));
+  const head = new THREE.Mesh(sharedBox(0.34, 0.3, 0.28), lam(furC));
   head.position.y = 0.56;
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.24),
     new THREE.MeshBasicMaterial({ map: critterFace(faceKey, faceOpts), transparent: true }));
@@ -30,13 +34,13 @@ function buildCritter(furC, bellyC, faceKey, faceOpts) {
   for (const sx of [-1, 1]) {
     const arm = new THREE.Group();
     arm.position.set(sx * 0.19, 0.36, 0);
-    const limb = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.09), lam(furC));
+    const limb = new THREE.Mesh(sharedBox(0.08, 0.2, 0.09), lam(furC));
     limb.position.y = -0.08;
     arm.add(limb);
     g.add(arm);
     arms.push(arm);
   }
-  const feet = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.1, 0.2), lam(bellyC));
+  const feet = new THREE.Mesh(sharedBox(0.26, 0.1, 0.2), lam(bellyC));
   feet.position.y = 0.06;
   g.add(body, belly, head, face, feet);
   g.userData.arms = arms;
@@ -46,14 +50,14 @@ function buildCritter(furC, bellyC, faceKey, faceOpts) {
 // hanging paper lantern (chōchin) on a swing pivot
 function buildChochin(scale = 1) {
   const pivot = new THREE.Group();
-  const string = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.18, 0.02), lam('#3a322a'));
+  const string = new THREE.Mesh(sharedBox(0.02, 0.18, 0.02), lam('#3a322a'));
   string.position.y = -0.09;
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.11 * scale, 0.11 * scale, 0.22 * scale, 8), lam('#e05a48'));
+  const body = new THREE.Mesh(sharedCyl(0.11 * scale, 0.11 * scale, 0.22 * scale, 8), lam('#e05a48'));
   body.position.y = -0.3 * scale;
-  const rim1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.08 * scale, 0.035, 8), lam('#3a322a'));
+  const rim1 = new THREE.Mesh(sharedCyl(0.08 * scale, 0.08 * scale, 0.035, 8), lam('#3a322a'));
   rim1.position.y = -0.18 * scale;
   const rim2 = rim1.clone(); rim2.position.y = -0.42 * scale;
-  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.09 * scale, 0.1 * scale, 0.09 * scale),
+  const pane = new THREE.Mesh(sharedBox(0.09 * scale, 0.1 * scale, 0.09 * scale),
     new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
   pane.position.y = -0.3 * scale;
   pivot.add(string, body, rim1, rim2, pane);
@@ -63,25 +67,25 @@ function buildChochin(scale = 1) {
 function buildWindmill() {
   const g = new THREE.Group();
   const stone = lam('#d8c8a8'), wood = lam('#7a5638'), roof = lam('#8a4638');
-  const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.0, 3.2, 10), stone);
+  const tower = new THREE.Mesh(sharedCyl(0.7, 1.0, 3.2, 10), stone);
   tower.position.y = 1.6; tower.castShadow = true;
   const cap = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.9, 10), roof);
   cap.position.y = 3.55;
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.9, 0.1), wood);
+  const door = new THREE.Mesh(sharedBox(0.5, 0.9, 0.1), wood);
   door.position.set(0, 0.45, 0.95);
-  const win = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.1), lam('#8ac4d8'));
+  const win = new THREE.Mesh(sharedBox(0.4, 0.4, 0.1), lam('#8ac4d8'));
   win.position.set(0, 2.1, 0.85);
   // sail hub + 4 blades (spins)
   const sails = new THREE.Group();
   sails.position.set(0, 2.9, 1.0);
-  const hub = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), wood);
+  const hub = new THREE.Mesh(sharedBox(0.18, 0.18, 0.18), wood);
   sails.add(hub);
   for (let i = 0; i < 4; i++) {
     const arm = new THREE.Group();
     arm.rotation.z = i * Math.PI / 2;
-    const spar = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.6, 0.06), wood);
+    const spar = new THREE.Mesh(sharedBox(0.1, 1.6, 0.06), wood);
     spar.position.y = 0.8;
-    const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.2, 0.03), lam('#f0e8d0'));
+    const cloth = new THREE.Mesh(sharedBox(0.32, 1.2, 0.03), lam('#f0e8d0'));
     cloth.position.set(0.22, 0.85, 0.04);
     arm.add(spar, cloth);
     sails.add(arm);
@@ -96,16 +100,16 @@ function buildShrine() {
   const stone = lam('#b8b0a0'), red = lam('#c04a3a'), gold = lam('#e8c45a');
   // torii-style gate
   for (const sx of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 2.0, 8), red);
+    const post = new THREE.Mesh(sharedCyl(0.12, 0.14, 2.0, 8), red);
     post.position.set(sx * 0.9, 1.0, 0); post.castShadow = true;
     g.add(post);
   }
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 0.24), red);
+  const beam = new THREE.Mesh(sharedBox(2.4, 0.2, 0.24), red);
   beam.position.y = 2.05;
-  const beam2 = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.16, 0.3), lam('#8a3428'));
+  const beam2 = new THREE.Mesh(sharedBox(2.7, 0.16, 0.3), lam('#8a3428'));
   beam2.position.y = 2.3;
   // altar with a glowing gem
-  const altar = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.7), stone);
+  const altar = new THREE.Mesh(sharedBox(0.7, 0.5, 0.7), stone);
   altar.position.set(0, 0.25, -0.9); altar.castShadow = true;
   const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.18), lam('#5ad0f0'));
   gem.position.set(0, 0.75, -0.9);
@@ -113,9 +117,9 @@ function buildShrine() {
   glow.position.set(0, 0.9, -0.9);
   // stone lanterns
   for (const sx of [-1, 1]) {
-    const lan = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.22), stone);
+    const lan = new THREE.Mesh(sharedBox(0.22, 0.5, 0.22), stone);
     lan.position.set(sx * 1.3, 0.25, -0.9);
-    const lanTop = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.3), gold);
+    const lanTop = new THREE.Mesh(sharedBox(0.3, 0.14, 0.3), gold);
     lanTop.position.set(sx * 1.3, 0.55, -0.9);
     g.add(lan, lanTop);
   }
@@ -131,7 +135,7 @@ function buildRuinTower() {
   let y = 0;
   for (let i = 0; i < 5; i++) {
     const r = 0.9 - i * 0.06;
-    const seg = new THREE.Mesh(new THREE.CylinderGeometry(r, r + 0.06, 0.6, 9), stone);
+    const seg = new THREE.Mesh(sharedCyl(r, r + 0.06, 0.6, 9), stone);
     seg.position.y = y + 0.3;
     // knock a couple of top segments partly off for a ruined look
     if (i >= 3) seg.rotation.z = (Math.random() - 0.5) * 0.12;
@@ -143,13 +147,13 @@ function buildRuinTower() {
   for (let i = 0; i < 5; i++) {
     if (Math.random() < 0.4) continue;
     const a = (i / 5) * Math.PI * 2;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.24), stone);
+    const m = new THREE.Mesh(sharedBox(0.24, 0.3, 0.24), stone);
     m.position.set(Math.cos(a) * 0.6, y + 0.1, Math.sin(a) * 0.6);
     g.add(m);
   }
   // moss & vines
   for (let i = 0; i < 5; i++) {
-    const v = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.6 + Math.random() * 0.5, 0.06), moss);
+    const v = new THREE.Mesh(sharedBox(0.12, 0.6 + Math.random() * 0.5, 0.06), moss);
     const a = Math.random() * Math.PI * 2;
     v.position.set(Math.cos(a) * 0.85, 0.6 + Math.random() * 1.2, Math.sin(a) * 0.85);
     g.add(v);
@@ -171,9 +175,9 @@ function buildHeartTorches() {
     const hx = 16 * Math.sin(t) ** 3;
     const hz = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
     const x = hx * 0.16, z = hz * 0.16;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.7, 5), lam('#3a2e26'));
+    const pole = new THREE.Mesh(sharedCyl(0.05, 0.07, 0.7, 5), lam('#3a2e26'));
     pole.position.set(x, 0.35, z);
-    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.06, 0.1, 6), lam('#5a4632'));
+    const bowl = new THREE.Mesh(sharedCyl(0.11, 0.06, 0.1, 6), lam('#5a4632'));
     bowl.position.set(x, 0.72, z);
     const flame = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0),
       new THREE.MeshBasicMaterial({ color: 0xff9a3a }));
@@ -189,9 +193,9 @@ function buildHeartTorches() {
   const l2 = new THREE.PointLight(0xffb060, 2.4, 8, 1.6); l2.position.set(0, 1.2, -1.2);
   g.add(l1, l2);
   // a little plaque/sign
-  const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.7, 0.1), lam('#6a4a30'));
+  const post = new THREE.Mesh(sharedBox(0.1, 0.7, 0.1), lam('#6a4a30'));
   post.position.set(0, 0.35, 2.4);
-  const heart = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.06), lam('#e85a7a'));
+  const heart = new THREE.Mesh(sharedBox(0.3, 0.3, 0.06), lam('#e85a7a'));
   heart.position.set(0, 0.8, 2.4); heart.rotation.z = Math.PI / 4;
   g.add(post, heart);
   g.userData.flames = flames;
@@ -206,61 +210,61 @@ function buildSchool() {
   const roof = lam('#9a5648'), roofDark = lam('#7a4438'), win = lam('#8fc8dc'), gold = lam('#d8a83a');
   const W = 6.4, D = 3.2, H = 2.2;
   // two floors
-  const lower = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), wallLow);
+  const lower = new THREE.Mesh(sharedBox(W, H, D), wallLow);
   lower.position.y = H / 2; lower.castShadow = true; lower.receiveShadow = true;
-  const upper = new THREE.Mesh(new THREE.BoxGeometry(W - 0.1, H, D - 0.1), wall);
+  const upper = new THREE.Mesh(sharedBox(W - 0.1, H, D - 0.1), wall);
   upper.position.y = H + H / 2; upper.castShadow = true;
-  const band = new THREE.Mesh(new THREE.BoxGeometry(W + 0.05, 0.16, D + 0.05), beam);
+  const band = new THREE.Mesh(sharedBox(W + 0.05, 0.16, D + 0.05), beam);
   band.position.y = H;
   g.add(lower, upper, band);
   // corner beams
   for (const dx of [-1, 1]) for (const dz of [-1, 1]) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.16, H * 2, 0.16), beam);
+    const b = new THREE.Mesh(sharedBox(0.16, H * 2, 0.16), beam);
     b.position.set(dx * (W / 2 - 0.08), H, dz * (D / 2 - 0.08));
     g.add(b);
   }
   // hip roof (stacked slabs)
   for (let i = 0; i < 3; i++) {
-    const r = new THREE.Mesh(new THREE.BoxGeometry(W + 0.6 - i * 0.7, 0.28, D + 0.6 - i * 0.5), i % 2 ? roofDark : roof);
+    const r = new THREE.Mesh(sharedBox(W + 0.6 - i * 0.7, 0.28, D + 0.6 - i * 0.5), i % 2 ? roofDark : roof);
     r.position.y = 2 * H + 0.14 + i * 0.26; r.castShadow = true;
     g.add(r);
   }
   // window rows on both floors (front)
   for (let f = 0; f < 2; f++) {
     for (let i = 0; i < 5; i++) {
-      const wm = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.08), win);
+      const wm = new THREE.Mesh(sharedBox(0.7, 0.7, 0.08), win);
       wm.position.set(-W / 2 + 0.9 + i * 1.15, 0.7 + f * H, D / 2 + 0.02);
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.05), beam);
+      const frame = new THREE.Mesh(sharedBox(0.8, 0.8, 0.05), beam);
       frame.position.set(wm.position.x, wm.position.y, D / 2 - 0.01);
       g.add(frame, wm);
     }
   }
   // entrance porch + double doors
-  const porch = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.16, 0.9), roofDark);
+  const porch = new THREE.Mesh(sharedBox(1.6, 0.16, 0.9), roofDark);
   porch.position.set(0, 1.15, D / 2 + 0.45);
   for (const sx of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.12), beam);
+    const post = new THREE.Mesh(sharedBox(0.12, 1.1, 0.12), beam);
     post.position.set(sx * 0.6, 0.55, D / 2 + 0.8); g.add(post);
   }
-  const door = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.1, 0.1), beam);
+  const door = new THREE.Mesh(sharedBox(1.0, 1.1, 0.1), beam);
   door.position.set(0, 0.55, D / 2 + 0.05);
-  const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.12), win);
+  const doorGlass = new THREE.Mesh(sharedBox(0.8, 0.8, 0.12), win);
   doorGlass.position.set(0, 0.62, D / 2 + 0.06);
   g.add(porch, door, doorGlass);
   // round clock high on the front gable
-  const clock = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.1, 12), lam('#f4f0e4'));
+  const clock = new THREE.Mesh(sharedCyl(0.32, 0.32, 0.1, 12), lam('#f4f0e4'));
   clock.rotation.x = Math.PI / 2; clock.position.set(0, 2 * H + 0.3, D / 2 + 0.02);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.04, 6, 14), gold);
   rim.position.set(0, 2 * H + 0.3, D / 2 + 0.03);
-  const hand1 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.22, 0.02), beam);
+  const hand1 = new THREE.Mesh(sharedBox(0.03, 0.22, 0.02), beam);
   hand1.position.set(0, 2 * H + 0.36, D / 2 + 0.08);
-  const hand2 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.02), beam);
+  const hand2 = new THREE.Mesh(sharedBox(0.16, 0.03, 0.02), beam);
   hand2.position.set(0.06, 2 * H + 0.3, D / 2 + 0.08);
   g.add(clock, rim, hand1, hand2);
   // flagpole with a little flag
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6), lam('#9aa0a2'));
+  const pole = new THREE.Mesh(sharedCyl(0.04, 0.04, 2.6, 6), lam('#9aa0a2'));
   pole.position.set(-W / 2 - 0.8, 1.3, D / 2 - 0.5);
-  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.03), lam('#e05a6a'));
+  const flag = new THREE.Mesh(sharedBox(0.5, 0.32, 0.03), lam('#e05a6a'));
   flag.position.set(-W / 2 - 0.55, 2.4, D / 2 - 0.5);
   g.add(pole, flag);
   g.userData.clockHand = hand2;
@@ -309,12 +313,12 @@ function buildRialoMonument() {
   const g = new THREE.Group();
   const stone = lam('#b8b0a0'), stoneDark = lam('#8a8478');
   // two-step plinth
-  const base = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.35, 2.0), stoneDark);
+  const base = new THREE.Mesh(sharedBox(2.0, 0.35, 2.0), stoneDark);
   base.position.y = 0.17; base.castShadow = true;
-  const step = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.35, 1.4), stone);
+  const step = new THREE.Mesh(sharedBox(1.4, 0.35, 1.4), stone);
   step.position.y = 0.5; step.castShadow = true;
   // tall pole + gold finial
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 4.4, 8), lam('#5a4a3a'));
+  const pole = new THREE.Mesh(sharedCyl(0.06, 0.09, 4.4, 8), lam('#5a4a3a'));
   pole.position.y = 2.8; pole.castShadow = true;
   const finial = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), lam('#e8c45a'));
   finial.position.y = 5.05;
@@ -343,20 +347,20 @@ function buildRialoMonument() {
     new THREE.MeshLambertMaterial({ map: makeRialoTexture() }));
   plaque.position.set(0, 0.52, 0.71);
   // crossbar with two swaying paper lanterns (chōchin)
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.07, 0.07), lam('#5a4a3a'));
+  const bar = new THREE.Mesh(sharedBox(1.7, 0.07, 0.07), lam('#5a4a3a'));
   bar.position.y = 2.0;
   const lanterns = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.75, 2.0, 0);
-    const string = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.22, 0.02), lam('#3a322a'));
+    const string = new THREE.Mesh(sharedBox(0.02, 0.22, 0.02), lam('#3a322a'));
     string.position.y = -0.11;
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.26, 8), lam('#e05a48'));
+    const body = new THREE.Mesh(sharedCyl(0.13, 0.13, 0.26, 8), lam('#e05a48'));
     body.position.y = -0.36;
-    const rim1 = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8), lam('#3a322a'));
+    const rim1 = new THREE.Mesh(sharedCyl(0.09, 0.09, 0.04, 8), lam('#3a322a'));
     rim1.position.y = -0.22;
     const rim2 = rim1.clone(); rim2.position.y = -0.5;
-    const glowP = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.1),
+    const glowP = new THREE.Mesh(sharedBox(0.1, 0.12, 0.1),
       new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
     glowP.position.y = -0.36;
     pivot.add(string, body, rim1, rim2, glowP);
@@ -376,14 +380,14 @@ function buildRialoMonument() {
 // lantern poles, with villager critters dancing to their own drum
 function buildFestival() {
   const g = new THREE.Group();
-  const ground = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.6, 0.08, 14), lam('#b89468'));
+  const ground = new THREE.Mesh(sharedCyl(2.5, 2.6, 0.08, 14), lam('#b89468'));
   ground.position.y = 0.04;
   ground.receiveShadow = true;
   g.add(ground);
   // bonfire
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
-    const stone = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.13, 0.14), lam('#8d9294'));
+    const stone = new THREE.Mesh(sharedBox(0.16, 0.13, 0.14), lam('#8d9294'));
     stone.position.set(Math.cos(a) * 0.42, 0.12, Math.sin(a) * 0.42);
     g.add(stone);
   }
@@ -403,9 +407,9 @@ function buildFestival() {
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2 + 0.5;
     const px = Math.cos(a) * 2.2, pz = Math.sin(a) * 2.2;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.7, 6), lam('#5a4a3a'));
+    const pole = new THREE.Mesh(sharedCyl(0.05, 0.07, 1.7, 6), lam('#5a4a3a'));
     pole.position.set(px, 0.85, pz);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.06), lam('#5a4a3a'));
+    const arm = new THREE.Mesh(sharedBox(0.5, 0.06, 0.06), lam('#5a4a3a'));
     arm.position.set(px, 1.68, pz);
     arm.lookAt(0, 1.68, 0);
     g.add(pole, arm);
@@ -441,23 +445,23 @@ function buildWatchtower() {
   const g = new THREE.Group();
   const wood = lam('#7a5638'), woodDark = lam('#5a4028');
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.8, 0.16), wood);
+    const leg = new THREE.Mesh(sharedBox(0.16, 2.8, 0.16), wood);
     leg.position.set(sx * 0.55, 1.4, sz * 0.55);
     leg.rotation.z = -sx * 0.06;
     leg.rotation.x = sz * 0.06;
     leg.castShadow = true;
     g.add(leg);
-    const brace = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.1, 0.08), woodDark);
+    const brace = new THREE.Mesh(sharedBox(0.08, 1.1, 0.08), woodDark);
     brace.position.set(sx * 0.5, 0.9, 0);
     brace.rotation.x = sz * 0.6;
     g.add(brace);
   }
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 1.7), wood);
+  const deck = new THREE.Mesh(sharedBox(1.7, 0.12, 1.7), wood);
   deck.position.y = 2.8;
   deck.castShadow = true;
   g.add(deck);
   for (const [sx, sz, w, d] of [[0, -1, 1.7, 0.08], [0, 1, 1.7, 0.08], [-1, 0, 0.08, 1.7], [1, 0, 0.08, 1.7]]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 0.34, d), woodDark);
+    const rail = new THREE.Mesh(sharedBox(w, 0.34, d), woodDark);
     rail.position.set(sx * 0.81, 3.05, sz * 0.81);
     g.add(rail);
   }
@@ -466,18 +470,18 @@ function buildWatchtower() {
   roof.rotation.y = Math.PI / 4;
   roof.castShadow = true;
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.75, 0.09), wood);
+    const post = new THREE.Mesh(sharedBox(0.09, 0.75, 0.09), wood);
     post.position.set(sx * 0.7, 3.2, sz * 0.7);
     g.add(post);
   }
   // ladder up the front
   for (let i = 0; i < 6; i++) {
-    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), woodDark);
+    const rung = new THREE.Mesh(sharedBox(0.4, 0.05, 0.05), woodDark);
     rung.position.set(0, 0.4 + i * 0.44, 0.62);
     g.add(rung);
   }
   for (const sx of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.75, 0.06), wood);
+    const rail = new THREE.Mesh(sharedBox(0.06, 2.75, 0.06), wood);
     rail.position.set(sx * 0.23, 1.45, 0.62);
     g.add(rail);
   }
@@ -498,12 +502,12 @@ function buildFishingDock() {
   const wood = lam('#8a6a48'), woodDark = lam('#6a4e34');
   // pier planks marching out over the water (+z = toward the lake)
   for (let i = 0; i < 3; i++) {
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.09, 1.05), wood);
+    const deck = new THREE.Mesh(sharedBox(1.15, 0.09, 1.05), wood);
     deck.position.set(0, 0.42, 0.55 + i * 1.0);
     deck.castShadow = true;
     g.add(deck);
     for (const sx of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.9, 6), woodDark);
+      const post = new THREE.Mesh(sharedCyl(0.06, 0.07, 0.9, 6), woodDark);
       post.position.set(sx * 0.48, 0, 0.55 + i * 1.0);
       g.add(post);
     }
@@ -511,7 +515,7 @@ function buildFishingDock() {
   // end railing + two lanterns over the water
   const lanterns = [];
   for (const sx of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.65, 0.07), woodDark);
+    const rail = new THREE.Mesh(sharedBox(0.07, 0.65, 0.07), woodDark);
     rail.position.set(sx * 0.48, 0.74, 2.95);
     g.add(rail);
     const cho = buildChochin(0.75);
@@ -520,19 +524,19 @@ function buildFishingDock() {
     lanterns.push(cho);
   }
   // fish-market stall on the shore end: counter + striped awning + crates
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 0.6), woodDark);
+  const counter = new THREE.Mesh(sharedBox(1.5, 0.55, 0.6), woodDark);
   counter.position.set(0, 0.28, -0.75);
   counter.castShadow = true;
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 0.7), wood);
+  const top = new THREE.Mesh(sharedBox(1.6, 0.08, 0.7), wood);
   top.position.set(0, 0.6, -0.75);
   for (const sx of [-1, 1]) {
-    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.5, 0.08), wood);
+    const pole = new THREE.Mesh(sharedBox(0.08, 1.5, 0.08), wood);
     pole.position.set(sx * 0.76, 0.75, -0.75);
     g.add(pole);
   }
   const awning = new THREE.Group();
   for (let i = 0; i < 5; i++) {
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.95),
+    const strip = new THREE.Mesh(sharedBox(0.36, 0.04, 0.95),
       lam(i % 2 ? '#f0ead8' : '#4a90b8'));
     strip.position.set(-0.72 + i * 0.36, 0, 0);
     awning.add(strip);
@@ -540,19 +544,19 @@ function buildFishingDock() {
   awning.position.set(0, 1.55, -0.75);
   awning.rotation.x = 0.18;
   // crates of the day's catch
-  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.4), wood);
+  const crate = new THREE.Mesh(sharedBox(0.5, 0.3, 0.4), wood);
   crate.position.set(0.45, 0.72, -0.75);
   for (let i = 0; i < 3; i++) {
-    const fish = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.1),
+    const fish = new THREE.Mesh(sharedBox(0.22, 0.08, 0.1),
       lam(['#7ab8e8', '#e8a35d', '#f0c455'][i]));
     fish.position.set(0.34 + i * 0.11, 0.9, -0.75 + (i % 2 ? 0.08 : -0.06));
     fish.rotation.y = i * 0.5;
     g.add(fish);
   }
   // hanging sign: a painted fish
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.05), lam('#f0ead8'));
+  const sign = new THREE.Mesh(sharedBox(0.5, 0.32, 0.05), lam('#f0ead8'));
   sign.position.set(0, 1.14, -0.4);
-  const signFish = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.02), lam('#4a90b8'));
+  const signFish = new THREE.Mesh(sharedBox(0.3, 0.12, 0.02), lam('#4a90b8'));
   signFish.position.set(0, 1.14, -0.36);
   // the fishmonger — a cheery otter critter in a straw hat
   const monger = buildCritter('#8a7258', '#e8d8b8', 'monger',
@@ -560,8 +564,8 @@ function buildFishingDock() {
   monger.position.set(-0.5, 0.05, -1.35);
   monger.rotation.y = Math.PI; // faces customers coming from land
   const hat = new THREE.Group();
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.04, 8), lam('#d8b86a'));
-  const dome = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.1, 8), lam('#e8cc82'));
+  const brim = new THREE.Mesh(sharedCyl(0.26, 0.28, 0.04, 8), lam('#d8b86a'));
+  const dome = new THREE.Mesh(sharedCyl(0.13, 0.16, 0.1, 8), lam('#e8cc82'));
   dome.position.y = 0.06;
   hat.add(brim, dome);
   hat.position.y = 0.74;
@@ -597,34 +601,34 @@ function makeGlyphSprite(glyph, color = '#f0f0e8') {
 function buildPool() {
   const g = new THREE.Group();
   const tile = lam('#dce8ec'), trim = lam('#7ab8d8');
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.22, 4.4), tile);
+  const deck = new THREE.Mesh(sharedBox(5.6, 0.22, 4.4), tile);
   deck.position.y = 0.11;
   deck.receiveShadow = true;
-  const rim = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.26, 3.2), trim);
+  const rim = new THREE.Mesh(sharedBox(4.4, 0.26, 3.2), trim);
   rim.position.y = 0.13;
-  const water = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.16, 2.8),
+  const water = new THREE.Mesh(sharedBox(4.0, 0.16, 2.8),
     new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.8 }));
   water.position.y = 0.2;
   // ladder
   for (const sz of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), lam('#c8d4d8'));
+    const rail = new THREE.Mesh(sharedBox(0.05, 0.5, 0.05), lam('#c8d4d8'));
     rail.position.set(2.05, 0.42, sz * 0.16);
     g.add(rail);
   }
   for (let i = 0; i < 2; i++) {
-    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.36), lam('#c8d4d8'));
+    const rung = new THREE.Mesh(sharedBox(0.05, 0.05, 0.36), lam('#c8d4d8'));
     rung.position.set(2.05, 0.3 + i * 0.2, 0);
     g.add(rung);
   }
   // umbrella + lounge chair on the deck corner
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.5, 6), lam('#e8e2d2'));
+  const pole = new THREE.Mesh(sharedCyl(0.04, 0.04, 1.5, 6), lam('#e8e2d2'));
   pole.position.set(-2.4, 0.95, -1.7);
   const shade = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.4, 8), lam('#f0716a'));
   shade.position.set(-2.4, 1.75, -1.7);
   const chair = new THREE.Group();
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1.1), lam('#f0d8a0'));
+  const seat = new THREE.Mesh(sharedBox(0.5, 0.08, 1.1), lam('#f0d8a0'));
   seat.position.y = 0.24;
-  const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), lam('#f0d8a0'));
+  const back = new THREE.Mesh(sharedBox(0.5, 0.08, 0.5), lam('#f0d8a0'));
   back.position.set(0, 0.4, -0.68); back.rotation.x = -0.7;
   chair.add(seat, back);
   chair.position.set(-1.6, 0.22, -1.6);
@@ -670,7 +674,7 @@ function buildWaterfall() {
     [0, 1.1, -0.6, 2.6, 2.2, 1.2], [-1.1, 0.7, -0.3, 1.2, 1.4, 1.4],
     [1.1, 0.8, -0.35, 1.3, 1.6, 1.3], [0, 2.35, -0.8, 1.8, 0.5, 0.9],
   ]) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), Math.random() < 0.5 ? rock : rockDark);
+    const b = new THREE.Mesh(sharedBox(w, h, d), Math.random() < 0.5 ? rock : rockDark);
     b.position.set(x, y, z);
     b.castShadow = true;
     g.add(b);
@@ -700,7 +704,7 @@ function buildWaterfall() {
     new THREE.MeshBasicMaterial({ map: fallTex, transparent: true, opacity: 0.85, depthWrite: false }));
   sheet.position.set(0, 1.35, 0.02);
   // plunge pool + foam
-  const pool = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.6, 0.18, 12),
+  const pool = new THREE.Mesh(sharedCyl(1.5, 1.6, 0.18, 12),
     new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.8 }));
   pool.position.set(0, 0.09, 0.9);
   const foams = [];
@@ -726,7 +730,7 @@ function buildNapNest() {
   const nest = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.2, 6, 12), lam('#8a7a4a'));
   nest.rotation.x = Math.PI / 2;
   nest.position.y = 0.12;
-  const bed = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 10), lam('#a8985a'));
+  const bed = new THREE.Mesh(sharedCyl(0.5, 0.5, 0.12, 10), lam('#a8985a'));
   bed.position.y = 0.08;
   const looks = [
     ['#e8a86a', '#f5dcb8', 'n_fox', { eyeW: 3, eyeH: 1, gap: 5, eyeY: 3, mouth: 'w' }],
@@ -755,7 +759,7 @@ function buildNapNest() {
 // hopping with excitement whenever they kick it
 function buildKickabout() {
   const g = new THREE.Group();
-  const patch = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.2, 0.06, 12), lam('#9aa860'));
+  const patch = new THREE.Mesh(sharedCyl(2.1, 2.2, 0.06, 12), lam('#9aa860'));
   patch.position.y = 0.03;
   patch.receiveShadow = true;
   g.add(patch);
@@ -973,9 +977,22 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     if (place(nest, nx, nz, 0, 8, 1.8)) { built.push(nest); nests.push(nest); }
   }
 
-  function update(dt, time) {
+  // Per-frame animation is the real cost of a world this dense: every dancer,
+  // napper, gossip, swimmer and lantern used to be posed every frame no matter
+  // how far away it was. Nothing 90 units behind you needs its fronds updated,
+  // so each animated cluster gets a cheap squared-distance gate. NEAR2 is
+  // generous enough that nothing pops while you can actually see it.
+  const NEAR2 = 88 * 88;
+  let camAt = new THREE.Vector3();
+  const near = (o) => {
+    const p = o.position || o;
+    return (p.x - camAt.x) ** 2 + (p.z - camAt.z) ** 2 < NEAR2;
+  };
+
+  function update(dt, time, viewer) {
+    if (viewer) camAt = viewer;
     // Rialo banner ripples in the wind; the paper lanterns sway
-    if (rialo.userData.flag) {
+    if (rialo.userData.flag && near(rialo)) {
       const pos = rialo.userData.flag.geometry.attributes.position;
       const base = rialo.userData.flagBase;
       for (let i = 0; i < pos.count; i++) {
@@ -991,30 +1008,30 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
         rialo.userData.lanterns[i].rotation.x = Math.sin(time * 1.3 + i) * 0.1;
       }
     }
-    if (windmill.userData.sails) windmill.userData.sails.rotation.z += dt * 0.5;
-    if (shrine.userData.gem) {
+    if (windmill.userData.sails && near(windmill)) windmill.userData.sails.rotation.z += dt * 0.5;
+    if (shrine.userData.gem && near(shrine)) {
       shrine.userData.gem.rotation.y += dt * 1.2;
       shrine.userData.gem.position.y = 0.75 + Math.sin(time * 1.5) * 0.06;
     }
-    if (heart.userData.flames) {
+    if (heart.userData.flames && near(heart)) {
       for (let i = 0; i < heart.userData.flames.length; i++) {
         const f = heart.userData.flames[i];
         f.scale.setScalar(1 + Math.sin(time * 8 + i * 1.3) * 0.22);
       }
     }
-    if (school.userData.clockHand) school.userData.clockHand.rotation.z = -time * 0.2;
+    if (school.userData.clockHand && near(school)) school.userData.clockHand.rotation.z = -time * 0.2;
 
     // paper lanterns sway on every landmark that hangs them
     for (const lm of [festival, watch, ...docks.map((d) => d.mesh)]) {
       const ls = lm.userData.lanterns;
-      if (!ls) continue;
+      if (!ls || !near(lm)) continue;
       for (let i = 0; i < ls.length; i++) {
         ls[i].rotation.z = Math.sin(time * 1.6 + i * 2.3 + lm.position.x) * 0.15;
         ls[i].rotation.x = Math.sin(time * 1.2 + i) * 0.09;
       }
     }
     // festival: the bonfire crackles and the critters DANCE
-    if (festival.userData.flames) {
+    if (festival.userData.flames && near(festival)) {
       festival.userData.flames.forEach((f, i) => {
         f.scale.setScalar(1 + Math.sin(time * 9 + i * 1.4) * 0.25);
       });
@@ -1029,11 +1046,12 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     }
     // fishmongers rock gently on their heels
     for (const d of docks) {
+      if (!near(d.mesh)) continue;
       const m = d.mesh.userData.monger;
       if (m) m.position.y = 0.05 + Math.abs(Math.sin(time * 2.2 + d.x)) * 0.03;
     }
     // swimmers do lazy laps around the pool, bobbing in the water
-    if (pool.userData.swimmers) {
+    if (pool.userData.swimmers && near(pool)) {
       for (const sw of pool.userData.swimmers) {
         const a = time * 0.45 + sw.seed;
         sw.h.position.set(Math.cos(a) * sw.r, 0.2 + Math.sin(time * 2.4 + sw.seed) * 0.035, Math.sin(a) * sw.r * 0.55);
@@ -1041,7 +1059,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       }
     }
     // the waterfall rushes & its foam clouds churn
-    if (falls.userData.fallTex) {
+    if (falls.userData.fallTex && near(falls)) {
       falls.userData.fallTex.offset.y += dt * 1.7;
       falls.userData.foams.forEach((f, i) => {
         f.position.y = 0.2 + Math.abs(Math.sin(time * 3.2 + i * 1.4)) * 0.09;
@@ -1049,7 +1067,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       });
     }
     // the kickabout: the ball hops between players, the receiver bounces
-    if (kick.userData.kick) {
+    if (kick.userData.kick && near(kick)) {
       const K = kick.userData.kick;
       K.t += dt;
       const A = K.players[K.from].g.position, B2 = K.players[K.to].g.position;
@@ -1073,6 +1091,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     }
     // gossip pairs: bubbles take turns, both friends bob along
     for (const c of chats) {
+      if (!near(c)) continue;
       const C = c.userData.chat;
       const phase = (time * 0.4 + C.seed) % 2;
       C.bubbleA.visible = phase < 1;
@@ -1085,6 +1104,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     // nappers: mostly asleep with drifting Zzz — now and then they sit up,
     // look around, and flop back down
     for (const n of nests) {
+      if (!near(n)) continue;
       const N = n.userData.nap;
       const c = (time * 0.085 + N.seed) % 1;
       const awake = c > 0.84;

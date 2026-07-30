@@ -23,6 +23,7 @@ const JUMP_V = 5.6;
 const SWIM_SPEED_MULT = 0.62;
 const SWIM_STAM_DRAIN = 5.4;
 const SWIM_SINK = 0.30;          // how deep the waterline sits on the body
+const SWIM_DEPTH = 0.32;         // water this deep and you're off your feet
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 function shadeHex(hex, amt) {
@@ -905,9 +906,16 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     return false;
   }
 
-  /** True where the smooth ground actually sits below the waterline. */
+  /**
+   * Swim when there is genuinely enough water to float in. The old test was
+   * `surface < WATER_Y - 0.06`, which is a 6cm hair — and since a cell at the
+   * water level sits only 7cm under the surface, whole shelves of sea failed it
+   * and the hero just walked. Measure the real depth instead: below the
+   * threshold you WADE (feet on the floor), above it you swim.
+   */
   function isDeepEnough(x, z) {
-    return !!terrain.swimmable?.(x, z) && terrain.surfaceY(x, z) < WATER_Y - 0.06;
+    if (!terrain.swimmable?.(x, z)) return false;
+    return WATER_Y - terrain.surfaceY(x, z) > SWIM_DEPTH;
   }
 
   // nearestShore already returns a dry cell CENTRE, so the tow aims straight at
@@ -927,10 +935,13 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   const tryMove = (nx, nz) => {
     const [ix, iz] = terrain.cellOf(nx, nz);
     if (decorBlocked.has(`${ix},${iz}`)) return false;
-    // water is enterable: wading in starts a swim instead of hitting a wall.
-    // Cell flags say "water" but the SMOOTHED surface is what you stand on, so
-    // only genuinely submerged ground counts — a shelved beach stays a walk.
-    if (isDeepEnough(nx, nz)) return true;
+    // Water is ENTERABLE — every water cell, not just the deep ones. The cells
+    // right at the shoreline interpolate their surface between land and water
+    // corners, so they sit just ABOVE the waterline; gating entry on depth here
+    // turned that band into a one-cell invisible wall around every lake and the
+    // whole sea, and you could never reach the deep part at all. So: walk in
+    // freely, and let isDeepEnough decide whether you're wading or swimming.
+    if (terrain.swimmable?.(nx, nz)) return true;
     return terrain.walkable(nx, nz, state.pos.y);
   };
 

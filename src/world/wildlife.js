@@ -13,9 +13,9 @@ import { WATER_Y, WATER_LEVEL } from './terrain.js';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { getQuality } from '../gfx/quality.js';
 import { disposeObject } from '../util/dispose.js';
+import { boxMesh, sphereMesh, sharedPlane, sharedMat as sharedMatLocal } from '../gfx/meshcache.js';
 
-const mat = (c) => new THREE.MeshLambertMaterial({ color: new THREE.Color(c) });
-const box = (w, h, d, c) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c));
+const box = (w, h, d, c) => boxMesh(w, h, d, c);
 
 // one shared face texture per palette so 40 critters aren't 40 canvases
 const faceCache = new Map();
@@ -36,7 +36,7 @@ function buildBunny(fur) {
   body.position.y = 0.16; g.add(body);
   const head = box(0.32, 0.3, 0.3, fur);
   head.position.set(0, 0.42, 0.16); g.add(head);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), faceMat('bunny', { eye: '#2a2a2a', blush: true }));
+  const face = new THREE.Mesh(sharedPlane(0.3, 0.3), faceMat('bunny', { eye: '#2a2a2a', blush: true }));
   face.position.set(0, 0.42, 0.32); g.add(face);
   const ears = new THREE.Group();
   for (const sx of [-0.08, 0.08]) {
@@ -45,7 +45,7 @@ function buildBunny(fur) {
     ears.add(ear);
   }
   g.add(ears);
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5), mat('#fdf8ec'));
+  const tail = sphereMesh(0.08, '#fdf8ec', 6, 5);
   tail.position.set(0, 0.2, -0.24); g.add(tail);
   const legs = new THREE.Group();
   for (const sx of [-0.1, 0.1]) {
@@ -67,7 +67,7 @@ function buildDeer(fur) {
   neck.position.set(0, 0.82, 0.3); g.add(neck);
   const head = box(0.26, 0.24, 0.34, fur);
   head.position.set(0, 1.0, 0.42); g.add(head);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.24), faceMat('deer', { eye: '#20180f' }));
+  const face = new THREE.Mesh(sharedPlane(0.25, 0.24), faceMat('deer', { eye: '#20180f' }));
   face.position.set(0, 1.0, 0.6); g.add(face);
   // little antlers
   for (const sx of [-0.08, 0.08]) {
@@ -96,7 +96,7 @@ function buildDeer(fur) {
 // ---------------------------------------------------------------------------
 function buildTurtle() {
   const g = new THREE.Group();
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat('#4f8a5c'));
+  const shell = new THREE.Mesh(TURTLE_SHELL_GEO, sharedMatLocal('#4f8a5c'));
   shell.scale.set(1, 0.6, 1.25);
   g.add(shell);
   // shell plates so it isn't a smooth blob
@@ -108,7 +108,7 @@ function buildTurtle() {
   }
   const head = box(0.18, 0.15, 0.2, '#7fb87f');
   head.position.set(0, 0.08, 0.55); g.add(head);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.17, 0.14), faceMat('turtle', { eye: '#1a1a1a', blush: true }));
+  const face = new THREE.Mesh(sharedPlane(0.17, 0.14), faceMat('turtle', { eye: '#1a1a1a', blush: true }));
   face.position.set(0, 0.09, 0.66); g.add(face);
   const flippers = new THREE.Group();
   for (const sx of [-1, 1]) {
@@ -165,6 +165,9 @@ function buildBird(c, wingC) {
   g.userData = { wings };
   return g;
 }
+
+// one shell dome shared by every turtle
+const TURTLE_SHELL_GEO = new THREE.SphereGeometry(0.42, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
 
 const BUNNY_FURS = ['#e8dcc8', '#b89a78', '#8a7a6a', '#d8c0a8'];
 const DEER_FURS = ['#b8865c', '#a8764c', '#c89a6c'];
@@ -250,10 +253,15 @@ export function createWildlife(scene, terrain, particles) {
   }
 
   function update(dt, playerPos, time) {
+    // Animals well outside view are simulated at zero cost: their pose is
+    // frozen and they simply wait. Nothing is visible to pop back in.
+    const FAR2 = 82 * 82;
+
     // --- LAND: graze, glance, flee ---
     for (const a of land) {
-      a.t += dt;
       const dx = a.m.position.x - playerPos.x, dz = a.m.position.z - playerPos.z;
+      if (dx * dx + dz * dz > FAR2) continue;
+      a.t += dt;
       const dist = Math.hypot(dx, dz);
       const startle = a.kind === 'bunny' ? 6.5 : 9;
       if (dist < startle) {
@@ -314,6 +322,7 @@ export function createWildlife(scene, terrain, particles) {
 
     // --- SEA: turtles row along the swell ---
     for (const s of sea) {
+      if ((s.m.position.x - playerPos.x) ** 2 + (s.m.position.z - playerPos.z) ** 2 > FAR2) continue;
       s.t += dt;
       if (Math.random() < dt * 0.3) s.turn = (Math.random() - 0.5) * 0.9;
       s.dir += s.turn * dt;
@@ -367,6 +376,7 @@ export function createWildlife(scene, terrain, particles) {
 
     // --- AIR: gulls circle, beating then gliding ---
     for (const b of birds) {
+      if ((b.m.position.x - playerPos.x) ** 2 + (b.m.position.z - playerPos.z) ** 2 > FAR2) continue;
       b.a += b.sp * dt;
       b.beat += dt * 5.5;
       b.m.position.set(

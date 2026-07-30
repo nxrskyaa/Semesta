@@ -88,9 +88,14 @@ const KNOBS = {
     full:    { particles: 1,    weather: 1,    fireflies: 1,    trails: true },
   },
   detail: {
-    sparse: { decor: 0.3,  lights: 0,  critters: 0,   waterSeg: 28, fogDensity: 0.03 },
-    normal: { decor: 0.65, lights: 6,  critters: 0.5, waterSeg: 52, fogDensity: 0.024 },
-    lush:   { decor: 1,    lights: 12, critters: 1,   waterSeg: 84, fogDensity: 0.022 },
+    // `maxLights` is a HARD ceiling on point lights in the whole scene. The
+    // lantern budget below only covers decor's tōrō; villages, camps, shrines,
+    // the bonfire and the island beacons each add their own, and a measured
+    // build was running 26 live point lights even on LOW. With Lambert
+    // materials every one of them costs per-fragment work on every lit surface.
+    sparse: { decor: 0.3,  lights: 0,  critters: 0,   waterSeg: 28, fogDensity: 0.03,  maxLights: 4 },
+    normal: { decor: 0.65, lights: 6,  critters: 0.5, waterSeg: 52, fogDensity: 0.024, maxLights: 12 },
+    lush:   { decor: 1,    lights: 12, critters: 1,   waterSeg: 84, fogDensity: 0.022, maxLights: 32 },
   },
   view: { near: 110, mid: 160, far: 220 },
 };
@@ -166,6 +171,7 @@ export function getQuality() {
     trails: fx.trails,
     decorScale: det.decor,
     lanternLights: det.lights,
+    maxLights: det.maxLights,
     critterScale: det.critters,
     waterSegments: det.waterSeg,
     fogDensity: det.fogDensity,

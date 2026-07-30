@@ -14,10 +14,10 @@
 import * as THREE from 'three';
 import { WATER_Y } from '../world/terrain.js';
 import { disposeObject } from '../util/dispose.js';
+import { boxMesh, cylMesh, sharedMat } from '../gfx/meshcache.js';
 
-const mat = (c, opts = {}) => new THREE.MeshLambertMaterial({ color: new THREE.Color(c), ...opts });
-const box = (w, h, d, c, opts) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, opts));
-const cyl = (rt, rb, h, c, seg = 8) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat(c));
+const box = (w, h, d, c, opts) => boxMesh(w, h, d, c, opts);
+const cyl = (rt, rb, h, c, seg = 8) => cylMesh(rt, rb, h, c, seg);
 
 export const CRAFT_DEFS = {
   jetski: {
@@ -138,9 +138,12 @@ function buildDinghy() {
   // a lantern on the bow: this is the cozy option, it should glow at night
   const post = cyl(0.04, 0.045, 0.42, '#6e5334');
   post.position.set(0.98, 0.7, 0); g.add(post);
-  const lamp = cyl(0.13, 0.13, 0.24, '#ffdca0', 8);
+  // own material: the bow lamp animates its emissive
+  const lamp = new THREE.Mesh(
+    cylMesh(0.13, 0.13, 0.24, '#ffdca0', 8).geometry,
+    sharedMat('#ffdca0', { unique: true, emissive: '#ffb85c' }),
+  );
   lamp.position.set(0.98, 1.0, 0);
-  lamp.material.emissive = new THREE.Color('#ffb85c');
   lamp.material.emissiveIntensity = 0.7;
   g.add(lamp);
   const lampCap = cyl(0.03, 0.15, 0.06, '#c46a3a', 8);
