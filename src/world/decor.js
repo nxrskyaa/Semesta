@@ -316,6 +316,18 @@ export function buildDecor(terrain, scene) {
     map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.1,
   });
   const glowSprites = [];
+  // the flame core: a tight, almost-white sprite that flickers fast
+  const coreTex = canvasTex((ctx) => {
+    const g3 = ctx.createRadialGradient(16, 20, 1, 16, 16, 13);
+    g3.addColorStop(0, 'rgba(255,250,220,1)');
+    g3.addColorStop(0.4, 'rgba(255,196,90,0.85)');
+    g3.addColorStop(1, 'rgba(255,140,40,0)');
+    ctx.fillStyle = g3; ctx.fillRect(0, 0, 32, 32);
+  }, 32, 32);
+  const coreMat = new THREE.SpriteMaterial({
+    map: coreTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0,
+  });
+  const coreSprites = [];
   const qRoof = new THREE.Quaternion().setFromAxisAngle(YUP, Math.PI / 4);
   torches.forEach((tc, i) => {
     q.identity();
@@ -340,6 +352,13 @@ export function buildDecor(terrain, scene) {
     glow.position.set(tc.x, tc.y + 0.97, tc.z);
     group.add(glow);
     glowSprites.push(glow);
+    // a small HOT core inside the box. It is what bloom latches onto, so the
+    // lantern reads as a flame rather than a yellow cube with a halo.
+    const core = new THREE.Sprite(coreMat.clone());
+    core.scale.set(0.55, 0.7, 1);
+    core.position.set(tc.x, tc.y + 0.95, tc.z);
+    group.add(core);
+    coreSprites.push(core);
   });
   if (torches.length) group.add(baseMesh, base2Mesh, postMesh, collarMesh, houseMesh, paneMesh, roofMesh, capMesh);
 
@@ -435,6 +454,14 @@ export function buildDecor(terrain, scene) {
     const glowBase = isNight ? 0.42 : 0.04;
     for (const glow of glowSprites) {
       glow.material.opacity = glowBase + Math.sin(time * 2.6 + glow.position.x * 1.7) * (isNight ? 0.06 : 0.01);
+    }
+    // the core flickers faster and harder than the halo — that difference in
+    // rhythm is what makes it read as fire instead of a pulsing bulb
+    for (const core of coreSprites) {
+      const ph = time * 9 + core.position.x * 3.1 + core.position.z;
+      const flick = 0.72 + Math.sin(ph) * 0.16 + Math.sin(ph * 2.7) * 0.12;
+      core.material.opacity = (isNight ? 0.95 : 0.12) * flick;
+      core.scale.set(0.5 + flick * 0.12, 0.62 + flick * 0.22, 1);
     }
 
     // butterflies flutter in the day, roost at night

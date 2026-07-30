@@ -24,6 +24,12 @@ const SWIM_SPEED_MULT = 0.62;
 const SWIM_STAM_DRAIN = 5.4;
 const SWIM_SINK = 0.30;          // how deep the waterline sits on the body
 const SWIM_DEPTH = 0.32;         // water this deep and you're off your feet
+// Afloat, the dodge-roll becomes a DIVE: same button, same i-frames, but you
+// duck under the surface on a smooth arc and pop back up.
+const DIVE_TIME = 0.72;
+const DIVE_COST = 12;
+const DIVE_SPEED = 4.6;
+const DIVE_DEPTH = 0.95;
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 function shadeHex(hex, amt) {
@@ -815,6 +821,7 @@ function buildExoticWeapon(g, def, s) {
 // ---------------------------------------------------------------------------
 export function createPlayer(terrain, decorBlocked, config, particles, hooks = {}) {
   const onSwimExhausted = hooks.onSwimExhausted;
+  const onDive = hooks.onDive;
   const cls = CLASSES[config.cls];
   let rig = buildCharacterMesh(config);
   const group = rig.group;   // persistent root: scene/mounts/trail attach here
@@ -860,7 +867,7 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     // vertical physics
     vy: 0, grounded: true, landSquash: 0,
     // water: `swimming` is the live state, `swimT` drives the stroke animation
-    swimming: false, swimT: 0, splashT: 0, washingAshore: null,
+    swimming: false, swimT: 0, splashT: 0, washingAshore: null, diveDur: 0,
     // watercraft: set while riding a jetski/dinghy — watercraft.js owns the
     // horizontal movement and the height, so player.update stands down
     craft: null,
@@ -980,8 +987,11 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     return true;
   }
 
+  let lastInput = { keys: new Set(), joy: null }, lastCamYaw = 0;
+
   function update(dt, input, camYaw) {
     if (state.dead) return;
+    lastInput = input; lastCamYaw = camYaw;
 
     // buff timers
     for (let i = state.buffs.length - 1; i >= 0; i--) {
@@ -1011,8 +1021,9 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     let vx = 0, vz = 0;
     if (state.rolling > 0) {
       state.rolling -= dt;
-      vx = state.rollDir.x * ROLL_SPEED;
-      vz = state.rollDir.y * ROLL_SPEED;
+      const rs = state.swimming ? DIVE_SPEED : ROLL_SPEED;
+      vx = state.rollDir.x * rs;
+      vz = state.rollDir.y * rs;
     } else if (moving) {
       let sp = cls.speed * (1 + buffVal('speed')) * (state.mount?.speedMult || 1);
       if (state.shielding) sp *= 0.45;
@@ -1083,9 +1094,17 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     if (state.splashT > 0) state.splashT = Math.max(0, state.splashT - dt);
 
     // --- vertical: jump / gravity / ground follow ---
-    const targetY = state.swimming
+    let targetY = state.swimming
       ? WATER_Y - SWIM_SINK + Math.sin(state.swimT * 0.9) * 0.05
       : terrain.surfaceY(state.pos.x, state.pos.z);
+    if (state.swimming && state.rolling > 0 && state.diveDur > 0) {
+      // duck under and rise again over the length of the dive
+      const w = 1 - Math.max(0, state.rolling) / state.diveDur;
+      targetY -= Math.sin(Math.min(1, Math.max(0, w)) * Math.PI) * DIVE_DEPTH;
+      if (Math.random() < dt * 22) {
+        particles?.burst(state.pos.clone().setY(WATER_Y - 0.1), '#e6fbff', 1, 1.1, 2, 0.4);
+      }
+    }
     if (state.craft) {
       /* height is owned by watercraft.drive */
     } else if (state.swimming) {
@@ -1178,7 +1197,18 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
 
     const mounted = !!state.mount;
 
-    if (state.craftPose) {
+    if (state.swimming && state.rolling > 0) {
+      // DIVE pose: arms locked overhead, body a straight line, a dolphin kick
+      const w = state.diveDur > 0 ? 1 - state.rolling / state.diveDur : 0;
+      vis.rotation.x = 1.45 + Math.sin(w * Math.PI) * 0.5;
+      vis.rotation.z = 0;
+      vis.position.y = visBase - 0.16;
+      parts.armL.rotation.x = -2.7; parts.armR.rotation.x = -2.7;
+      parts.armL.rotation.z = 0.12; parts.armR.rotation.z = -0.12;
+      const kick = Math.sin(w * Math.PI * 5) * 0.5;
+      parts.legL.rotation.x = kick; parts.legR.rotation.x = kick * 0.85;
+      parts.head.rotation.x = -0.5;
+    } else if (state.craftPose) {
       // seated: knees up over the footwells, arms forward on the bars, body
       // leaning into the ride so the hero looks like they're driving it
       vis.rotation.x = 0.16;
@@ -1452,8 +1482,21 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   }
 
   function tryRoll(input, camYaw) {
-    if (state.rolling > 0 || state.stamina < ROLL_COST || state.dead || state.busy || state.mount) return false;
-    if (state.swimming) return false;    // no dodge-rolling mid-stroke
+    if (state.rolling > 0 || state.dead || state.busy || state.mount) return false;
+    if (state.swimming) {
+      // DIVE instead of roll. Cheaper than a roll, and it needs breath left.
+      if (state.washingAshore || state.stamina < DIVE_COST) return false;
+      state.rolling = DIVE_TIME;
+      state.diveDur = DIVE_TIME;
+      state.stamina = Math.max(0, state.stamina - DIVE_COST);
+      const d = moveVec(lastInput, lastCamYaw) || { x: Math.sin(state.facing), z: Math.cos(state.facing) };
+      state.rollDir = { x: d.x, y: d.z };
+      particles?.burst(state.pos.clone().setY(WATER_Y), '#cdf2ff', 14, 2.8, 4, 0.5);
+      particles?.ring?.(state.pos.clone().setY(WATER_Y + 0.02), '#eaffff', 1.5, 0.4);
+      onDive?.();
+      return true;
+    }
+    if (state.stamina < ROLL_COST) return false;
     const mv = moveVec(input, camYaw);
     let dx, dz;
     if (mv) { dx = mv.x; dz = mv.z; }

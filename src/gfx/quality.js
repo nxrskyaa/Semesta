@@ -83,9 +83,9 @@ const KNOBS = {
     sharp: { on: true,  size: 3072 },
   },
   fx: {
-    minimal: { particles: 0.3,  weather: 0.3,  fireflies: 0.25, trails: false },
-    normal:  { particles: 0.7,  weather: 0.65, fireflies: 0.6,  trails: true },
-    full:    { particles: 1,    weather: 1,    fireflies: 1,    trails: true },
+    minimal: { particles: 0.3,  weather: 0.3,  fireflies: 0.25, trails: false , bloom: false},
+    normal:  { particles: 0.7,  weather: 0.65, fireflies: 0.6,  trails: true , bloom: false},
+    full:    { particles: 1,    weather: 1,    fireflies: 1,    trails: true , bloom: true},
   },
   detail: {
     // `maxLights` is a HARD ceiling on point lights in the whole scene. The
@@ -170,6 +170,7 @@ export function getQuality() {
     fireflyScale: fx.fireflies,
     trails: fx.trails,
     decorScale: det.decor,
+    bloom: !!fx.bloom,
     lanternLights: det.lights,
     maxLights: det.maxLights,
     critterScale: det.critters,

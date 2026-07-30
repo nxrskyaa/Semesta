@@ -45,7 +45,13 @@ export function buildWater(terrain, scene) {
   // WORLD DETAIL: every vertex is rewritten each frame, so subdivision is a
   // straight per-frame cost — 84x84 touches 7,225 vertices a tick, 28x28 is 841
   const SEG = getQuality().waterSegments;
-  const geo = new THREE.PlaneGeometry(S, S, SEG, SEG);
+  // The sea runs WELL past the terrain. The land rim eases up into distant
+  // highlands, but the ocean used to stop dead at the map bound — a visible
+  // straight edge with sky under it, which is exactly what made the world read
+  // as a tray. Three times the grid puts the horizon beyond anything the camera
+  // can reach, so the sea just goes on.
+  const SEA_SPAN = S * 3;
+  const geo = new THREE.PlaneGeometry(SEA_SPAN, SEA_SPAN, SEG, SEG);
   const plane = new THREE.Mesh(geo, mat);
   plane.rotation.x = -Math.PI / 2;
   plane.position.y = WATER_Y;
@@ -59,7 +65,9 @@ export function buildWater(terrain, scene) {
   const amp = new Float32Array(pos.count);      // open sea heaves, ponds ripple
   for (let i = 0; i < pos.count; i++) {
     baseX[i] = pos.getX(i); baseY[i] = pos.getY(i);
-    amp[i] = terrain.inOcean(baseX[i], -baseY[i]) ? 2.1 : 0.85;
+    // anything outside the terrain grid is open ocean, so it heaves too
+    const outside = Math.abs(baseX[i]) > S / 2 || Math.abs(baseY[i]) > S / 2;
+    amp[i] = (outside || terrain.inOcean(baseX[i], -baseY[i])) ? 2.1 : 0.85;
   }
 
   // --- per-vertex depth tint -------------------------------------------------
@@ -83,6 +91,7 @@ export function buildWater(terrain, scene) {
         if (!terrain.isWaterCell(ix, iz)) land++;
       }
     }
+    // off the grid entirely = deep open sea
     const shallow = n ? Math.min(1, (land / n) * 2.4) : 0;
     // three-stop ramp so the shelf gets its own colour instead of a flat blend
     if (shallow < 0.5) tmp.copy(deepC).lerp(midC, shallow * 2);

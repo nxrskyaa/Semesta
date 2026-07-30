@@ -1,6 +1,10 @@
 // SEMESTA — voxel action RPG 2.5D.
 // Flow: Character Creation -> build the world -> game loop.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Terrain, buildTerrainMesh } from './world/terrain.js';
 import { buildDecor } from './world/decor.js';
 import { buildWater } from './world/water.js';
@@ -116,6 +120,11 @@ async function init(character, saved, audio) {
   let qual = getQuality();
   const renderer = new THREE.WebGLRenderer({ antialias: false });
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // FILMIC GRADE. This is the single biggest reason a scene reads as "nicer":
+  // ACES rolls highlights off instead of clipping them to flat white, so a
+  // sunlit roof, a lantern flame and the sea glitter all keep their colour.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.16;
   // render scale is quadratic on fill rate — the single biggest perf lever
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75) * qual.renderScale);
   renderer.shadowMap.enabled = qual.shadows;
@@ -129,6 +138,25 @@ async function init(character, saved, audio) {
   // remember which non-live choices this world was built with, so the panel can
   // honestly tag the rest "NEXT RUN"
   const builtWith = buildSnapshot();
+
+  // POST CHAIN: a subtle bloom is what makes lanterns, torch fire, skill FX and
+  // the sun glitter on the sea actually GLOW rather than just being bright
+  // pixels. The mip chain is not cheap to allocate, so it is built once and
+  // simply bypassed when the FX knob turns bloom off. Touch devices never build
+  // it at all — UnrealBloom is too heavy for a phone whatever the preset says.
+  let composer = null;
+  if (!isTouchDevice()) {
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.34,   // strength — enough to bloom a flame, not enough to fog the world
+      0.6,    // radius
+      0.8,    // threshold: only genuinely bright things bloom
+    ));
+    composer.addPass(new OutputPass());
+  }
+  const usePost = () => composer && qual.bloom;
 
   setBoot(0.1, 'Painting the pixel tiles…'); await frame();
 
@@ -1376,6 +1404,7 @@ async function init(character, saved, audio) {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
+    composer?.setSize(innerWidth, innerHeight);
   });
 
   // --- GRAPHICS settings: live groups take effect immediately ---
@@ -1383,6 +1412,7 @@ async function init(character, saved, audio) {
     qual = nq;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75) * nq.renderScale);
     renderer.setSize(innerWidth, innerHeight);
+    composer?.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = nq.shadows;
     camera.far = nq.drawDistance;
     camera.updateProjectionMatrix();
@@ -1418,6 +1448,7 @@ async function init(character, saved, audio) {
   // debug/testing handle (used by automated verification)
   window.__semesta = {
     dailies, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
+    composer, usePost,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
@@ -1466,6 +1497,7 @@ async function init(character, saved, audio) {
   // which is the single biggest source of first-seconds stutter
   try { renderer.compile(scene, camera); } catch { /* older three: skip */ }
   renderer.render(scene, camera);
+  if (usePost()) composer.render();   // compiles the bloom passes too
   setBoot(0.97, 'Tuning the orchestra…'); await frame();
   {
     const hrNow = lighting.state.minutes / 60;
@@ -1572,7 +1604,7 @@ async function init(character, saved, audio) {
     particles.update(dt);
     dmgNums.update(dt);
     skillSys.update(dt);
-    npcs.update(dt, player.state.pos, time);
+    npcs.update(dt, player.state.pos, time, isNight);
     chests.update(dt, player.state.pos);
     camps.update(dt, player.state.pos, time);
     gathering.update(dt);
@@ -1681,7 +1713,7 @@ async function init(character, saved, audio) {
       touchUI?.setMenuOpen(panels.anyOpen() || dialog.isOpen() || worldmap.isOpen() || hud.isMenuPopOpen());
     }
 
-    renderer.render(scene, camera);
+    if (usePost()) composer.render(); else renderer.render(scene, camera);
   }
   schedule(loop);
 }

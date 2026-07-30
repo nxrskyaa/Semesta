@@ -4,6 +4,9 @@
 import * as THREE from 'three';
 import { getQuality } from './quality.js';
 
+// in-game minutes per real second — a full day is (24*60)/DAY_SPEED seconds
+const DAY_SPEED = 2.4;
+
 export function setupLighting(scene) {
   const q = getQuality();
   scene.fog = new THREE.FogExp2(new THREE.Color('#9ec49a'), q.fogDensity);
@@ -75,7 +78,10 @@ export function setupLighting(scene) {
   }
 
   function update(dt, playerPos) {
-    state.minutes = (state.minutes + dt) % (24 * 60);
+    // CLOCK SPEED. 1 in-game minute per real second meant a 24-minute day and
+    // a very long wait to see dusk. At 2.4x a full cycle is ~10 minutes, so a
+    // short session still gets morning, sunset, night and dawn.
+    state.minutes = (state.minutes + dt * DAY_SPEED) % (24 * 60);
     const hr = state.minutes / 60;
 
     // 0 = midnight .. 1 = midday

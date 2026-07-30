@@ -643,8 +643,12 @@ function buildFencedGarden() {
 }
 
 function buildLamp() {
-  // village lamps match the wild Japanese stone lanterns (ishidōrō) so lighting
-  // reads as one aesthetic: stone base + pillar + warm light box + pyramid cap
+  // Village lamps match the wild Japanese stone lanterns (ishidōrō) so lighting
+  // reads as one aesthetic: stone base + pillar + warm light box + pyramid cap.
+  // The light box now carries a real FLAME inside it — a stack of tapering
+  // tongues that flicker on their own rhythm — plus a soft glow shell, so the
+  // lantern is a light SOURCE rather than a yellow square. With bloom on at
+  // high/ultra these actually bloom.
   const g = new THREE.Group();
   const base = new THREE.Mesh(sharedBox(0.46, 0.1, 0.46), lam('#5e625a'));
   base.position.y = 0.05;
@@ -654,18 +658,75 @@ function buildLamp() {
   post.position.y = 0.46;
   const collar = new THREE.Mesh(sharedBox(0.3, 0.06, 0.3), lam('#5e625a'));
   collar.position.y = 0.79;
-  const house = new THREE.Mesh(sharedBox(0.26, 0.24, 0.26), lam('#84887e'));
-  house.position.y = 0.95;
-  const pane = new THREE.Mesh(sharedBox(0.2, 0.18, 0.2),
-    new THREE.MeshBasicMaterial({ color: 0xf5d9a0 }));
+  // four corner pillars + translucent paper panes instead of one solid block,
+  // so you can see the flame through the shade
+  const frame = new THREE.Group();
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const pil = new THREE.Mesh(sharedBox(0.045, 0.26, 0.045), lam('#5e625a'));
+    pil.position.set(sx * 0.115, 0.95, sz * 0.115);
+    frame.add(pil);
+  }
+  g.add(frame);
+  const pane = new THREE.Mesh(sharedBox(0.23, 0.22, 0.23),
+    new THREE.MeshBasicMaterial({ color: 0xffe6b0, transparent: true, opacity: 0.55 }));
   pane.position.y = 0.95;
+
+  // the flame: three tapering tongues, each animated on its own phase
+  const flame = new THREE.Group();
+  flame.position.y = 0.87;
+  const tongues = [];
+  const spec = [['#ff7a2a', 0.105, 0.21], ['#ffc25a', 0.075, 0.16], ['#fff3c0', 0.042, 0.10]];
+  for (let i = 0; i < spec.length; i++) {
+    const [c, w, h] = spec[i];
+    const t = new THREE.Mesh(sharedCyl(w * 0.15, w, h, 6),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(c) }));
+    t.position.y = h / 2;
+    flame.add(t);
+    tongues.push(t);
+  }
+  g.add(flame);
+
+  // soft glow shell around the box — additive, so it reads as light spilling out
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#ffbe6a'), transparent: true, opacity: 0.16,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+  glow.position.y = 0.95;
+  g.add(glow);
+
   const roof = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.22, 4), lam('#5e625a'));
   roof.position.y = 1.17;
   roof.rotation.y = Math.PI / 4;
   const cap = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), lam('#84887e'));
   cap.position.y = 1.3;
-  g.add(base, base2, post, collar, house, pane, roof, cap);
+  g.add(base, base2, post, collar, pane, roof, cap);
+  g.userData.flame = { tongues, glow, pane, seed: Math.random() * 10 };
   return g;
+}
+
+/**
+ * Animate a lantern flame. Shared by the village lamps and the wild tōrō so the
+ * whole map flickers with one rhythm rather than each module inventing its own.
+ * `lit` fades the fire out entirely by day.
+ */
+export function tickFlame(userData, time, lit = 1) {
+  const f = userData?.flame;
+  if (!f) return;
+  const t = time * 7 + f.seed;
+  for (let i = 0; i < f.tongues.length; i++) {
+    const tg = f.tongues[i];
+    // each tongue breathes on its own phase, and leans as if in a draught
+    const b = 0.78 + Math.sin(t * (1 + i * 0.35) + i * 1.7) * 0.22;
+    tg.scale.set(b, b * (0.85 + Math.sin(t * 0.7 + i) * 0.3), b);
+    tg.position.x = Math.sin(t * 0.55 + i * 2.1) * 0.012 * (i + 1);
+    tg.visible = lit > 0.08;
+    tg.material.opacity = lit;
+    tg.material.transparent = lit < 1;
+  }
+  f.glow.scale.setScalar(0.9 + Math.sin(t * 0.9) * 0.12);
+  f.glow.material.opacity = 0.16 * lit;
+  f.pane.material.opacity = 0.28 + 0.34 * lit;
 }
 
 function buildGachaMachine() {
@@ -753,6 +814,7 @@ function buildClutter(rng) {
 // NPC manager
 // ---------------------------------------------------------------------------
 export function createNPCs(scene, terrain, decorBlocked, particles) {
+  const villageLamps = [];   // their flames are ticked in update()
   const npcs = [];
   const S2 = terrain.size / 2;
 
@@ -819,7 +881,9 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
   place(buildClutter(rng), 1.8, -6.4, false, 0);
 
   for (const [lx, lz] of [[2.5, -2.5], [-2.5, 2.6], [3.2, 4.6], [-3.2, -4.6]]) {
-    place(buildLamp(), lx, lz, false, 0);
+    const lampMesh = buildLamp();
+    villageLamps.push(lampMesh);
+    place(lampMesh, lx, lz, false, 0);
   }
 
   // Master NXR's wonder-capsule machine
@@ -1006,7 +1070,13 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     return { x: terrain.spawn.x + st.ox, z: terrain.spawn.z + st.oz };
   }
 
-  function update(dt, playerPos, time) {
+  function update(dt, playerPos, time, isNight = false) {
+    // village lantern flames: lit at night, embers by day
+    const lit = isNight ? 1 : 0.06;
+    for (const lamp of villageLamps) {
+      if ((lamp.position.x - playerPos.x) ** 2 + (lamp.position.z - playerPos.z) ** 2 > 6400) continue;
+      tickFlame(lamp.userData, time, lit);
+    }
     for (const n of npcs) {
       n.anim += dt;
       const p = n.mesh.position;

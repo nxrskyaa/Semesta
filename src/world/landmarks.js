@@ -837,6 +837,273 @@ function buildChatterPair(lookA, lookB) {
   return g;
 }
 
+// ---------------------------------------------------------------------------
+// MORE BUILDINGS. The map had plenty of open ground with nothing on it, and a
+// world reads as inhabited when there are places people obviously use. Five
+// new structures, each with a silhouette you can name from a distance:
+// a red-roofed WINDMILL FARM barn, a stone BRIDGE over a stream, a tiered
+// PAGODA, a MINE ENTRANCE cut into a hillside, and a covered MARKET ROW.
+// ---------------------------------------------------------------------------
+
+/** A big red barn with a hayloft, a silo and a fenced paddock. */
+function buildBarn() {
+  const g = new THREE.Group();
+  const RED = '#b0463c', DARK = '#8a352e', WOOD = '#e8dcc0', ROOF = '#5e4038';
+  // body
+  const body = new THREE.Mesh(sharedBox(4.4, 2.4, 3.2), lam(RED));
+  body.position.y = 1.2; body.castShadow = true; g.add(body);
+  // white trim boards
+  for (const sx of [-2.16, 2.16]) {
+    const t = new THREE.Mesh(sharedBox(0.12, 2.4, 3.3), lam(WOOD));
+    t.position.set(sx, 1.2, 0); g.add(t);
+  }
+  const beltA = new THREE.Mesh(sharedBox(4.5, 0.12, 3.3), lam(WOOD));
+  beltA.position.y = 2.36; g.add(beltA);
+  // gambrel roof: two slopes a side, which is what makes a barn a barn
+  for (const sz of [-1, 1]) {
+    const lower = new THREE.Mesh(sharedBox(4.7, 0.16, 1.5), lam(ROOF));
+    lower.position.set(0, 2.75, sz * 1.15);
+    lower.rotation.x = sz * 0.62;
+    lower.castShadow = true; g.add(lower);
+    const upper = new THREE.Mesh(sharedBox(4.7, 0.16, 1.15), lam(ROOF));
+    upper.position.set(0, 3.42, sz * 0.42);
+    upper.rotation.x = sz * 0.28;
+    upper.castShadow = true; g.add(upper);
+  }
+  // hayloft door + big sliding doors
+  const loft = new THREE.Mesh(sharedBox(0.9, 0.8, 0.1), lam(DARK));
+  loft.position.set(0, 2.5, 1.63); g.add(loft);
+  const doorL = new THREE.Mesh(sharedBox(0.85, 1.6, 0.1), lam(DARK));
+  doorL.position.set(-0.45, 0.8, 1.63); g.add(doorL);
+  const doorR = new THREE.Mesh(sharedBox(0.85, 1.6, 0.1), lam(DARK));
+  doorR.position.set(0.45, 0.8, 1.63); g.add(doorR);
+  const cross = new THREE.Mesh(sharedBox(1.8, 0.1, 0.12), lam(WOOD));
+  cross.position.set(0, 1.1, 1.7); g.add(cross);
+  // silo alongside
+  const silo = new THREE.Mesh(sharedCyl(0.85, 0.9, 3.4, 10), lam('#c8c2b0'));
+  silo.position.set(-3.0, 1.7, 0.3); silo.castShadow = true; g.add(silo);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.9, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    lam('#8a9099'));
+  dome.position.set(-3.0, 3.4, 0.3); g.add(dome);
+  // hay bales
+  for (let i = 0; i < 3; i++) {
+    const bale = new THREE.Mesh(sharedCyl(0.32, 0.32, 0.5, 8), lam('#e0c060'));
+    bale.rotation.z = Math.PI / 2;
+    bale.position.set(2.6 + (i % 2) * 0.6, 0.32 + Math.floor(i / 2) * 0.6, -1.2 + i * 0.5);
+    g.add(bale);
+  }
+  // paddock fence
+  for (let i = 0; i < 7; i++) {
+    const post = new THREE.Mesh(sharedBox(0.1, 0.7, 0.1), lam('#8a6a44'));
+    post.position.set(-2.4 + i * 0.9, 0.35, -2.6); g.add(post);
+    if (i < 6) {
+      const rail = new THREE.Mesh(sharedBox(0.9, 0.07, 0.06), lam('#96754d'));
+      rail.position.set(-1.95 + i * 0.9, 0.5, -2.6); g.add(rail);
+    }
+  }
+  return g;
+}
+
+/** An arched stone bridge with lamp posts — reads as a road, not an ornament. */
+function buildBridge() {
+  const g = new THREE.Group();
+  const STONE = '#9a9488', DARK = '#6e6a60';
+  // the arch: a run of blocks stepped up and over
+  const N = 11;
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1);
+    const rise = Math.sin(t * Math.PI) * 0.55;
+    const slab = new THREE.Mesh(sharedBox(0.62, 0.28, 2.6), lam(i % 2 ? STONE : DARK));
+    slab.position.set(-3.1 + i * 0.62, 0.5 + rise, 0);
+    slab.castShadow = true;
+    g.add(slab);
+    // parapet either side
+    for (const sz of [-1.2, 1.2]) {
+      const wall = new THREE.Mesh(sharedBox(0.62, 0.42, 0.2), lam(STONE));
+      wall.position.set(-3.1 + i * 0.62, 0.85 + rise, sz);
+      g.add(wall);
+    }
+  }
+  // the arch underneath, so it reads as a bridge from the bank
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 6) * Math.PI;
+    const vou = new THREE.Mesh(sharedBox(0.36, 0.3, 2.2), lam(DARK));
+    vou.position.set(Math.cos(a) * 1.5, 0.42 + Math.sin(a) * 0.32, 0);
+    vou.rotation.z = -a + Math.PI / 2;
+    g.add(vou);
+  }
+  // abutments
+  for (const sx of [-3.3, 3.3]) {
+    const ab = new THREE.Mesh(sharedBox(0.9, 1.1, 2.8), lam(DARK));
+    ab.position.set(sx, 0.2, 0); g.add(ab);
+  }
+  // a lamp on each corner
+  const lamps = [];
+  for (const [sx, sz] of [[-2.9, -1.2], [-2.9, 1.2], [2.9, -1.2], [2.9, 1.2]]) {
+    const post = new THREE.Mesh(sharedBox(0.12, 1.1, 0.12), lam('#5a5750'));
+    post.position.set(sx, 1.4, sz); g.add(post);
+    const lamp = new THREE.Mesh(sharedBox(0.24, 0.26, 0.24),
+      new THREE.MeshBasicMaterial({ color: 0xffd89a }));
+    lamp.position.set(sx, 2.05, sz); g.add(lamp);
+    lamps.push(lamp);
+  }
+  g.userData.lamps = lamps;
+  return g;
+}
+
+/** A three-tier pagoda: the tallest thing on the map after the watchtower. */
+function buildPagoda() {
+  const g = new THREE.Group();
+  const WOOD = '#b0463c', ROOF = '#3f5f6a', TRIM = '#e8dcc0';
+  const base = new THREE.Mesh(sharedBox(3.2, 0.4, 3.2), lam('#8a8478'));
+  base.position.y = 0.2; g.add(base);
+  const tiers = [
+    { y: 0.4, w: 2.4, h: 1.5, rw: 3.4 },
+    { y: 2.2, w: 1.9, h: 1.3, rw: 2.8 },
+    { y: 3.8, w: 1.4, h: 1.1, rw: 2.2 },
+  ];
+  const bells = [];
+  for (const t of tiers) {
+    const body = new THREE.Mesh(sharedBox(t.w, t.h, t.w), lam(WOOD));
+    body.position.y = t.y + t.h / 2;
+    body.castShadow = true;
+    g.add(body);
+    // white lattice railing
+    const rail = new THREE.Mesh(sharedBox(t.w + 0.25, 0.1, t.w + 0.25), lam(TRIM));
+    rail.position.y = t.y + 0.12; g.add(rail);
+    // the wide overhanging roof — four sloped slabs, corners lifted
+    for (let s = 0; s < 4; s++) {
+      const a = s * Math.PI / 2;
+      const slab = new THREE.Mesh(sharedBox(t.rw, 0.14, t.rw * 0.42), lam(ROOF));
+      slab.position.set(
+        Math.sin(a) * t.rw * 0.22, t.y + t.h + 0.2, Math.cos(a) * t.rw * 0.22);
+      slab.rotation.y = a;
+      slab.rotation.x = -0.34;
+      slab.castShadow = true;
+      g.add(slab);
+      // a little bell hanging at each corner
+      const bell = new THREE.Mesh(sharedCyl(0.04, 0.08, 0.12, 6), lam('#d8b866'));
+      bell.position.set(Math.sin(a + 0.78) * t.rw * 0.5, t.y + t.h + 0.05, Math.cos(a + 0.78) * t.rw * 0.5);
+      g.add(bell);
+      bells.push(bell);
+    }
+  }
+  // finial spire
+  const spire = new THREE.Mesh(sharedCyl(0.03, 0.1, 1.1, 6), lam('#d8b866'));
+  spire.position.y = 5.4; g.add(spire);
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13 - i * 0.03, 0.02, 5, 10), lam('#d8b866'));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 5.2 + i * 0.22;
+    g.add(ring);
+  }
+  g.userData.bells = bells;
+  return g;
+}
+
+/** A timbered mine entrance with a cart on rails and a lantern over the mouth. */
+function buildMine() {
+  const g = new THREE.Group();
+  const ROCK = '#6e6a60', WOOD = '#7d5f3c';
+  // the hillside face
+  const face = new THREE.Mesh(sharedBox(4.2, 2.6, 1.2), lam(ROCK));
+  face.position.set(0, 1.3, -0.6); face.castShadow = true; g.add(face);
+  for (let i = 0; i < 5; i++) {
+    const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(0.4 + Math.random() * 0.3, 0), lam('#7d7a70'));
+    boulder.position.set(-1.8 + i * 0.9, 2.4 + Math.random() * 0.4, -0.9);
+    boulder.rotation.set(Math.random(), Math.random(), Math.random());
+    g.add(boulder);
+  }
+  // the mouth: a dark opening framed in heavy timber
+  const mouth = new THREE.Mesh(sharedBox(1.5, 1.7, 0.3), lam('#14100c'));
+  mouth.position.set(0, 0.85, 0.05); g.add(mouth);
+  for (const sx of [-0.85, 0.85]) {
+    const post = new THREE.Mesh(sharedBox(0.22, 1.9, 0.34), lam(WOOD));
+    post.position.set(sx, 0.95, 0.12); g.add(post);
+  }
+  const lintel = new THREE.Mesh(sharedBox(2.1, 0.26, 0.4), lam(WOOD));
+  lintel.position.set(0, 1.98, 0.12); g.add(lintel);
+  const brace = new THREE.Mesh(sharedBox(2.3, 0.16, 0.24), lam('#5f4728'));
+  brace.position.set(0, 2.2, 0.1); g.add(brace);
+  // a lantern hung over the mouth
+  const lamp = new THREE.Mesh(sharedBox(0.24, 0.3, 0.24),
+    new THREE.MeshBasicMaterial({ color: 0xffcf80 }));
+  lamp.position.set(0, 1.78, 0.34); g.add(lamp);
+  g.userData.lamps = [lamp];
+  // rails running out of the mouth, with a cart on them
+  for (const sx of [-0.3, 0.3]) {
+    const rail = new THREE.Mesh(sharedBox(0.07, 0.05, 4.4), lam('#5a5750'));
+    rail.position.set(sx, 0.06, 2.2); g.add(rail);
+  }
+  for (let i = 0; i < 8; i++) {
+    const tie = new THREE.Mesh(sharedBox(0.9, 0.06, 0.14), lam('#6b4a2c'));
+    tie.position.set(0, 0.03, 0.4 + i * 0.55); g.add(tie);
+  }
+  const cart = new THREE.Group();
+  const tub = new THREE.Mesh(sharedBox(0.8, 0.5, 0.7), lam('#7a6a58'));
+  tub.position.y = 0.36; cart.add(tub);
+  for (const [cx, cz] of [[-0.3, -0.28], [0.3, -0.28], [-0.3, 0.28], [0.3, 0.28]]) {
+    const wheel = new THREE.Mesh(sharedCyl(0.14, 0.14, 0.07, 8), lam('#3a3730'));
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(cx, 0.14, cz); cart.add(wheel);
+  }
+  // a heap of ore in the tub
+  for (let i = 0; i < 4; i++) {
+    const ore = new THREE.Mesh(new THREE.DodecahedronGeometry(0.11, 0), lam(i % 2 ? '#c88a3a' : '#8a8478'));
+    ore.position.set(-0.2 + i * 0.14, 0.64, (i % 2) * 0.16 - 0.08);
+    cart.add(ore);
+  }
+  cart.position.set(0, 0, 2.4);
+  g.add(cart);
+  return g;
+}
+
+/** A covered market row: three striped stalls under one long awning. */
+function buildMarketRow() {
+  const g = new THREE.Group();
+  const WOOD = '#a8804c', DARK = '#84633a';
+  // the long roof over the whole row
+  for (let i = 0; i < 9; i++) {
+    const strip = new THREE.Mesh(sharedBox(0.62, 0.08, 2.2), lam(i % 2 ? '#f4efe0' : '#c8544a'));
+    strip.position.set(-2.5 + i * 0.62, 2.15, 0);
+    strip.rotation.x = 0.1;
+    strip.castShadow = true;
+    g.add(strip);
+  }
+  for (const sx of [-2.6, 0, 2.6]) {
+    for (const sz of [-1, 1]) {
+      const post = new THREE.Mesh(sharedBox(0.12, 2.1, 0.12), lam(DARK));
+      post.position.set(sx, 1.05, sz); g.add(post);
+    }
+  }
+  // three counters with different wares
+  const wares = [
+    { c: '#e8574a', n: 5 },   // fruit
+    { c: '#5aa845', n: 6 },   // greens
+    { c: '#e8b45d', n: 4 },   // bread
+  ];
+  for (let s = 0; s < 3; s++) {
+    const cx = -2.2 + s * 2.2;
+    const counter = new THREE.Mesh(sharedBox(1.7, 0.12, 1.0), lam(WOOD));
+    counter.position.set(cx, 0.85, 0); g.add(counter);
+    const front = new THREE.Mesh(sharedBox(1.7, 0.8, 0.1), lam(DARK));
+    front.position.set(cx, 0.42, 0.5); g.add(front);
+    // crates under the counter
+    const crate = new THREE.Mesh(sharedBox(0.5, 0.4, 0.5), lam('#96754d'));
+    crate.position.set(cx + 0.5, 0.2, -0.3); g.add(crate);
+    // the wares themselves, piled on top
+    for (let i = 0; i < wares[s].n; i++) {
+      const w = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), lam(wares[s].c));
+      w.position.set(cx - 0.5 + (i % 3) * 0.35, 0.99 + Math.floor(i / 3) * 0.18, -0.1 + (i % 2) * 0.2);
+      g.add(w);
+    }
+    // a hanging sign
+    const sign = new THREE.Mesh(sharedBox(0.7, 0.34, 0.06), lam('#e8dcc0'));
+    sign.position.set(cx, 1.65, -0.5); g.add(sign);
+  }
+  return g;
+}
+
 export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   const S2 = terrain.size / 2;
   const built = [];
@@ -921,6 +1188,19 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   if (place(festival, S2 * 0.05, S2 * 0.6, 2, 12, 4.5)) built.push(festival);
   const watch = buildWatchtower();
   if (place(watch, S2 * 0.6, S2 * 0.06, 1, 12, 3)) built.push(watch);
+
+  // --- five new structures so the open ground has landmarks worth walking to
+  const barn = buildBarn();
+  if (place(barn, -S2 * 0.62, -S2 * 0.18, 3, 14, 6)) built.push(barn);
+  const pagoda = buildPagoda();
+  if (place(pagoda, S2 * 0.24, -S2 * 0.62, 2, 14, 5)) built.push(pagoda);
+  const mine = buildMine();
+  if (place(mine, -S2 * 0.15, -S2 * 0.7, 2, 14, 4.5)) built.push(mine);
+  const market = buildMarketRow();
+  if (place(market, -S2 * 0.55, S2 * 0.55, 2, 14, 4.5)) built.push(market);
+  // the bridge wants a stream, so it goes near a lake shore rather than mid-field
+  const bridge = buildBridge();
+  if (place(bridge, S2 * 0.52, S2 * 0.44, 2, 16, 5)) built.push(bridge);
 
   // a lantern-lit fishing dock on the shore of EVERY lake, each with its own
   // fishmonger — walk up to sell the day's catch
@@ -1020,6 +1300,20 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       }
     }
     if (school.userData.clockHand && near(school)) school.userData.clockHand.rotation.z = -time * 0.2;
+
+    // the new buildings: bridge & mine lamps glow at night, pagoda bells sway
+    for (const lm of [bridge, mine]) {
+      if (!lm.userData.lamps || !near(lm)) continue;
+      for (const l of lm.userData.lamps) {
+        const f = 0.8 + Math.sin(time * 5 + l.position.x * 2) * 0.2;
+        l.material.color.setRGB(1, 0.82 * f, 0.55 * f);
+      }
+    }
+    if (pagoda.userData.bells && near(pagoda)) {
+      for (let i = 0; i < pagoda.userData.bells.length; i++) {
+        pagoda.userData.bells[i].rotation.z = Math.sin(time * 1.9 + i * 0.8) * 0.22;
+      }
+    }
 
     // paper lanterns sway on every landmark that hangs them
     for (const lm of [festival, watch, ...docks.map((d) => d.mesh)]) {

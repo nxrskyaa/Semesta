@@ -18,6 +18,10 @@ const MAX_H = 11;
 // opposite the winter biome. ~19% of the map is open water.
 const OCEAN_EDGE = 1.34;
 
+// How many cells the land takes to climb into the far highlands. A narrow band
+// reads as a wall; a wide one reads as distance.
+const RIM_BAND = 26;
+
 // Hand-placed archipelago (normalised map coords, cell radius, height above the
 // waterline). Placed by hand rather than scattered so each island reads as a
 // destination with its own silhouette, and so none of them merge.
@@ -76,7 +80,9 @@ export class Terrain {
             if (this.ocean[this.idx(cx, cz)]) sea = true;
           }
         }
-        if (!sea) { sum += oob * MAX_H * 0.8; n += oob; }
+        // out-of-bounds matches the highland rim so the ridge continues past
+        // the bound instead of stepping up to a flat wall
+        if (!sea) { sum += oob * (MAX_H * 0.95); n += oob; }
         this.corner[iz * (S + 1) + ix] = n ? sum / n : MAX_H * 0.8;
       }
     }
@@ -234,9 +240,17 @@ export class Terrain {
         }
 
         const edge = Math.min(ix, iz, S - 1 - ix, S - 1 - iz);
-        // the rim wall is LAND only — a hill rising out of the sea would look
-        // like a bathtub, so the ocean just runs to the map bound instead
-        if (edge < 6 && sea <= 0) e += (6 - edge) * 1.1;
+        // THE HORIZON. A hard 6-cell wall made the world feel like a tray: you
+        // could see exactly where it stopped. Instead the land rises over a
+        // WIDE, eased band into distant highlands, with an fBm wobble so the
+        // ridgeline is a mountain range rather than a kerb. Fog swallows the
+        // far end, so the eye reads "mountains over there", not "edge of map".
+        if (sea <= 0 && edge < RIM_BAND) {
+          const t = 1 - edge / RIM_BAND;
+          const ease = t * t * (3 - 2 * t);                 // smoothstep
+          const ridge = fbm2(ix * 0.055, iz * 0.055, SEED + 411, 3);
+          e += ease * (3.4 + ridge * 5.2);
+        }
 
         let h = Math.max(0, Math.min(MAX_H, Math.round(e)));
         this.height[this.idx(ix, iz)] = h;
