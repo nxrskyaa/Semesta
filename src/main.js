@@ -1520,7 +1520,17 @@ async function init(character, saved, audio) {
       e.d = (w.x - px) ** 2 + (w.z - pz) ** 2;
     }
     lightPool.sort((a, b) => a.d - b.d);
-    for (let i = 0; i < lightPool.length; i++) lightPool[i].l.visible = i < qual.maxLights;
+    // A light turned down to zero should not eat a budget slot. decor.js keeps
+    // a pool of unassigned lantern lights parked at the origin at intensity 0,
+    // and standing near spawn let six of them crowd out lamps that were
+    // actually burning.
+    let used = 0;
+    for (let i = 0; i < lightPool.length; i++) {
+      const e = lightPool[i];
+      if (e.l.intensity <= 0.02) { e.l.visible = true; continue; }   // free, costs nothing
+      e.l.visible = used < qual.maxLights;
+      if (e.l.visible) used++;
+    }
   }
 
   // --- PREWARM: pay the one-off costs now, while the picture is still up, so

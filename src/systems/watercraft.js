@@ -184,6 +184,7 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     ringT: 0,
     moored: {},          // id -> { mesh, x, z, dir }
     homeBerth: {},       // id -> the original marina berth, for stranded craft
+    offWater: 0,         // seconds the rider has spent off the water (grace)
   };
   const group = new THREE.Group();
   scene.add(group);
@@ -239,11 +240,18 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
       hooks.onDenied?.(CRAFT_DEFS[id]);
       return false;
     }
+    // Grab the craft's WORLD position and heading BEFORE reparenting it — the
+    // moment it becomes a child of the player its .position is local (0,0,0),
+    // and reading it afterwards teleported the rider to the world origin.
+    const berthX = m.mesh.position.x, berthZ = m.mesh.position.z;
+    const berthDir = m.mesh.rotation.y;
+
     state.active = id;
-    state.heading = m.mesh.rotation.y;
+    state.heading = berthDir;
     state.speed = 0;
     state.vx = 0; state.vz = 0; state.slip = 0; state.along = 0;
     state.steer = 0; state.lean = 0; state.leanV = 0; state.pitch = 0;
+    state.offWater = 0;
     ridden = m.mesh;
     // the craft rides under the hero; the player group carries it so the camera
     // and every other system keep treating the player as the thing that moves
@@ -254,6 +262,13 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     // sit the hero ON it: knees up, hands forward on the bars
     player.setCraftPose?.(true);
     // drop the hero onto the waterline
+    // SIT ON THE CRAFT. Boarding used to leave the rider standing wherever they
+    // pressed the button — on the pier, on dry land — while the hull was out on
+    // the water. The stranding guard then correctly saw a rider who was not over
+    // water and threw them straight back off, so the craft could never be ridden
+    // at all. You board a boat by getting IN it.
+    player.state.pos.x = berthX;
+    player.state.pos.z = berthZ;
     player.state.pos.y = WATER_Y + CRAFT_DEFS[id].seatH;
     player.state.vy = 0;
     player.state.grounded = true;
@@ -312,9 +327,13 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     // If the rider is no longer over water at all, they were teleported,
     // respawned or nudged while aboard. Put them off the craft properly rather
     // than dragging a hull through the hillside.
+    // Grace period: only bail out if the rider stays off the water for a beat.
+    // A single odd frame (a nudge, a resize hitch) should not eject anyone.
     if (!terrain.swimmable(player.state.pos.x, player.state.pos.z)) {
-      leave(player, true);
-      return;
+      state.offWater += dt;
+      if (state.offWater > 0.4) { leave(player, true); return; }
+    } else {
+      state.offWater = 0;
     }
 
     // ---- HOW A REAL HULL BEHAVES, and why the earlier versions felt wrong ----

@@ -734,7 +734,14 @@ function buildLamp() {
   const cap = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), lam('#84887e'));
   cap.position.y = 1.3;
   g.add(base, base2, post, collar, pane, roof, cap);
-  g.userData.flame = { tongues, glow, pane, pool, seed: Math.random() * 10 };
+  // A REAL LIGHT. The village lamps never had one — they were sprites and a
+  // halo, which is why the basecamp read as dim with nothing actually lit. It
+  // joins the global pool in main.js, so the nearest-N budget still governs it.
+  const light = new THREE.PointLight(0xffc07a, 0, 7.5, 1.9);
+  light.position.y = 1.0;
+  g.add(light);
+
+  g.userData.flame = { tongues, glow, pane, pool, light, seed: Math.random() * 10 };
   return g;
 }
 
@@ -764,6 +771,8 @@ export function tickFlame(userData, time, lit = 1) {
     f.pool.visible = lit > 0.2;
     f.pool.material.opacity = 0.5 * lit * (0.85 + Math.sin(t * 0.9) * 0.1);
   }
+  // the lamp's own light flickers with the flame and dies out by day
+  if (f.light) f.light.intensity = 2.3 * lit * (0.88 + Math.sin(t * 1.3) * 0.12);
 }
 
 function buildGachaMachine() {
