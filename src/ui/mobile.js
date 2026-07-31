@@ -21,7 +21,12 @@ const CSS = `
 }
 
 /* camera swipe: right side, middle band (below minimap, above buttons) */
-#touchui .camzone { position: absolute; right: 0; top: 24%; width: 55%; height: 30%; pointer-events: auto; }
+/* touch-action: none - the old "manipulation" value still left PINCH to the
+   browser, which is why two fingers zoomed the web page instead of the camera */
+#touchui .camzone {
+  position: absolute; right: 0; top: 24%; width: 55%; height: 30%;
+  pointer-events: auto; touch-action: none;
+}
 
 /* action cluster bottom-right */
 #touchui .btns {
@@ -234,19 +239,23 @@ export function createTouchControls(input, skillIds, callbacks) {
     touches[0].clientX - touches[1].clientX,
     touches[0].clientY - touches[1].clientY,
   );
+  // NOT passive: a pinch has to be claimed with preventDefault or the browser
+  // runs its own page zoom and the camera never sees the gesture.
   root.addEventListener('touchstart', (e) => {
     if (e.touches.length === 2) {
+      e.preventDefault();
       pinchDist = spanOf(e.touches);
       camId = null;                     // drop any swipe that was running
     }
-  }, { passive: true });
+  }, { passive: false });
   root.addEventListener('touchmove', (e) => {
     if (e.touches.length !== 2 || pinchDist === null) return;
+    e.preventDefault();
     const d = spanOf(e.touches);
     // spreading fingers zooms IN (camera closer), pinching zooms out
     callbacks.onCameraZoom?.((pinchDist - d) * 0.045);
     pinchDist = d;
-  }, { passive: true });
+  }, { passive: false });
   const endPinch = (e) => { if (e.touches.length < 2) pinchDist = null; };
   root.addEventListener('touchend', endPinch, { passive: true });
   root.addEventListener('touchcancel', endPinch, { passive: true });

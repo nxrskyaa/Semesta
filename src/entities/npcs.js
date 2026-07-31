@@ -649,9 +649,10 @@ function lampPoolMat() {
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
     const g4 = ctx.createRadialGradient(32, 32, 2, 32, 32, 31);
-    g4.addColorStop(0, 'rgba(255,206,140,0.95)');
-    g4.addColorStop(0.35, 'rgba(255,180,95,0.45)');
-    g4.addColorStop(0.7, 'rgba(255,150,70,0.14)');
+    g4.addColorStop(0, 'rgba(255,214,150,0.55)');
+    g4.addColorStop(0.25, 'rgba(255,186,105,0.3)');
+    g4.addColorStop(0.55, 'rgba(255,158,78,0.11)');
+    g4.addColorStop(0.8, 'rgba(255,146,66,0.03)');
     g4.addColorStop(1, 'rgba(255,140,60,0)');
     ctx.fillStyle = g4; ctx.fillRect(0, 0, 64, 64);
     _poolTex = new THREE.CanvasTexture(c);
@@ -659,6 +660,7 @@ function lampPoolMat() {
   return new THREE.MeshBasicMaterial({
     map: _poolTex, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending, opacity: 0,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
 }
 
@@ -688,7 +690,7 @@ function buildLamp() {
   }
   g.add(frame);
   const pane = new THREE.Mesh(sharedBox(0.23, 0.22, 0.23),
-    new THREE.MeshBasicMaterial({ color: 0xffe6b0, transparent: true, opacity: 0.55 }));
+    new THREE.MeshBasicMaterial({ color: 0xffe8ba, transparent: true, opacity: 0.7 }));
   pane.position.y = 0.95;
 
   // the flame: three tapering tongues, each animated on its own phase
@@ -709,9 +711,11 @@ function buildLamp() {
   // A soft halo AROUND THE BOX ONLY. It is deliberately small and it never
   // changes size: a lamp is a fixed light source, and animating its scale is
   // exactly what made it read as a pulsing ball rather than a lantern.
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 6),
+  // deliberately smaller than the light box's roof — a halo wider than the
+  // lantern swallows it and all you see from a distance is a floating circle
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.155, 8, 6),
     new THREE.MeshBasicMaterial({
-      color: new THREE.Color('#ffcf85'), transparent: true, opacity: 0.3,
+      color: new THREE.Color('#ffd79a'), transparent: true, opacity: 0.3,
       depthWrite: false, blending: THREE.AdditiveBlending,
     }));
   glow.position.y = 0.95;
@@ -719,9 +723,9 @@ function buildLamp() {
 
   // ground pool, same reasoning as the wild lanterns: only the nearest lamps
   // get a real PointLight, so every lamp needs its own visible spill
-  const pool = new THREE.Mesh(new THREE.CircleGeometry(2.4, 16), lampPoolMat());
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(2.8, 18), lampPoolMat());
   pool.rotation.x = -Math.PI / 2;
-  pool.position.y = 0.04;
+  pool.position.y = 0.07;
   g.add(pool);
 
   const roof = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.22, 4), lam('#5e625a'));

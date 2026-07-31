@@ -307,8 +307,10 @@ export function buildDecor(terrain, scene) {
   const houseMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.26, 0.24, 0.26), stoneMat, N_LAN);
   houseMesh.castShadow = true;
   // warm paper pane peeking out of the light box
-  const paneMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 0.18, 0.2),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color('#f5d9a0') }), N_LAN);
+  // the paper pane is the SOURCE: it must be the brightest surface on the
+  // lantern so the eye locks onto the structure rather than the halo round it
+  const paneMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.2, 0.22),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffe8ba') }), N_LAN);
   const roofMesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.36, 0.22, 4), stoneDark, N_LAN);
   roofMesh.castShadow = true;
   const capMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 6, 5), stoneMat, N_LAN);
@@ -330,18 +332,22 @@ export function buildDecor(terrain, scene) {
   const coreSprites = [];
   // the ground pool: a radial falloff disc, additive so it brightens whatever
   // it lies on instead of painting a flat orange circle
-  const poolGeo = new THREE.CircleGeometry(2.6, 18);
+  const poolGeo = new THREE.CircleGeometry(3.0, 20);
   const poolTex = canvasTex((ctx) => {
     const g4 = ctx.createRadialGradient(32, 32, 2, 32, 32, 31);
-    g4.addColorStop(0, 'rgba(255,206,140,0.95)');
-    g4.addColorStop(0.35, 'rgba(255,180,95,0.45)');
-    g4.addColorStop(0.7, 'rgba(255,150,70,0.14)');
+    // a long soft falloff — a hard-edged disc reads as a painted circle on the
+    // grass, which is the other half of the "it's just an orange ring" problem
+    g4.addColorStop(0, 'rgba(255,214,150,0.55)');
+    g4.addColorStop(0.25, 'rgba(255,186,105,0.3)');
+    g4.addColorStop(0.55, 'rgba(255,158,78,0.11)');
+    g4.addColorStop(0.8, 'rgba(255,146,66,0.03)');
     g4.addColorStop(1, 'rgba(255,140,60,0)');
     ctx.fillStyle = g4; ctx.fillRect(0, 0, 64, 64);
   }, 64, 64);
   const poolMat = new THREE.MeshBasicMaterial({
     map: poolTex, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending, opacity: 0,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   const poolDiscs = [];
   const qRoof = new THREE.Quaternion().setFromAxisAngle(YUP, Math.PI / 4);
@@ -364,14 +370,16 @@ export function buildDecor(terrain, scene) {
     m.compose(v.set(tc.x, tc.y + 1.3, tc.z), q, sc.set(1, 1, 1));
     capMesh.setMatrixAt(i, m);
     const glow = new THREE.Sprite(glowMat.clone());
-    glow.scale.set(1.15, 1.15, 1);   // tight halo, not a pool on the ground
+    // The halo must be SMALLER than the lantern's roof, or it swallows the
+    // whole structure and you just see a yellow circle floating in the dark.
+    glow.scale.set(0.62, 0.62, 1);
     glow.position.set(tc.x, tc.y + 0.97, tc.z);
     group.add(glow);
     glowSprites.push(glow);
     // a small HOT core inside the box. It is what bloom latches onto, so the
     // lantern reads as a flame rather than a yellow cube with a halo.
     const core = new THREE.Sprite(coreMat.clone());
-    core.scale.set(0.42, 0.55, 1);
+    core.scale.set(0.2, 0.26, 1);    // the flame lives INSIDE the light box
     core.position.set(tc.x, tc.y + 0.95, tc.z);
     group.add(core);
     coreSprites.push(core);
@@ -382,7 +390,7 @@ export function buildDecor(terrain, scene) {
     // them the spill a lamp is supposed to cast.
     const pool = new THREE.Mesh(poolGeo, poolMat.clone());
     pool.rotation.x = -Math.PI / 2;
-    pool.position.set(tc.x, tc.y + 0.04, tc.z);
+    pool.position.set(tc.x, tc.y + 0.07, tc.z);
     group.add(pool);
     poolDiscs.push(pool);
   });
@@ -497,7 +505,7 @@ export function buildDecor(terrain, scene) {
       const ph = time * 9 + d.position.x * 3.1 + d.position.z;
       const flick = 0.85 + Math.sin(ph) * 0.1 + Math.sin(ph * 2.7) * 0.05;
       d.visible = isNight;
-      d.material.opacity = isNight ? 0.5 * flick : 0;
+      d.material.opacity = isNight ? 0.62 * flick : 0;
     }
 
     // butterflies flutter in the day, roost at night

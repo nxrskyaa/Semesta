@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Semesta — Anavela Universe</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%2310160f'/><rect x='2' y='8' width='12' height='6' fill='%235b7850'/><rect x='6' y='2' width='4' height='8' fill='%2333513c'/><rect x='7' y='10' width='2' height='4' fill='%233d3129'/></svg>" />
   <!-- crisp pixel display font for headings + a clean readable body pixel font -->
@@ -56,6 +56,10 @@
       font-family: var(--font-body);
       user-select: none;
       -webkit-user-select: none;
+      /* the game owns every gesture on a touch device — without this the
+         browser's own pinch-zoom fires and the camera never sees it */
+      touch-action: none;
+      -ms-touch-action: none;
       color: var(--ui-text);
     }
     #app { position: fixed; inset: 0; }

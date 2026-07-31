@@ -86,11 +86,26 @@ const CSS = `
   position: absolute; top: 196px; right: 10px; width: 168px; display: flex;
   flex-direction: column; gap: 4px; pointer-events: none;
 }
+/* the tracker header doubles as a COLLAPSE button. On a phone the quest list
+   grows down the right edge and covers the minimap, so it has to be foldable. */
+#hud .qhead {
+  display: none; align-items: center; gap: 5px; pointer-events: auto; cursor: pointer;
+  font-size: 8px; letter-spacing: 3px; color: var(--gold-dim);
+  text-shadow: 1px 1px 0 var(--ink); margin-bottom: 3px;
+  background: rgba(14,18,12,0.82); box-shadow: var(--pix-frame);
+  padding: 4px 7px; align-self: flex-end;
+}
+#hud .qhead.show { display: flex; }
+#hud .qhead .qcaret { color: var(--gold); font-size: 9px; }
+#hud .qhead .qn { color: #cfd8c8; }
 #hud .quests::before {
   content: '◆ QUESTS'; display: block; font-size: 8px; letter-spacing: 3px;
   color: var(--gold-dim); margin-bottom: 2px; text-shadow: 1px 1px 0 var(--ink);
 }
 #hud .quests:empty::before { display: none; }
+#hud .quests.folded { display: none; }
+/* on touch the header replaces the inline caption, so it never doubles up */
+body.touch #hud .quests::before { display: none; }
 #hud .quests .q {
   padding: 5px 8px; font-size: 9px; line-height: 1.6;
   background: linear-gradient(90deg, rgba(20,25,15,0.9), rgba(14,18,12,0.6));
@@ -418,7 +433,14 @@ body.touch #hud .toast { font-size: 10px; }
   #hud .skill { width: 46px; height: 46px; }
   #hud .xpbar { width: 180px; }
   #hud .hint-desktop { display: none; }
-  #hud .quests { top: 150px; right: 6px; width: 132px; }
+  #hud .quests { top: 178px; right: 6px; width: 132px; max-height: 34vh; overflow-y: auto; }
+  /* clear of the minimap block, which runs to y=159 on a 375px screen once the
+     clock bar under it is counted — 150 left a 9px overlap, which is exactly
+     the "quest list covers the map" report */
+  body.touch #hud .qtrack { position: absolute; top: 172px; right: 6px; width: 132px;
+    display: flex; flex-direction: column; align-items: flex-end; pointer-events: none;
+    max-height: 42vh; }
+  body.touch #hud .quests { position: static; width: 100%; }
   #hud .quests .q { font-size: 8px; padding: 4px 6px; }
   #hud .banner { font-size: 18px; }
 }
@@ -451,7 +473,10 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="iconbtn mute">${audio.isMuted() ? '🔇' : '🔊'}</button>
       </div>
     </div>
-    <div class="quests"></div>
+    <div class="qtrack">
+      <button class="qhead"><span class="qcaret">▾</span>QUESTS<span class="qn"></span></button>
+      <div class="quests"></div>
+    </div>
     <div class="pinbeacon"><span class="arr">➤</span><span class="txt"></span></div>
     <div class="prompt"></div>
     <div class="prompt2"></div>
@@ -560,6 +585,25 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       callbacks.onMenu?.(b.dataset.menu);
     }
   });
+  // QUEST TRACKER FOLD. On a phone the list runs down the right edge straight
+  // over the minimap, so the header is a toggle. Desktop has the room and keeps
+  // the list open, but the button works there too if it is ever shown.
+  const questsEl = root.querySelector('.quests');
+  const qHead = root.querySelector('.qhead');
+  // On a phone the tracker starts FOLDED: the screen is small and the list is
+  // opt-in. Desktop has the room, so it stays open.
+  let questsFolded = document.body.classList.contains('touch')
+    || matchMedia('(pointer: coarse)').matches;
+  if (questsFolded) {
+    questsEl.classList.add('folded');
+    qHead.querySelector('.qcaret').textContent = '▸';
+  }
+  qHead.addEventListener('click', () => {
+    questsFolded = !questsFolded;
+    questsEl.classList.toggle('folded', questsFolded);
+    qHead.querySelector('.qcaret').textContent = questsFolded ? '▸' : '▾';
+  });
+
   function closeMenu() { menuPop.classList.remove('show'); }
   // pulsing "!" on the ☰ button + a count on the DAILY tile whenever a
   // check-in or a finished daily quest is waiting to be claimed
@@ -650,6 +694,9 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <span class="qp">${l.done ? '✔ Return to ' + l.giverName : `${l.label} — ${l.p}/${l.n}`}</span></div>`
     ).join('');
     if (els.quests.innerHTML !== html) els.quests.innerHTML = html;
+    // the fold button only appears when there is something to fold
+    qHead.classList.toggle('show', lines.length > 0);
+    qHead.querySelector('.qn').textContent = lines.length ? ` (${lines.length})` : '';
   }
 
   // interact prompts: primary { key, label }, optional secondary { key, label }
