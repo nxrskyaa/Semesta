@@ -1224,6 +1224,53 @@ function buildMarketRow() {
 // so a garden reads as somewhere tended rather than a random scatter.
 // ---------------------------------------------------------------------------
 
+
+// A PETAL that is actually petal-shaped: wide at the middle, tapering to a
+// point, and slightly cupped. Built once per size and shared. Boxes made the
+// first pass look like plastic plates on sticks.
+const _petalCache = new Map();
+function petalGeo(len, wide) {
+  const k = `${len}|${wide}`;
+  let g = _petalCache.get(k);
+  if (!g) {
+    // a lathe profile swept a half turn gives a rounded, tapering blade
+    const pts = [];
+    const N = 6;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      // width swells to ~60% of the way along, then narrows to a tip
+      const w = Math.sin(t * Math.PI * 0.92) * wide * (1 - t * 0.25);
+      pts.push(new THREE.Vector2(Math.max(0.004, w), t * len));
+    }
+    g = new THREE.LatheGeometry(pts, 5, 0, Math.PI);
+    g.scale(1, 1, 0.42);          // flatten it into a blade
+    _petalCache.set(k, g);
+  }
+  return g;
+}
+
+/** A rounded bloom centre — a squashed sphere, shared by size. */
+const _domeCache = new Map();
+function domeGeo(r) {
+  let g = _domeCache.get(r);
+  if (!g) { g = new THREE.SphereGeometry(r, 7, 5); _domeCache.set(r, g); }
+  return g;
+}
+
+/** A leaf with a point: a cone squashed flat reads far better than a slab. */
+const _leafCache = new Map();
+function leafGeo(len, wide) {
+  const k = `${len}|${wide}`;
+  let g = _leafCache.get(k);
+  if (!g) {
+    g = new THREE.ConeGeometry(wide, len, 5);
+    g.scale(1, 1, 0.3);
+    g.rotateZ(-Math.PI / 2);
+    _leafCache.set(k, g);
+  }
+  return g;
+}
+
 const LILY_COLS = [['#f7a8c8', '#fde3ee'], ['#ffffff', '#ffe9f2'], ['#f58fb4', '#fbcfe0']];
 const ROSE_COLS = [['#e8618f', '#c23f6d'], ['#f086ab', '#d1567f'], ['#ffb3cc', '#e07ba0']];
 
@@ -1233,32 +1280,44 @@ function buildLily(rng, cols) {
   const H = 0.85 + rng() * 0.35;
   const stem = new THREE.Mesh(sharedCyl(0.022, 0.03, H, 5), lam('#4e8a3e'));
   stem.position.y = H / 2; g.add(stem);
-  // long drooping leaves down the stem
   for (let i = 0; i < 2; i++) {
     const a = rng() * Math.PI * 2;
-    const leaf = new THREE.Mesh(sharedBox(0.32, 0.02, 0.075), lam('#4e8a3e'));
-    leaf.position.set(Math.cos(a) * 0.15, H * (0.2 + i * 0.2), Math.sin(a) * 0.15);
-    leaf.rotation.y = a;
-    leaf.rotation.z = -0.5;
+    const leaf = new THREE.Mesh(leafGeo(0.42, 0.06), lam('#4e8a3e'));
+    leaf.position.set(Math.cos(a) * 0.16, H * (0.28 + i * 0.26), Math.sin(a) * 0.16);
+    leaf.rotation.y = -a;
+    leaf.rotation.z = -0.45;
     g.add(leaf);
   }
-  // the head: six petals swept back from a trumpet throat
   const head = new THREE.Group();
   head.position.y = H;
   g.add(head);
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2;
-    const p = new THREE.Mesh(sharedBox(0.2, 0.022, 0.08), lam(petal));
-    p.position.set(Math.cos(a) * 0.12, 0.03, Math.sin(a) * 0.12);
-    p.rotation.y = -a;
-    p.rotation.z = -0.55;          // swept back, which is what makes it a lily
+  // six tapering petals swept back off the throat — that recurve IS the lily
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const p = new THREE.Mesh(petalGeo(0.26, 0.055), lam(petal));
+    p.position.set(Math.cos(a) * 0.045, 0.02, Math.sin(a) * 0.045);
+    p.rotation.y = -a + Math.PI / 2;
+    p.rotation.z = -1.15;                      // laid out and curving back
+    p.rotation.x = 0.25;
     head.add(p);
   }
-  const cup = new THREE.Mesh(sharedCyl(0.055, 0.02, 0.09, 6), lam(throat));
+  // the trumpet throat, with a paler lip
+  const cup = new THREE.Mesh(sharedCyl(0.062, 0.018, 0.1, 7), lam(throat));
   cup.position.y = 0.05; head.add(cup);
-  // one bundle of stamens rather than four separate ones
-  const st = new THREE.Mesh(sharedBox(0.035, 0.09, 0.035), lam('#e8b45d'));
-  st.position.y = 0.11; head.add(st);
+  const lip = new THREE.Mesh(sharedCyl(0.075, 0.06, 0.02, 7), lam(petal));
+  lip.position.y = 0.1; head.add(lip);
+  // anthers on filaments, the detail that sells a lily up close
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const fil = new THREE.Mesh(sharedCyl(0.006, 0.006, 0.1, 4), lam('#f0e6c0'));
+    fil.position.set(Math.cos(a) * 0.022, 0.12, Math.sin(a) * 0.022);
+    fil.rotation.z = Math.cos(a) * 0.3;
+    head.add(fil);
+    const anther = new THREE.Mesh(domeGeo(0.016), lam('#d88a3a'));
+    anther.position.set(Math.cos(a) * 0.04, 0.17, Math.sin(a) * 0.04);
+    anther.scale.set(1, 0.6, 1.7);
+    head.add(anther);
+  }
   g.userData.head = head;
   return g;
 }
@@ -1269,41 +1328,54 @@ function buildRose(rng, cols) {
   const H = 0.5 + rng() * 0.25;
   const stem = new THREE.Mesh(sharedCyl(0.02, 0.026, H, 5), lam('#3f7a34'));
   stem.position.y = H / 2; g.add(stem);
-  // thorns
   for (let i = 0; i < 2; i++) {
-    const th = new THREE.Mesh(sharedBox(0.03, 0.03, 0.03), lam('#2f6027'));
+    const th = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.045, 4), lam('#2f6027'));
     const a = rng() * Math.PI * 2;
-    th.position.set(Math.cos(a) * 0.026, H * (0.25 + i * 0.22), Math.sin(a) * 0.026);
+    th.position.set(Math.cos(a) * 0.026, H * (0.3 + i * 0.26), Math.sin(a) * 0.026);
+    th.rotation.z = Math.PI / 2 - 0.5;
+    th.rotation.y = -a;
     g.add(th);
   }
-  // toothed leaves
   for (let i = 0; i < 2; i++) {
     const a = rng() * Math.PI * 2;
-    const leaf = new THREE.Mesh(sharedBox(0.16, 0.02, 0.1), lam('#3f7a34'));
-    leaf.position.set(Math.cos(a) * 0.11, H * (0.35 + i * 0.28), Math.sin(a) * 0.11);
-    leaf.rotation.y = a; leaf.rotation.z = -0.28;
+    const leaf = new THREE.Mesh(leafGeo(0.2, 0.07), lam('#3f7a34'));
+    leaf.position.set(Math.cos(a) * 0.12, H * (0.38 + i * 0.26), Math.sin(a) * 0.12);
+    leaf.rotation.y = -a; leaf.rotation.z = -0.25;
     g.add(leaf);
   }
-  // the bloom: three rings of short cupped petals, tightening toward the heart
   const head = new THREE.Group();
-  head.position.y = H + 0.04;
+  head.position.y = H + 0.03;
   g.add(head);
-  const rings = [[6, 0.115, 0.0, -0.95], [4, 0.075, 0.035, -0.6]];
+  // A rose is a SPIRAL of cupped petals tightening to a closed heart. Three
+  // rings, each smaller, more upright and rotated off the last.
+  const rings = [
+    { n: 7, rad: 0.085, y: 0.0,  tilt: -1.05, len: 0.14, w: 0.052 },
+    { n: 5, rad: 0.052, y: 0.03, tilt: -0.72, len: 0.11, w: 0.045 },
+    { n: 4, rad: 0.026, y: 0.06, tilt: -0.35, len: 0.085, w: 0.038 },
+  ];
   for (let r = 0; r < rings.length; r++) {
-    const [n, rad, hy, tilt] = rings[r];
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + r * 0.6;
-      const p = new THREE.Mesh(sharedBox(0.1, 0.025, 0.085), lam(r === 2 ? heart : petal));
-      p.position.set(Math.cos(a) * rad, hy, Math.sin(a) * rad);
-      p.rotation.y = -a;
-      p.rotation.z = tilt;
+    const R = rings[r];
+    for (let i = 0; i < R.n; i++) {
+      const a = (i / R.n) * Math.PI * 2 + r * 0.75;
+      const p = new THREE.Mesh(petalGeo(R.len, R.w), lam(r === 2 ? heart : petal));
+      p.position.set(Math.cos(a) * R.rad, R.y, Math.sin(a) * R.rad);
+      p.rotation.y = -a + Math.PI / 2;
+      p.rotation.z = R.tilt;
       head.add(p);
     }
   }
-  const core = new THREE.Mesh(sharedBox(0.05, 0.05, 0.05), lam(heart));
-  core.position.y = 0.08; head.add(core);
-  const sepal = new THREE.Mesh(sharedCyl(0.06, 0.045, 0.05, 6), lam('#3f7a34'));
-  sepal.position.y = -0.03; head.add(sepal);
+  // the closed bud at the very centre
+  const core = new THREE.Mesh(domeGeo(0.03), lam(heart));
+  core.position.y = 0.095; core.scale.y = 1.5; head.add(core);
+  // green sepals cupping the bloom from below
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const sp = new THREE.Mesh(petalGeo(0.075, 0.026), lam('#3f7a34'));
+    sp.position.set(Math.cos(a) * 0.05, -0.02, Math.sin(a) * 0.05);
+    sp.rotation.y = -a + Math.PI / 2;
+    sp.rotation.z = -2.1;
+    head.add(sp);
+  }
   g.userData.head = head;
   return g;
 }
@@ -1313,39 +1385,32 @@ function buildSunflower(rng) {
   const H = 1.5 + rng() * 0.6;
   const stem = new THREE.Mesh(sharedCyl(0.045, 0.06, H, 6), lam('#4a7d33'));
   stem.position.y = H / 2; g.add(stem);
-  // broad heart-shaped leaves
   for (let i = 0; i < 3; i++) {
     const a = rng() * Math.PI * 2 + i * 2.1;
-    const leaf = new THREE.Mesh(sharedBox(0.34, 0.03, 0.26), lam('#4a7d33'));
-    leaf.position.set(Math.cos(a) * 0.2, H * (0.3 + i * 0.2), Math.sin(a) * 0.2);
-    leaf.rotation.y = a;
-    leaf.rotation.z = -0.35;
+    const leaf = new THREE.Mesh(leafGeo(0.5, 0.17), lam('#4a7d33'));
+    leaf.position.set(Math.cos(a) * 0.28, H * (0.3 + i * 0.2), Math.sin(a) * 0.28);
+    leaf.rotation.y = -a;
+    leaf.rotation.z = -0.4;
     g.add(leaf);
-    const tip = new THREE.Mesh(sharedBox(0.16, 0.03, 0.14), lam('#3f6d2b'));
-    tip.position.set(Math.cos(a) * 0.4, H * (0.3 + i * 0.2) - 0.09, Math.sin(a) * 0.4);
-    tip.rotation.y = a;
-    g.add(tip);
   }
-  // the head, on its own pivot so it can track the sun
   const head = new THREE.Group();
   head.position.y = H;
   g.add(head);
-  const disc = new THREE.Mesh(sharedCyl(0.2, 0.2, 0.07, 12), lam('#5a3a1e'));
-  disc.rotation.x = Math.PI / 2;
+  // the seed head is DOMED, not a flat coin — that curve catches the light
+  const disc = new THREE.Mesh(domeGeo(0.2), lam('#5a3a1e'));
+  disc.scale.set(1, 1, 0.42);
   head.add(disc);
-  // seed speckle: one ring plate instead of seven boxes
-  const seeds = new THREE.Mesh(sharedCyl(0.13, 0.13, 0.02, 10), lam('#3f2a14'));
-  seeds.rotation.x = Math.PI / 2;
-  seeds.position.z = 0.045;
-  head.add(seeds);
-  // two staggered rings of long rays
+  const rimRing = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.028, 5, 14), lam('#7a5228'));
+  head.add(rimRing);
+  // two staggered rings of tapering rays, the back one darker
   for (let r = 0; r < 2; r++) {
-    const n = r ? 7 : 9;
+    const n = r ? 8 : 10;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + r * 0.3;
-      const ray = new THREE.Mesh(sharedBox(0.13, 0.055, 0.02), lam(r ? '#f0b429' : '#ffd34e'));
-      ray.position.set(Math.cos(a) * 0.27, Math.sin(a) * 0.27, r ? -0.01 : 0.01);
-      ray.rotation.z = a;
+      const a = (i / n) * Math.PI * 2 + r * 0.32;
+      const ray = new THREE.Mesh(petalGeo(0.2, 0.036), lam(r ? '#e8a51f' : '#ffd34e'));
+      ray.position.set(Math.cos(a) * 0.19, Math.sin(a) * 0.19, r ? -0.02 : 0.015);
+      ray.rotation.z = a - Math.PI / 2;
+      ray.rotation.x = r ? 0.25 : -0.1;
       head.add(ray);
     }
   }

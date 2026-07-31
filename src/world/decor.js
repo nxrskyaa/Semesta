@@ -328,6 +328,22 @@ export function buildDecor(terrain, scene) {
     map: coreTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0,
   });
   const coreSprites = [];
+  // the ground pool: a radial falloff disc, additive so it brightens whatever
+  // it lies on instead of painting a flat orange circle
+  const poolGeo = new THREE.CircleGeometry(2.6, 18);
+  const poolTex = canvasTex((ctx) => {
+    const g4 = ctx.createRadialGradient(32, 32, 2, 32, 32, 31);
+    g4.addColorStop(0, 'rgba(255,206,140,0.95)');
+    g4.addColorStop(0.35, 'rgba(255,180,95,0.45)');
+    g4.addColorStop(0.7, 'rgba(255,150,70,0.14)');
+    g4.addColorStop(1, 'rgba(255,140,60,0)');
+    ctx.fillStyle = g4; ctx.fillRect(0, 0, 64, 64);
+  }, 64, 64);
+  const poolMat = new THREE.MeshBasicMaterial({
+    map: poolTex, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, opacity: 0,
+  });
+  const poolDiscs = [];
   const qRoof = new THREE.Quaternion().setFromAxisAngle(YUP, Math.PI / 4);
   torches.forEach((tc, i) => {
     q.identity();
@@ -359,6 +375,16 @@ export function buildDecor(terrain, scene) {
     core.position.set(tc.x, tc.y + 0.95, tc.z);
     group.add(core);
     coreSprites.push(core);
+    // A POOL OF LIGHT ON THE GROUND. Only the nearest handful of lanterns get a
+    // real PointLight — that budget is what keeps the framerate up — so every
+    // other lamp was a glowing box with nothing lit beneath it, which reads as
+    // "an orange thing", not a lamp. This disc costs nothing and gives all of
+    // them the spill a lamp is supposed to cast.
+    const pool = new THREE.Mesh(poolGeo, poolMat.clone());
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(tc.x, tc.y + 0.04, tc.z);
+    group.add(pool);
+    poolDiscs.push(pool);
   });
   if (torches.length) group.add(baseMesh, base2Mesh, postMesh, collarMesh, houseMesh, paneMesh, roofMesh, capMesh);
 
@@ -464,6 +490,14 @@ export function buildDecor(terrain, scene) {
       const ph = time * 9 + core.position.x * 3.1 + core.position.z;
       const flick = 0.78 + Math.sin(ph) * 0.13 + Math.sin(ph * 2.7) * 0.09;
       core.material.opacity = (isNight ? 0.9 : 0.1) * flick;
+    }
+    // the ground pool breathes with the same flame rhythm
+    for (let i = 0; i < poolDiscs.length; i++) {
+      const d = poolDiscs[i];
+      const ph = time * 9 + d.position.x * 3.1 + d.position.z;
+      const flick = 0.85 + Math.sin(ph) * 0.1 + Math.sin(ph * 2.7) * 0.05;
+      d.visible = isNight;
+      d.material.opacity = isNight ? 0.5 * flick : 0;
     }
 
     // butterflies flutter in the day, roost at night

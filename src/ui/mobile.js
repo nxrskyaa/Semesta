@@ -210,19 +210,46 @@ export function createTouchControls(input, skillIds, callbacks) {
   joyzone.addEventListener('touchend', joyEnd);
   joyzone.addEventListener('touchcancel', joyEnd);
 
-  // --- camera swipe in the middle-right band ---
+  // --- camera: one finger swipes the yaw, TWO fingers pinch the zoom ---
+  // The pinch listens on the whole root rather than the camera band, because on
+  // a phone you naturally pinch wherever you happen to be looking; restricting
+  // it to a strip on the right made it feel broken. The joystick and the action
+  // buttons stop propagation, so a pinch never fights a control.
   let camId = null, camLastX = 0;
   camzone.addEventListener('touchstart', (e) => {
     const t = e.changedTouches[0];
     camId = t.identifier; camLastX = t.clientX;
   }, { passive: true });
   camzone.addEventListener('touchmove', (e) => {
+    if (pinchDist !== null) return;     // a pinch is in progress; don't also spin
     for (const t of e.changedTouches) {
       if (t.identifier !== camId) continue;
       callbacks.onCameraDrag((t.clientX - camLastX) * 0.008);
       camLastX = t.clientX;
     }
   }, { passive: true });
+
+  let pinchDist = null;
+  const spanOf = (touches) => Math.hypot(
+    touches[0].clientX - touches[1].clientX,
+    touches[0].clientY - touches[1].clientY,
+  );
+  root.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      pinchDist = spanOf(e.touches);
+      camId = null;                     // drop any swipe that was running
+    }
+  }, { passive: true });
+  root.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2 || pinchDist === null) return;
+    const d = spanOf(e.touches);
+    // spreading fingers zooms IN (camera closer), pinching zooms out
+    callbacks.onCameraZoom?.((pinchDist - d) * 0.045);
+    pinchDist = d;
+  }, { passive: true });
+  const endPinch = (e) => { if (e.touches.length < 2) pinchDist = null; };
+  root.addEventListener('touchend', endPinch, { passive: true });
+  root.addEventListener('touchcancel', endPinch, { passive: true });
 
   // --- action buttons ---
   const on = (sel, fn) => {

@@ -346,6 +346,7 @@ const CSS = `
   transition: opacity 0.55s ease;
 }
 #loadscreen.gone { opacity: 0; pointer-events: none; }
+#loadscreen { transition: opacity 0.85s ease; }
 #loadscreen .scene {
   position: absolute; inset: 0; width: 100%; height: 100%;
   image-rendering: pixelated; object-fit: cover;
@@ -490,10 +491,13 @@ export function createLoadScreen({ logoSrc = '', vignette = null } = {}) {
   function done(label = 'Ready!') {
     stage(label, 1);
     return new Promise((res) => {
+      // Hold on the finished frame for a beat before fading. The scenes are
+      // worth a look and the bar snapping to 100% and vanishing felt abrupt —
+      // but this is still under two seconds, so it never becomes a wait.
       setTimeout(() => {
         root.classList.add('gone');
-        setTimeout(() => { dispose(); res(); }, 600);
-      }, 380);
+        setTimeout(() => { dispose(); res(); }, 900);
+      }, 1100);
     });
   }
 

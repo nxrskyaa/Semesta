@@ -642,6 +642,26 @@ function buildFencedGarden() {
   return g;
 }
 
+let _poolTex = null;
+function lampPoolMat() {
+  if (!_poolTex) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const ctx = c.getContext('2d');
+    const g4 = ctx.createRadialGradient(32, 32, 2, 32, 32, 31);
+    g4.addColorStop(0, 'rgba(255,206,140,0.95)');
+    g4.addColorStop(0.35, 'rgba(255,180,95,0.45)');
+    g4.addColorStop(0.7, 'rgba(255,150,70,0.14)');
+    g4.addColorStop(1, 'rgba(255,140,60,0)');
+    ctx.fillStyle = g4; ctx.fillRect(0, 0, 64, 64);
+    _poolTex = new THREE.CanvasTexture(c);
+  }
+  return new THREE.MeshBasicMaterial({
+    map: _poolTex, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, opacity: 0,
+  });
+}
+
 function buildLamp() {
   // Village lamps match the wild Japanese stone lanterns (ishidōrō) so lighting
   // reads as one aesthetic: stone base + pillar + warm light box + pyramid cap.
@@ -697,13 +717,20 @@ function buildLamp() {
   glow.position.y = 0.95;
   g.add(glow);
 
+  // ground pool, same reasoning as the wild lanterns: only the nearest lamps
+  // get a real PointLight, so every lamp needs its own visible spill
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(2.4, 16), lampPoolMat());
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.y = 0.04;
+  g.add(pool);
+
   const roof = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.22, 4), lam('#5e625a'));
   roof.position.y = 1.17;
   roof.rotation.y = Math.PI / 4;
   const cap = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), lam('#84887e'));
   cap.position.y = 1.3;
   g.add(base, base2, post, collar, pane, roof, cap);
-  g.userData.flame = { tongues, glow, pane, seed: Math.random() * 10 };
+  g.userData.flame = { tongues, glow, pane, pool, seed: Math.random() * 10 };
   return g;
 }
 
@@ -729,6 +756,10 @@ export function tickFlame(userData, time, lit = 1) {
   // brightness flickers, SIZE never does
   f.glow.material.opacity = (0.2 + Math.sin(t * 0.9) * 0.04) * lit;
   f.pane.material.opacity = 0.3 + 0.35 * lit;
+  if (f.pool) {
+    f.pool.visible = lit > 0.2;
+    f.pool.material.opacity = 0.5 * lit * (0.85 + Math.sin(t * 0.9) * 0.1);
+  }
 }
 
 function buildGachaMachine() {

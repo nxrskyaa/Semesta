@@ -144,16 +144,20 @@ async function init(character, saved, audio) {
   // pixels. The mip chain is not cheap to allocate, so it is built once and
   // simply bypassed when the FX knob turns bloom off. Touch devices never build
   // it at all — UnrealBloom is too heavy for a phone whatever the preset says.
-  let composer = null;
+  let composer = null, bloomPass = null;
   if (!isTouchDevice()) {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(
+    // Strength and threshold are tuned so FLAMES and glowing FX bloom hard
+    // while lit surfaces stay crisp. A lower threshold would smear the whole
+    // world; a wider radius is what gives the glow its soft falloff.
+    bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.34,   // strength — enough to bloom a flame, not enough to fog the world
-      0.6,    // radius
-      0.8,    // threshold: only genuinely bright things bloom
-    ));
+      0.52,   // strength
+      0.85,   // radius — softer, wider halo
+      0.72,   // threshold: flames, sparks and sun glitter, not lit walls
+    );
+    composer.addPass(bloomPass);
     composer.addPass(new OutputPass());
   }
   const usePost = () => composer && qual.bloom;
@@ -213,7 +217,30 @@ async function init(character, saved, audio) {
 
   // --- safe zones: the village, rest camps and your homes repel monsters ---
   const VILLAGE_SAFE_R = 13;
+  // CALM WATER: the lakes and the swimming pool are places you go to fish, swim
+  // and stand about — having something charge you out of the reeds there is
+  // exactly the wrong feeling. They are treated as sanctuaries, which the enemy
+  // AI already fully respects (no spawns, repelled at the boundary, aggro'd
+  // monsters disengage and wander away).
+  const calmZones = [];
+  for (const L of terrain.lakes) {
+    calmZones.push({
+      x: L.x - terrain.size / 2,
+      z: L.z - terrain.size / 2,
+      r: L.r + 5,
+    });
+  }
+  {
+    // the swimming pool landmark, if it got placed
+    let poolMesh = null;
+    for (const b of landmarks.built) if (b.userData?.swimmers) poolMesh = b;
+    if (poolMesh) calmZones.push({ x: poolMesh.position.x, z: poolMesh.position.z, r: 9 });
+  }
+
   function inSafeZone(x, z) {
+    for (const c of calmZones) {
+      if ((x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r) return c;
+    }
     const dv = (x - terrain.spawn.x) ** 2 + (z - terrain.spawn.z) ** 2;
     if (dv < VILLAGE_SAFE_R * VILLAGE_SAFE_R) return { x: terrain.spawn.x, z: terrain.spawn.z, r: VILLAGE_SAFE_R };
     for (const c of camps.camps) {
@@ -1396,6 +1423,8 @@ async function init(character, saved, audio) {
       },
       onCloseMenu: () => { audio.sfx('ui'); panels.closeAll(); dialog.hide(); worldmap.hide(); fishing.cancel(); },
       onCameraDrag: (d) => { cam.yaw -= d; },
+      // pinch to zoom — same clamp as the desktop scroll wheel
+      onCameraZoom: (d) => { cam.dist = Math.max(9, Math.min(30, cam.dist + d)); },
     });
   }
 
@@ -1624,6 +1653,13 @@ async function init(character, saved, audio) {
       hud.toastText('Your mount waits on dry land.');
     }
     tickLights(dt);
+    // bloom leans in at night so the lanterns and fires carry the scene, and
+    // backs off at noon so daylight does not turn into a smear
+    if (bloomPass) {
+      const hrB = lighting.state.minutes / 60;
+      const dayness = Math.max(0, Math.min(1, (Math.cos(((hrB - 13) / 24) * Math.PI * 2) + 0.6) / 1.3));
+      bloomPass.strength = 0.72 - dayness * 0.32;
+    }
     dailies.tick(dt);
     hud.setMenuBadge?.(dailies.pending());
     // cosmetic movement trail (wardrobe slot 3)
