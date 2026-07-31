@@ -183,6 +183,7 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     bob: 0,
     ringT: 0,
     moored: {},          // id -> { mesh, x, z, dir }
+    homeBerth: {},       // id -> the original marina berth, for stranded craft
   };
   const group = new THREE.Group();
   scene.add(group);
@@ -216,6 +217,7 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     mesh.rotation.y = dir;
     group.add(mesh);
     state.moored[id] = { mesh, x, z, dir, id };
+    state.homeBerth[id] = { x, z, dir };   // where to send it back to if stranded
     return state.moored[id];
   }
 
@@ -260,7 +262,12 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     return true;
   }
 
-  function leave(player) {
+  /**
+   * Step off. `stranded` means the rider was moved off the water while aboard
+   * (teleport / respawn), so the craft is sent back to a floatable berth rather
+   * than left wherever the player happened to land.
+   */
+  function leave(player, stranded = false) {
     if (!state.active) return;
     const id = state.active;
     const m = state.moored[id];
@@ -268,15 +275,26 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     const shore = terrain.nearestShore(player.state.pos.x, player.state.pos.z);
     player.state.group.remove(ridden);
     group.add(ridden);
-    const px = player.state.pos.x, pz = player.state.pos.z;
+    let px = player.state.pos.x, pz = player.state.pos.z;
+    if (stranded || !floats(px, pz)) {
+      // send it home to its berth: a hull left on dry land is the bug, not a
+      // feature, and the marina is where you would expect to find it again
+      const berth = state.homeBerth[id];
+      if (berth) { px = berth.x; pz = berth.z; }
+    }
     ridden.position.set(px, WATER_Y, pz);
-    ridden.rotation.set(0, state.heading, 0);
-    m.x = px; m.z = pz; m.dir = state.heading;
+    ridden.rotation.set(0, stranded ? m.dir : state.heading, 0);
+    m.x = px; m.z = pz; m.dir = stranded ? m.dir : state.heading;
     ridden = null;
     state.active = null;
     player.state.craft = null;
     player.setCraftPose?.(false);
-    player.state.pos.set(shore.x, terrain.surfaceY(shore.x, shore.z), shore.z);
+    if (!stranded) {
+      player.state.pos.set(shore.x, terrain.surfaceY(shore.x, shore.z), shore.z);
+    } else {
+      // already been moved somewhere deliberate — just drop them on the ground
+      player.state.pos.y = terrain.surfaceY(player.state.pos.x, player.state.pos.z);
+    }
     player.state.grounded = true;
     particles?.burst(new THREE.Vector3(px, WATER_Y, pz), '#dff6ff', 10, 2.4, 4, 0.45);
     hooks.onLeave?.(CRAFT_DEFS[id]);
@@ -290,6 +308,14 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
   function drive(dt, player, mv, time) {
     if (!state.active) return;
     const def = CRAFT_DEFS[state.active];
+
+    // If the rider is no longer over water at all, they were teleported,
+    // respawned or nudged while aboard. Put them off the craft properly rather
+    // than dragging a hull through the hillside.
+    if (!terrain.swimmable(player.state.pos.x, player.state.pos.z)) {
+      leave(player, true);
+      return;
+    }
 
     // ---- HOW A REAL HULL BEHAVES, and why the earlier versions felt wrong ----
     // A jetski is not a car. Three things define it:

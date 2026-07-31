@@ -468,6 +468,13 @@ async function init(character, saved, audio) {
   const tele = { channel: 0, cd: 0 };
   function teleportHome() {
     if (player.state.dead || player.state.busy) return;
+    // you cannot teleport off a hull — step off first, or the craft comes with
+    // you and ends up buried in the hillside at the far end
+    if (watercraft.state.active) {
+      hud.toastText('Step off the boat first.');
+      audio.sfx('deny');
+      return;
+    }
     if (tele.channel > 0) { tele.channel = 0; hud.toastText('Teleport cancelled.'); return; }
     if (tele.cd > 0) { audio.sfx('deny'); hud.toastText(`Teleport recharging (${Math.ceil(tele.cd)}s)...`); return; }
     tele.channel = 1.6;
@@ -1401,6 +1408,7 @@ async function init(character, saved, audio) {
       audio.sfx('ui'); panels.toggle(which);
     },
     onRespawn: () => {
+      if (watercraft.state.active) watercraft.leave(player, true);
       player.respawn();
       hud.showDead(false);
     },

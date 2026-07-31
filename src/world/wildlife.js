@@ -342,7 +342,9 @@ export function createWildlife(scene, terrain, particles) {
           a.m.position.x = nx; a.m.position.z = nz;
         } else a.dir += 2.2;
         a.m.position.y = terrain.surfaceY(a.m.position.x, a.m.position.z);
-        a.m.rotation.y = a.dir + Math.PI;
+        // faces are built on +Z and movement is (sin dir, cos dir), so the
+        // heading IS the facing. The old `+ Math.PI` had them moonwalking.
+        a.m.rotation.y = a.dir;
       }
 
       if (a.kind === 'bunny') {
@@ -410,7 +412,9 @@ export function createWildlife(scene, terrain, particles) {
           WATER_Y + arc * 1.5,
           f.z + Math.cos(f.dir) * p * 2.6,
         );
-        f.m.rotation.y = f.dir + Math.PI / 2;
+        // the fish body is built along +X, so a heading of (sin d, cos d) needs
+        // rotation.y = d - PI/2. With + PI/2 it flew tail-first.
+        f.m.rotation.y = f.dir - Math.PI / 2;
         f.m.rotation.z = (0.5 - p) * 1.8;         // nose up, then down
         f.m.userData.tailPivot.rotation.y = Math.sin(p * 22) * 0.6;
         if (f.air <= 0) {
@@ -443,7 +447,9 @@ export function createWildlife(scene, terrain, particles) {
       // stay in water: if the loop wandered onto land, tighten the radius
       if (!terrain.swimmable(x, z)) { f.r *= 0.88; continue; }
       f.m.position.set(x, WATER_Y - f.depth - Math.sin(time * 1.6 + f.wob) * 0.05, z);
-      f.m.rotation.y = -f.a + (f.sp > 0 ? Math.PI / 2 : -Math.PI / 2);
+      // orbiting (cos a, sin a) the tangent is (-sin a, cos a); for a +X body
+      // that is rotation.y = -a - PI/2, mirrored when swimming the other way
+      f.m.rotation.y = f.sp > 0 ? -f.a - Math.PI / 2 : -f.a + Math.PI / 2;
       // the whole body banks into the turn, the tail beats
       f.m.rotation.z = Math.sin(time * 6 + f.wob) * 0.12;
       f.m.userData.tailPivot.rotation.y = Math.sin(time * 9 + f.wob) * 0.55;
@@ -464,7 +470,7 @@ export function createWildlife(scene, terrain, particles) {
         b.y + Math.sin(b.a * 2.2) * 0.7,
         b.cz + Math.sin(b.a) * b.r,
       );
-      b.m.rotation.y = -b.a + Math.PI / 2;
+      b.m.rotation.y = -b.a - Math.PI / 2;   // +X body on a (cos a, sin a) orbit
       b.m.rotation.z = 0.28;                      // banked into the circle
       // beat for a while, then hold the wings out and glide
       const gliding = Math.sin(b.a * 0.7) > 0.4;

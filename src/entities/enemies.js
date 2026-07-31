@@ -801,11 +801,11 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         let l = Math.hypot(dx, dz);
         // dead-center degenerate case: pick a stable outward heading
         let nx, nz;
-        if (l < 0.01) { nx = Math.cos(e.dir || 0); nz = Math.sin(e.dir || 0); l = 0.01; }
+        if (l < 0.01) { nx = Math.sin(e.dir || 0); nz = Math.cos(e.dir || 0); l = 0.01; }
         else { nx = dx / l; nz = dz / l; }
         e.state = 'wander';
-        e.dir = Math.atan2(nz, nx);
-        e.mesh.rotation.y = Math.atan2(nx, nz);
+        e.dir = Math.atan2(nx, nz);
+        e.mesh.rotation.y = e.dir;
         e.knock.set(0, 0); // cancel any inward knockback
         moveEnemy(e, nx * e.def.speed * 2.2, nz * e.def.speed * 2.2, dt);
         if (Math.hypot(p.x - zone.x, p.z - zone.z) < zone.r) {
@@ -824,7 +824,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         e.state = 'wander';
         e.wanderT = 2 + Math.random() * 2;
         // wander AWAY from the sanctuary instead of hugging its wall
-        if (playerSafe) e.dir = Math.atan2(p.z - playerSafe.z, p.x - playerSafe.x);
+        if (playerSafe) e.dir = Math.atan2(p.x - playerSafe.x, p.z - playerSafe.z);
         e.np.sprite.visible = e.hp < e.hpMax;
       }
 
@@ -849,7 +849,16 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         if (e.wanderT <= 0) { e.wanderT = 1.5 + Math.random() * 3; e.dir = Math.random() * Math.PI * 2; }
         if (distP < e.def.aggro && !playerState.busy
           && !hooks.inSafeZone?.(playerPos.x, playerPos.z)) e.state = 'aggro';
-        moveEnemy(e, Math.cos(e.dir) * e.def.speed * 0.5, Math.sin(e.dir) * e.def.speed * 0.5, dt);
+        // FACE THE WAY YOU WALK. Wander never set the rotation, so a monster
+        // kept whatever heading it last had while drifting off in a new one —
+        // that is the sideways shuffle.
+        e.mesh.rotation.y += (() => {
+          let d = e.dir - e.mesh.rotation.y;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          return d * Math.min(1, dt * 6);      // turn smoothly, don't snap
+        })();
+        moveEnemy(e, Math.sin(e.dir) * e.def.speed * 0.5, Math.cos(e.dir) * e.def.speed * 0.5, dt);
       } else if (e.def.behavior === 'ranged') {
         rangedAI(e, playerState, distP, dt);
       } else if (e.def.behavior === 'charge') {
