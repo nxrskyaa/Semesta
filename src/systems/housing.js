@@ -1,6 +1,7 @@
 // Housing — claim a piece of land, then raise your own home from gathered
 // materials. Finished homes are personal safe zones that heal you quickly.
 import * as THREE from 'three';
+import { bakeStatic } from '../gfx/bake.js';
 import { WATER_LEVEL } from '../world/terrain.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 
@@ -211,6 +212,8 @@ export function createHousing(scene, terrain, decorBlocked, particles, avoid = [
     scene.remove(land.sign);
     land.houseMesh = buildHouse(designId);
     land.houseMesh.position.set(land.x, land.y, land.z);
+    // a house is ~60 little boxes that will never move again
+    bakeStatic(land.houseMesh);
     scene.add(land.houseMesh);
     // block the footprint
     const [cx, cz] = terrain.cellOf(land.x, land.z);

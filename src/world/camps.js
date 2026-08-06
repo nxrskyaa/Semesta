@@ -2,6 +2,7 @@
 // campfire (cook here!), a little tent and a log bench. Camps are SAFE ZONES:
 // monsters keep out, and resting near the fire heals you quickly.
 import * as THREE from 'three';
+import { bakeStatic } from '../gfx/bake.js';
 import { WATER_LEVEL } from './terrain.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 
@@ -225,6 +226,15 @@ export function createCamps(scene, terrain, decorBlocked, particles) {
     const line = RANGER_LINES[ranger.lineIdx % RANGER_LINES.length];
     ranger.lineIdx++;
     return line;
+  }
+
+  // Bake each camp: the tent, bench, log ring and stones never move. Only the
+  // campfire flame is posed per frame, so it is marked and left alone.
+  for (const c of camps) {
+    const u = c.mesh.userData;
+    if (u.flame) u.flame.userData.dynamic = true;
+    if (u.flameCore) u.flameCore.userData.dynamic = true;
+    bakeStatic(c.mesh);
   }
 
   return { camps, update, nearestFire, nearestRanger, rangerLine };

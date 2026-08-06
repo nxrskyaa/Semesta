@@ -3,6 +3,7 @@
 // tends the market stall, Rio patrols, Elder Maple putters in the herb garden.
 // Also builds the village itself: huts, a well, stalls, fences, crops, lamps.
 import * as THREE from 'three';
+import { bakeStatic } from '../gfx/bake.js';
 import { makeCritterFaceTexture, PALETTE } from '../gfx/textures.js';
 import { WATER_LEVEL } from '../world/terrain.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
@@ -1100,6 +1101,7 @@ function buildClutter(rng) {
 // ---------------------------------------------------------------------------
 export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = null) {
   const villageLamps = [];   // their flames are ticked in update()
+  let bakeReport = null;
   const npcs = [];
   const S2 = terrain.size / 2;
 
@@ -1137,11 +1139,14 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
     return groundAt(ox, oz);
   }
 
+  // every prop the village places, so the static ones can be merged at the end
+  const placed = [];
   function place(mesh, ox, oz, faceCenter = true, blockR = 1) {
     const spot = groundAt(ox, oz);
     mesh.position.set(spot.x, spot.y, spot.z);
     if (faceCenter) mesh.rotation.y = Math.atan2(terrain.spawn.x - spot.x, terrain.spawn.z - spot.z);
     scene.add(mesh);
+    placed.push(mesh);
     if (blockR >= 0) blockCells(spot.x, spot.z, blockR);
     return spot;
   }
@@ -1539,7 +1544,25 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
     return best;
   }
 
-  return { npcs, update, nearest, cookfire, stallSpot, forgeSpot, gachaSpot };
+  // --- BAKE THE VILLAGE ------------------------------------------------
+  // The basecamp is where the player actually stands, so its draw calls are the
+  // ones that hurt: a hut is 20 meshes, the paving and the station daises many
+  // more, and every one was its own call. Merge everything static per material,
+  // per structure — per structure, not globally, so a hut behind you is still
+  // culled. The lamps are excluded: their flame tongues, glow, pane and pool all
+  // animate every frame.
+  {
+    for (const lamp of villageLamps) lamp.userData.dynamic = true;
+    let before = 0, after = 0;
+    for (const mesh of placed) {
+      if (mesh.userData.dynamic) continue;
+      const r = bakeStatic(mesh);
+      before += r.before; after += r.after;
+    }
+    bakeReport = { before, after };
+  }
+
+  return { npcs, update, nearest, cookfire, stallSpot, forgeSpot, gachaSpot, bakeReport };
 }
 
 // quest marker sprite ('!' available / '?' turn-in)

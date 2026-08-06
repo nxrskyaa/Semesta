@@ -7,6 +7,7 @@
 // has one silhouette you can recognise from the water, because "which island is
 // that?" should be answerable at a glance.
 import * as THREE from 'three';
+import { bakeStatic } from '../gfx/bake.js';
 import { WATER_Y, WATER_LEVEL } from './terrain.js';
 import { getQuality } from '../gfx/quality.js';
 import { disposeObject } from '../util/dispose.js';
@@ -466,6 +467,55 @@ export function createIsles(scene, terrain, decorBlocked) {
     l.position.y += 2.0;
     group.add(l);
     lights.push(l);
+  }
+
+  // --- BAKE. Every prop here is a pile of little boxes: one palm is 20 meshes,
+  // one island around 90, and the archipelago came to 610 meshes for 610 draw
+  // calls. None of that geometry moves relative to its island, so it is merged
+  // per material into a handful of meshes. Anything that IS posed per frame is
+  // marked dynamic first and survives untouched.
+  {
+    // Mark the SMALLEST thing that actually moves, not the whole prop: a frond
+    // pivot swings, but its three blades are rigid, so the baker recurses in and
+    // merges them. Marking the crown alone would have protected 21 meshes.
+    for (const p of palms) {
+      const c = p.userData.crown;
+      if (!c) continue;
+      c.userData.dynamic = true;
+      for (const f of c.children) if (f.userData.phase !== undefined) f.userData.dynamic = true;
+    }
+    for (const b of beacons) if (b.userData.swing) b.userData.swing.userData.dynamic = true;
+    for (const f of folks) {
+      const u = f.o.userData;
+      f.o.userData.dynamic = true;
+      for (const c of [u.critter, u.a, u.b, u.ball]) {
+        if (!c) continue;
+        c.userData.dynamic = true;
+        const cu = c.userData;
+        (cu.arms || []).forEach((a) => { a.userData.dynamic = true; });
+        if (cu.head) cu.head.userData.dynamic = true;
+        if (cu.ears) cu.ears.userData.dynamic = true;
+      }
+    }
+    // bin the props by island so each one stays independently frustum-culled —
+    // merging the whole archipelago into one mesh would mean drawing every
+    // island whenever any part of the sea is on screen
+    const bins = terrain.islands.map(() => new THREE.Group());
+    const loose = new THREE.Group();
+    for (const o of [...group.children]) {
+      if (o.isLight) continue;
+      let bi = -1, bd = Infinity;
+      terrain.islands.forEach((isl, i) => {
+        const d = (o.position.x - isl.x) ** 2 + (o.position.z - isl.z) ** 2;
+        if (d < bd) { bd = d; bi = i; }
+      });
+      (bd < 26 * 26 ? bins[bi] : loose).add(o);
+    }
+    for (const b of [...bins, loose]) {
+      if (!b.children.length) continue;
+      group.add(b);
+      bakeStatic(b);
+    }
   }
 
   scene.add(group);

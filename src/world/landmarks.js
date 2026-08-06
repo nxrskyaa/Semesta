@@ -2,6 +2,7 @@
 // to make the wilds feel lived-in beyond the village. Purely scenic (blocked
 // footprints); the windmill's sails turn.
 import * as THREE from 'three';
+import { bakeStatic } from '../gfx/bake.js';
 import { WATER_LEVEL, WATER_Y } from './terrain.js';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
@@ -1585,6 +1586,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
 
   // --- three flower gardens, each with a different planting mix ---
   const grng = (() => { let g = 20261; return () => { g = (g * 1103515245 + 12345) & 0x7fffffff; return g / 0x7fffffff; }; })();
+  let bakeReport = null;
   const gardens = [];
   for (const [kind, gx, gz] of [['lily', -S2 * 0.42, -S2 * 0.55],
                                 ['rose', S2 * 0.46, -S2 * 0.2],
@@ -1645,6 +1647,54 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   for (const [nx, nz] of [[S2 * 0.2, -S2 * 0.2], [-S2 * 0.3, S2 * 0.58], [S2 * 0.55, S2 * 0.4], [-S2 * 0.05, S2 * 0.3]]) {
     const nest = buildNapNest();
     if (place(nest, nx, nz, 0, 8, 1.8)) { built.push(nest); nests.push(nest); }
+  }
+
+  // --- BAKE THE STATIC HALF ---------------------------------------------
+  // These structures are built from hundreds of little boxes: three flower
+  // gardens alone came to 597 meshes, and a mesh is a draw call. Almost none of
+  // that geometry moves — a barn roof, a pagoda tier, a garden's stone skirt —
+  // so it is merged per material into a handful of meshes per landmark. Every
+  // part the update loop below actually poses is marked dynamic FIRST, which is
+  // what makes this safe: marking a pivot protects everything under it.
+  {
+    const dyn = (o) => { if (o) o.userData.dynamic = true; };
+    const dynAll = (list) => { if (list) for (const o of list) dyn(o); };
+    // materials whose colour or opacity is animated cannot be shared by a merge
+    const dynMat = (o) => { if (o?.material) o.material.userData = { ...(o.material.userData || {}), dynamic: true }; };
+
+    dyn(rialo.userData.flag); dynAll(rialo.userData.lanterns);
+    dyn(windmill.userData.sails);
+    dyn(shrine.userData.gem);
+    dynAll(heart.userData.flames);
+    dyn(school.userData.clockHand);
+    for (const lm of [bridge, mine]) { dynAll(lm.userData.lamps); (lm.userData.lamps || []).forEach(dynMat); }
+    dynAll(pagoda.userData.bells);
+    for (const gd of gardens) {
+      const G = gd.userData.garden;
+      if (!G) continue;
+      // the stalk sways as one piece; only a sunflower's HEAD turns separately,
+      // so everything else in the plant merges down to a couple of meshes
+      for (const h of G.heads) { dyn(h.o); dyn(h.o.userData?.head); }
+      for (const f of G.flutter) dyn(f.o);
+    }
+    for (const lm of [festival, watch, ...docks.map((d) => d.mesh)]) dynAll(lm.userData.lanterns);
+    dynAll(festival.userData.flames);
+    for (const d of (festival.userData.dancers || [])) { dyn(d.g); dynAll(d.g.userData?.arms); }
+    for (const d of docks) dyn(d.mesh.userData.monger);
+    // the waterfall is scrolling textures and breathing opacities end to end
+    dyn(falls);
+    // the kickabout ball flies, the gossips bob, the nappers breathe
+    dyn(kick);
+    for (const c of chats) dyn(c);
+    for (const n of nests) dyn(n);
+
+    let before = 0, after = 0;
+    for (const b of built) {
+      if (b.userData.dynamic) continue;
+      const r = bakeStatic(b);
+      before += r.before; after += r.after;
+    }
+    bakeReport = { before, after };
   }
 
   // Per-frame animation is the real cost of a world this dense: every dancer,
@@ -1842,5 +1892,5 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     }
   }
 
-  return { built, update, heart, docks, foots };
+  return { built, update, heart, docks, foots, bakeReport };
 }
