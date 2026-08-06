@@ -315,7 +315,16 @@ export class Terrain {
     this.spawn = this._findSpawn();
     const [sx, sz] = this.cellOf(this.spawn.x, this.spawn.z);
     const sh = this.heightCell(sx, sz);
-    const R = 11;
+    // Flat out past the OUTER HUT RING (12.6 + jitter). The plaza is a rigid
+    // paved disc of radius 11.5 with stations and huts beyond it; if the ground
+    // under any of that rolls, the flat geometry cuts into it.
+    // The paved plaza is RIGID flat geometry of radius 11.5, so the ground under
+    // it has to be genuinely level — a gentle blend leaves a roll that the stone
+    // then cuts into. Inside PLAZA_FLAT everything is forced to one height; from
+    // there out to R it eases back into the landscape so the village does not
+    // sit on an obvious pedestal.
+    const PLAZA_FLAT = 13;
+    const R = 20;
     for (let dz = -R; dz <= R; dz++) {
       for (let dx = -R; dx <= R; dx++) {
         const ix = sx + dx, iz = sz + dz;
@@ -324,8 +333,13 @@ export class Terrain {
         if (d > R) continue;
         const i = this.idx(ix, iz);
         if (this.height[i] <= WATER_LEVEL) continue;
-        const t = Math.max(0, 1 - d / R);
-        this.height[i] = Math.round(this.height[i] * (1 - t * 0.8) + sh * t * 0.8);
+        if (d <= PLAZA_FLAT) {
+          this.height[i] = sh;                       // dead level under the stone
+        } else {
+          const t = 1 - (d - PLAZA_FLAT) / (R - PLAZA_FLAT);
+          const ease = t * t * (3 - 2 * t);
+          this.height[i] = Math.round(this.height[i] * (1 - ease) + sh * ease);
+        }
       }
     }
     this.spawn = new THREE.Vector3(
@@ -336,9 +350,10 @@ export class Terrain {
 
     // the town centre is PAVED — warm terracotta plaza tiles instead of dirt,
     // with a wobbled edge so the paving melts organically into the grass
-    const PR = 7.5;
-    for (let dz = -9; dz <= 9; dz++) {
-      for (let dx = -9; dx <= 9; dx++) {
+    // the terracotta tiling reaches the plaza kerb so the mesh never ends on grass
+    const PR = 12;
+    for (let dz = -14; dz <= 14; dz++) {
+      for (let dx = -14; dx <= 14; dx++) {
         const ix = sx + dx, iz = sz + dz;
         if (!this.inBounds(ix, iz)) continue;
         const i = this.idx(ix, iz);

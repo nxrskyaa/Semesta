@@ -664,6 +664,239 @@ function lampPoolMat() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// THE TEMPLE PLAZA — the floor of Anavela Universe.
+//
+// The old basecamp was a scatter: five huts at arbitrary offsets, the well
+// off-centre, the shop, forge and capsule machine wherever they happened to
+// fit. Nothing lined up with anything, and the ground under it was a single
+// flat tile. It read as placed, not designed.
+//
+// This is built the way a real plaza is: ONE focal point at dead centre, FOUR
+// cardinal avenues out of it, and everything else arranged on those axes at
+// matched radii. Symmetry is what makes a public space read as built.
+//
+// Palette follows the Rialo temple language — cream/parchment paving, warm gold
+// inlay, deep green-black structure, muted stone.
+// ---------------------------------------------------------------------------
+const PZ = {
+  pave: '#e8dfc4',       // cream flagstone
+  paveAlt: '#dcd0b0',    // its darker sibling, for the checker
+  grout: '#b3a684',      // the joint between stones
+  gold: '#d8a94a',       // inlay
+  goldDim: '#a8823a',
+  stone: '#9a9488',      // structural stone
+  stoneDark: '#6e6a60',
+  ink: '#232a24',        // deep green-black
+};
+
+/**
+ * The paved plaza: a central rosette, four avenues, a ring walk and a stepped
+ * kerb. All flat geometry laid just above the terrain, with polygonOffset so it
+ * never z-fights the ground.
+ */
+function buildPlazaFloor() {
+  const g = new THREE.Group();
+  const flat = (geo, color, y, opts = {}) => {
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+      color: new THREE.Color(color),
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+      ...opts,
+    }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = y;
+    m.receiveShadow = true;
+    return m;
+  };
+
+  const R = 11.5;                       // outer radius of the paving
+
+  // --- the ring walk: alternating flagstones laid in concentric courses -----
+  // Two rings of wedges in alternating tones reads as laid stone; one flat disc
+  // reads as paint.
+  for (let ring = 0; ring < 4; ring++) {
+    const r0 = 3.4 + ring * 2.0;
+    const r1 = r0 + 2.0;
+    const seg = 24 + ring * 6;
+    for (let i = 0; i < seg; i++) {
+      const a0 = (i / seg) * Math.PI * 2;
+      const a1 = ((i + 0.86) / seg) * Math.PI * 2;   // the gap IS the grout
+      const shape = new THREE.Shape();
+      shape.moveTo(Math.cos(a0) * r0, Math.sin(a0) * r0);
+      shape.lineTo(Math.cos(a0) * (r1 - 0.14), Math.sin(a0) * (r1 - 0.14));
+      shape.lineTo(Math.cos(a1) * (r1 - 0.14), Math.sin(a1) * (r1 - 0.14));
+      shape.lineTo(Math.cos(a1) * r0, Math.sin(a1) * r0);
+      shape.closePath();
+      const tone = (i + ring) % 2 ? PZ.pave : PZ.paveAlt;
+      g.add(flat(new THREE.ShapeGeometry(shape), tone, 0.03));
+    }
+  }
+  // the grout showing through underneath
+  g.add(flat(new THREE.CircleGeometry(R, 40), PZ.grout, 0.02));
+
+  // --- the ROSETTE at dead centre -------------------------------------------
+  g.add(flat(new THREE.CircleGeometry(3.4, 32), PZ.paveAlt, 0.035));
+  g.add(flat(new THREE.RingGeometry(3.2, 3.4, 32), PZ.gold, 0.045));
+  g.add(flat(new THREE.RingGeometry(2.5, 2.62, 32), PZ.goldDim, 0.045));
+  // eight petals of gold inlay radiating from the middle
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 0);
+    sh.lineTo(Math.cos(a - 0.13) * 2.4, Math.sin(a - 0.13) * 2.4);
+    sh.lineTo(Math.cos(a) * 2.9, Math.sin(a) * 2.9);
+    sh.lineTo(Math.cos(a + 0.13) * 2.4, Math.sin(a + 0.13) * 2.4);
+    sh.closePath();
+    g.add(flat(new THREE.ShapeGeometry(sh), i % 2 ? PZ.gold : PZ.goldDim, 0.05));
+  }
+  g.add(flat(new THREE.CircleGeometry(0.75, 16), PZ.pave, 0.055));
+  g.add(flat(new THREE.RingGeometry(0.68, 0.78, 16), PZ.gold, 0.06));
+
+  // --- four AVENUES on the cardinal axes ------------------------------------
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const av = new THREE.Group();
+    // the roadway
+    const road = flat(new THREE.PlaneGeometry(2.6, R + 3.5), PZ.pave, 0.055);
+    road.position.set(Math.sin(a) * (R / 2 + 1.6), 0.055, Math.cos(a) * (R / 2 + 1.6));
+    road.rotation.z = -a;
+    av.add(road);
+    // gold kerb lines either side
+    for (const s of [-1.3, 1.3]) {
+      const kerb = flat(new THREE.PlaneGeometry(0.14, R + 3.5), PZ.goldDim, 0.06);
+      kerb.position.set(
+        Math.sin(a) * (R / 2 + 1.6) + Math.cos(a) * s,
+        0.06,
+        Math.cos(a) * (R / 2 + 1.6) - Math.sin(a) * s,
+      );
+      kerb.rotation.z = -a;
+      av.add(kerb);
+    }
+    // stepping bands across the avenue so it reads as paved, not painted
+    for (let k = 0; k < 9; k++) {
+      const d = 3.6 + k * 1.5;
+      const band = flat(new THREE.PlaneGeometry(2.5, 0.1), PZ.grout, 0.062);
+      band.position.set(Math.sin(a) * d, 0.062, Math.cos(a) * d);
+      band.rotation.z = -a;
+      av.add(band);
+    }
+    g.add(av);
+  }
+
+  // --- the stepped kerb around the whole plaza ------------------------------
+  for (let i = 0; i < 44; i++) {
+    const a = (i / 44) * Math.PI * 2;
+    const kerb = new THREE.Mesh(sharedBox(1.7, 0.22, 0.5),
+      lam(i % 2 ? PZ.stone : PZ.stoneDark));
+    kerb.position.set(Math.cos(a) * R, 0.11, Math.sin(a) * R);
+    kerb.rotation.y = -a;
+    kerb.receiveShadow = true;
+    g.add(kerb);
+  }
+  return g;
+}
+
+/**
+ * The centrepiece: a tiered stone shrine-fountain. Three stepped octagonal
+ * plinths, a carved pillar, a gold finial, and water spilling into the basin.
+ * This is what the whole plaza points at.
+ */
+function buildCenterShrine() {
+  const g = new THREE.Group();
+  // three stepped octagonal plinths
+  const tiers = [[3.0, 0.28], [2.35, 0.26], [1.75, 0.24]];
+  let y = 0;
+  for (let i = 0; i < tiers.length; i++) {
+    const [r, h] = tiers[i];
+    const step = new THREE.Mesh(sharedCyl(r, r + 0.1, h, 8), lam(i % 2 ? PZ.stone : PZ.pave));
+    step.position.y = y + h / 2;
+    step.castShadow = true; step.receiveShadow = true;
+    g.add(step);
+    y += h;
+  }
+  // the water basin
+  const basin = new THREE.Mesh(sharedCyl(1.5, 1.5, 0.16, 8),
+    new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.82 }));
+  basin.position.y = y + 0.02;
+  g.add(basin);
+  const rim = new THREE.Mesh(sharedCyl(1.62, 1.66, 0.2, 8), lam(PZ.stoneDark));
+  rim.position.y = y + 0.04; g.add(rim);
+
+  // the carved pillar
+  const shaft = new THREE.Mesh(sharedCyl(0.34, 0.42, 2.1, 8), lam(PZ.pave));
+  shaft.position.y = y + 1.15; shaft.castShadow = true; g.add(shaft);
+  // gold bands up the shaft
+  for (const by of [0.5, 1.15, 1.8]) {
+    const band = new THREE.Mesh(sharedCyl(0.4, 0.4, 0.09, 8), lam(PZ.gold));
+    band.position.y = y + by; g.add(band);
+  }
+  // a flared capital and a gold finial
+  const cap = new THREE.Mesh(sharedCyl(0.62, 0.36, 0.3, 8), lam(PZ.stone));
+  cap.position.y = y + 2.32; g.add(cap);
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), lam(PZ.gold));
+  orb.position.y = y + 2.72; g.add(orb);
+  const spike = new THREE.Mesh(sharedCyl(0.02, 0.1, 0.5, 6), lam(PZ.gold));
+  spike.position.y = y + 3.1; g.add(spike);
+
+  // four water spouts arcing into the basin
+  const spouts = [];
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const sp = new THREE.Mesh(sharedBox(0.1, 0.1, 0.42), lam(PZ.goldDim));
+    sp.position.set(Math.cos(a) * 0.45, y + 1.75, Math.sin(a) * 0.45);
+    sp.rotation.y = -a;
+    g.add(sp);
+    // the falling water
+    const jet = new THREE.Mesh(sharedBox(0.07, 1.55, 0.07),
+      new THREE.MeshBasicMaterial({ color: 0xbfeaf5, transparent: true, opacity: 0.6 }));
+    jet.position.set(Math.cos(a) * 0.72, y + 0.95, Math.sin(a) * 0.72);
+    g.add(jet);
+    spouts.push(jet);
+  }
+  g.userData.shrine = { spouts, basin, orb, baseY: y };
+  return g;
+}
+
+/**
+ * A raised STATION platform. Every interactable in the plaza (shop, forge,
+ * capsule machine) stands on one of these, at a matched radius on its own
+ * avenue, under a banner in its own colour — so they read as a set rather than
+ * as three unrelated props dropped on grass.
+ */
+function buildStation(color, glyphColor) {
+  const g = new THREE.Group();
+  // two-step stone dais
+  const base = new THREE.Mesh(sharedCyl(2.5, 2.6, 0.22, 8), lam(PZ.stoneDark));
+  base.position.y = 0.11; base.receiveShadow = true; g.add(base);
+  const top = new THREE.Mesh(sharedCyl(2.15, 2.2, 0.2, 8), lam(PZ.pave));
+  top.position.y = 0.31; top.receiveShadow = true; g.add(top);
+  const inlay = new THREE.Mesh(new THREE.RingGeometry(1.75, 1.9, 20),
+    new THREE.MeshLambertMaterial({
+      color: new THREE.Color(PZ.gold),
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+    }));
+  inlay.rotation.x = -Math.PI / 2; inlay.position.y = 0.42; g.add(inlay);
+
+  // two banner posts flanking the back, with cloth in the station's colour
+  const cloths = [];
+  for (const sx of [-1.55, 1.55]) {
+    const post = new THREE.Mesh(sharedCyl(0.09, 0.11, 3.1, 6), lam(PZ.ink));
+    post.position.set(sx, 1.55, -1.0); post.castShadow = true; g.add(post);
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), lam(PZ.gold));
+    finial.position.set(sx, 3.15, -1.0); g.add(finial);
+    const cloth = new THREE.Mesh(sharedBox(0.55, 1.5, 0.05), lam(color));
+    cloth.position.set(sx, 2.15, -0.95); g.add(cloth);
+    const trim = new THREE.Mesh(sharedBox(0.6, 0.12, 0.06), lam(glyphColor));
+    trim.position.set(sx, 1.42, -0.94); g.add(trim);
+    cloths.push(cloth);
+  }
+  // a lintel across the two posts
+  const lintel = new THREE.Mesh(sharedBox(3.4, 0.16, 0.16), lam(PZ.ink));
+  lintel.position.set(0, 3.0, -1.0); g.add(lintel);
+  g.userData.station = { cloths };
+  return g;
+}
+
 function buildLamp() {
   // Village lamps match the wild Japanese stone lanterns (ishidōrō) so lighting
   // reads as one aesthetic: stone base + pillar + warm light box + pyramid cap.
@@ -907,42 +1140,84 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     return spot;
   }
 
-  // --- build the village (positions relative to the flattened spawn pocket) ---
+  // --- build the village ----------------------------------------------------
+  // LAID OUT ON AXES, not scattered. Everything is polar: an angle and a
+  // radius from the shrine at spawn. The three interactables sit on the three
+  // avenues at a MATCHED radius so they read as a set; the huts form an outer
+  // ring between the avenues; nothing is placed by eye.
   const rng = (() => { let s = 7; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; })();
 
-  place(buildHut(0.9), -6, -5);
-  place(buildHut(0.85, '#d0b898', '#7a8a5a'), 6.5, -4);
-  place(buildHut(0.9, '#c0a888', '#5a7a9a'), -5.5, 6);
-  place(buildHut(0.8, '#d8c0a0', '#a85a48'), 7, 5.5);
-  place(buildHut(0.75, '#c8b090', '#8a5a88'), 0.5, -8);
+  // the four cardinal avenues, rotated 45 degrees so nothing sits due north
+  const AV = [Math.PI / 4, Math.PI * 0.75, Math.PI * 1.25, Math.PI * 1.75];
+  const polar = (ang, r) => [Math.sin(ang) * r, Math.cos(ang) * r];
 
-  place(buildWell(), 2.8, 2.8, false, 1);
-  // landmarks are spread apart with a clear approach lane each — the shop,
-  // forge and gacha machine should never crowd each other or the huts
-  const stallSpot = place(buildStall(), 5.4, 2.4, true, 1);
-  const forgeSpot = place(buildForgeCorner(), -4.4, -2.6, true, 1);
-  const gardenSpot = place(buildFencedGarden(), -4.2, 3.4, false, 1);
-  place(buildClutter(rng), -5.2, -3.4, false, 0);
-  place(buildClutter(rng), 5.6, -2.6, false, 0);
-  place(buildClutter(rng), 1.8, -6.4, false, 0);
+  // the paved plaza floor + the shrine that everything points at
+  const plazaFloor = buildPlazaFloor();
+  {
+    const c = groundAt(0, 0);
+    plazaFloor.position.set(c.x, c.y, c.z);
+    scene.add(plazaFloor);
+  }
+  const shrine = buildCenterShrine();
+  place(shrine, 0, 0, false, 2);
 
-  for (const [lx, lz] of [[2.5, -2.5], [-2.5, 2.6], [3.2, 4.6], [-3.2, -4.6]]) {
+  // --- the three STATIONS, one per avenue at a matched radius --------------
+  const STATION_R = 8.2;
+  const stationOf = (ang, color, trim, prop, propOff = 0) => {
+    const [sx, sz] = polar(ang, STATION_R);
+    const dais = buildStation(color, trim);
+    const spot = place(dais, sx, sz, true, 2);
+    // the prop stands on the dais, facing the shrine
+    const [px, pz] = polar(ang, STATION_R - propOff);
+    const pSpot = place(prop, px, pz, true, 1);
+    pSpot.y += 0.41;                    // sit it on the dais top
+    prop.position.y = pSpot.y;
+    return pSpot;
+  };
+  const stallSpot = stationOf(AV[0], '#a8e06a', '#5e8a3c', buildStall(), 0.35);
+  const forgeSpot = stationOf(AV[1], '#e8a35d', '#a85a2c', buildForgeCorner(), 0.35);
+  const gachaSpot = stationOf(AV[2], '#f0a8c8', '#a8548a', buildGachaMachine(), 0.35);
+
+  // the fourth avenue leads to the community hearth
+  const [ckx, ckz] = polar(AV[3], STATION_R - 0.6);
+
+  // --- HUTS: an outer ring, set BETWEEN the avenues so they never block one --
+  const HUT_R = 12.6;
+  const hutStyles = [
+    [0.9, '#d8c8a8', '#a85a48'], [0.85, '#d0b898', '#7a8a5a'],
+    [0.9, '#c0a888', '#5a7a9a'], [0.8, '#d8c0a0', '#8a5a88'],
+    [0.86, '#cfbf9f', '#4f7a6a'], [0.82, '#d4c2a2', '#96603c'],
+  ];
+  hutStyles.forEach(([sc, wall, roof], i) => {
+    const ang = AV[i % 4] + (i < 4 ? Math.PI / 4 : -Math.PI / 4);
+    const [hx, hz] = polar(ang, HUT_R + (i % 2) * 1.1);
+    place(buildHut(sc, wall, roof), hx, hz, true, 1);
+  });
+
+  // --- the herb garden and the clutter fill the gaps, still on the grid -----
+  const gardenSpot = place(buildFencedGarden(), ...polar(AV[1] + Math.PI / 4, 11.4), false, 1);
+  for (let i = 0; i < 4; i++) {
+    place(buildClutter(rng), ...polar(AV[i] + 0.55, 10.2), false, 0);
+  }
+
+  // --- LAMPS: eight, evenly spaced around the ring walk ---------------------
+  for (let i = 0; i < 8; i++) {
+    const [lx, lz] = polar((i / 8) * Math.PI * 2 + Math.PI / 8, 10.4);
     const lampMesh = buildLamp();
     villageLamps.push(lampMesh);
     place(lampMesh, lx, lz, false, 0);
   }
 
-  // Master NXR's wonder-capsule machine
-  const gachaSpot = place(buildGachaMachine(), 7.8, -1.8, true, 0);
-
-  // cheerful flower beds by the huts
-  for (const [fx, fz] of [[-4.6, -5.8], [5, -5.4], [-6.6, 4.4], [5.6, 4], [2, -7.2], [-1.8, 4.8]]) {
-    place(buildFlowerBed(rng), fx, fz, false, -1);
+  // --- flower beds: paired either side of every avenue mouth ---------------
+  for (const ang of AV) {
+    for (const off of [-0.34, 0.34]) {
+      place(buildFlowerBed(rng), ...polar(ang + off, 6.4), false, -1);
+    }
   }
 
   // village campfire — the community cooking spot (interact to cook fish);
   // kept clear of villager stations so the Cook prompt always wins here
-  const cookfire = groundAt(-0.8, 6.2);
+  const cookfire = groundAt(ckx, ckz);
   {
     const vf = new THREE.Group();
     for (let i = 0; i < 7; i++) {
