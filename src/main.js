@@ -230,12 +230,6 @@ async function init(character, saved, audio) {
       r: L.r + 5,
     });
   }
-  {
-    // the swimming pool landmark, if it got placed
-    let poolMesh = null;
-    for (const b of landmarks.built) if (b.userData?.swimmers) poolMesh = b;
-    if (poolMesh) calmZones.push({ x: poolMesh.position.x, z: poolMesh.position.z, r: 9 });
-  }
 
   function inSafeZone(x, z) {
     for (const c of calmZones) {

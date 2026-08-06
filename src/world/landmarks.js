@@ -599,86 +599,6 @@ function makeGlyphSprite(glyph, color = '#f0f0e8') {
 
 // swimming pool — tiled deck, clear blue water, umbrella, lounge chair, and
 // critters actually SWIMMING laps (this is a pool, not a fishing spot!)
-function buildPool() {
-  const g = new THREE.Group();
-  const tile = lam('#dce8ec'), trim = lam('#7ab8d8');
-  const deck = new THREE.Mesh(sharedBox(5.6, 0.22, 4.4), tile);
-  deck.position.y = 0.11;
-  deck.receiveShadow = true;
-  const rim = new THREE.Mesh(sharedBox(4.4, 0.26, 3.2), trim);
-  rim.position.y = 0.13;
-  const water = new THREE.Mesh(sharedBox(4.0, 0.16, 2.8),
-    new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.8 }));
-  water.position.y = 0.2;
-  // ladder
-  for (const sz of [-1, 1]) {
-    const rail = new THREE.Mesh(sharedBox(0.05, 0.5, 0.05), lam('#c8d4d8'));
-    rail.position.set(2.05, 0.42, sz * 0.16);
-    g.add(rail);
-  }
-  for (let i = 0; i < 2; i++) {
-    const rung = new THREE.Mesh(sharedBox(0.05, 0.05, 0.36), lam('#c8d4d8'));
-    rung.position.set(2.05, 0.3 + i * 0.2, 0);
-    g.add(rung);
-  }
-  // umbrella + lounge chair on the deck corner
-  const pole = new THREE.Mesh(sharedCyl(0.04, 0.04, 1.5, 6), lam('#e8e2d2'));
-  pole.position.set(-2.4, 0.95, -1.7);
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.4, 8), lam('#f0716a'));
-  shade.position.set(-2.4, 1.75, -1.7);
-  const chair = new THREE.Group();
-  const seat = new THREE.Mesh(sharedBox(0.5, 0.08, 1.1), lam('#f0d8a0'));
-  seat.position.y = 0.24;
-  const back = new THREE.Mesh(sharedBox(0.5, 0.08, 0.5), lam('#f0d8a0'));
-  back.position.set(0, 0.4, -0.68); back.rotation.x = -0.7;
-  chair.add(seat, back);
-  chair.position.set(-1.6, 0.22, -1.6);
-  // swimmers! two critters doing lazy laps, one on a pink floatie
-  const SWIM_LOOKS = [
-    ['#e8b878', '#f8e8c8', 's_cap', { eyeW: 3, eyeH: 4, gap: 5, eyeY: 2, mouth: 'smile', cheeks: 'rgba(240,150,140,0.6)' }],
-    ['#a8d8c8', '#e0f5ec', 's_duck', { eyeW: 3, eyeH: 4, gap: 4, eyeY: 2, mouth: 'open' }],
-  ];
-  const swimmers = [];
-  SWIM_LOOKS.forEach((look, i) => {
-    const sw = buildCritter(...look);
-    sw.scale.setScalar(0.85);
-    sw.position.y = -0.14; // chest-deep in the water
-    const holder = new THREE.Group();
-    holder.add(sw);
-    if (i === 1) { // floatie ring
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.09, 6, 12), lam('#f0a8c8'));
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = 0.22;
-      holder.add(ring);
-    }
-    const foam = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 4, 10),
-      new THREE.MeshBasicMaterial({ color: 0xeafaff, transparent: true, opacity: 0.7 }));
-    foam.rotation.x = Math.PI / 2;
-    foam.position.y = 0.26;
-    holder.add(foam);
-    g.add(holder);
-    swimmers.push({ h: holder, seed: i * 2.6, r: 0.7 + i * 0.45 });
-  });
-  const light = new THREE.PointLight(0x8ad8f0, 0.8, 6, 2);
-  light.position.y = 1.4;
-  g.add(deck, rim, water, pole, shade, chair, light);
-  g.userData.swimmers = swimmers;
-  return g;
-}
-
-// spring waterfall — a mossy rock face with a rushing white-blue sheet, foam
-// clouds at the base and a clear plunge pool
-/**
- * The spring waterfall, rebuilt. The old one was a single striped plane in
- * front of some boxes — flat, and it stopped dead at the pool.
- *
- * What makes falling water read:
- *   - it falls in TIERS, not one drop, with a ledge and a churn at each one
- *   - the sheet is layered: a wide translucent body, a brighter fast core, and
- *     a mist veil in front, all scrolling at DIFFERENT speeds
- *   - it throws spray where it lands, and the plunge pool has expanding rings
- *   - it carries a stream away downhill instead of stopping
- */
 function buildWaterfall() {
   const g = new THREE.Group();
   const rock = lam('#8d9294'), rockDark = lam('#6a7074'), rockWet = lam('#5c6468');
@@ -1428,19 +1348,31 @@ function buildGarden(rng, kind, detail = 1) {
   const R = 2.9;
   const heads = [];
 
-  // packed-earth bed with a low stone border
-  const bed = new THREE.Mesh(sharedCyl(R, R, 0.09, 14), lam('#7a5c3c'));
-  bed.position.y = 0.045; g.add(bed);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    const st = new THREE.Mesh(sharedBox(0.34, 0.17, 0.24), lam(i % 2 ? '#9a9488' : '#84887e'));
-    st.position.set(Math.cos(a) * R, 0.09, Math.sin(a) * R);
+  // A RAISED PLANTER, not a flat patch painted on the grass. The skirt drops
+  // well below ground level so no gap can ever show on the downhill side, and a
+  // bed that stands proud of a slope reads as built rather than broken.
+  const SKIRT = 1.2;
+  const skirt = new THREE.Mesh(sharedCyl(R + 0.05, R + 0.05, SKIRT, 16), lam('#6e6a60'));
+  skirt.position.y = -SKIRT / 2 + 0.16; g.add(skirt);
+  const bed = new THREE.Mesh(sharedCyl(R, R, 0.14, 16), lam('#7a5c3c'));
+  bed.position.y = 0.2; g.add(bed);
+  // a coped stone rim around the top of the planter
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const st = new THREE.Mesh(sharedBox(0.4, 0.22, 0.28), lam(i % 2 ? '#9a9488' : '#84887e'));
+    st.position.set(Math.cos(a) * R, 0.24, Math.sin(a) * R);
     st.rotation.y = -a;
     g.add(st);
   }
+  // two shallow steps up to the entrance so it is obviously enterable
+  for (let i = 0; i < 2; i++) {
+    const stp = new THREE.Mesh(sharedBox(1.5 - i * 0.3, 0.11, 0.42), lam('#9a9488'));
+    stp.position.set(0, 0.07 + i * 0.1, R + 0.62 - i * 0.4);
+    g.add(stp);
+  }
   // a mown grass path in, so it reads as a place people visit
-  const path = new THREE.Mesh(sharedBox(1.0, 0.03, R * 1.5), lam('#c8b494'));
-  path.position.set(0, 0.1, R * 0.55); g.add(path);
+  const path = new THREE.Mesh(sharedBox(1.0, 0.04, R * 1.5), lam('#c8b494'));
+  path.position.set(0, 0.28, R * 0.55); g.add(path);
 
   // planting mix by kind
   const mix = kind === 'rose' ? [0.15, 0.7, 0.15]
@@ -1458,7 +1390,7 @@ function buildGarden(rng, kind, detail = 1) {
     if (roll < mix[0]) f = buildLily(rng, LILY_COLS[Math.floor(rng() * LILY_COLS.length)]);
     else if (roll < mix[0] + mix[1]) f = buildRose(rng, ROSE_COLS[Math.floor(rng() * ROSE_COLS.length)]);
     else f = buildSunflower(rng);
-    f.position.set(Math.cos(a) * rr, 0.09, Math.sin(a) * rr);
+    f.position.set(Math.cos(a) * rr, 0.27, Math.sin(a) * rr);
     f.rotation.y = rng() * Math.PI * 2;
     const s = 0.85 + rng() * 0.35;
     f.scale.setScalar(s);
@@ -1489,7 +1421,7 @@ function buildGarden(rng, kind, detail = 1) {
     lf.position.set(-0.6 + t * 1.2, 1.62 + Math.sin(t * Math.PI) * 0.24, 0);
     arch.add(lf);
   }
-  arch.position.z = R * 0.92;
+  arch.position.set(0, 0.27, R * 0.92);
   g.add(arch);
 
   // a bench facing the bed
@@ -1502,7 +1434,7 @@ function buildGarden(rng, kind, detail = 1) {
     const lg = new THREE.Mesh(sharedBox(0.08, 0.42, 0.3), lam('#84633a'));
     lg.position.set(sx, 0.21, 0); bench.add(lg);
   }
-  bench.position.set(-R * 0.72, 0.09, -R * 0.55);
+  bench.position.set(-R * 0.72, 0.27, -R * 0.55);
   bench.rotation.y = 2.4;
   g.add(bench);
 
@@ -1563,9 +1495,13 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
    */
   function groundRange(x, z, r) {
     let lo = Infinity, hi = -Infinity;
-    for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
-      for (const rr of [r * 0.5, r]) {
-        const y = terrain.surfaceY(x + Math.cos(a) * rr, z + Math.sin(a) * rr);
+    // a dense grid, not a couple of rays: a sparse ring walks straight past a
+    // local rise, and a flat deck then clips into it
+    const step = Math.max(0.6, r / 4);
+    for (let dz = -r; dz <= r; dz += step) {
+      for (let dx = -r; dx <= r; dx += step) {
+        if (dx * dx + dz * dz > r * r) continue;
+        const y = terrain.surfaceY(x + dx, z + dz);
         if (y < lo) lo = y;
         if (y > hi) hi = y;
       }
@@ -1654,7 +1590,9 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
                                 ['rose', S2 * 0.46, -S2 * 0.2],
                                 ['sun', -S2 * 0.68, S2 * 0.2]]) {
     const gd = buildGarden(grng, kind, getQuality().decorScale);
-    if (place(gd, gx, gz, 2, 14, 4.2, 0.55)) { built.push(gd); gardens.push(gd); }
+    // a flower bed is the flattest thing in the game — it gets the tightest
+    // budget of any structure so it can never clip into a slope
+    if (place(gd, gx, gz, 2, 16, 4.2, 0.3)) { built.push(gd); gardens.push(gd); }
   }
 
   // a lantern-lit fishing dock on the shore of EVERY lake, each with its own
@@ -1687,9 +1625,6 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
 
   // --- Pokopia-style life for the quiet stretches (all far from the village):
   // a swimming pool, a spring waterfall, a kickabout, gossip pairs & nap nests
-  const pool = buildPool();
-  // blockR 3 covers the whole 5.6x4.4 deck — monsters can't clip through it
-  if (place(pool, -S2 * 0.28, S2 * 0.42, 3, 12, 5, 0.5)) built.push(pool);
   const falls = buildWaterfall();
   if (place(falls, S2 * 0.32, -S2 * 0.35, 2, 12, 4)) built.push(falls);
   const kick = buildKickabout();
@@ -1828,14 +1763,6 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       if (!near(d.mesh)) continue;
       const m = d.mesh.userData.monger;
       if (m) m.position.y = 0.05 + Math.abs(Math.sin(time * 2.2 + d.x)) * 0.03;
-    }
-    // swimmers do lazy laps around the pool, bobbing in the water
-    if (pool.userData.swimmers && near(pool)) {
-      for (const sw of pool.userData.swimmers) {
-        const a = time * 0.45 + sw.seed;
-        sw.h.position.set(Math.cos(a) * sw.r, 0.2 + Math.sin(time * 2.4 + sw.seed) * 0.035, Math.sin(a) * sw.r * 0.55);
-        sw.h.rotation.y = -a + Math.PI / 2; // face the direction of travel
-      }
     }
     // the waterfall rushes & its foam clouds churn
     if (falls.userData.fall && near(falls)) {

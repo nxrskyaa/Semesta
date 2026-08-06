@@ -17,33 +17,39 @@ import * as THREE from 'three';
 const geos = new Map();
 const mats = new Map();
 
+// Anything handed out by this module is SHARED, so disposing it would pull the
+// rug out from under every other object using it. Everything is tagged, and
+// util/dispose.js skips tagged resources.
+export const SHARED = Symbol('shared-resource');
+const tag = (o) => { o[SHARED] = true; return o; };
+
 const k = (...a) => a.join('|');
 
 export function sharedBox(w, h, d) {
   const key = k('b', w, h, d);
   let g = geos.get(key);
-  if (!g) { g = new THREE.BoxGeometry(w, h, d); geos.set(key, g); }
+  if (!g) { g = tag(new THREE.BoxGeometry(w, h, d)); geos.set(key, g); }
   return g;
 }
 
 export function sharedCyl(rt, rb, h, seg = 8) {
   const key = k('c', rt, rb, h, seg);
   let g = geos.get(key);
-  if (!g) { g = new THREE.CylinderGeometry(rt, rb, h, seg); geos.set(key, g); }
+  if (!g) { g = tag(new THREE.CylinderGeometry(rt, rb, h, seg)); geos.set(key, g); }
   return g;
 }
 
 export function sharedSphere(r, wSeg = 8, hSeg = 6) {
   const key = k('s', r, wSeg, hSeg);
   let g = geos.get(key);
-  if (!g) { g = new THREE.SphereGeometry(r, wSeg, hSeg); geos.set(key, g); }
+  if (!g) { g = tag(new THREE.SphereGeometry(r, wSeg, hSeg)); geos.set(key, g); }
   return g;
 }
 
 export function sharedPlane(w, h) {
   const key = k('p', w, h);
   let g = geos.get(key);
-  if (!g) { g = new THREE.PlaneGeometry(w, h); geos.set(key, g); }
+  if (!g) { g = tag(new THREE.PlaneGeometry(w, h)); geos.set(key, g); }
   return g;
 }
 
@@ -60,7 +66,7 @@ export function sharedMat(color, { opacity = 1, unique = false, emissive = null 
   if (unique) return new THREE.MeshLambertMaterial(opts);
   const key = k('m', color, opacity, emissive || '-');
   let m = mats.get(key);
-  if (!m) { m = new THREE.MeshLambertMaterial(opts); mats.set(key, m); }
+  if (!m) { m = tag(new THREE.MeshLambertMaterial(opts)); mats.set(key, m); }
   return m;
 }
 

@@ -35,19 +35,20 @@ const CSS = `
 }
 #touchui .abtn {
   position: absolute; border-radius: 10px; border: 0;
-  background:
-    linear-gradient(180deg, rgba(52,66,42,0.85), rgba(24,32,20,0.85)) padding-box,
-    rgba(16,22,14,0.6);
-  background-position: center; background-repeat: no-repeat; background-size: 56%;
+  background: linear-gradient(180deg, rgba(52,66,42,0.92), rgba(24,32,20,0.94));
+  background-position: center; background-repeat: no-repeat; background-size: 54%;
+  background-clip: border-box;
   image-rendering: pixelated;
   display: flex; align-items: center; justify-content: center;
   color: #dce5d5; font-family: inherit; text-shadow: 1px 1px 0 #000;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   pointer-events: auto;
+  outline: 2px solid rgba(6,9,6,0.85);
+  outline-offset: 0;
   box-shadow:
-    inset 0 2px 0 0 rgba(220,240,200,0.22), inset 0 -3px 0 0 rgba(0,0,0,0.5),
-    inset 0 0 0 2px rgba(90,106,74,0.7), 0 0 0 2px rgba(6,9,6,0.8),
-    0 3px 6px rgba(0,0,0,0.4);
+    inset 0 2px 0 0 rgba(220,240,200,0.2), inset 0 -3px 0 0 rgba(0,0,0,0.45),
+    inset 0 0 0 2px rgba(96,114,78,0.85),
+    0 3px 7px rgba(0,0,0,0.45);
 }
 #touchui .abtn:active {
   transform: translateY(2px);
@@ -58,28 +59,31 @@ const CSS = `
 #touchui .abtn .cdo { position: absolute; inset: 0; border-radius: 10px; display: none; overflow: hidden; }
 #touchui .abtn.oncd .cdo { display: block; }
 
-#touchui .attack { width: 74px; height: 74px; right: 4px; bottom: 4px; font-size: 27px;
-  border-radius: 14px;
-  background-image: linear-gradient(180deg, rgba(96,74,34,0.9), rgba(52,40,18,0.9));
+/* SIZES. The old cluster ate 260px of a 375px screen. Everything is ~20%
+   smaller: still comfortably above the 44px minimum tap target, but the game
+   gets its screen back. */
+#touchui .attack { width: 60px; height: 60px; right: 6px; bottom: 6px; font-size: 22px;
+  border-radius: 13px;
+  background-image: linear-gradient(180deg, rgba(96,74,34,0.94), rgba(52,40,18,0.94));
   box-shadow:
-    inset 0 2px 0 0 rgba(255,230,160,0.3), inset 0 -3px 0 0 rgba(0,0,0,0.5),
-    inset 0 0 0 2px rgba(200,160,58,0.75), 0 0 0 2px rgba(6,9,6,0.8),
-    0 0 14px rgba(200,160,58,0.25), 0 3px 6px rgba(0,0,0,0.4);
+    inset 0 2px 0 0 rgba(255,230,160,0.3), inset 0 -3px 0 0 rgba(0,0,0,0.45),
+    inset 0 0 0 2px rgba(210,170,66,0.9),
+    0 0 12px rgba(200,160,58,0.22), 0 3px 7px rgba(0,0,0,0.45);
 }
 /* bottom row: attack (big) · roll · jump · potion — evenly spaced */
-#touchui .roll { width: 52px; height: 52px; right: 92px; bottom: 4px; font-size: 18px; }
-#touchui .jump { width: 52px; height: 52px; right: 156px; bottom: 4px; font-size: 18px; }
-#touchui .pot { width: 46px; height: 46px; right: 220px; bottom: 6px; }
+#touchui .roll { width: 45px; height: 45px; right: 74px; bottom: 6px; font-size: 16px; }
+#touchui .jump { width: 45px; height: 45px; right: 127px; bottom: 6px; font-size: 16px; }
+#touchui .pot { width: 42px; height: 42px; right: 180px; bottom: 7px; }
 #touchui .pot .cnt { position: absolute; bottom: -1px; right: 3px; font-size: 10px; }
 /* skill arc: a clean diagonal above the attack button, nothing overlapping */
-#touchui .sk { width: 50px; height: 50px; }
-#touchui .sk1 { right: 8px; bottom: 96px; }
-#touchui .sk2 { right: 68px; bottom: 78px; }
-#touchui .sk3 { right: 126px; bottom: 66px; }
+#touchui .sk { width: 44px; height: 44px; }
+#touchui .sk1 { right: 10px; bottom: 78px; }
+#touchui .sk2 { right: 60px; bottom: 64px; }
+#touchui .sk3 { right: 108px; bottom: 54px; }
 
 /* contextual interact button (talk / chest / fish) */
 #touchui .ctx {
-  position: absolute; right: 30px; bottom: 162px; width: 58px; height: 58px;
+  position: absolute; right: 26px; bottom: 136px; width: 50px; height: 50px;
   border-radius: 12px; border: 0; background: linear-gradient(180deg, rgba(96,80,28,0.9), rgba(50,40,14,0.92));
   color: #ffe9a8; font-size: 21px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -91,7 +95,7 @@ const CSS = `
 #touchui .ctx.show { display: flex; }
 /* secondary context button — sits left of the primary ★, calmer green */
 #touchui .ctx2 {
-  position: absolute; right: 100px; bottom: 158px; width: 50px; height: 50px;
+  position: absolute; right: 86px; bottom: 132px; width: 44px; height: 44px;
   border-radius: 12px; border: 0; background: linear-gradient(180deg, rgba(52,74,40,0.92), rgba(28,44,20,0.94));
   color: #cdeaa8; font-size: 18px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -109,7 +113,7 @@ const CSS = `
   inset 0 2px 0 0 rgba(255,230,160,0.35), inset 0 -3px 0 0 rgba(0,0,0,0.5),
   inset 0 0 0 2px #ffe27a, 0 0 0 2px rgba(6,9,6,0.8), 0 0 22px rgba(255,210,62,0.6); } }
 #touchui .afk {
-  position: absolute; right: 102px; bottom: 170px; width: 44px; height: 44px;
+  position: absolute; right: 88px; bottom: 186px; width: 40px; height: 40px;
   border-radius: 10px; border: 0; background: linear-gradient(180deg, rgba(34,48,66,0.9), rgba(18,26,38,0.92));
   color: #b8d0f0; font-size: 15px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -120,7 +124,7 @@ const CSS = `
 #touchui .afk.show { display: flex; }
 /* menu close button (ESC replacement on touch) — top-right, only while a panel is open */
 #touchui .closebtn {
-  position: absolute; top: 10px; right: 10px; width: 48px; height: 48px;
+  position: absolute; top: 10px; right: 10px; width: 42px; height: 42px;
   border-radius: 12px; border: 0; background: linear-gradient(180deg, rgba(90,30,26,0.92), rgba(48,16,14,0.94));
   color: #ffd8d0; font-size: 22px; display: none; align-items: center; justify-content: center;
   pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
