@@ -54,6 +54,7 @@ import { getQuality, onQualityChange, buildSnapshot } from './gfx/quality.js';
 import { createGfxPanel } from './ui/gfxpanel.js';
 import { createDailies } from './systems/dailies.js';
 import { createGamePass, PASS_PRICES } from './systems/gamepass.js';
+import { createStory } from './systems/story.js';
 import { createLoadScreen } from './ui/loadscreen.js';
 import { itemIconUrl } from './gfx/textures.js';
 
@@ -709,6 +710,24 @@ async function init(character, saved, audio) {
   });
   gamepass.load(saved?.gamepass);
 
+  // --- STORY: the reason any of this is happening ---
+  const story = createStory({
+    grant(r) {
+      if (r.coins) inventory.addCoins(r.coins);
+      if (r.item) inventory.add(r.item, r.n || 1);
+      if (r.cosmetic) inventory.add(r.cosmetic, 1);
+      if (r.mount) inventory.add(r.mount, 1);
+    },
+    onChapter(ch) {
+      audio.sfx(ch.reward?.grand ? 'levelup_big' : 'quest_done');
+      hud.showStory?.(ch);
+    },
+  });
+  story.load(saved?.story);
+  // things the story asks about that nothing else tracks
+  const lore = { kills: 0, swam: false, visitedIsland: false };
+  let storyT = 0;
+
   const panels = createPanels(hudRoot, {
     inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
     economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
@@ -942,7 +961,7 @@ async function init(character, saved, audio) {
     }
     for (const d of drops) pickups.spawn(d.id, d.count, e.mesh.position);
     quests.event('kill', { type: e.type, worldBoss: !!e.isWorldBoss });
-    dailies.event('kill'); gamepass.event('kill');
+    dailies.event('kill'); gamepass.event('kill'); lore.kills++;
     if (e.isWorldBoss) { dailies.event('boss'); gamepass.event('boss'); }
   }
 
@@ -1545,6 +1564,7 @@ async function init(character, saved, audio) {
         gachaPity: gacha.pity,
         dailies: dailies.serialize(),
         gamepass: gamepass.serialize(),
+        story: story.serialize(),
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
       }));
     } catch { /* storage full/blocked: ignore */ }
@@ -1554,7 +1574,7 @@ async function init(character, saved, audio) {
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
-    dailies, gamepass, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
+    dailies, gamepass, story, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     composer, usePost,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
@@ -1742,6 +1762,24 @@ async function init(character, saved, audio) {
       hud.toastText('Your mount waits on dry land.');
     }
     tickLights(dt);
+    // STORY: checked once a second against the live game state, so chapters
+    // advance by PLAYING rather than by triggering a script
+    if (player.state.swimming) lore.swam = true;
+    {
+      const [ix, iz] = terrain.cellOf(player.state.pos.x, player.state.pos.z);
+      if (terrain.isIslandCell(ix, iz)) lore.visitedIsland = true;
+    }
+    storyT -= dt;
+    if (storyT <= 0) {
+      storyT = 1;
+      story.check({
+        level: leveling.state.level,
+        kills: lore.kills,
+        swam: lore.swam,
+        visitedIsland: lore.visitedIsland,
+        hasHome: housing.lands.some((l) => l.built),
+      });
+    }
     // bloom leans in at night so the lanterns and fires carry the scene, and
     // backs off at noon so daylight does not turn into a smear
     if (bloomPass) {

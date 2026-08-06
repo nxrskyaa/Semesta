@@ -88,6 +88,50 @@ const CSS = `
 }
 /* the tracker header doubles as a COLLAPSE button. On a phone the quest list
    grows down the right edge and covers the minimap, so it has to be foldable. */
+/* STORY CARD — a chapter of the arc, shown once when it unlocks. Parchment and
+   gold to match the temple language, and it waits for a click so nobody misses
+   a beat while fighting. */
+#hud .story {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(6,10,8,0.72); z-index: 60; pointer-events: auto;
+}
+#hud .story.show { display: flex; animation: st-in 0.4s ease-out; }
+@keyframes st-in { from { opacity: 0; } }
+#hud .story .card {
+  width: min(520px, 88vw); max-height: 82vh; overflow-y: auto; padding: 22px 24px 18px;
+  background:
+    var(--dither) 0 0/4px 4px,
+    linear-gradient(180deg, #efe6cc, #ddd0ac);
+  box-shadow: var(--pix-frame), 0 0 40px rgba(0,0,0,0.6);
+  text-align: center;
+  animation: st-card 0.45s cubic-bezier(0.2, 1.3, 0.5, 1);
+}
+@keyframes st-card { from { transform: translateY(18px) scale(0.96); } }
+#hud .story .ch {
+  font-family: var(--font-display, inherit); font-size: 8px; letter-spacing: 5px;
+  color: #8a6f36; margin-bottom: 4px;
+}
+#hud .story h2 {
+  font-family: var(--font-display, inherit); font-size: 15px; letter-spacing: 2px;
+  color: #4a3a18; margin: 0 0 14px; text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+}
+#hud .story .rule { height: 2px; background: linear-gradient(90deg, transparent, #b99a52, transparent); margin: 0 0 14px; }
+#hud .story p {
+  font-size: 11px; line-height: 2; color: #3c3222; margin: 0 0 11px; text-align: left;
+}
+#hud .story p:last-of-type { margin-bottom: 16px; }
+#hud .story .rw {
+  display: inline-block; font-size: 9px; letter-spacing: 2px; color: #6a5220;
+  padding: 6px 12px; margin-bottom: 14px; box-shadow: inset 0 0 0 2px #b99a52;
+}
+#hud .story button {
+  width: 100%; font-family: var(--font-display, inherit); font-size: 10px; letter-spacing: 3px;
+  cursor: pointer; padding: 11px 4px; border: 0; color: #f4ecd4;
+  background: linear-gradient(180deg, #6a5430, #46381e);
+  box-shadow: 0 -2px 0 0 #c8a03a, 0 2px 0 0 #2a2210, -2px 0 0 0 #8a744a, 2px 0 0 0 #8a744a;
+}
+#hud .story button:hover { filter: brightness(1.18); }
+
 #hud .qhead {
   display: none; align-items: center; gap: 5px; pointer-events: auto; cursor: pointer;
   font-size: 8px; letter-spacing: 3px; color: var(--gold-dim);
@@ -473,6 +517,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="iconbtn mute">${audio.isMuted() ? '🔇' : '🔊'}</button>
       </div>
     </div>
+    <div class="story"><div class="card"></div></div>
     <div class="qtrack">
       <button class="qhead"><span class="qcaret">▾</span>QUESTS<span class="qn"></span></button>
       <div class="quests"></div>
@@ -605,6 +650,22 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     qHead.querySelector('.qcaret').textContent = questsFolded ? '▸' : '▾';
   });
 
+  /** Show one story chapter. Pauses nothing — it just waits for a click. */
+  const storyEl = root.querySelector('.story');
+  function showStory(ch) {
+    const rw = ch.reward
+      ? `<div class="rw">◆ ${ch.reward.label.toUpperCase()}</div>` : '';
+    storyEl.querySelector('.card').innerHTML = `
+      <div class="ch">A CHAPTER OF ANAVELA</div>
+      <h2>${ch.title}</h2>
+      <div class="rule"></div>
+      ${ch.lines.map((l) => `<p>${l}</p>`).join('')}
+      ${rw}
+      <button>CONTINUE</button>`;
+    storyEl.classList.add('show');
+    storyEl.querySelector('button').addEventListener('click', () => storyEl.classList.remove('show'));
+  }
+
   function closeMenu() { menuPop.classList.remove('show'); }
   // pulsing "!" on the ☰ button + a count on the DAILY tile whenever a
   // check-in or a finished daily quest is waiting to be claimed
@@ -623,7 +684,9 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   }
   // any HUD-level overlay that must block the mobile joystick/camera zones
   function isMenuPopOpen() {
-    return menuPop.classList.contains('show') || root.querySelector('.onboard').classList.contains('show');
+    return menuPop.classList.contains('show')
+      || root.querySelector('.onboard').classList.contains('show')
+      || storyEl.classList.contains('show');
   }
   els.deadBtn.addEventListener('click', () => callbacks.onRespawn?.());
   els.muteBtn.addEventListener('click', () => {
@@ -830,6 +893,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge,
+    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory,
   };
 }
