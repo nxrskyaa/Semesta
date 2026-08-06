@@ -109,6 +109,9 @@ export function buildDecor(terrain, scene) {
       if (pathCount % 16 !== 0) continue;
       const wx = ix - S / 2 + 0.5 + (rng() - 0.5) * 0.4;
       const wz = iz - S / 2 + 0.5 + (rng() - 0.5) * 0.4;
+      // the town square is lit by the village's own lamps; a wild stone lantern
+      // standing on the paving is exactly the kind of clutter that reads as a bug
+      if (Math.hypot(wx - terrain.spawn.x, wz - terrain.spawn.z) < 13) continue;
       if (nearLantern(wx, wz, LANTERN_MIN_D)) continue;
       torches.push({ x: wx, y: terrain.surfaceY(wx, wz), z: wz });
     }
@@ -136,6 +139,9 @@ export function buildDecor(terrain, scene) {
 
   // hoisted refs so clearArea() can remove props that clip buildings later
   let treeTrunk = null, treeCanopy = null, treeAcc = null, treeBPT = 6, rockMesh = null, bushMesh = null;
+  // every ground-cover instanced mesh with the list it was built from, so
+  // clearArea can pull tufts and flowers out from under buildings too
+  const groundCover = [];
   const treeAccMap = [];
 
   // --- trees: full, organic rounded crowns (a cluster of overlapping leaf
@@ -239,6 +245,7 @@ export function buildDecor(terrain, scene) {
       m.compose(v.set(tf.x, tf.y + tf.s * 0.35, tf.z), q, sc.set(tf.s, tf.s, tf.s));
       tuftMesh.setMatrixAt(i, m);
     });
+    groundCover.push({ mesh: tuftMesh, list: tufts });
     group.add(tuftMesh);
   }
 
@@ -264,6 +271,7 @@ export function buildDecor(terrain, scene) {
         m.compose(v.set(f.x, f.y + f.s * 0.4, f.z), q, sc.set(f.s, f.s, f.s));
         fMesh.setMatrixAt(i, m);
       });
+      groundCover.push({ mesh: fMesh, list });
       group.add(fMesh);
     }
   }
@@ -567,6 +575,19 @@ export function buildDecor(terrain, scene) {
       if ((b.x - x) ** 2 + (b.z - z) ** 2 > r2) return;
       bushMesh.setMatrixAt(i, GONE); bd = true;
     });
+    // GROUND COVER TOO. clearArea only ever removed trees, rocks and bushes, so
+    // grass tufts and flowers kept growing straight through paved plazas and
+    // building floors — 124 of them were left standing inside the town square.
+    for (const gm of groundCover) {
+      let gd = false;
+      for (let i = 0; i < gm.list.length; i++) {
+        const it = gm.list[i];
+        if ((it.x - x) ** 2 + (it.z - z) ** 2 > r2) continue;
+        gm.mesh.setMatrixAt(i, GONE);
+        gd = true;
+      }
+      if (gd) gm.mesh.instanceMatrix.needsUpdate = true;
+    }
     if (td) { treeTrunk.instanceMatrix.needsUpdate = true; treeCanopy.instanceMatrix.needsUpdate = true; if (treeAcc) treeAcc.instanceMatrix.needsUpdate = true; }
     if (rd) rockMesh.instanceMatrix.needsUpdate = true;
     if (bd) bushMesh.instanceMatrix.needsUpdate = true;

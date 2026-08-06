@@ -182,7 +182,7 @@ async function init(character, saved, audio) {
   const lighting = setupLighting(scene);
   const particles = createParticles(scene);
   const weather = createWeather(scene, terrain, particles);
-  const npcs = createNPCs(scene, terrain, decor.blocked, particles);
+  const npcs = createNPCs(scene, terrain, decor.blocked, particles, decor.clearArea);
   const chests = createChests(scene, terrain, decor.blocked, particles);
   const camps = createCamps(scene, terrain, decor.blocked, particles);
   const gathering = createGathering(scene, terrain, decor.blocked, particles);
@@ -198,6 +198,8 @@ async function init(character, saved, audio) {
   for (const c of camps.camps) decor.clearArea(c.x, c.z, 4.2);
   for (const f of landmarks.foots) decor.clearArea(f.x, f.z, f.r + 1.2);
   const farming = createFarming(scene, terrain, decor.blocked, particles);
+  // the field is worked soil — no boulder or bush may be left standing in it
+  for (const pl of farming.plots) decor.clearArea(pl.x, pl.z, 1.6);
   const housing = createHousing(scene, terrain, decor.blocked, particles, landmarks.foots);
   // keep land parcels free of clipping scenery too (covers houses loaded from save)
   for (const l of housing.lands) decor.clearArea(l.x, l.z, 3.8);

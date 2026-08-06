@@ -1098,7 +1098,7 @@ function buildClutter(rng) {
 // ---------------------------------------------------------------------------
 // NPC manager
 // ---------------------------------------------------------------------------
-export function createNPCs(scene, terrain, decorBlocked, particles) {
+export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = null) {
   const villageLamps = [];   // their flames are ticked in update()
   const npcs = [];
   const S2 = terrain.size / 2;
@@ -1164,13 +1164,13 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     plazaFloor.position.set(c.x, c.y, c.z);
     scene.add(plazaFloor);
   }
-  // The shrine is the plaza's focal point, but the player SPAWNS here — putting
-  // a solid three-metre fountain on the spawn cell is what trapped everyone on
-  // teleport. It sits one step off the axis instead, and its footprint is
-  // blocked while the spawn cells stay clear.
+  // The shrine closes the FOURTH avenue, at the same radius as the three trade
+  // stations — so the plaza reads as four matched points around an open centre
+  // rather than a fountain parked in the middle of the walking space. It also
+  // keeps it well clear of the spawn cells, which is what trapped everyone on
+  // teleport when it sat at 0,0.
   const shrine = buildCenterShrine();
-  const [shx, shz] = polar(AV[1] + Math.PI, 3.6);
-  place(shrine, shx, shz, false, 2);
+  place(shrine, ...polar(AV[3], 8.2), false, 2);
 
   // --- the three STATIONS, one per avenue at a matched radius --------------
   const STATION_R = 8.2;
@@ -1189,8 +1189,8 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
   const forgeSpot = stationOf(AV[1], '#e8a35d', '#a85a2c', buildForgeCorner(), 0.35);
   const gachaSpot = stationOf(AV[2], '#f0a8c8', '#a8548a', buildGachaMachine(), 0.35);
 
-  // the fourth avenue leads to the community hearth
-  const [ckx, ckz] = polar(AV[3], STATION_R - 0.6);
+  // the hearth sits between two avenues, clear of the shrine and the stations
+  const [ckx, ckz] = polar(AV[3] + Math.PI / 4, 10.6);
 
   // --- HUTS: an outer ring, set BETWEEN the avenues so they never block one --
   const HUT_R = 12.6;
@@ -1199,10 +1199,12 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     [0.9, '#c0a888', '#5a7a9a'], [0.8, '#d8c0a0', '#8a5a88'],
     [0.86, '#cfbf9f', '#4f7a6a'], [0.82, '#d4c2a2', '#96603c'],
   ];
+  const hutSpots = [];
   hutStyles.forEach(([sc, wall, roof], i) => {
     const ang = AV[i % 4] + (i < 4 ? Math.PI / 4 : -Math.PI / 4);
     const [hx, hz] = polar(ang, HUT_R + (i % 2) * 1.1);
     place(buildHut(sc, wall, roof), hx, hz, true, 1);
+    hutSpots.push([hx, hz]);
   });
 
   // --- the herb garden and the clutter fill the gaps, still on the grid -----
@@ -1219,11 +1221,12 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     place(lampMesh, lx, lz, false, 0);
   }
 
-  // --- flower beds: paired either side of every avenue mouth ---------------
-  for (const ang of AV) {
-    for (const off of [-0.34, 0.34]) {
-      place(buildFlowerBed(rng), ...polar(ang + off, 6.4), false, -1);
-    }
+  // NO flower beds on the paving. A soil planter sitting on stone flags is the
+  // same broken logic as farm plots on a floor — the greenery belongs on the
+  // grass beyond the kerb, where the herb garden and the field already are.
+  for (let i = 0; i < 6; i++) {
+    const ang = (i / 6) * Math.PI * 2 + 0.4;
+    place(buildFlowerBed(rng), ...polar(ang, 14.2), false, -1);
   }
 
   // village campfire — the community cooking spot (interact to cook fish);
@@ -1252,6 +1255,19 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     cookfire.flame = flame;
     const [fx, fz] = terrain.cellOf(cookfire.x, cookfire.z);
     decorBlocked.add(`${fx},${fz}`);
+  }
+
+  // CLEAR THE PLAZA. decor grew before the village was placed, so instanced
+  // rocks and bushes were left standing on the paving and jammed against the
+  // buildings. Anything inside the kerb goes.
+  if (clearArea) {
+    clearArea(terrain.spawn.x, terrain.spawn.z, 12.5);
+    for (const sp2 of [stallSpot, forgeSpot, gachaSpot]) clearArea(sp2.x, sp2.z, 3.4);
+    clearArea(shrine.position.x, shrine.position.z, 3.6);
+    // the huts sit at 12.6-13.7, OUTSIDE the kerb sweep — which is why a boulder
+    // was left wedged against a wall. Every building gets its own footprint.
+    for (const [hx, hz] of hutSpots) clearArea(hx, hz, 3.6);
+    clearArea(gardenSpot.x, gardenSpot.z, 3.2);
   }
 
   // IMPORTANT: the spawn clearing must stay walkable — village props must

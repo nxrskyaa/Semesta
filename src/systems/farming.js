@@ -84,7 +84,9 @@ export function createFarming(scene, terrain, decorBlocked, particles) {
   // kerb, laid out as a tidy 4x2 grid on an axis so it reads as a plot of land
   // rather than crates dropped on a floor.
   const FIELD_ANG = Math.PI * 0.75 + Math.PI / 4;   // between two avenues
-  const FIELD_R = 16.5;                             // clear of the 13u flat pad
+  const FIELD_R = 19.5;   // kerb is at 11.5 and the flat pad runs to 13 — the
+                          // field has to start well past BOTH or its beds cut
+                          // into the paving, which is what the screenshot shows
   const fcx = terrain.spawn.x + Math.sin(FIELD_ANG) * FIELD_R;
   const fcz = terrain.spawn.z + Math.cos(FIELD_ANG) * FIELD_R;
   const ca = Math.cos(-FIELD_ANG), sa = Math.sin(-FIELD_ANG);

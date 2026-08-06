@@ -82,9 +82,18 @@ const CSS = `
 }
 
 /* ---- quest tracker (right, under minimap) ---- */
+/* The WRAPPER owns the position, on desktop as well as touch. It used to be
+   positioned only under body.touch, so on desktop the tracker flowed to the top
+   left of the HUD and sat straight on top of the player plate. */
+#hud .qtrack {
+  /* below the minimap BLOCK (map + clock bar ends at y=211 on desktop), not
+     just below the map canvas — 196 left a 15px overlap */
+  position: absolute; top: 222px; right: 10px; width: 168px;
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 4px; pointer-events: none; max-height: 46vh;
+}
 #hud .quests {
-  position: absolute; top: 196px; right: 10px; width: 168px; display: flex;
-  flex-direction: column; gap: 4px; pointer-events: none;
+  width: 100%; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
 }
 /* the tracker header doubles as a COLLAPSE button. On a phone the quest list
    grows down the right edge and covers the minimap, so it has to be foldable. */
@@ -480,14 +489,11 @@ body.touch #hud .toast { font-size: 10px; }
   #hud .skill { width: 46px; height: 46px; }
   #hud .xpbar { width: 180px; }
   #hud .hint-desktop { display: none; }
-  #hud .quests { top: 178px; right: 6px; width: 132px; max-height: 34vh; overflow-y: auto; }
   /* clear of the minimap block, which runs to y=159 on a 375px screen once the
      clock bar under it is counted — 150 left a 9px overlap, which is exactly
      the "quest list covers the map" report */
-  body.touch #hud .qtrack { position: absolute; top: 172px; right: 6px; width: 132px;
-    display: flex; flex-direction: column; align-items: flex-end; pointer-events: none;
-    max-height: 42vh; }
-  body.touch #hud .quests { position: static; width: 100%; }
+  #hud .qtrack { top: 172px; right: 6px; width: 132px; max-height: 42vh; }
+  #hud .quests { max-height: 34vh; overflow-y: auto; }
   #hud .quests .q { font-size: 8px; padding: 4px 6px; }
   #hud .banner { font-size: 18px; }
 }
