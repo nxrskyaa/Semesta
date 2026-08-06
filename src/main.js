@@ -1796,7 +1796,11 @@ async function init(character, saved, audio) {
       if (!e.dead && e.state === 'aggro') aggroN++;
     }
     audio.setCombat(Math.min(1, aggroN / 3));
-    audio.setMood(isNight);
+    // out on open water gets its own brighter set of tracks
+    audio.setMood(
+      (watercraft.state.active || player.state.swimming) && terrain.inOcean(player.state.pos.x, player.state.pos.z)
+        ? 'sea' : isNight,
+    );
     audio.setRain(weather.state.intensity);
 
     hud.updateVitals(player, leveling, dt);

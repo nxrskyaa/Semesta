@@ -15,13 +15,79 @@ export function createAudio() {
   let combat = 0;   // 0..1 intensitas
   let schedTimer = null;
 
-  const SCALES = {
-    day: [0, 3, 5, 7, 10, 12, 15, 17],      // A minor pentatonic-ish, hangat
-    night: [0, 2, 3, 7, 8, 12, 14, 15],     // harmonic minor color, tegang
-    menu: [0, 4, 7, 9, 12, 16, 19, 21],     // major pentatonic — dreamy music box
+  // ---------------------------------------------------------------------------
+  // TRACKS. The old engine had ONE progression pair per mood, so however nice it
+  // was you heard the same tune all session — that is the "cuma 1 lagu" problem.
+  // Each mood now owns a SET of tracks, and each track is genuinely a different
+  // piece: its own key, scale, tempo, chord progression and melodic voice. The
+  // scheduler rotates to a different one every 16 bars, and never repeats the
+  // track it just played.
+  // ---------------------------------------------------------------------------
+  const TRACKS = {
+    day: [
+      { name: 'Hammock Noon', root: 220, bpm: 64, voice: 'kalimba',
+        scale: [0, 3, 5, 7, 10, 12, 15, 17],
+        a: [[0, 5, 9], [0, 3, 7], [-2, 3, 7], [0, 5, 10]],
+        b: [[0, 3, 7], [-4, 0, 5], [-2, 3, 7], [0, 5, 9]] },
+      { name: 'Market Morning', root: 262, bpm: 76, voice: 'pluck',
+        scale: [0, 2, 4, 7, 9, 12, 14, 16],           // major pentatonic, bright
+        a: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [2, 5, 9]],
+        b: [[0, 4, 7], [2, 5, 9], [-3, 0, 4], [-1, 4, 7]] },
+      { name: 'Long Grass', root: 196, bpm: 58, voice: 'kalimba',
+        scale: [0, 2, 5, 7, 9, 12, 14, 17],           // mixolydian-ish, pastoral
+        a: [[0, 4, 7], [-2, 2, 5], [-5, -1, 2], [0, 4, 9]],
+        b: [[-5, -1, 2], [0, 4, 7], [-2, 2, 7], [0, 4, 7]] },
+      { name: 'Wander', root: 233, bpm: 70, voice: 'bell',
+        scale: [0, 3, 5, 6, 7, 10, 12, 15],           // a blue note in the middle
+        a: [[0, 3, 7], [-2, 3, 8], [-4, 0, 7], [0, 5, 8]],
+        b: [[0, 5, 8], [-4, 0, 7], [0, 3, 7], [-2, 3, 8]] },
+    ],
+    night: [
+      { name: 'Lantern Road', root: 196, bpm: 66, voice: 'pluck',
+        scale: [0, 2, 3, 7, 8, 12, 14, 15],
+        a: [[0, 3, 8], [-2, 2, 7], [0, 3, 6], [-4, 0, 5]],
+        b: [[-2, 2, 7], [0, 3, 8], [-4, 0, 5], [0, 2, 7]] },
+      { name: 'Fireflies', root: 175, bpm: 54, voice: 'bell',
+        scale: [0, 3, 5, 7, 10, 12, 15, 19],
+        a: [[0, 3, 7], [-3, 0, 5], [-5, 0, 3], [0, 3, 10]],
+        b: [[-5, 0, 3], [0, 3, 7], [-3, 0, 5], [-1, 3, 7]] },
+      { name: 'Cold Stars', root: 208, bpm: 62, voice: 'pluck',
+        scale: [0, 1, 5, 7, 8, 12, 13, 17],           // phrygian colour, a little eerie
+        a: [[0, 5, 8], [-4, 1, 5], [0, 3, 8], [-2, 1, 7]],
+        b: [[-4, 1, 5], [0, 5, 8], [-2, 1, 7], [0, 3, 8]] },
+    ],
+    // riding a jetski or swimming out at sea gets its own, brighter feel
+    sea: [
+      { name: 'Open Water', root: 247, bpm: 84, voice: 'pluck',
+        scale: [0, 2, 4, 7, 9, 12, 14, 16],
+        a: [[0, 4, 9], [2, 5, 9], [-3, 2, 7], [0, 4, 7]],
+        b: [[-3, 2, 7], [0, 4, 9], [0, 4, 7], [2, 7, 11]] },
+      { name: 'Trade Winds', root: 220, bpm: 92, voice: 'bell',
+        scale: [0, 2, 5, 7, 9, 12, 14, 17],
+        a: [[0, 5, 9], [-2, 3, 7], [0, 4, 9], [-5, 0, 4]],
+        b: [[0, 4, 9], [-5, 0, 4], [0, 5, 9], [-2, 3, 7]] },
+    ],
+    menu: [
+      { name: 'Title Waltz', root: 262, bpm: 54, voice: 'bell',
+        scale: [0, 4, 7, 9, 12, 16, 19, 21],
+        a: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]],
+        b: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]] },
+    ],
   };
-  const ROOT = { day: 220, night: 196, menu: 262 }; // A3 / G3 / C4
-  const BPM = { day: 64, night: 66, menu: 54 };     // lazy, hammock-y tempos
+
+  // which track of the current mood is playing, and how long until it rotates
+  let trackIdx = 0;
+  let barsLeft = 16;
+
+  /** Pick a DIFFERENT track from the mood's set. */
+  function rollTrack(m) {
+    const list = TRACKS[m] || TRACKS.day;
+    if (list.length < 2) { trackIdx = 0; return; }
+    let n = trackIdx;
+    while (n === trackIdx) n = Math.floor(Math.random() * list.length);
+    trackIdx = n;
+  }
+  const curTrack = () => (TRACKS[mood] || TRACKS.day)[trackIdx] || TRACKS.day[0];
 
   function ensureCtx() {
     if (ctx) return;
@@ -59,20 +125,6 @@ export function createAudio() {
   function isMuted() { return muted; }
 
   // -------------------------------------------------------------------------
-  // MUSIK generatif: pad akor + arpeggio pluck + bass, tempo 72bpm, 8 step/bar
-  // -------------------------------------------------------------------------
-  const CHORDS = {
-    day: [[0, 5, 9], [0, 3, 7], [-2, 3, 7], [0, 5, 10]],
-    night: [[0, 3, 8], [-2, 2, 7], [0, 3, 6], [-4, 0, 5]],
-    menu: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]], // I - vi - IV - ii, cozy
-  };
-  // a SECOND progression per mood — the track alternates every 4 bars so it
-  // never loops into sameness
-  const CHORDS_B = {
-    day: [[0, 3, 7], [-4, 0, 5], [-2, 3, 7], [0, 5, 9]],
-    night: [[-2, 2, 7], [0, 3, 8], [-4, 0, 5], [0, 2, 7]],
-    menu: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]],
-  };
   let bar = 0;
   let progB = false; // which progression is playing
 
@@ -80,22 +132,27 @@ export function createAudio() {
 
   function scheduleMusic() {
     if (!ctx || muted) { return; }
-    const stepDur = 60 / (BPM[mood] || 72) / 2; // 8th notes
+    const stepDur = 60 / (curTrack().bpm || 72) / 2; // 8th notes
     while (nextNoteTime < ctx.currentTime + 0.35) {
       playStep(step, nextNoteTime, stepDur);
       step = (step + 1) % 8;
       if (step === 0) {
         bar = (bar + 1) % 4;
-        if (bar === 0) progB = !progB; // swap progressions every 4 bars
+        if (bar === 0) {
+          progB = !progB;              // swap progressions every 4 bars
+          // and swap the whole TRACK every 16, so a session hears several
+          if (--barsLeft <= 0) { barsLeft = 16; rollTrack(mood); }
+        }
       }
       nextNoteTime += stepDur;
     }
   }
 
   function playStep(s, t, dur) {
-    const root = ROOT[mood];
-    const scale = SCALES[mood];
-    const chord = (progB ? CHORDS_B : CHORDS)[mood][bar];
+    const tr = curTrack();
+    const root = tr.root;
+    const scale = tr.scale;
+    const chord = (progB ? tr.b : tr.a)[bar];
 
     // MENU: dreamy music-box waltz — soft pad swells, sparse bell melody,
     // no percussion. Deliberately different from the in-world tracks.
@@ -125,7 +182,9 @@ export function createAudio() {
     const density = 0.3 + combat * 0.4 + (mood === 'night' ? -0.08 : 0);
     if (Math.random() < density && s % 2 === (mood === 'day' ? 0 : 1)) {
       const semi = scale[Math.floor(Math.random() * scale.length)];
-      if (mood === 'day') kalimba(noteHz(root * 2, semi), t, 0.055 + Math.random() * 0.02);
+      const v = tr.voice;
+      if (v === 'kalimba') kalimba(noteHz(root * 2, semi), t, 0.055 + Math.random() * 0.02);
+      else if (v === 'bell') bell(noteHz(root * 2, semi), t, 0.05 + Math.random() * 0.02);
       else pluck(noteHz(root * 2, semi), t, 0.05 + Math.random() * 0.02);
     }
     // occasional playful grace pair (two quick kalimba 16ths) in the day
@@ -231,7 +290,15 @@ export function createAudio() {
   }
 
   // setMood(true/false) = night/day (in-world); setMood('menu') = title/creation music
-  function setMood(v) { mood = v === 'menu' ? 'menu' : (v ? 'night' : 'day'); }
+  function setMood(v) {
+    // 'menu' | 'sea' | true(night) | false(day)
+    const next = v === 'menu' ? 'menu' : v === 'sea' ? 'sea' : (v ? 'night' : 'day');
+    if (next === mood) return;
+    mood = next;
+    trackIdx = -1;            // force rollTrack to land somewhere new
+    rollTrack(mood);
+    barsLeft = 16;
+  }
   function setCombat(level) { combat += (level - combat) * 0.05; }
 
   // --- rain loop: looped noise through a lowpass, faded by intensity ---
