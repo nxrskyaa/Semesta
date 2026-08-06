@@ -125,7 +125,8 @@ const CSS = `
 export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
-  economy, cooking, estate, gacha, wardrobe, dailies, gfxPanelFactory,
+  economy, cooking, estate, gacha, wardrobe, dailies, gamepass, gfxPanelFactory,
+  onDrink, onBoostActive,
 }) {
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -145,6 +146,7 @@ export function createPanels(hudRoot, {
     help: document.createElement('div'),
     about: document.createElement('div'),
     daily: document.createElement('div'),
+    pass: document.createElement('div'),
     gfx: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
@@ -240,6 +242,18 @@ export function createPanels(hudRoot, {
         <button class="act" data-eat="${id}">EAT</button></div>`;
     }
     if (foods) foods = '<h4 class="sect">FOOD</h4>' + foods;
+    // hour-long boosters get their own section: they are not food, and burying
+    // a 2x XP potion in a list of cooked fish is how people never find them
+    let boosts = '';
+    for (const [id, n] of mats) {
+      const d = ITEMS[id];
+      if (!d?.buff) continue;
+      const live = onBoostActive?.(id);
+      boosts += `<div class="rec-row"><img class="ic" src="${itemIconUrl(id)}">
+        <div class="nm">${d.name} x${n}<small>2x ${d.buff.toUpperCase()} for ${d.mins} min${live ? ` · ACTIVE ${live}` : ''}</small></div>
+        <button class="act" data-drink="${id}">DRINK</button></div>`;
+    }
+    if (boosts) boosts = '<h4 class="sect">BOOSTERS</h4>' + boosts;
     let weps = '';
     for (const id of inventory.state.weapons) {
       const d = ITEMS[id];
@@ -250,13 +264,16 @@ export function createPanels(hudRoot, {
         <button class="eq" data-eq="${id}" ${eq ? 'disabled' : ''}>${eq ? 'EQUIPPED' : 'EQUIP'}</button></div>`;
     }
     const coinBar = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${inventory.state.coins} coins</div>`;
-    panels.inv.innerHTML = `<h3>BAG <small>[Tab] close</small></h3>${coinBar}<div class="inv-grid">${grid}</div>${foods}${weps}`;
+    panels.inv.innerHTML = `<h3>BAG <small>[Tab] close</small></h3>${coinBar}<div class="inv-grid">${grid}</div>${boosts}${foods}${weps}`;
     panels.inv.querySelectorAll('[data-eq]').forEach((b) => {
       b.addEventListener('click', () => {
         inventory.equip(b.dataset.eq);
         audio.sfx('ui');
         renderInventory();
       });
+    });
+    panels.inv.querySelectorAll('[data-drink]').forEach((b) => {
+      b.addEventListener('click', () => { onDrink?.(b.dataset.drink); renderInventory(); });
     });
     panels.inv.querySelectorAll('[data-eat]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -1200,6 +1217,128 @@ export function createPanels(hudRoot, {
     });
   }
 
+  // --- GAMEPASS: a single ladder of tiers with three reward rows -----------
+  function renderPass() {
+    if (!gamepass) return;
+    const st = gamepass.state;
+    const tier = gamepass.tierOf();
+    const prog = gamepass.progressInTier();
+    const owned = st.owned;
+    const perk = gamepass.perks();
+
+    const rowCell = (row, t) => {
+      const e = gamepass.PASS_TRACK[t - 1][row];
+      const claimed = st.claimed[row].includes(t);
+      const can = gamepass.canClaim(row, t);
+      const locked = (row === 'basic' && owned === 'none')
+        || (row === 'premium' && owned !== 'premium');
+      const icon = e.coins ? itemIconUrl('coin')
+        : itemIconUrl(e.item || e.cosmetic || e.mount || e.petCharm);
+      return `<div class="pcell ${claimed ? 'got' : ''} ${can ? 'can' : ''} ${locked ? 'lock' : ''} ${e.grand ? 'grand' : e.big ? 'big' : ''}"
+        data-row="${row}" data-tier="${t}" title="${e.label}">
+        <img src="${icon}">
+        ${claimed ? '<span class="tick">✓</span>' : ''}
+        ${locked && !claimed ? '<span class="lk">🔒</span>' : ''}
+      </div>`;
+    };
+
+    let ladder = '';
+    for (let t = 1; t <= gamepass.PASS_TIERS; t++) {
+      const reached = t <= tier;
+      ladder += `<div class="pcol ${reached ? 'on' : ''}">
+        <div class="pt">${t}</div>
+        ${rowCell('free', t)}
+        ${rowCell('basic', t)}
+        ${rowCell('premium', t)}
+      </div>`;
+    }
+
+    const buyRow = owned === 'premium'
+      ? '<div class="pown">★ PREMIUM GAMEPASS ACTIVE — every row unlocked</div>'
+      : `<div class="pbuy">
+          <button class="act" data-buypass="basic" ${owned !== 'none' ? 'disabled' : ''}>
+            ${owned === 'basic' ? '✓ BASIC OWNED' : `BASIC — ${gamepass.PASS_PRICES.basic}c`}
+          </button>
+          <button class="act prem" data-buypass="premium">
+            ${owned === 'basic'
+              ? `UPGRADE — ${gamepass.PASS_PRICES.premium - gamepass.PASS_PRICES.basic}c`
+              : `PREMIUM — ${gamepass.PASS_PRICES.premium}c`}
+          </button>
+        </div>`;
+
+    const waiting = gamepass.pending();
+
+    panels.pass.innerHTML = `<h3>GAMEPASS <small>[Esc] close</small></h3>
+      <style>
+        .phead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .ptier { font-family: var(--font-display); font-size: 22px; color: var(--gold);
+          text-shadow: 0 0 10px var(--gold-glow); }
+        .phead small { font-size: 8px; color: var(--muted); letter-spacing: 2px; display: block; }
+        .pxp { flex: 1; height: 9px; background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; }
+        .pxp > div { height: 100%; background: linear-gradient(90deg, #d8b866, #ffe9a8); }
+        .pperk { font-size: 9px; color: #b8e89a; letter-spacing: 1px; margin-bottom: 8px; }
+        .pbuy { display: flex; gap: 6px; margin-bottom: 10px; }
+        .pbuy .act { flex: 1; font-size: 10px !important; padding: 10px 4px !important; letter-spacing: 2px !important; }
+        .pbuy .prem { background: linear-gradient(180deg, #6a4a86, #402c52); }
+        .pown { font-size: 10px; color: var(--gold); letter-spacing: 2px; text-align: center;
+          padding: 8px; margin-bottom: 10px; box-shadow: inset 0 0 0 2px var(--gold); }
+        .ptrack { display: flex; gap: 3px; overflow-x: auto; padding: 4px 2px 8px; }
+        .pcol { display: flex; flex-direction: column; gap: 3px; align-items: center; flex: 0 0 auto; }
+        .pcol .pt { font-size: 8px; color: #6a7a5f; }
+        .pcol.on .pt { color: var(--gold); }
+        .pcell { width: 38px; height: 38px; position: relative; background: #141a12;
+          box-shadow: inset 0 0 0 2px #2c352c; display: flex; align-items: center; justify-content: center; }
+        .pcell img { width: 24px; height: 24px; image-rendering: pixelated; }
+        .pcell.big { box-shadow: inset 0 0 0 2px #b06ae8; }
+        .pcell.grand { box-shadow: inset 0 0 0 2px #f0c455, 0 0 10px rgba(240,196,85,0.45); }
+        .pcell.can { box-shadow: inset 0 0 0 2px var(--gold), 0 0 10px var(--gold-glow);
+          cursor: pointer; animation: pc 1.3s ease-in-out infinite; }
+        @keyframes pc { 50% { filter: brightness(1.35); } }
+        .pcell.got { opacity: 0.35; }
+        .pcell.lock { opacity: 0.45; }
+        .pcell .tick { position: absolute; inset: 0; display: flex; align-items: center;
+          justify-content: center; font-size: 17px; color: #8ac86a; text-shadow: 0 0 6px #000; }
+        .pcell .lk { position: absolute; bottom: 0; right: 1px; font-size: 9px; }
+        .prowlbl { display: flex; flex-direction: column; gap: 3px; font-size: 7px;
+          color: var(--muted); letter-spacing: 1px; }
+        .prowlbl span { height: 38px; display: flex; align-items: center; }
+      </style>
+      <div class="phead">
+        <div class="ptier">${tier}<small>TIER</small></div>
+        <div style="flex:1">
+          <div class="pxp"><div style="width:${Math.round(prog * 100)}%"></div></div>
+          <div style="font-size:8px;color:var(--muted);margin-top:3px">
+            ${st.xp} PASS XP · earn it from anything you do
+          </div>
+        </div>
+      </div>
+      <div class="pperk">ACTIVE: ${perk.label}</div>
+      ${buyRow}
+      ${waiting ? `<button class="act" data-claimall style="width:100%;margin-bottom:8px">◆ CLAIM ALL (${waiting})</button>` : ''}
+      <div style="display:flex;gap:5px">
+        <div class="prowlbl"><span style="height:14px"></span><span>FREE</span><span>BASIC</span><span>PREM</span></div>
+        <div class="ptrack">${ladder}</div>
+      </div>`;
+
+    panels.pass.querySelectorAll('.pcell.can').forEach((c) => {
+      c.addEventListener('click', () => {
+        if (gamepass.claim(c.dataset.row, +c.dataset.tier)) audio.sfx('quest_done');
+        renderPass();
+      });
+    });
+    panels.pass.querySelectorAll('[data-buypass]').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (gamepass.buy(b.dataset.buypass, (n) => inventory.spendCoins(n))) audio.sfx('levelup_big');
+        else audio.sfx('deny');
+        renderPass();
+      });
+    });
+    panels.pass.querySelector('[data-claimall]')?.addEventListener('click', () => {
+      if (gamepass.claimAll()) audio.sfx('quest_done');
+      renderPass();
+    });
+  }
+
   // --- GRAPHICS: the same panel the opening screen uses, in a game panel ---
   let gfxInstance = null;
   function renderGfx() {
@@ -1221,7 +1360,7 @@ export function createPanels(hudRoot, {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
     gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp, about: renderAbout,
-    daily: renderDaily, gfx: renderGfx,
+    daily: renderDaily, pass: renderPass, gfx: renderGfx,
   };
 
   function toggle(which) {

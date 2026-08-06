@@ -117,6 +117,9 @@ export const ITEMS = {
 
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },
+  // hour-long boosters: the two things players actually want to double
+  potion_xp:   { name: 'Scholar Brew', buff: 'xp',   mult: 1, mins: 60, buy: 220, sell: 60, rarity: 'uncommon' },
+  potion_luck: { name: 'Lucky Charm',  buff: 'luck', mult: 1, mins: 60, buy: 260, sell: 70, rarity: 'rare' },
 
   // ---- WEAPONS ----
   // sword (Knight): wide melee arc

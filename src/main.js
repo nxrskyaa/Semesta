@@ -52,6 +52,7 @@ import { createTouchControls, isTouchDevice } from './ui/mobile.js';
 import { getQuality, onQualityChange, buildSnapshot } from './gfx/quality.js';
 import { createGfxPanel } from './ui/gfxpanel.js';
 import { createDailies } from './systems/dailies.js';
+import { createGamePass, PASS_PRICES } from './systems/gamepass.js';
 import { createLoadScreen } from './ui/loadscreen.js';
 import { itemIconUrl } from './gfx/textures.js';
 
@@ -363,6 +364,8 @@ async function init(character, saved, audio) {
         { id: 'seed_berry', name: 'Berry Seeds', desc: 'Sweet profit in ~90 seconds.', price: ITEMS.seed_berry.buy },
         { id: 'seed_pumpkin', name: 'Pumpkin Seeds', desc: 'Slow, plump, premium.', price: ITEMS.seed_pumpkin.buy },
         { id: 'tonic', name: 'Health Tonic', desc: 'Restores 40 HP.', price: 15 },
+        { id: 'potion_xp', name: 'Scholar Brew', desc: 'DOUBLE XP for 1 hour. Re-drinking extends it.', price: ITEMS.potion_xp.buy },
+        { id: 'potion_luck', name: 'Lucky Charm', desc: 'DOUBLE gacha luck for 1 hour. Re-drinking extends it.', price: ITEMS.potion_luck.buy },
         { id: 'craft_dinghy', name: 'Dinghy Oars', desc: 'Unlocks the Bobbin Dinghy at the marina.', price: ITEMS.craft_dinghy.buy, soldout: inventory.count('craft_dinghy') > 0 },
         { id: 'craft_jetski', name: 'Jetski Key', desc: 'Unlocks the Wavedash Jetski at the marina.', price: ITEMS.craft_jetski.buy, soldout: inventory.count('craft_jetski') > 0 },
         { id: 'plot', name: 'Extra Farm Plot', desc: 'Expand your field by one plot.', icon: 'crop_wheat', price: plotPrice ?? PLOT_PRICE, soldout: plotPrice === null },
@@ -399,7 +402,7 @@ async function init(character, saved, audio) {
       audio.sfx('craft');
       particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffb055', 8, 2);
       hud.toast(out, 1);
-      dailies?.event('cook');
+      dailies?.event('cook'); gamepass?.event('cook');
     },
   };
   const estate = {
@@ -555,8 +558,12 @@ async function init(character, saved, audio) {
     rollRarity() {
       // soft pity: every roll past 8 without epic+ adds weight to the top tiers
       const bonus = Math.max(0, this.pity - 8) * 4;
+      // LUCK multiplies the weight of everything above common — a Lucky Charm
+      // does not guarantee a jackpot, it tilts the whole table
+      const L = luckMult();
       const w = GACHA_WEIGHTS.map(([r, base]) =>
-        [r, base + (r === 'epic' || r === 'legendary' ? bonus : r === 'mythic' ? bonus * 0.5 : 0)]);
+        [r, (base + (r === 'epic' || r === 'legendary' ? bonus : r === 'mythic' ? bonus * 0.5 : 0))
+          * (r === 'common' ? 1 : L)]);
       let total = 0; for (const [, x] of w) total += x;
       let r = Math.random() * total;
       for (const [rar, x] of w) { r -= x; if (r <= 0) return rar; }
@@ -564,14 +571,14 @@ async function init(character, saved, audio) {
     },
     roll() {
       if (!inventory.spendCoins(this.price)) return null;
-      dailies.event('gacha');
+      dailies.event('gacha'); gamepass.event('gacha');
       return this.rollOnce();
     },
     // 10-pull: pay for nine, get ten — one shared reveal show in the panel
     price10: 900,
     roll10() {
       if (!inventory.spendCoins(this.price10)) return null;
-      dailies?.event('gacha');
+      dailies?.event('gacha'); gamepass?.event('gacha');
       const prizes = [];
       for (let i = 0; i < 10; i++) prizes.push(this.rollOnce());
       return prizes;
@@ -678,9 +685,37 @@ async function init(character, saved, audio) {
   });
   dailies.load(saved?.dailies);
 
+  // --- GAMEPASS: a season pass bought with gold you earned ---
+  const gamepass = createGamePass({
+    grant(r) {
+      if (r.coins) inventory.addCoins(Math.round(r.coins * coinMult()));
+      if (r.item) inventory.add(r.item, r.n || 1);
+      if (r.cosmetic) inventory.add(r.cosmetic, 1);
+      if (r.mount) inventory.add(r.mount, 1);
+      if (r.petCharm) inventory.add(r.petCharm, 1);
+      audio.sfx(r.grand ? 'reveal_mythic' : r.big ? 'reveal_epic' : 'pickup');
+      if (r.big || r.grand) {
+        particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)),
+          '#ffd23e', r.grand ? 34 : 20);
+        if (r.grand) addShake(0.3);
+      }
+    },
+    onToast: (t) => hud.toastText(t),
+    onBanner: (t) => hud.banner(t),
+  });
+  gamepass.load(saved?.gamepass);
+
   const panels = createPanels(hudRoot, {
     inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
-    economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies,
+    economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
+    onDrink: (id) => drinkBooster(id),
+    // how long a booster has left, so the bag can say ACTIVE 42m
+    onBoostActive: (id) => {
+      const b = player.state.buffs.find((x) => x.id === id);
+      if (!b || b.t <= 0) return null;
+      const m = Math.ceil(b.t / 60);
+      return m >= 1 ? `${m}m` : `${Math.ceil(b.t)}s`;
+    },
     // the in-game panel already has its own header, so drop the inner title
     gfxPanelFactory: () => createGfxPanel({ builtWith, sfx: (n) => audio.sfx(n), title: false }),
     onCraft(recipe) {
@@ -693,7 +728,7 @@ async function init(character, saved, audio) {
         hud.banner(`${weapon.name.toUpperCase()} +${res.plus}!`);
         particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffd23e', 20);
         quests.event('forge');
-        dailies.event('forge');
+        dailies.event('forge'); gamepass.event('forge');
       } else {
         hud.banner('FORGE FAILED...');
       }
@@ -736,9 +771,22 @@ async function init(character, saved, audio) {
     if (owned.length) summonMount(owned[owned.length - 1]);
     else hud.toastText('No mount yet — villagers offer mount quests!');
   }
+  // XP and LUCK are the two stats the boosters and the pass move. Everything
+  // multiplies together so a Scholar Brew on a premium pass with an xp pet is
+  // genuinely worth drinking.
   function xpMult() {
     const petId = pets.state.active;
-    return petId && PET_DEFS[petId].perk.key === 'xp' ? 1 + PET_DEFS[petId].perk.value : 1;
+    const pet = petId && PET_DEFS[petId].perk.key === 'xp' ? PET_DEFS[petId].perk.value : 0;
+    const potion = player.buffVal('xpBoost');       // 1 = double
+    const pass = gamepass.perks().xp;
+    return (1 + pet) * (1 + potion) * (1 + pass);
+  }
+  /** Extra gacha weight on the top tiers, from a Lucky Charm and the pass. */
+  function luckMult() {
+    return 1 + player.buffVal('luckBoost') + gamepass.perks().luck;
+  }
+  function coinMult() {
+    return 1 + gamepass.perks().coin;
   }
   if (saved?.pet && PET_DEFS[saved.pet] && inventory.count(PET_DEFS[saved.pet].charm) > 0) {
     summonPet(saved.pet);
@@ -890,8 +938,8 @@ async function init(character, saved, audio) {
     }
     for (const d of drops) pickups.spawn(d.id, d.count, e.mesh.position);
     quests.event('kill', { type: e.type, worldBoss: !!e.isWorldBoss });
-    dailies.event('kill');
-    if (e.isWorldBoss) dailies.event('boss');
+    dailies.event('kill'); gamepass.event('kill');
+    if (e.isWorldBoss) { dailies.event('boss'); gamepass.event('boss'); }
   }
 
   function dealHit(e, mult = 1) {
@@ -1059,6 +1107,28 @@ async function init(character, saved, audio) {
     audio.sfx('potion');
   }
 
+  /**
+   * Drink a booster. These are separate from the health tonic: they set a
+   * long-running buff rather than healing, and re-drinking EXTENDS the timer
+   * instead of stacking a second copy — stacking would let someone hoard ten and
+   * play the whole session at 10x.
+   */
+  function drinkBooster(id) {
+    const def = ITEMS[id];
+    if (!def?.buff) return false;
+    if (inventory.count(id) <= 0) { audio.sfx('deny'); return false; }
+    inventory.remove(id, 1);
+    const key = def.buff === 'xp' ? 'xpBoost' : 'luckBoost';
+    const existing = player.state.buffs.find((b) => b.id === id);
+    const secs = def.mins * 60;
+    player.addBuff({ id, t: (existing ? Math.max(0, existing.t) : 0) + secs, [key]: def.mult, icon: id });
+    hud.banner(`${def.name.toUpperCase()} — 2x ${def.buff.toUpperCase()} FOR ${def.mins} MIN`);
+    audio.sfx('potion');
+    particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)),
+      def.buff === 'xp' ? '#8fd6e8' : '#ffd23e', 16);
+    return true;
+  }
+
   // --- skill system ---
   const skillSys = createSkillSystem({
     player, enemyMgr, projectiles, particles, dmgNums, audio, terrain,
@@ -1074,7 +1144,7 @@ async function init(character, saved, audio) {
     if (panels.anyOpen() || dialog.isOpen() || player.state.dead) return;
     dismountIfRiding();
     player.state.dmgMult = totalMult();
-    if (skillSys.cast(id) !== false) dailies.event('skill');
+    if (skillSys.cast(id) !== false) dailies.event('skill'); gamepass.event('skill');
   }
 
   // --- fishing ---
@@ -1089,7 +1159,7 @@ async function init(character, saved, audio) {
         leveling.addXp(gained);
         dmgNums.spawn(player.state.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), `+${gained} XP`, 'xp');
         quests.event('fish');
-        dailies.event('fish');
+        dailies.event('fish'); gamepass.event('fish');
       },
       onMiss(msg) { hud.toastText(msg); },
     },
@@ -1189,7 +1259,7 @@ async function init(character, saved, audio) {
       audio.sfx('hit');
       for (const d of drops) {
         pickups.spawn(d.id, d.count, node.mesh.position);
-        dailies.event('gather', d.count);
+        dailies.event('gather', d.count); gamepass.event('gather', d.count);
       }
       if (drops.length) audio.sfx(node.kind === 'birch' ? 'death_thud' : 'forge_ok');
     }, 180);
@@ -1249,13 +1319,13 @@ async function init(character, saved, audio) {
         if (crop) {
           pickups.spawn(crop.id, crop.count, new THREE.Vector3(plot.x, plot.y, plot.z));
           audio.sfx('catch');
-          dailies.event('harvest');
+          dailies.event('harvest'); gamepass.event('harvest');
         }
       });
     } else if (plot && plot.owned && !plot.seed) {
       const seed = seedToPlant();
       if (seed) add('farm', `Plant ${ITEMS[seed].name}`, () => {
-        if (farming.plant(plot, seed)) { inventory.remove(seed, 1); audio.sfx('ui'); dailies.event('plant'); }
+        if (farming.plant(plot, seed)) { inventory.remove(seed, 1); audio.sfx('ui'); dailies.event('plant'); gamepass.event('plant'); }
       });
     }
 
@@ -1270,7 +1340,7 @@ async function init(character, saved, audio) {
       audio.sfx('chest'); addShake(0.12);
       for (const d of loot) pickups.spawn(d.id, d.count, chest.mesh.position);
       quests.event('chest');
-      dailies.event('chest');
+      dailies.event('chest'); gamepass.event('chest');
     });
 
     const land = housing.nearest(player.state.pos, 3.5);
@@ -1351,6 +1421,7 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
     if (e.code === 'KeyJ') { audio.sfx('ui'); panels.toggle('daily'); }
+    if (e.code === 'KeyU') { audio.sfx('ui'); panels.toggle('pass'); }
     if (e.code === 'KeyT') teleportHome();
     if (e.code === 'KeyF') doInteract();
     if (e.code === 'KeyR') doInteract2(); // secondary nearby action
@@ -1469,6 +1540,7 @@ async function init(character, saved, audio) {
         wardrobe: wardrobe.serialize(),
         gachaPity: gacha.pity,
         dailies: dailies.serialize(),
+        gamepass: gamepass.serialize(),
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
       }));
     } catch { /* storage full/blocked: ignore */ }
@@ -1478,7 +1550,7 @@ async function init(character, saved, audio) {
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
-    dailies, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
+    dailies, gamepass, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     composer, usePost,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
@@ -1673,7 +1745,7 @@ async function init(character, saved, audio) {
       bloomPass.strength = 0.72 - dayness * 0.32;
     }
     dailies.tick(dt);
-    hud.setMenuBadge?.(dailies.pending());
+    hud.setMenuBadge?.(dailies.pending() + gamepass.pending());
     // cosmetic movement trail (wardrobe slot 3)
     if (player.state.isMoving && !player.state.dead) {
       const tr = wardrobe.trailColor(time);
