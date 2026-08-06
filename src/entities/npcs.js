@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { makeCritterFaceTexture, PALETTE } from '../gfx/textures.js';
 import { WATER_LEVEL } from '../world/terrain.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Static prop colours are SHARED — a built world was carrying ~2,465 distinct
 // materials, which is why the LOW preset barely helped. Nothing in this file
@@ -697,23 +698,25 @@ const PZ = {
  */
 function buildPlazaFloor() {
   const g = new THREE.Group();
-  const flat = (geo, color, y, opts = {}) => {
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
-      color: new THREE.Color(color),
-      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
-      ...opts,
-    }));
-    m.rotation.x = -Math.PI / 2;
-    m.position.y = y;
-    m.receiveShadow = true;
-    return m;
+
+  // Every piece of paving is collected by COLOUR and merged into one mesh per
+  // tone. Laying 251 separate meshes cost 251 draw calls that could never batch
+  // and were always on screen — measured, that alone took the LOW preset from
+  // 109 draw calls to 982 and the frame from 3ms to 29ms. Same picture, six
+  // draw calls.
+  const buckets = new Map();
+  const add = (geo, color, y, rotY = 0, x = 0, z = 0) => {
+    geo = geo.clone();
+    geo.rotateX(-Math.PI / 2);
+    if (rotY) geo.rotateY(rotY);
+    geo.translate(x, y, z);
+    if (!buckets.has(color)) buckets.set(color, []);
+    buckets.get(color).push(geo);
   };
 
-  const R = 11.5;                       // outer radius of the paving
+  const R = 11.5;
 
-  // --- the ring walk: alternating flagstones laid in concentric courses -----
-  // Two rings of wedges in alternating tones reads as laid stone; one flat disc
-  // reads as paint.
+  // --- the ring walk: alternating flagstone courses, grout showing through ---
   for (let ring = 0; ring < 4; ring++) {
     const r0 = 3.4 + ring * 2.0;
     const r1 = r0 + 2.0;
@@ -727,18 +730,15 @@ function buildPlazaFloor() {
       shape.lineTo(Math.cos(a1) * (r1 - 0.14), Math.sin(a1) * (r1 - 0.14));
       shape.lineTo(Math.cos(a1) * r0, Math.sin(a1) * r0);
       shape.closePath();
-      const tone = (i + ring) % 2 ? PZ.pave : PZ.paveAlt;
-      g.add(flat(new THREE.ShapeGeometry(shape), tone, 0.03));
+      add(new THREE.ShapeGeometry(shape), (i + ring) % 2 ? PZ.pave : PZ.paveAlt, 0.03);
     }
   }
-  // the grout showing through underneath
-  g.add(flat(new THREE.CircleGeometry(R, 40), PZ.grout, 0.02));
+  add(new THREE.CircleGeometry(R, 40), PZ.grout, 0.02);
 
   // --- the ROSETTE at dead centre -------------------------------------------
-  g.add(flat(new THREE.CircleGeometry(3.4, 32), PZ.paveAlt, 0.035));
-  g.add(flat(new THREE.RingGeometry(3.2, 3.4, 32), PZ.gold, 0.045));
-  g.add(flat(new THREE.RingGeometry(2.5, 2.62, 32), PZ.goldDim, 0.045));
-  // eight petals of gold inlay radiating from the middle
+  add(new THREE.CircleGeometry(3.4, 32), PZ.paveAlt, 0.035);
+  add(new THREE.RingGeometry(3.2, 3.4, 32), PZ.gold, 0.045);
+  add(new THREE.RingGeometry(2.5, 2.62, 32), PZ.goldDim, 0.045);
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
     const sh = new THREE.Shape();
@@ -747,51 +747,57 @@ function buildPlazaFloor() {
     sh.lineTo(Math.cos(a) * 2.9, Math.sin(a) * 2.9);
     sh.lineTo(Math.cos(a + 0.13) * 2.4, Math.sin(a + 0.13) * 2.4);
     sh.closePath();
-    g.add(flat(new THREE.ShapeGeometry(sh), i % 2 ? PZ.gold : PZ.goldDim, 0.05));
+    add(new THREE.ShapeGeometry(sh), i % 2 ? PZ.gold : PZ.goldDim, 0.05);
   }
-  g.add(flat(new THREE.CircleGeometry(0.75, 16), PZ.pave, 0.055));
-  g.add(flat(new THREE.RingGeometry(0.68, 0.78, 16), PZ.gold, 0.06));
+  add(new THREE.CircleGeometry(0.75, 16), PZ.pave, 0.055);
+  add(new THREE.RingGeometry(0.68, 0.78, 16), PZ.gold, 0.06);
 
   // --- four AVENUES on the cardinal axes ------------------------------------
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const av = new THREE.Group();
-    // the roadway
-    const road = flat(new THREE.PlaneGeometry(2.6, R + 3.5), PZ.pave, 0.055);
-    road.position.set(Math.sin(a) * (R / 2 + 1.6), 0.055, Math.cos(a) * (R / 2 + 1.6));
-    road.rotation.z = -a;
-    av.add(road);
-    // gold kerb lines either side
-    for (const s of [-1.3, 1.3]) {
-      const kerb = flat(new THREE.PlaneGeometry(0.14, R + 3.5), PZ.goldDim, 0.06);
-      kerb.position.set(
-        Math.sin(a) * (R / 2 + 1.6) + Math.cos(a) * s,
-        0.06,
-        Math.cos(a) * (R / 2 + 1.6) - Math.sin(a) * s,
-      );
-      kerb.rotation.z = -a;
-      av.add(kerb);
+    const cx = Math.sin(a) * (R / 2 + 1.6), cz = Math.cos(a) * (R / 2 + 1.6);
+    add(new THREE.PlaneGeometry(2.6, R + 3.5), PZ.pave, 0.055, a, cx, cz);
+    for (const sdir of [-1.3, 1.3]) {
+      add(new THREE.PlaneGeometry(0.14, R + 3.5), PZ.goldDim, 0.06, a,
+        cx + Math.cos(a) * sdir, cz - Math.sin(a) * sdir);
     }
-    // stepping bands across the avenue so it reads as paved, not painted
     for (let k = 0; k < 9; k++) {
       const d = 3.6 + k * 1.5;
-      const band = flat(new THREE.PlaneGeometry(2.5, 0.1), PZ.grout, 0.062);
-      band.position.set(Math.sin(a) * d, 0.062, Math.cos(a) * d);
-      band.rotation.z = -a;
-      av.add(band);
+      add(new THREE.PlaneGeometry(2.5, 0.1), PZ.grout, 0.062, a, Math.sin(a) * d, Math.cos(a) * d);
     }
-    g.add(av);
   }
 
-  // --- the stepped kerb around the whole plaza ------------------------------
+  // one mesh per tone
+  for (const [color, geos] of buckets) {
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((x) => x.dispose());
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({
+      color: new THREE.Color(color),
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+    }));
+    m.receiveShadow = true;
+    g.add(m);
+  }
+
+  // --- the stepped kerb: also merged, two tones ------------------------------
+  const kerbBuckets = new Map();
   for (let i = 0; i < 44; i++) {
     const a = (i / 44) * Math.PI * 2;
-    const kerb = new THREE.Mesh(sharedBox(1.7, 0.22, 0.5),
-      lam(i % 2 ? PZ.stone : PZ.stoneDark));
-    kerb.position.set(Math.cos(a) * R, 0.11, Math.sin(a) * R);
-    kerb.rotation.y = -a;
-    kerb.receiveShadow = true;
-    g.add(kerb);
+    const geo = new THREE.BoxGeometry(1.7, 0.22, 0.5);
+    geo.rotateY(-a);
+    geo.translate(Math.cos(a) * R, 0.11, Math.sin(a) * R);
+    const c = i % 2 ? PZ.stone : PZ.stoneDark;
+    if (!kerbBuckets.has(c)) kerbBuckets.set(c, []);
+    kerbBuckets.get(c).push(geo);
+  }
+  for (const [color, geos] of kerbBuckets) {
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((x) => x.dispose());
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }));
+    m.receiveShadow = true;
+    g.add(m);
   }
   return g;
 }
@@ -1158,8 +1164,13 @@ export function createNPCs(scene, terrain, decorBlocked, particles) {
     plazaFloor.position.set(c.x, c.y, c.z);
     scene.add(plazaFloor);
   }
+  // The shrine is the plaza's focal point, but the player SPAWNS here — putting
+  // a solid three-metre fountain on the spawn cell is what trapped everyone on
+  // teleport. It sits one step off the axis instead, and its footprint is
+  // blocked while the spawn cells stay clear.
   const shrine = buildCenterShrine();
-  place(shrine, 0, 0, false, 2);
+  const [shx, shz] = polar(AV[1] + Math.PI, 3.6);
+  place(shrine, shx, shz, false, 2);
 
   // --- the three STATIONS, one per avenue at a matched radius --------------
   const STATION_R = 8.2;

@@ -35,19 +35,23 @@ const CSS = `
 }
 #touchui .abtn {
   position: absolute; border-radius: 10px; border: 0;
-  background: linear-gradient(180deg, rgba(52,66,42,0.92), rgba(24,32,20,0.94));
+  /* The FILL must be a background-COLOR, never a gradient in the shorthand.
+     Skill and potion icons are applied later as background-image, which
+     replaces the shorthand outright — that is what left every button fully
+     transparent. A colour survives an image being set over it. */
+  background-color: #2c3a24;
   background-position: center; background-repeat: no-repeat; background-size: 54%;
-  background-clip: border-box;
   image-rendering: pixelated;
   display: flex; align-items: center; justify-content: center;
   color: #dce5d5; font-family: inherit; text-shadow: 1px 1px 0 #000;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   pointer-events: auto;
-  outline: 2px solid rgba(6,9,6,0.85);
-  outline-offset: 0;
+  /* the ring is a box-shadow, not an outline: outlines do not reliably follow
+     border-radius, which is what made the corners look sliced off */
   box-shadow:
-    inset 0 2px 0 0 rgba(220,240,200,0.2), inset 0 -3px 0 0 rgba(0,0,0,0.45),
-    inset 0 0 0 2px rgba(96,114,78,0.85),
+    inset 0 2px 0 0 rgba(220,240,200,0.22), inset 0 -3px 0 0 rgba(0,0,0,0.45),
+    inset 0 0 0 2px rgba(104,124,84,0.95),
+    0 0 0 2px rgba(6,9,6,0.9),
     0 3px 7px rgba(0,0,0,0.45);
 }
 #touchui .abtn:active {
@@ -64,10 +68,11 @@ const CSS = `
    gets its screen back. */
 #touchui .attack { width: 60px; height: 60px; right: 6px; bottom: 6px; font-size: 22px;
   border-radius: 13px;
-  background-image: linear-gradient(180deg, rgba(96,74,34,0.94), rgba(52,40,18,0.94));
+  background-color: #5c4520;
   box-shadow:
     inset 0 2px 0 0 rgba(255,230,160,0.3), inset 0 -3px 0 0 rgba(0,0,0,0.45),
-    inset 0 0 0 2px rgba(210,170,66,0.9),
+    inset 0 0 0 2px rgba(214,174,70,0.95),
+    0 0 0 2px rgba(6,9,6,0.9),
     0 0 12px rgba(200,160,58,0.22), 0 3px 7px rgba(0,0,0,0.45);
 }
 /* bottom row: attack (big) · roll · jump · potion — evenly spaced */

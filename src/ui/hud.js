@@ -92,13 +92,16 @@ const CSS = `
    gold to match the temple language, and it waits for a click so nobody misses
    a beat while fighting. */
 #hud .story {
-  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(6,10,8,0.72); z-index: 60; pointer-events: auto;
+  position: absolute; left: 50%; bottom: 14vh; transform: translateX(-50%);
+  display: none; z-index: 60; pointer-events: none;
 }
-#hud .story.show { display: flex; animation: st-in 0.4s ease-out; }
-@keyframes st-in { from { opacity: 0; } }
+#hud .story.show { display: block; animation: st-in 0.45s cubic-bezier(0.2, 1.2, 0.4, 1); }
+@keyframes st-in { from { opacity: 0; transform: translateX(-50%) translateY(16px); } }
+#hud .story.out { animation: st-out 0.5s ease-in forwards; }
+@keyframes st-out { to { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
 #hud .story .card {
-  width: min(520px, 88vw); max-height: 82vh; overflow-y: auto; padding: 22px 24px 18px;
+  width: min(440px, 84vw); max-height: 40vh; overflow-y: auto; padding: 14px 18px 12px;
+  pointer-events: auto;
   background:
     var(--dither) 0 0/4px 4px,
     linear-gradient(180deg, #efe6cc, #ddd0ac);
@@ -112,12 +115,12 @@ const CSS = `
   color: #8a6f36; margin-bottom: 4px;
 }
 #hud .story h2 {
-  font-family: var(--font-display, inherit); font-size: 15px; letter-spacing: 2px;
+  font-family: var(--font-display, inherit); font-size: 12px; letter-spacing: 2px;
   color: #4a3a18; margin: 0 0 14px; text-shadow: 0 1px 0 rgba(255,255,255,0.5);
 }
 #hud .story .rule { height: 2px; background: linear-gradient(90deg, transparent, #b99a52, transparent); margin: 0 0 14px; }
 #hud .story p {
-  font-size: 11px; line-height: 2; color: #3c3222; margin: 0 0 11px; text-align: left;
+  font-size: 10px; line-height: 1.85; color: #3c3222; margin: 0 0 8px; text-align: left;
 }
 #hud .story p:last-of-type { margin-bottom: 16px; }
 #hud .story .rw {
@@ -125,8 +128,8 @@ const CSS = `
   padding: 6px 12px; margin-bottom: 14px; box-shadow: inset 0 0 0 2px #b99a52;
 }
 #hud .story button {
-  width: 100%; font-family: var(--font-display, inherit); font-size: 10px; letter-spacing: 3px;
-  cursor: pointer; padding: 11px 4px; border: 0; color: #f4ecd4;
+  width: 100%; font-family: var(--font-display, inherit); font-size: 9px; letter-spacing: 3px;
+  cursor: pointer; padding: 8px 4px; border: 0; color: #f4ecd4;
   background: linear-gradient(180deg, #6a5430, #46381e);
   box-shadow: 0 -2px 0 0 #c8a03a, 0 2px 0 0 #2a2210, -2px 0 0 0 #8a744a, 2px 0 0 0 #8a744a;
 }
@@ -650,20 +653,34 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     qHead.querySelector('.qcaret').textContent = questsFolded ? '▸' : '▾';
   });
 
-  /** Show one story chapter. Pauses nothing — it just waits for a click. */
+  /**
+   * Show one story chapter as a CARD, not a modal. A full-screen overlay in the
+   * middle of play is the wrong shape for an ambient beat — it hid the game and
+   * demanded a click. This slides in low on the screen, never takes input away
+   * from the world, and gets out of the way on its own.
+   */
   const storyEl = root.querySelector('.story');
+  let storyTimer = null;
+  function hideStory() {
+    clearTimeout(storyTimer);
+    storyEl.classList.add('out');
+    setTimeout(() => { storyEl.classList.remove('show', 'out'); }, 480);
+  }
   function showStory(ch) {
-    const rw = ch.reward
-      ? `<div class="rw">◆ ${ch.reward.label.toUpperCase()}</div>` : '';
+    clearTimeout(storyTimer);
+    const rw = ch.reward ? `<div class="rw">◆ ${ch.reward.label.toUpperCase()}</div>` : '';
     storyEl.querySelector('.card').innerHTML = `
-      <div class="ch">A CHAPTER OF ANAVELA</div>
-      <h2>${ch.title}</h2>
+      <div class="ch">ANAVELA · ${ch.title.split(' · ')[0]}</div>
+      <h2>${ch.title.split(' · ')[1] || ch.title}</h2>
       <div class="rule"></div>
       ${ch.lines.map((l) => `<p>${l}</p>`).join('')}
       ${rw}
-      <button>CONTINUE</button>`;
+      <button>DISMISS</button>`;
+    storyEl.classList.remove('out');
     storyEl.classList.add('show');
-    storyEl.querySelector('button').addEventListener('click', () => storyEl.classList.remove('show'));
+    storyEl.querySelector('button').addEventListener('click', hideStory);
+    // long enough to read, short enough never to nag
+    storyTimer = setTimeout(hideStory, 16000);
   }
 
   function closeMenu() { menuPop.classList.remove('show'); }
@@ -685,8 +702,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   // any HUD-level overlay that must block the mobile joystick/camera zones
   function isMenuPopOpen() {
     return menuPop.classList.contains('show')
-      || root.querySelector('.onboard').classList.contains('show')
-      || storyEl.classList.contains('show');
+      || root.querySelector('.onboard').classList.contains('show');
   }
   els.deadBtn.addEventListener('click', () => callbacks.onRespawn?.());
   els.muteBtn.addEventListener('click', () => {

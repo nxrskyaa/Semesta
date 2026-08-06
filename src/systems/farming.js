@@ -78,14 +78,29 @@ function buildCropMesh(cropId, stage) {
 export function createFarming(scene, terrain, decorBlocked, particles) {
   const plots = [];
 
-  // a neat 4x2 field near the village garden
-  const baseOx = -7.5, baseOz = 0.5;
+  // A FIELD ON SOIL, outside the paved plaza. The old offsets put the beds at
+  // ~7.5 units from spawn, which is inside the 11.5-unit paving — soil plots
+  // sitting on stone flags, which is nonsense. The field now starts past the
+  // kerb, laid out as a tidy 4x2 grid on an axis so it reads as a plot of land
+  // rather than crates dropped on a floor.
+  const FIELD_ANG = Math.PI * 0.75 + Math.PI / 4;   // between two avenues
+  const FIELD_R = 16.5;                             // clear of the 13u flat pad
+  const fcx = terrain.spawn.x + Math.sin(FIELD_ANG) * FIELD_R;
+  const fcz = terrain.spawn.z + Math.cos(FIELD_ANG) * FIELD_R;
+  const ca = Math.cos(-FIELD_ANG), sa = Math.sin(-FIELD_ANG);
   for (let i = 0; i < MAX_PLOTS; i++) {
-    const ox = baseOx - Math.floor(i / 4) * 1.3;
-    const oz = baseOz + (i % 4) * 1.3;
-    const x = terrain.spawn.x + ox, z = terrain.spawn.z + oz;
+    // rows run along the field's own axis, so the grid faces the village
+    const lx = (Math.floor(i / 4) - 0.5) * 1.45;
+    const lz = ((i % 4) - 1.5) * 1.45;
+    const x = fcx + lx * ca - lz * sa;
+    const z = fcz + lx * sa + lz * ca;
     const y = terrain.surfaceY(x, z);
     const owned = i < FREE_PLOTS;
+    // the beds are worked soil: block the cell so scenery never grows through
+    {
+      const [cx, cz] = terrain.cellOf(x, z);
+      decorBlocked.add(`${cx},${cz}`);
+    }
     const group = new THREE.Group();
     group.position.set(x, y, z);
     scene.add(group);

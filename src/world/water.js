@@ -45,13 +45,13 @@ export function buildWater(terrain, scene) {
   // WORLD DETAIL: every vertex is rewritten each frame, so subdivision is a
   // straight per-frame cost — 84x84 touches 7,225 vertices a tick, 28x28 is 841
   const SEG = getQuality().waterSegments;
-  // The sea runs WELL past the terrain. The land rim eases up into distant
-  // highlands, but the ocean used to stop dead at the map bound — a visible
-  // straight edge with sky under it, which is exactly what made the world read
-  // as a tray. Three times the grid puts the horizon beyond anything the camera
-  // can reach, so the sea just goes on.
-  const SEA_SPAN = S * 3;
-  const geo = new THREE.PlaneGeometry(SEA_SPAN, SEA_SPAN, SEG, SEG);
+  // The DETAILED plane covers exactly the map. Stretching it to 3x the grid
+  // while keeping the same segment count dropped the vertex density to one
+  // point every ~17 units at LOW — a 13-unit lake then had barely a single
+  // vertex, so its swell and depth tint were meaningless and the surface
+  // flickered as those few vertices moved. The far water is a SEPARATE, cheap
+  // plane added below.
+  const geo = new THREE.PlaneGeometry(S, S, SEG, SEG);
   const plane = new THREE.Mesh(geo, mat);
   plane.rotation.x = -Math.PI / 2;
   plane.position.y = WATER_Y;
@@ -159,6 +159,21 @@ export function buildWater(terrain, scene) {
     gp.position.y = WATER_Y + 0.045;
     group.add(gp);
     glitterMat.userData.tex = gt;
+  }
+
+  // --- the OUTER SEA: a cheap flat ring beyond the detailed plane, so the
+  // ocean still runs past the map bound without costing vertex density where it
+  // actually matters. It does not animate; at that distance nothing reads.
+  {
+    const outer = new THREE.Mesh(
+      new THREE.RingGeometry(S * 0.706, S * 2.2, 32, 1),
+      new THREE.MeshLambertMaterial({
+        color: new THREE.Color('#175f8c'), transparent: true, opacity: 0.9, depthWrite: false,
+      }),
+    );
+    outer.rotation.x = -Math.PI / 2;
+    outer.position.y = WATER_Y - 0.02;
+    group.add(outer);
   }
 
   scene.add(group);

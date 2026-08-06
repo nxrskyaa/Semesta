@@ -13,6 +13,7 @@
 // It is cheap: a few dozen low-poly cones and slabs, no shadows, no lighting
 // updates, and it never animates.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * @param scene        the world scene
@@ -37,6 +38,9 @@ export function buildHorizon(scene, fogColor = '#9ec49a', drawDistance = 220) {
    */
   function ring(radius, count, minH, maxH, baseColor, fogMix, spread) {
     const base = new THREE.Color(baseColor).lerp(fog, fogMix);
+    // every peak in a range is baked into ONE geometry: they share a colour and
+    // never move, so 40-odd separate meshes bought nothing but draw calls
+    const parts = [];
     // one shared material per ring: nothing here needs its own
     // A TRUE BACKDROP, not distant scenery. depthTest off + a negative
     // renderOrder means it is painted first and everything in the world draws
@@ -53,33 +57,35 @@ export function buildHorizon(scene, fogColor = '#9ec49a', drawDistance = 220) {
       const h = minH + rnd() * (maxH - minH);
       const w = h * (0.85 + rnd() * 0.9);
       // a cone with few sides reads as a ridge, not a party hat
-      const peak = new THREE.Mesh(new THREE.ConeGeometry(w, h, 5 + Math.floor(rnd() * 3)), mat);
-      peak.renderOrder = -10;
-      peak.frustumCulled = false;
-      peak.position.set(Math.cos(a) * r, h / 2 - 6, Math.sin(a) * r);
-      peak.rotation.y = rnd() * Math.PI;
-      // squash some of them so the range is not a row of identical spikes
-      peak.scale.set(1, 1, 0.55 + rnd() * 0.7);
-      group.add(peak);
+      const pg = new THREE.ConeGeometry(w, h, 5 + Math.floor(rnd() * 3));
+      pg.scale(1, 1, 0.55 + rnd() * 0.7);
+      pg.rotateY(rnd() * Math.PI);
+      pg.translate(Math.cos(a) * r, h / 2 - 6, Math.sin(a) * r);
+      parts.push(pg);
 
       // a shoulder alongside most peaks, so ridges read as connected massifs
       if (rnd() < 0.7) {
-        const sh = new THREE.Mesh(new THREE.ConeGeometry(w * 0.7, h * 0.62, 5), mat);
-        sh.renderOrder = -10;
-        sh.frustumCulled = false;
         // The offset is a fraction of the RING, not of the peak. Scaling it by
         // the peak width flung shoulders up to 250 units out — past the far
         // plane, where they simply vanished and left gaps in the skyline.
         const off = (rnd() - 0.5) * radius * 0.14;
-        sh.position.set(
+        const sg = new THREE.ConeGeometry(w * 0.7, h * 0.62, 5);
+        sg.scale(1, 1, 0.6);
+        sg.translate(
           Math.cos(a) * r - Math.sin(a) * off,
           h * 0.31 - 6,
           Math.sin(a) * r + Math.cos(a) * off,
         );
-        sh.scale.set(1, 1, 0.6);
-        group.add(sh);
+        parts.push(sg);
       }
     }
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((g2) => g2.dispose());
+    if (!merged) return;
+    const range = new THREE.Mesh(merged, mat);
+    range.renderOrder = -10;
+    range.frustumCulled = false;
+    group.add(range);
   }
 
   // Three ranges. The near one is only just outside the rim so it continues the
