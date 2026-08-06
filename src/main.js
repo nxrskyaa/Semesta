@@ -14,6 +14,7 @@ import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
+import { buildHorizon } from './world/horizon.js';
 import { createWildlife } from './world/wildlife.js';
 import { createWatercraft, CRAFT_DEFS } from './systems/watercraft.js';
 import { setupLighting } from './gfx/lighting.js';
@@ -174,6 +175,9 @@ async function init(character, saved, audio) {
   const decor = buildDecor(terrain, scene);
   setBoot(0.56, 'Filling the lakes and the ocean…'); await frame();
   const water = buildWater(terrain, scene);
+  // distant ranges beyond the playable bound — the terrain mesh has to stop
+  // somewhere, and this is what stops that line reading as the edge of a box
+  const horizon = buildHorizon(scene, '#9ec49a', qual.drawDistance);
   const lighting = setupLighting(scene);
   const particles = createParticles(scene);
   const weather = createWeather(scene, terrain, particles);
@@ -1709,6 +1713,7 @@ async function init(character, saved, audio) {
     }, 1 + player.buffVal('magnet'));
     decor.update(dt, player.state.pos, time, isNight);
     isles.update(dt, time, isNight, player.state.pos);
+    horizon.update(player.state.pos);
     wildlife.update(dt, player.state.pos, time);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
