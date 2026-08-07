@@ -15,6 +15,11 @@ export const TRAILS = {
   trail_ember:   { colors: ['#ff9a3a', '#ffd166'], rate: 7, rise: 1.4 },
   trail_star:    { colors: ['#ffe27a', '#fff6c8'], rate: 6, rise: 0.9 },
   trail_rainbow: { rainbow: true, rate: 9, rise: 1.0 },
+  // --- SEASON ONE additions ---
+  trail_bubble:  { colors: ['#a8e0f8', '#e0f6ff'], rate: 4, rise: 1.6 },
+  trail_lantern: { colors: ['#ffdca0', '#ffb85c'], rate: 4, rise: 0.7 },
+  trail_ink:     { colors: ['#2a2438', '#6a5a9a'], rate: 6, rise: 0.3 },
+  trail_aurora:  { colors: ['#7fd0c8', '#c8a0f0'], rate: 8, rise: 1.2 },
 };
 
 const HAT_BUILDERS = {
@@ -226,6 +231,135 @@ const HAT_BUILDERS = {
     g.add(mask, snout, nose, bell);
     return g;
   },
+  // --- SEASON ONE additions -------------------------------------------------
+  hat_lantern() {
+    const g = new THREE.Group();
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.36, 0.04, 10), lam('#6a4a30'));
+    brim.position.y = 0.26;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.16, 0.035), lam('#4a3a28'));
+    post.position.set(0, 0.36, 0);
+    const lant = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.18, 8),
+      sharedMat('#ffdca0', { unique: true, emissive: '#ffb85c' }));
+    lant.material.emissiveIntensity = 0.9;
+    lant.position.y = 0.52;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.08, 8), lam('#c46a3a'));
+    cap.position.y = 0.65;
+    g.add(brim, post, lant, cap);
+    return g;
+  },
+  hat_fox() {
+    const g = new THREE.Group();
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.3, 9, 7), lam('#e08a4a'));
+    hood.scale.set(1, 0.82, 1);
+    hood.position.y = 0.18;
+    g.add(hood);
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 4), lam('#e08a4a'));
+      ear.position.set(sx * 0.17, 0.4, 0.02);
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4), lam('#f8f4ec'));
+      inner.position.set(sx * 0.17, 0.39, 0.05);
+      g.add(ear, inner);
+    }
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.1), lam('#f8f4ec'));
+    snout.position.set(0, 0.16, 0.28);
+    g.add(snout);
+    return g;
+  },
+  hat_antlers() {
+    const g = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      const main = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 0.4, 5), lam('#d8c894'));
+      main.position.set(sx * 0.14, 0.4, 0);
+      main.rotation.z = sx * 0.28;
+      g.add(main);
+      for (let i = 0; i < 3; i++) {
+        const tine = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.16, 5),
+          sharedMat('#eee6c2', { unique: true, emissive: '#c8a03a' }));
+        tine.material.emissiveIntensity = 0.4;
+        tine.position.set(sx * (0.2 + i * 0.05), 0.42 + i * 0.11, 0);
+        tine.rotation.z = sx * (0.8 + i * 0.15);
+        g.add(tine);
+      }
+    }
+    return g;
+  },
+  hat_bucket() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.2, 0.26, 10), lam('#8d9294'));
+    body.position.y = 0.32;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.025, 5, 12), lam('#6a7276'));
+    rim.rotation.x = Math.PI / 2; rim.position.y = 0.45;
+    g.add(body, rim);
+    return g;
+  },
+  hat_flower() {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.025, 5, 14), lam('#5e8a3c'));
+    ring.rotation.x = Math.PI / 2; ring.position.y = 0.3;
+    g.add(ring);
+    const COLS = ['#f0a8c8', '#f6e07a', '#e8e0f8', '#f08a8a', '#c8e8a0'];
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const f = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), lam(COLS[i % COLS.length]));
+      f.position.set(Math.cos(a) * 0.27, 0.33, Math.sin(a) * 0.27);
+      g.add(f);
+    }
+    return g;
+  },
+  hat_horns() {
+    const g = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const seg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.035 - i * 0.007, 0.05 - i * 0.008, 0.11, 6),
+          sharedMat(i > 1 ? '#ff8a3c' : '#5a2a18', { unique: true, emissive: i > 1 ? '#ff5a2c' : '#2a1008' }));
+        seg.material.emissiveIntensity = i > 1 ? 0.7 : 0.15;
+        seg.position.set(sx * (0.15 + i * 0.03), 0.32 + i * 0.09, -0.02 - i * 0.02);
+        seg.rotation.z = sx * (0.3 + i * 0.16);
+        g.add(seg);
+      }
+    }
+    return g;
+  },
+  hat_starcap() {
+    const g = new THREE.Group();
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.27, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+      lam('#3a4a7a'));
+    cap.position.y = 0.26;
+    const peak = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.18), lam('#2a3358'));
+    peak.position.set(0, 0.26, 0.26);
+    g.add(cap, peak);
+    for (const [dx, dy, dz] of [[0.1, 0.4, 0.1], [-0.12, 0.36, 0.05], [0.02, 0.46, -0.06]]) {
+      const st = new THREE.Mesh(new THREE.OctahedronGeometry(0.045, 0),
+        sharedMat('#ffe27a', { unique: true, emissive: '#ffd23e' }));
+      st.material.emissiveIntensity = 0.8;
+      st.position.set(dx, dy, dz);
+      g.add(st);
+    }
+    return g;
+  },
+  hat_moon() {
+    const g = new THREE.Group();
+    const outer = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 6, 18, Math.PI * 1.35),
+      sharedMat('#eef2ff', { unique: true, emissive: '#9fb8ff' }));
+    outer.material.emissiveIntensity = 1.0;
+    outer.position.y = 0.52;
+    outer.rotation.z = 0.6;
+    g.add(outer);
+    const orbit = new THREE.Group();
+    orbit.position.y = 0.52;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5),
+        sharedMat('#dfe8ff', { unique: true, emissive: '#8aa8ff' }));
+      m.material.emissiveIntensity = 0.9;
+      m.position.set(Math.cos(a) * 0.3, 0, Math.sin(a) * 0.3);
+      orbit.add(m);
+    }
+    g.add(orbit);
+    g.userData.orbit = orbit;
+    return g;
+  },
 };
 
 // layered feathered wings: each side is a fan of 4 overlapping feather quills
@@ -360,6 +494,83 @@ const BACK_BUILDERS = {
     koi.position.set(-0.24, 0.62, -0.1);
     g.add(pole, koi);
     g.userData.koi = koi; // swims in the wind
+    return g;
+  },
+  // --- SEASON ONE additions -------------------------------------------------
+  back_cloakfeather() {
+    const g = new THREE.Group();
+    const cloak = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.05), lam('#5a6478'));
+    cloak.position.set(0, 0.34, -0.16);
+    g.add(cloak);
+    for (let r = 0; r < 4; r++) {
+      for (let i = 0; i < 4; i++) {
+        const f = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.03),
+          lam(r % 2 ? '#8d9aae' : '#6f7c90'));
+        f.position.set(-0.15 + i * 0.1, 0.5 - r * 0.12, -0.19);
+        f.rotation.z = (i - 1.5) * 0.12;
+        g.add(f);
+      }
+    }
+    return g;
+  },
+  back_lanterns() {
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.6, 0.04), lam('#6a4a30'));
+    pole.position.set(0, 0.5, -0.16);
+    g.add(pole);
+    const swing = new THREE.Group();
+    swing.position.set(0, 0.74, -0.16);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.03, 0.03), lam('#6a4a30'));
+    swing.add(bar);
+    for (const dx of [-0.18, 0, 0.18]) {
+      const cord = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.1, 0.012), lam('#4a3a28'));
+      cord.position.set(dx, -0.06, 0);
+      const lant = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.13, 8),
+        sharedMat('#ffdca0', { unique: true, emissive: '#ffb85c' }));
+      lant.material.emissiveIntensity = 0.85;
+      lant.position.set(dx, -0.18, 0);
+      swing.add(cord, lant);
+    }
+    g.add(swing);
+    g.userData.swing = swing;
+    return g;
+  },
+  back_reef() {
+    const g = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26 - i * 0.05, 0.02),
+          lam(i % 2 ? '#5ec0b0' : '#7fd0f0'));
+        fin.position.set(sx * (0.16 + i * 0.06), 0.44, -0.14);
+        fin.rotation.z = sx * (0.25 + i * 0.18);
+        g.add(fin);
+      }
+    }
+    return g;
+  },
+  back_frost() {
+    const g = wing('#bfe6f2', '#eafaff', 0.72, true);
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const sh = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.16, 4), lam('#eafaff'));
+        sh.position.set(sx * (0.2 + i * 0.1), 0.6 - i * 0.09, -0.14);
+        sh.rotation.z = sx * 0.5;
+        g.add(sh);
+      }
+    }
+    return g;
+  },
+  back_scroll() {
+    const g = new THREE.Group();
+    for (const [dx, dy, rz] of [[-0.1, 0.4, 0.3], [0.1, 0.46, -0.25], [0, 0.34, 0.05]]) {
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.3, 7), lam('#e8dcc0'));
+      roll.position.set(dx, dy, -0.17);
+      roll.rotation.z = Math.PI / 2 + rz;
+      const capA = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 7), lam('#8a6a44'));
+      capA.position.set(dx - 0.15, dy, -0.17); capA.rotation.z = Math.PI / 2;
+      const capB = capA.clone(); capB.position.x = dx + 0.15;
+      g.add(roll, capA, capB);
+    }
     return g;
   },
 };

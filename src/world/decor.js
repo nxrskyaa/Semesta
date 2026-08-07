@@ -358,6 +358,11 @@ export function buildDecor(terrain, scene) {
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   const poolDiscs = [];
+  // every instanced part of a stone lantern, so clearArea can take a whole
+  // lantern out — one was left standing inside the festival plaza because
+  // clearArea only ever knew about trees, rocks, bushes and ground cover
+  const lanternMeshes = [baseMesh, base2Mesh, postMesh, collarMesh, houseMesh,
+    paneMesh, roofMesh, capMesh];
   const qRoof = new THREE.Quaternion().setFromAxisAngle(YUP, Math.PI / 4);
   torches.forEach((tc, i) => {
     q.identity();
@@ -578,6 +583,17 @@ export function buildDecor(terrain, scene) {
     // GROUND COVER TOO. clearArea only ever removed trees, rocks and bushes, so
     // grass tufts and flowers kept growing straight through paved plazas and
     // building floors — 124 of them were left standing inside the town square.
+    // STONE LANTERNS: hide every part of any lantern inside the area, plus its
+    // glow sprite, flame core and ground pool
+    for (let i = 0; i < torches.length; i++) {
+      const tc = torches[i];
+      if ((tc.x - x) ** 2 + (tc.z - z) ** 2 > r2) continue;
+      for (const lm of lanternMeshes) { lm.setMatrixAt(i, GONE); lm.instanceMatrix.needsUpdate = true; }
+      if (glowSprites[i]) glowSprites[i].visible = false;
+      if (coreSprites[i]) coreSprites[i].visible = false;
+      if (poolDiscs[i]) poolDiscs[i].visible = false;
+      tc.removed = true;
+    }
     for (const gm of groundCover) {
       let gd = false;
       for (let i = 0; i < gm.list.length; i++) {

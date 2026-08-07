@@ -372,6 +372,32 @@ export function makePlayerFaceTexture(skin, hair, eyeColor, female = false, bald
     px(2, 10, 5, 1, '#3a3630'); px(9, 10, 5, 1, '#3a3630'); px(7, 8, 2, 1, '#3a3630');
   } else if (accessory === 5) {
     px(9, 6, 5, 1, '#2a2620'); px(9, 7, 5, 4, '#2a2620'); px(0, 5, 10, 1, '#2a2620');
+  } else if (accessory === 6) {           // round specs: thin gold rims
+    px(2, 7, 4, 1, '#c8a03a'); px(10, 7, 4, 1, '#c8a03a');
+    px(2, 10, 4, 1, '#c8a03a'); px(10, 10, 4, 1, '#c8a03a');
+    px(1, 8, 1, 2, '#c8a03a'); px(6, 8, 1, 2, '#c8a03a');
+    px(9, 8, 1, 2, '#c8a03a'); px(14, 8, 1, 2, '#c8a03a');
+    px(7, 8, 2, 1, '#c8a03a');
+  } else if (accessory === 7) {           // monocle: one lens on a chain
+    px(9, 6, 5, 1, '#c8a03a'); px(9, 11, 5, 1, '#c8a03a');
+    px(8, 7, 1, 4, '#c8a03a'); px(14, 7, 1, 4, '#c8a03a');
+    px(14, 12, 1, 1, '#c8a03a'); px(13, 13, 1, 1, '#c8a03a');
+  } else if (accessory === 8) {           // warpaint: a band across the eyes
+    px(0, 7, 16, 1, 'rgba(200,60,50,0.75)');
+    px(0, 8, 16, 1, 'rgba(200,60,50,0.4)');
+    px(3, 12, 2, 1, 'rgba(200,60,50,0.6)'); px(11, 12, 2, 1, 'rgba(200,60,50,0.6)');
+  } else if (accessory === 9) {           // beauty mark
+    px(11, 11, 1, 1, '#4a3428');
+  } else if (accessory === 10) {          // bandage across the cheek
+    px(9, 10, 5, 2, '#f0ece0');
+    px(10, 10, 1, 2, '#d8d2c2'); px(12, 10, 1, 2, '#d8d2c2');
+  } else if (accessory === 11) {          // tired eyes: shadows underneath
+    px(2, 11, 4, 1, 'rgba(90,70,110,0.45)'); px(10, 11, 4, 1, 'rgba(90,70,110,0.45)');
+  } else if (accessory === 12) {          // a small star under one eye
+    px(11, 11, 1, 1, '#ffd23e'); px(10, 12, 3, 1, '#ffd23e'); px(11, 13, 1, 1, '#ffd23e');
+  } else if (accessory === 13) {          // whiskers
+    px(0, 9, 3, 1, shade(skin, -0.35)); px(0, 11, 3, 1, shade(skin, -0.35));
+    px(13, 9, 3, 1, shade(skin, -0.35)); px(13, 11, 3, 1, shade(skin, -0.35));
   }
 
   return toTexture(c);

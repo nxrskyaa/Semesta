@@ -46,7 +46,8 @@ export function buildCharacterMesh(config) {
   const hairC = HAIR_COLORS[(config.hairColor ?? 0) % HAIR_COLORS.length];
   const outfit = OUTFIT_COLORS[(config.outfit ?? 0) % OUTFIT_COLORS.length];
   const eyeC = EYE_COLORS[(config.eyes ?? 0) % EYE_COLORS.length];
-  const style = (config.outfitStyle ?? 0) % 6; // 0 tunic 1 robe 2 leather 3 plate 4 knight 5 coat
+  // 0 tunic 1 robe 2 leather 3 plate 4 knight 5 coat 6 hakama 7 sailor 8 poncho 9 vestments
+  const style = (config.outfitStyle ?? 0) % 10;
   const female = config.gender === 'female';
   const hairStyle = config.hairStyle ?? 0;
   const bald = hairStyle === BALD_STYLE;
@@ -157,6 +158,84 @@ export function buildCharacterMesh(config) {
     at(fauld2, 0, 0.24, 0);
     const faTrim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.13, 0.02, 0.31), goldMat);
     at(faTrim, 0, 0.205, 0);
+  } else if (style === 6) { // hakama: a wrapped top over wide pleated trousers
+    const top = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.04, 0.26, 0.24), clothMat);
+    at(top, 0, 0.56, 0);
+    top.castShadow = true;
+    // the crossed front of a kimono, one panel over the other
+    for (const sx of [-1, 1]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.26, 0.02), clothLight);
+      at(panel, sx * 0.06, 0.56, 0.125);
+      panel.rotation.z = sx * 0.42;
+    }
+    const obi = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.09, 0.26), clothDark);
+    at(obi, 0, 0.41, 0);
+    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), clothDark);
+    at(knot, 0, 0.41, -0.15);
+    // wide pleated skirt, split into panels
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(bw / 2 + 0.05, 0.3, 0.28), clothMat);
+      at(leg, sx * (bw / 4 + 0.01), 0.2, 0);
+      const pleat = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.3, 0.29), clothDark);
+      at(pleat, sx * (bw / 4 + 0.01), 0.2, 0);
+    }
+  } else if (style === 7) { // sailor: square collar, kerchief, pleated skirt
+    const shirt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.3, 0.23), clothLight);
+    at(shirt, 0, 0.55, 0);
+    shirt.castShadow = true;
+    // the big square collar that falls down the back
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.02, 0.16, 0.03), clothMat);
+    at(collar, 0, 0.62, -0.12);
+    for (const sx of [-1, 1]) {
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.02), clothMat);
+      at(flap, sx * 0.11, 0.62, 0.12);
+    }
+    // kerchief knotted at the throat
+    const tie = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.03), goldMat);
+    at(tie, 0, 0.63, 0.13);
+    const tail2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.02), goldMat);
+    at(tail2, 0, 0.53, 0.14);
+    const skirt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.1, 0.2, 0.3), clothDark);
+    at(skirt, 0, 0.3, 0);
+    for (let k = 0; k < 5; k++) {
+      const pl = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.31), clothMat);
+      at(pl, -0.12 + k * 0.06, 0.3, 0);
+    }
+  } else if (style === 8) { // poncho: one heavy woven sheet with a fringe
+    const cloth = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.16, 0.42, 0.3), clothMat);
+    at(cloth, 0, 0.46, 0);
+    cloth.castShadow = true;
+    // woven bands across it
+    for (const by of [0.56, 0.44, 0.32]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.17, 0.04, 0.31), clothLight);
+      at(band, 0, by, 0);
+    }
+    // the neck hole
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.16), clothDark);
+    at(neck, 0, 0.66, 0);
+    // fringe along the bottom edge
+    for (let k = 0; k < 7; k++) {
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.07, 0.03), clothDark);
+      at(fr, -0.15 + k * 0.05, 0.22, 0.15);
+    }
+  } else if (style === 9) { // vestments: layered robes with a stole and a sigil
+    const robe = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.46, 0.26), clothLight);
+    at(robe, 0, 0.42, 0);
+    robe.castShadow = true;
+    // a stole hanging down both sides of the chest
+    for (const sx of [-1, 1]) {
+      const stole = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.4, 0.03), clothMat);
+      at(stole, sx * 0.08, 0.5, 0.13);
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.03), goldMat);
+      at(tip, sx * 0.08, 0.31, 0.13);
+    }
+    // a gold sigil at the throat
+    const sig = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), goldMat);
+    at(sig, 0, 0.63, 0.14);
+    const sigBar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.11, 0.025), goldMat);
+    at(sigBar, 0, 0.63, 0.145);
+    const hem = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.09, 0.05, 0.27), goldMat);
+    at(hem, 0, 0.21, 0);
   } else { // coat: long ranger duster with lapels, buttons & split tails
     const coat = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.06, 0.4, 0.26), clothMat);
     at(coat, 0, 0.44, 0);
@@ -307,6 +386,58 @@ export function buildCharacterMesh(config) {
       addHair(new THREE.BoxGeometry(0.12, 0.24, 0.14), hairMat, -0.26, -0.16, -0.12, 0, 0.3);
       addHair(new THREE.BoxGeometry(0.12, 0.24, 0.14), hairMat, 0.26, -0.16, -0.12, 0, -0.3);
       addHair(new THREE.BoxGeometry(0.5, 0.1, 0.12), hairDark, 0, -0.3, -0.24);
+    } else if (hairStyle === 12) { // undercut: volume on top, shaved sides
+      addHair(new THREE.BoxGeometry(0.44, 0.24, 0.34), hairMat, 0, 0.16, -0.06);
+      addHair(new THREE.BoxGeometry(0.56, 0.09, 0.4), hairDark, 0, 0.0, -0.02);
+    } else if (hairStyle === 13) { // curls: a cluster of rounded lumps
+      for (const [dx, dy, dz] of [[-0.2, 0.2, -0.08], [0.2, 0.2, -0.08], [0, 0.28, -0.16],
+        [-0.24, 0.04, -0.2], [0.24, 0.04, -0.2], [0, 0.08, -0.3]]) {
+        addHair(new THREE.SphereGeometry(0.15, 7, 5), hairMat, dx, dy, dz);
+      }
+    } else if (hairStyle === 14) { // bowl: a heavy fringe all the way round
+      addHair(new THREE.BoxGeometry(0.6, 0.26, 0.5), hairMat, 0, 0.14, -0.04);
+      addHair(new THREE.BoxGeometry(0.58, 0.1, 0.06), hairDark, 0, 0.02, 0.24);
+    } else if (hairStyle === 15) { // sidecut: long one side, shaved the other
+      addHair(new THREE.BoxGeometry(0.34, 0.5, 0.2), hairMat, -0.16, -0.06, -0.18);
+      addHair(new THREE.BoxGeometry(0.3, 0.12, 0.34), hairDark, 0.2, 0.14, -0.06);
+    } else if (hairStyle === 16) { // pigtails: low and bunched
+      addHair(new THREE.BoxGeometry(0.5, 0.2, 0.16), hairMat, 0, 0.12, -0.2);
+      for (const sx of [-1, 1]) {
+        addHair(new THREE.BoxGeometry(0.16, 0.3, 0.16), hairMat, sx * 0.3, -0.2, -0.1, 0.2);
+        addHair(new THREE.BoxGeometry(0.1, 0.07, 0.1), hairDark, sx * 0.3, -0.02, -0.1);
+      }
+    } else if (hairStyle === 17) { // messy: tufts pointing every which way
+      addHair(new THREE.BoxGeometry(0.52, 0.2, 0.3), hairMat, 0, 0.12, -0.1);
+      for (const [dx, dz, rx, rz] of [[-0.18, 0.1, 0.5, 0.3], [0.16, 0.06, -0.4, -0.4],
+        [0.02, -0.2, 0.6, 0.1], [-0.1, -0.1, -0.2, 0.5]]) {
+        addHair(new THREE.BoxGeometry(0.1, 0.2, 0.1), hairMat, dx, 0.26, dz, rx, rz);
+      }
+    } else if (hairStyle === 18) { // half-up: crown tied, the rest loose
+      addHair(new THREE.BoxGeometry(0.5, 0.5, 0.16), hairMat, 0, -0.1, -0.24);
+      addHair(new THREE.BoxGeometry(0.2, 0.16, 0.16), hairMat, 0, 0.22, -0.16);
+      addHair(new THREE.BoxGeometry(0.1, 0.06, 0.1), hairDark, 0, 0.12, -0.24);
+    } else if (hairStyle === 19) { // pixie: cropped with a swept fringe
+      addHair(new THREE.BoxGeometry(0.52, 0.2, 0.34), hairMat, 0, 0.14, -0.06);
+      addHair(new THREE.BoxGeometry(0.3, 0.09, 0.08), hairMat, -0.1, 0.06, 0.22, 0, 0.25);
+    } else if (hairStyle === 20) { // dreads: heavy ropes hanging back
+      addHair(new THREE.BoxGeometry(0.5, 0.18, 0.28), hairMat, 0, 0.16, -0.08);
+      for (const [dx, dz] of [[-0.2, -0.16], [0, -0.24], [0.2, -0.16], [-0.1, -0.26], [0.1, -0.26]]) {
+        addHair(new THREE.BoxGeometry(0.08, 0.44, 0.08), dx === 0 ? hairDark : hairMat, dx, -0.16, dz, 0.16);
+      }
+    } else if (hairStyle === 21) { // wolf cut: shaggy layers, long at the back
+      addHair(new THREE.BoxGeometry(0.54, 0.22, 0.34), hairMat, 0, 0.14, -0.06);
+      addHair(new THREE.BoxGeometry(0.4, 0.36, 0.14), hairDark, 0, -0.1, -0.26);
+      addHair(new THREE.BoxGeometry(0.1, 0.3, 0.1), hairMat, -0.26, -0.08, -0.14, 0, 0.2);
+      addHair(new THREE.BoxGeometry(0.1, 0.3, 0.1), hairMat, 0.26, -0.08, -0.14, 0, -0.2);
+    } else if (hairStyle === 22) { // hime: blunt fringe, straight sidelocks
+      addHair(new THREE.BoxGeometry(0.58, 0.2, 0.2), hairMat, 0, 0.16, 0.08);
+      addHair(new THREE.BoxGeometry(0.5, 0.6, 0.14), hairMat, 0, -0.16, -0.26);
+      addHair(new THREE.BoxGeometry(0.11, 0.44, 0.13), hairMat, -0.28, -0.06, 0.02);
+      addHair(new THREE.BoxGeometry(0.11, 0.44, 0.13), hairMat, 0.28, -0.06, 0.02);
+    } else if (hairStyle === 23) { // afro: a big soft globe
+      addHair(new THREE.SphereGeometry(0.36, 9, 7), hairMat, 0, 0.14, -0.06);
+      addHair(new THREE.SphereGeometry(0.2, 7, 5), hairDark, -0.2, 0.02, -0.2);
+      addHair(new THREE.SphereGeometry(0.2, 7, 5), hairDark, 0.2, 0.02, -0.2);
     }
   }
 

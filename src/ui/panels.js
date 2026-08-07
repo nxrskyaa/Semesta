@@ -903,7 +903,8 @@ export function createPanels(hudRoot, {
             ${owned ? `<img src="${itemIconUrl(id)}" style="width:26px;height:26px;image-rendering:pixelated">` : '?'}
           </div>
           <div class="nm">${owned ? d.name : '???'}
-            <small style="color:${R.color}">${'◆'.repeat(RARITY_ORDER.indexOf(d.rarity) + 1)} ${R.name}</small>
+            <small style="color:${R.color}">${'◆'.repeat(RARITY_ORDER.indexOf(d.rarity) + 1)} ${R.name}${
+              d.limited ? ` · <b style="color:#ffd23e">SEASON: ${d.limited.toUpperCase()}</b>` : ''}</small>
             ${owned ? '' : '<small>Pull it from the Wonder Capsules!</small>'}
           </div>
           ${owned ? `<button class="eq" data-wear="${slot}:${id}" ${active ? 'disabled' : ''}>${active ? 'WORN' : 'WEAR'}</button>` : ''}

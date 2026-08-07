@@ -116,6 +116,32 @@ export const ITEMS = {
   trail_star:    { name: 'Star Trail', cosmetic: 'trail', rarity: 'legendary' },
   trail_rainbow: { name: 'Rainbow Trail', cosmetic: 'trail', rarity: 'mythic' },
 
+  // --- SEASON ONE: LANTERNS -------------------------------------------------
+  // `limited` marks a piece that belongs to a named season rather than the
+  // permanent pool. Nothing here is time-gated yet — the tag is honest about
+  // what it means today: these are the pieces tied to this chapter of the game,
+  // shown with a season badge so the set reads as a set. The wardrobe and the
+  // capsule catalogue both surface it.
+  hat_lantern:  { name: 'Keeper Lantern Hat', cosmetic: 'hat', rarity: 'epic', limited: 'Lanterns' },
+  hat_fox:      { name: 'Fox Hood', cosmetic: 'hat', rarity: 'rare', limited: 'Lanterns' },
+  hat_antlers:  { name: 'Spirit Antlers', cosmetic: 'hat', rarity: 'legendary', limited: 'Lanterns' },
+  hat_bucket:   { name: 'Angler Bucket', cosmetic: 'hat', rarity: 'common' },
+  hat_flower:   { name: 'Flower Circlet', cosmetic: 'hat', rarity: 'uncommon' },
+  hat_horns:    { name: 'Ember Horns', cosmetic: 'hat', rarity: 'epic' },
+  hat_starcap:  { name: 'Starfall Cap', cosmetic: 'hat', rarity: 'rare' },
+  hat_moon:     { name: 'Moonwreath', cosmetic: 'hat', rarity: 'mythic', limited: 'Lanterns' },
+
+  back_cloakfeather: { name: 'Featherfall Cloak', cosmetic: 'back', rarity: 'rare' },
+  back_lanterns: { name: 'Hanging Lanterns', cosmetic: 'back', rarity: 'epic', limited: 'Lanterns' },
+  back_reef:    { name: 'Reef Fins', cosmetic: 'back', rarity: 'uncommon' },
+  back_frost:   { name: 'Frostglass Wings', cosmetic: 'back', rarity: 'legendary', limited: 'Lanterns' },
+  back_scroll:  { name: 'Scholar Scrolls', cosmetic: 'back', rarity: 'common' },
+
+  trail_bubble: { name: 'Bubble Trail', cosmetic: 'trail', rarity: 'uncommon' },
+  trail_lantern: { name: 'Lantern Trail', cosmetic: 'trail', rarity: 'epic', limited: 'Lanterns' },
+  trail_ink:    { name: 'Ink Trail', cosmetic: 'trail', rarity: 'rare' },
+  trail_aurora: { name: 'Aurora Trail', cosmetic: 'trail', rarity: 'mythic', limited: 'Lanterns' },
+
   // mount whistles — starter one is free, the rest come from villager quests
   mount_sprig:      { name: 'Sprig Whistle', mountId: 'sprig' },
   mount_trotter:    { name: 'Trotter Whistle', mountId: 'trotter' },
