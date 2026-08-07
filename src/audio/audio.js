@@ -458,6 +458,25 @@ export function createAudio() {
       [2637, 3136, 3520].forEach((f, i) => tone('sine', f, f, 0.3, 0.05, ctx.currentTime + 0.8 + i * 0.12));
       noise(0.9, 0.08, 'highpass', 5000, null, ctx.currentTime + 0.4);
     },
+    // BOSS TELL: a rising, uneasy swell. It has to be heard over a fight and
+    // read as "get out of the way" without being a klaxon.
+    boss_tell: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      tone('sawtooth', 110, 220, 0.7, 0.09, t0);
+      tone('sine', 55, 110, 0.7, 0.12, t0);
+      tone('triangle', 330, 440, 0.5, 0.05, t0 + 0.15);
+      noise(0.6, 0.05, 'bandpass', 900, null, t0 + 0.2);
+    },
+    // BOSS HIT: the move landing — a deep thump with debris on top
+    boss_hit: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      tone('sine', 90, 34, 0.55, 0.28, t0);
+      tone('square', 160, 60, 0.22, 0.1, t0);
+      noise(0.5, 0.16, 'lowpass', 1800, null, t0);
+      noise(0.7, 0.06, 'highpass', 3200, null, t0 + 0.08);
+    },
     // level up — big two-bar fanfare with sparkle tail
     levelup_big: () => {
       if (!ctx) return;

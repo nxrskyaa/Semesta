@@ -522,19 +522,79 @@ const BUILDERS = {
 };
 
 // --- world bosses: giant variants that appear on a timer ---
+/**
+ * WORLD BOSSES.
+ *
+ * Three scaled-up normal monsters that all walked at you and hit you was not
+ * three bosses, it was one boss in three costumes. Each one now carries a
+ * `phases` script — timed patterns it cycles through — so the fight has a shape:
+ * something to dodge, a window to punish, and a tell that says which is coming.
+ *
+ * `phases[]` entries: { at } fraction of max HP it triggers below, `every`
+ * seconds between casts, `move` the pattern id, `tell` seconds of windup, and
+ * `color` for the telegraph ring. main.js reads `boss.cast` and plays the FX.
+ */
 export const WORLD_BOSSES = {
   king_slime: {
     name: 'King Slime', base: 'slime', scale: 2.8,
     hp: 520, dmg: 22, xp: 420, speed: 1.2, attackRange: 2.2, attackCd: 1.8, aggro: 14,
-    crown: true,
+    crown: true, title: 'the Ever-Splitting',
+    phases: [
+      { at: 1.0, every: 6.5, move: 'slam', tell: 0.9, color: '#7fd06a', r: 5.5 },
+      { at: 0.6, every: 5.0, move: 'split', tell: 1.2, color: '#a8e07a' },
+      { at: 0.3, every: 4.0, move: 'bounce', tell: 0.7, color: '#ffe27a', r: 7 },
+    ],
   },
   elder_treant: {
     name: 'Elder Treant', base: 'treant', scale: 2.0,
     hp: 650, dmg: 26, xp: 500, speed: 0.9, attackRange: 2.6, attackCd: 2.0, aggro: 14,
+    title: 'Root of the Long Grass',
+    phases: [
+      { at: 1.0, every: 7.0, move: 'roots', tell: 1.1, color: '#6a4a30', r: 6 },
+      { at: 0.55, every: 5.5, move: 'thorns', tell: 0.8, color: '#8ad86e' },
+      { at: 0.25, every: 6.0, move: 'heal', tell: 1.4, color: '#b6e08a' },
+    ],
   },
   stone_colossus: {
     name: 'Stone Colossus', base: 'golem', scale: 1.7,
     hp: 800, dmg: 30, xp: 620, speed: 0.75, attackRange: 2.8, attackCd: 2.4, aggro: 14,
+    title: 'the Unmoved',
+    phases: [
+      { at: 1.0, every: 6.0, move: 'quake', tell: 1.0, color: '#c8b48a', r: 7 },
+      { at: 0.5, every: 5.0, move: 'boulders', tell: 1.0, color: '#8d9294' },
+      { at: 0.25, every: 7.0, move: 'harden', tell: 1.2, color: '#e8dcc0' },
+    ],
+  },
+  // --- three NEW bosses, one per biome, so the timer is not the same fight ---
+  frost_monarch: {
+    name: 'Frost Monarch', base: 'frostling', scale: 2.6,
+    hp: 720, dmg: 28, xp: 560, speed: 1.35, attackRange: 2.4, attackCd: 1.6, aggro: 15,
+    crown: true, title: 'Winter Unending', biome: 'snow',
+    phases: [
+      { at: 1.0, every: 5.5, move: 'blizzard', tell: 1.0, color: '#c8ecf8', r: 8 },
+      { at: 0.6, every: 4.5, move: 'shards', tell: 0.7, color: '#a8d8f0' },
+      { at: 0.3, every: 6.5, move: 'freeze', tell: 1.3, color: '#eafaff', r: 5 },
+    ],
+  },
+  tide_warden: {
+    name: 'Tide Warden', base: 'mossback', scale: 2.4,
+    hp: 900, dmg: 32, xp: 700, speed: 0.9, attackRange: 3.0, attackCd: 2.2, aggro: 15,
+    title: 'Keeper of the Drowned Road', biome: 'coast',
+    phases: [
+      { at: 1.0, every: 6.0, move: 'wave', tell: 1.1, color: '#5aa8e8', r: 8 },
+      { at: 0.55, every: 5.0, move: 'whirl', tell: 0.9, color: '#7fd0f0', r: 6 },
+      { at: 0.25, every: 7.0, move: 'summon', tell: 1.4, color: '#dff6ff' },
+    ],
+  },
+  ember_tyrant: {
+    name: 'Ember Tyrant', base: 'embercub', scale: 2.7,
+    hp: 1050, dmg: 36, xp: 880, speed: 1.5, attackRange: 2.6, attackCd: 1.5, aggro: 16,
+    crown: true, title: 'the Last Kindling', minLevel: 15,
+    phases: [
+      { at: 1.0, every: 5.0, move: 'firewall', tell: 0.9, color: '#ff8a3c', r: 7 },
+      { at: 0.6, every: 4.0, move: 'comet', tell: 1.0, color: '#ffd23e', r: 4 },
+      { at: 0.28, every: 3.4, move: 'inferno', tell: 1.3, color: '#ff5a2c', r: 9 },
+    ],
   },
 };
 const BOSS_LIFETIME = 150; // seconds before it wanders away
@@ -639,10 +699,12 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     return 'slime';
   }
 
-  function spawnOne(playerPos, isNight = false) {
+  function spawnOne(playerPos, isNight = false, forceKind = null) {
     for (let tries = 0; tries < 24; tries++) {
       const ang = Math.random() * Math.PI * 2;
-      const dist = 17 + Math.random() * 28; // never right on top of the player
+      // a boss SUMMONING adds are the exception to "never right on top of you":
+      // spawning its minions 17 units away would defeat the point of the move
+      const dist = forceKind ? 2.2 + Math.random() * 2.5 : 17 + Math.random() * 28;
       const x = playerPos.x + Math.cos(ang) * dist;
       const z = playerPos.z + Math.sin(ang) * dist;
       const [ix, iz] = terrain.cellOf(x, z);
@@ -659,7 +721,9 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       }
       const distFromSpawn = Math.hypot(x - terrain.spawn.x, z - terrain.spawn.z);
       const snowy = terrain.isSnowCell?.(ix, iz) || false;
-      const type = pickType(Math.random, nearWater, distFromSpawn, isNight, snowy);
+      const type = forceKind && ENEMY_TYPES[forceKind]
+        ? forceKind
+        : pickType(Math.random, nearWater, distFromSpawn, isNight, snowy);
       const def = ENEMY_TYPES[type];
       if (h <= WATER_LEVEL && !def.water) continue;
       if (h <= WATER_LEVEL - 1) continue;
@@ -810,6 +874,34 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         if (e.bossT <= 0) { // lumbers back into the wilds
           particles.burst(p.clone().add(new THREE.Vector3(0, 0.8, 0)), '#8a8a8a', 20, 3);
           e.dead = true; e.expired = true; retire(e); continue;
+        }
+        // PHASE SCRIPT. Which pattern a boss is using depends on how hurt it is,
+        // so a fight escalates instead of repeating one attack for two minutes.
+        // Every cast is TELEGRAPHED: a ring goes down, then after `tell` seconds
+        // the move lands — that gap is the whole difference between a boss you
+        // dodge and a boss you stand in front of and trade with.
+        const ph = e.def.phases;
+        if (ph && e.state === 'aggro' && distP < 22) {
+          const frac = e.hp / e.hpMax;
+          // the LAST phase whose threshold we are under
+          let cur = ph[0];
+          for (const q of ph) if (frac <= q.at) cur = q;
+          if (e.castT > 0) {
+            e.castT -= dt;
+            if (e.castT <= 0) {
+              // the move lands
+              hooks.onBossCast?.(e, e.castMove, 'fire');
+              e.castMove = null;
+            }
+          } else {
+            e.phaseT = (e.phaseT || cur.every) - dt;
+            if (e.phaseT <= 0) {
+              e.phaseT = cur.every;
+              e.castT = cur.tell;
+              e.castMove = cur;
+              hooks.onBossCast?.(e, cur, 'tell');
+            }
+          }
         }
       } else if (distP > 60 || (e.def.nightOnly && !isNight)) {
         if (e.def.nightOnly && !isNight) {

@@ -1763,7 +1763,11 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     return (p.x - camAt.x) ** 2 + (p.z - camAt.z) ** 2 < NEAR2;
   };
 
-  function update(dt, time, viewer, dayFrac = 0.5) {
+  function update(dt, time, viewer, dayFrac = 0.5, wind = null) {
+    // ONE WIND. Every cloth, lantern and blade in the world leans off the same
+    // vector, which is what makes it read as weather rather than as each prop
+    // wobbling on its own private sine.
+    const W = wind ? 0.55 + wind.state.strength * 0.9 + wind.state.gust : 1;
     if (viewer) camAt = viewer;
     // where the sun sits, so sunflowers can face it: dayFrac 0 = dawn, 1 = dusk
     const sunAz = (dayFrac - 0.5) * 2.2;
@@ -1775,8 +1779,8 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       for (let i = 0; i < pos.count; i++) {
         const bx = base[i * 3];
         // the further from the pole, the bigger the ripple
-        pos.array[i * 3 + 2] = Math.sin(bx * 4.2 - time * 5) * 0.1 * (bx / 2.08)
-          + Math.sin(bx * 8 - time * 8.4) * 0.025 * (bx / 2.08);
+        pos.array[i * 3 + 2] = (Math.sin(bx * 4.2 - time * 5) * 0.1 * (bx / 2.08)
+          + Math.sin(bx * 8 - time * 8.4) * 0.025 * (bx / 2.08)) * W;
       }
       pos.needsUpdate = true;
       rialo.userData.flag.geometry.computeVertexNormals();
@@ -1818,7 +1822,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       if (!near(gd)) continue;
       const G = gd.userData.garden;
       for (const h of G.heads) {
-        const sway = Math.sin(time * 1.3 + h.phase) * 0.055;
+        const sway = (wind ? wind.sway(h.phase) * 0.05 : Math.sin(time * 1.3 + h.phase) * 0.055);
         h.o.rotation.z = sway;
         h.o.rotation.x = Math.cos(time * 1.1 + h.phase) * 0.035;
         // a sunflower head follows the sun across the sky and droops at night
@@ -1844,8 +1848,8 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       const ls = lm.userData.lanterns;
       if (!ls || !near(lm)) continue;
       for (let i = 0; i < ls.length; i++) {
-        ls[i].rotation.z = Math.sin(time * 1.6 + i * 2.3 + lm.position.x) * 0.15;
-        ls[i].rotation.x = Math.sin(time * 1.2 + i) * 0.09;
+        ls[i].rotation.z = Math.sin(time * 1.6 + i * 2.3 + lm.position.x) * 0.15 * W;
+        ls[i].rotation.x = Math.sin(time * 1.2 + i) * 0.09 * W;
       }
     }
     // festival: the bonfire crackles and the critters DANCE

@@ -15,13 +15,14 @@ import { createGathering } from './world/gather.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
+import { buildWind } from './world/wind.js';
 import { createWildlife } from './world/wildlife.js';
 import { createWatercraft, CRAFT_DEFS } from './systems/watercraft.js';
 import { setupLighting } from './gfx/lighting.js';
 import { createParticles } from './gfx/particles.js';
 import { makeTerrainAtlas } from './gfx/textures.js';
 import { createPlayer } from './entities/player.js';
-import { createEnemyManager } from './entities/enemies.js';
+import { createEnemyManager, WORLD_BOSSES } from './entities/enemies.js';
 import { createNPCs, makeQuestMark, NPC_DEFS } from './entities/npcs.js';
 import { createPickups } from './entities/pickups.js';
 import { createProjectiles } from './entities/projectiles.js';
@@ -180,6 +181,8 @@ async function init(character, saved, audio) {
   // distant ranges beyond the playable bound — the terrain mesh has to stop
   // somewhere, and this is what stops that line reading as the edge of a box
   const horizon = buildHorizon(scene, '#9ec49a', qual.drawDistance);
+  // WIND: one shared vector everything leans off, plus drifting leaves
+  const wind = buildWind(scene, terrain);
   const lighting = setupLighting(scene);
   const particles = createParticles(scene);
   const weather = createWeather(scene, terrain, particles);
@@ -313,6 +316,70 @@ async function init(character, saved, audio) {
   }
 
   const enemyMgr = createEnemyManager(terrain, decor.blocked, scene, particles, projectiles, {
+    /**
+     * A world boss casting one of its phase moves.
+     *
+     * `stage` is 'tell' — put the telegraph on the ground and give the player
+     * time to leave — or 'fire', when it actually lands. Every move reads its
+     * radius and colour from the phase entry, so adding a boss is data, not
+     * another branch in here.
+     */
+    onBossCast(e, move, stage) {
+      const at = e.mesh.position.clone();
+      const r = move.r || 5;
+      if (stage === 'tell') {
+        // the ring you have to get out of
+        particles.shockwave?.(at.clone().setY(at.y + 0.06), move.color, r, move.tell);
+        particles.runeCircle?.(at.clone().setY(at.y + 0.08), move.color, r * 0.9, move.tell);
+        audio.sfx('boss_tell');
+        return;
+      }
+      audio.sfx('boss_hit');
+      addShake(0.5);
+      particles.burst(at.clone().add(new THREE.Vector3(0, 0.8, 0)), move.color, 26, 4, 6, 0.7);
+      particles.shockwave?.(at.clone().setY(at.y + 0.05), move.color, r * 1.15, 0.5);
+      const d = Math.hypot(player.state.pos.x - at.x, player.state.pos.z - at.z);
+      const inside = d < r;
+
+      switch (move.move) {
+        case 'split': {
+          // the King Slime throws off two small slimes
+          for (let i = 0; i < 2; i++) enemyMgr.spawnOne?.(at, false, 'slime');
+          hud.toastText('The King Slime splits!');
+          break;
+        }
+        case 'summon': {
+          for (let i = 0; i < 3; i++) enemyMgr.spawnOne?.(at, false);
+          hud.toastText('The Tide Warden calls the deep.');
+          break;
+        }
+        case 'heal': {
+          e.hp = Math.min(e.hpMax, e.hp + e.hpMax * 0.08);
+          particles.fountain?.(at.clone().add(new THREE.Vector3(0, 1.2, 0)), '#b6e08a', 16);
+          hud.toastText('The Elder Treant draws on its roots.');
+          break;
+        }
+        case 'harden': {
+          e.shieldT = 4;                   // read by the damage path below
+          hud.toastText('The Colossus sets itself.');
+          break;
+        }
+        case 'freeze': {
+          if (inside) { player.addBuff?.('slow', 2.5, 0.45); hud.toastText('Frozen solid!'); }
+          break;
+        }
+        default: {
+          // everything else is a damaging area: quake, wave, firewall, comet...
+          if (inside) {
+            const taken = player.takeDamage(e.def.dmg * (move.move === 'inferno' ? 1.5 : 1));
+            if (taken > 0) {
+              dmgNums.spawn(player.state.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), taken, 'player-hit');
+              hud.showHurt();
+            }
+          }
+        }
+      }
+    },
     onPlayerHit(e, dmg) {
       const taken = player.takeDamage(dmg);
       if (taken > 0) {
@@ -1650,7 +1717,7 @@ async function init(character, saved, audio) {
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
-    dailies, gamepass, story, skilltree, landmarks, watercraft, isles, hud, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
+    dailies, gamepass, story, skilltree, landmarks, watercraft, isles, hud, wind, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     composer, usePost,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
@@ -1746,7 +1813,7 @@ async function init(character, saved, audio) {
 
   // --- world boss scheduler: one rises every 3 minutes ---
   const bossState = { timer: 180, current: null, killed: false };
-  const BOSS_KINDS = ['king_slime', 'elder_treant', 'stone_colossus'];
+  const BOSS_KINDS = Object.keys(WORLD_BOSSES);
   function tickWorldBoss(dt) {
     const alive = bossState.current && !bossState.current.dead;
     if (!alive && bossState.current) {
@@ -1760,12 +1827,30 @@ async function init(character, saved, audio) {
     bossState.timer -= dt;
     if (bossState.timer <= 0) {
       bossState.timer = 180;
-      const kind = BOSS_KINDS[Math.floor(Math.random() * BOSS_KINDS.length)];
+      // WHICH BOSS depends on where you are and how strong you are: the Frost
+      // Monarch only rises in the winter reach, the Tide Warden near open water,
+      // and the Ember Tyrant not at all until level 15. A boss timer that always
+      // rolled the same three from a flat list is why they felt interchangeable.
+      const p2 = player.state.pos;
+      const inSnow = !!terrain.inSnow?.(p2.x, p2.z);
+      const nearSea = !!terrain.nearestShore?.(p2.x, p2.z, 30);
+      const lv = leveling.state.level;
+      const pool = BOSS_KINDS.filter((k) => {
+        const d = WORLD_BOSSES[k];
+        if (d.minLevel && lv < d.minLevel) return false;
+        if (d.biome === 'snow' && !inSnow) return false;
+        if (d.biome === 'coast' && !nearSea) return false;
+        return true;
+      });
+      const kind = pool.length
+        ? pool[Math.floor(Math.random() * pool.length)]
+        : BOSS_KINDS[Math.floor(Math.random() * BOSS_KINDS.length)];
       const boss = enemyMgr.spawnWorldBoss(player.state.pos, kind);
       if (boss) {
         bossState.current = boss;
         bossState.killed = false;
-        hud.banner(`⚠ WORLD BOSS: ${boss.bossName.toUpperCase()} HAS RISEN! ⚠`);
+        const title = WORLD_BOSSES[kind]?.title;
+        hud.banner(`⚠ WORLD BOSS: ${boss.bossName.toUpperCase()}${title ? `, ${title.toUpperCase()}` : ''} ⚠`);
         hud.toastText('Follow the gold marker on the minimap!');
         audio.sfx('roar');
         addShake(0.45);
@@ -1810,6 +1895,7 @@ async function init(character, saved, audio) {
     decor.update(dt, player.state.pos, time, isNight);
     isles.update(dt, time, isNight, player.state.pos);
     horizon.update(player.state.pos);
+    wind.update(dt, player.state.pos);
     wildlife.update(dt, player.state.pos, time);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
@@ -1824,7 +1910,7 @@ async function init(character, saved, audio) {
     gathering.update(dt);
     // dayFrac 0 at dawn -> 1 at dusk, so garden sunflowers can track the sun
     landmarks.update(dt, time, player.state.pos,
-      Math.max(0, Math.min(1, (lighting.state.minutes / 60 - 6) / 12)));
+      Math.max(0, Math.min(1, (lighting.state.minutes / 60 - 6) / 12)), wind);
     farming.update(dt);
     pets.update(dt, player.state, time);
     mounts.update(dt, player, terrain);
