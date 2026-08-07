@@ -28,6 +28,10 @@ export function buildDecor(terrain, scene) {
   const DS = QL.decorScale;
   const S = terrain.size;
   const rng = mulberry32(SEED);
+  // A SECOND, INDEPENDENT stream used only to decide what is DRAWN. It has to be
+  // separate: if the detail budget consumed draws from `rng`, a lower preset
+  // would shift the whole sequence and generate a different world.
+  const keep = mulberry32(SEED ^ 0x5f3759df);
   const blocked = new Set(); // cells you can't walk through (trunks, big rocks)
 
   const trees = [], rocks = [], tufts = [], torches = [], flowers = [], bushes = [];
@@ -52,40 +56,60 @@ export function buildDecor(terrain, scene) {
       // keep the village clearing open
       const dSpawn = Math.hypot(wx - terrain.spawn.x, wz - terrain.spawn.z);
 
-      // trees are spaced generously (4.4) so canopies never overlap into an
-      // ugly tangled mass; ~40% are pink SAKURA, the rest bright rounded green
-      if (forest > 0.48 && r < 0.032 * DS && dSpawn > 9 && !nearTree(trees, wx, wz, 4.4)) {
+      // THE WORLD IS DECIDED AT FULL DENSITY, ALWAYS.
+      //
+      // The density gates used to read `r < 0.032 * DS`, with blocked.add()
+      // inside them — so a player on LOW had fewer trees AND fewer blocked
+      // cells than one on ULTRA. Worse, the thinner branches consumed FEWER
+      // draws from the shared seeded stream, so every decision after them
+      // diverged too. In single-player none of that is visible. In multiplayer
+      // it is a desync you cannot debug: two people in the same coordinates,
+      // one walking through a tree the other is blocked by.
+      //
+      // So every prop is decided here at full density from the seeded stream —
+      // identical for everyone, whatever their settings — and `keep` (a second,
+      // independent stream) decides only whether it is DRAWN. Collision comes
+      // from the full set either way.
+      if (forest > 0.48 && r < 0.032 && dSpawn > 9 && !nearTree(trees, wx, wz, 4.4)) {
         trees.push({
           x: wx, y, z: wz,
           s: 0.9 + rng() * 0.35, seed: rng(), sakura: rng() < 0.42,
           snowy: terrain.snow[i] === 1,
+          draw: keep() <= DS,
         });
         blocked.add(`${ix},${iz}`);
         continue;
       }
-      if (r > 1 - 0.015 * DS && t !== 3) {
-        rocks.push({ x: wx, y, z: wz, s: 0.35 + rng() * 0.55, rot: rng() * Math.PI, seed: rng() });
+      if (r > 1 - 0.015 && t !== 3) {
+        rocks.push({
+          x: wx, y, z: wz, s: 0.35 + rng() * 0.55, rot: rng() * Math.PI, seed: rng(),
+          draw: keep() <= DS,
+        });
         if (rng() < 0.4) blocked.add(`${ix},${iz}`);
         continue;
       }
-      if ((t === 0 || t === 4) && r > 0.4 && r < 0.4 + 0.28 * DS) {
-        tufts.push({ x: wx + (rng() - 0.5) * 0.5, y, z: wz + (rng() - 0.5) * 0.5, s: 0.5 + rng() * 0.5 });
+      // ground cover never blocks anything, so it only needs the draw filter
+      if ((t === 0 || t === 4) && r > 0.4 && r < 0.68) {
+        const tf = { x: wx + (rng() - 0.5) * 0.5, y, z: wz + (rng() - 0.5) * 0.5, s: 0.5 + rng() * 0.5 };
+        if (keep() <= DS) tufts.push(tf);
       }
-      if ((t === 6 && r < 0.8 * DS) || (t === 0 && r > 1 - 0.06 * DS)) {
-        flowers.push({
+      if (t === 6 || (t === 0 && r > 0.94)) {
+        const f1 = {
           x: wx + (rng() - 0.5) * 0.6, y, z: wz + (rng() - 0.5) * 0.6,
           s: 0.4 + rng() * 0.35, c: Math.floor(rng() * PALETTE.flowers.length),
-        });
+        };
+        if (keep() <= DS) flowers.push(f1);
         // meadow tiles often get a second bloom for lush clusters
-        if (t === 6 && rng() < 0.45) {
-          flowers.push({
-            x: wx + (rng() - 0.5) * 0.7, y, z: wz + (rng() - 0.5) * 0.7,
-            s: 0.35 + rng() * 0.3, c: Math.floor(rng() * PALETTE.flowers.length),
-          });
-        }
+        const second = t === 6 && rng() < 0.45;
+        const f2 = {
+          x: wx + (rng() - 0.5) * 0.7, y, z: wz + (rng() - 0.5) * 0.7,
+          s: 0.35 + rng() * 0.3, c: Math.floor(rng() * PALETTE.flowers.length),
+        };
+        if (second && keep() <= DS) flowers.push(f2);
       }
       if (t === 0 && r > 0.68 && r < 0.695 && dSpawn > 6) {
-        bushes.push({ x: wx, y, z: wz, s: 0.4 + rng() * 0.35, seed: rng() });
+        const b2 = { x: wx, y, z: wz, s: 0.4 + rng() * 0.35, seed: rng() };
+        if (keep() <= DS) bushes.push(b2);
       }
     }
   }
@@ -135,6 +159,9 @@ export function buildDecor(terrain, scene) {
 
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+  // parked far below the world: how an instance is hidden without disturbing
+  // the index it lives at
+  const GONE_M = new THREE.Matrix4().makeTranslation(0, -9999, 0);
   const YUP = new THREE.Vector3(0, 1, 0);
 
   // hoisted refs so clearArea() can remove props that clip buildings later
@@ -187,6 +214,14 @@ export function buildDecor(terrain, scene) {
     let ai = 0, ci = 0;
 
     trees.forEach((tr, ti) => {
+      // decided by the world, but only DRAWN if it fits the detail budget —
+      // the entry stays in the array so collision and clearArea indices hold
+      if (!tr.draw) {
+        trunk.setMatrixAt(ti, GONE_M);
+        for (let k = 0; k < BPT; k++) canopy.setMatrixAt(ci++, GONE_M);
+        treeAccMap[ti] = null;
+        return;
+      }
       const P = tr.snowy ? FROST : tr.sakura ? PINK : GREEN;
       const base = C(P.base), hi = C(P.hi), dark = shade(base, 0.8);
       const s = tr.s, th = 0.85 * s, ry = tr.seed * 6.28;
@@ -220,6 +255,7 @@ export function buildDecor(terrain, scene) {
     rockMesh.castShadow = true; rockMesh.receiveShadow = true;
     const rockColors = [PALETTE.stone[0], PALETTE.stone[1], PALETTE.stone[2]].map((c) => new THREE.Color(c));
     rocks.forEach((rk, i) => {
+      if (!rk.draw) { rockMesh.setMatrixAt(i, GONE_M); return; }
       q.setFromAxisAngle(YUP, rk.rot);
       m.compose(v.set(rk.x, rk.y + rk.s * 0.28, rk.z), q, sc.set(rk.s * 1.3, rk.s * 0.75, rk.s * 1.1));
       rockMesh.setMatrixAt(i, m);

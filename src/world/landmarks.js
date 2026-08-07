@@ -9,6 +9,26 @@ import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 import { getQuality } from '../gfx/quality.js';
 
+// EVERY PLACEMENT IS SEEDED.
+//
+// place() used Math.random(), so the windmill, the barn, the docks, the gardens
+// and every other landmark landed somewhere different in each player's world.
+// Single-player never noticed. In multiplayer it means two people standing in
+// the same coordinates see different buildings — the world stops being one
+// place. This is the same deterministic generator terrain.js and decor.js use,
+// so with a fixed seed everyone builds an identical map from nothing but the
+// code, and no map data ever has to be sent over the wire.
+const LANDMARK_SEED = 771104;
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // Static prop colours are SHARED — a built world was carrying ~2,465 distinct
 // materials, which is why the LOW preset barely helped. Nothing in this file
 // mutates a material at runtime, so one material per colour is safe here.
@@ -1510,6 +1530,8 @@ function buildGarden(rng, kind, detail = 1) {
 export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   const S2 = terrain.size / 2;
   const built = [];
+  // one deterministic stream for the whole module: same seed, same world
+  const LR = seededRandom(LANDMARK_SEED);
 
   // FOOTPRINT-AWARE placement: every structure registers a circle, and no
   // new structure may overlap any existing one (or the village core, or the
@@ -1574,8 +1596,8 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     for (let tries = 0; tries < 140; tries++) {
       // widen the search ring if the neighbourhood is crowded
       const j = jitter + tries * 0.12;
-      const x = tx + (Math.random() - 0.5) * j;
-      const z = tz + (Math.random() - 0.5) * j;
+      const x = tx + (LR() - 0.5) * j;
+      const z = tz + (LR() - 0.5) * j;
       const [ix, iz] = terrain.cellOf(x, z);
       if (!terrain.inBounds(ix, iz)) continue;
       const h = terrain.heightCell(ix, iz);
@@ -1590,7 +1612,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       // of the slope on the low side beats buried on the high side
       const y = g.hi;
       mesh.position.set(x, y, z);
-      mesh.rotation.y = Math.random() * Math.PI * 2;
+      mesh.rotation.y = LR() * Math.PI * 2;
       scene.add(mesh);
       for (let dz = -blockR; dz <= blockR; dz++) {
         for (let dx = -blockR; dx <= blockR; dx++) decorBlocked.add(`${ix + dx},${iz + dz}`);
@@ -1910,11 +1932,11 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       K.players[K.to].g.position.y = 0.05 + Math.max(0, Math.sin(w * Math.PI * 2)) * 0.1 * w;
       if (K.t >= K.dur) {
         K.from = K.to;
-        let next = Math.floor(Math.random() * K.players.length);
+        let next = Math.floor(LR() * K.players.length);
         if (next === K.from) next = (next + 1) % K.players.length;
         K.to = next;
         K.t = 0;
-        K.dur = 0.9 + Math.random() * 0.7;
+        K.dur = 0.9 + LR() * 0.7;
       }
     }
     // gossip pairs: bubbles take turns, both friends bob along
