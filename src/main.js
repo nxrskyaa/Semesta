@@ -222,6 +222,13 @@ async function init(character, saved, audio) {
     watercraft.moor('dinghy', x + Math.cos(off) * 1.5, z + Math.sin(off) * 1.5, dir);
     watercraft.moor('jetski', x - Math.cos(off) * 1.5, z - Math.sin(off) * 1.5, dir);
   }
+  // LAUNCH POSTS: one at the marina and one at every island pier. Walk up and
+  // call your boat in rather than swimming back across the map to fetch it.
+  for (const st of isles.launches || []) watercraft.addStation(st);
+  for (const d of landmarks.docks || []) {
+    // the lake docks get one too, so the dinghy is useful on fresh water
+    watercraft.addStation({ x: d.x, z: d.z, dir: Math.atan2(-d.x, -d.z), name: 'Lake dock' });
+  }
 
   // --- safe zones: the village, rest camps and your homes repel monsters ---
   const VILLAGE_SAFE_R = 13;
@@ -1317,6 +1324,30 @@ async function init(character, saved, audio) {
     if (fishing.state.phase === 'waiting') return [{ kind: 'fish', label: 'Wait for it...', run: () => fishing.strike() }];
 
     const near = (spot, r = 3.2) => spot && ((spot.x - player.state.pos.x) ** 2 + (spot.z - player.state.pos.z) ** 2 < r * r);
+
+    // LAUNCH POST: call your boat to the pier you are standing on. Checked
+    // before the moored-craft test so that standing at a post with your boat
+    // already there still offers "ride" first and "summon the other one" second.
+    {
+      const st = watercraft.nearestStation(player.state.pos, 3.0);
+      if (st) {
+        const own = watercraft.owned();
+        if (!own.length) {
+          add('launch', 'Boat launch — buy a key at Pip’s Shop',
+            () => { audio.sfx('deny'); hud.toastText('You have no craft yet. Pip sells the dinghy oars and the jetski key.'); });
+        } else {
+          // offer whichever craft is NOT already sitting here
+          const here = watercraft.nearest(player.state.pos, 6);
+          const pick = own.find((id) => !here || here.id !== id) || own[0];
+          const def = CRAFT_DEFS[pick];
+          add('launch', `Launch the ${def.name}`, () => {
+            const m = watercraft.summon(pick, st);
+            if (m) { audio.sfx('teleport'); hud.toastText(`${def.name} is in the water.`); }
+            else { audio.sfx('deny'); hud.toastText('That craft is already out here.'); }
+          });
+        }
+      }
+    }
 
     // village landmarks (tight radius) — highest priority so a wandering
     // villager can't hijack the stall/gacha/anvil button

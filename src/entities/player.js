@@ -930,10 +930,13 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   function shoreTarget() { return terrain.nearestShore(state.pos.x, state.pos.z); }
 
   /** Sit the hero on a watercraft: knees up, hands out on the bars. */
-  function setCraftPose(on) {
+  function setCraftPose(on, kind = 'jetski') {
     state.craftPose = !!on;
+    state.craftKind = kind;
     if (!on) {
-      parts.legL.rotation.x = 0; parts.legR.rotation.x = 0;
+      // the z rotations MUST be cleared too, or the hero walks off the boat
+      // still bow-legged from the astride pose
+      parts.legL.rotation.set(0, 0, 0); parts.legR.rotation.set(0, 0, 0);
       parts.armL.rotation.set(0, 0, 0); parts.armR.rotation.set(0, 0, 0);
       vis.rotation.set(0, 0, 0);
     }
@@ -1208,12 +1211,32 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       const kick = Math.sin(w * Math.PI * 5) * 0.5;
       parts.legL.rotation.x = kick; parts.legR.rotation.x = kick * 0.85;
       parts.head.rotation.x = -0.5;
+    } else if (state.craftPose && state.craftKind === 'dinghy') {
+      // ROWING. A rowboat is not a jetski: you sit upright facing the stern with
+      // your legs out in front, and you pull. Reusing the knees-up jetski crouch
+      // here is why the hero looked jammed into the hull rather than sitting in
+      // it. The stroke drives the oars too — watercraft.js reads rowPhase.
+      const row = state.rowPhase || 0;
+      const pull = Math.sin(row);
+      vis.rotation.x = 0.1 + pull * 0.22;              // lean back on the pull
+      vis.position.y = visBase - 0.04;
+      parts.legL.rotation.x = 0.95; parts.legR.rotation.x = 0.95;
+      parts.legL.rotation.z = 0.12; parts.legR.rotation.z = -0.12;
+      if (state.attackT <= 0) {
+        parts.armL.rotation.x = -0.55 - pull * 0.85;
+        parts.armR.rotation.x = -0.55 - pull * 0.85;
+        parts.armL.rotation.z = 0.5; parts.armR.rotation.z = -0.5;
+      }
+      parts.head.rotation.x = 0.06;
+      parts.head.rotation.z = 0;
+      if (parts.capeMesh) parts.capeMesh.rotation.x = 0.9 + Math.sin(state.idleT * 5) * 0.1;
     } else if (state.craftPose) {
       // seated: knees up over the footwells, arms forward on the bars, body
       // leaning into the ride so the hero looks like they're driving it
       vis.rotation.x = 0.16;
       vis.position.y = visBase;
       parts.legL.rotation.x = 1.35; parts.legR.rotation.x = 1.35;
+      parts.legL.rotation.z = 0.22; parts.legR.rotation.z = -0.22;   // knees apart, astride
       if (state.attackT <= 0) {
         parts.armL.rotation.x = -1.15; parts.armR.rotation.x = -1.15;
         parts.armL.rotation.z = 0.22; parts.armR.rotation.z = -0.22;
@@ -1285,6 +1308,23 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
         parts.head.rotation.z = Math.sin(state.idleT * 0.9) * 0.02;
       }
       if (parts.capeMesh) parts.capeMesh.rotation.x = 0.12 + Math.sin(state.idleT * 1.4) * 0.03;
+    }
+
+    // CARRY POSE. A weapon parented to the fist inherits the arm's orientation,
+    // so at rest a sword stood straight UP out of the hand and its blade passed
+    // through the shoulder and the head — measured at a blade box of y 2.94-4.27
+    // against a head topping out at 3.89. A carried weapon hangs back, down and
+    // slightly out from the hip. This is applied only while NOT attacking, so
+    // every swing animation still starts from the orientation it was tuned for.
+    if (state.attackT <= 0 && state.rolling <= 0 && !state.swimming) {
+      // The angle is a compromise found by measuring, not by eye: -2.25 cleared
+      // the torso but drove the tip 0.37 below the feet, -1.95 still buried it
+      // by 0.10. At -1.78 the blade rides back and level, clear of both.
+      parts.handR.rotation.set(-1.78, 0, -0.34);
+      parts.handR.position.set(0.06, -0.24, 0.02);
+    } else {
+      parts.handR.rotation.set(0, 0, 0);
+      parts.handR.position.set(0, -0.28, 0.02);
     }
 
     if (state.attackT > 0) {

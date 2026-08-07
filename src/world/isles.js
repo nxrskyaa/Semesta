@@ -8,6 +8,7 @@
 // that?" should be answerable at a glance.
 import * as THREE from 'three';
 import { bakeStatic } from '../gfx/bake.js';
+import { makeSignTexture } from '../gfx/signs.js';
 import { WATER_Y, WATER_LEVEL } from './terrain.js';
 import { getQuality } from '../gfx/quality.js';
 import { disposeObject } from '../util/dispose.js';
@@ -167,6 +168,41 @@ function buildBeacon() {
 }
 
 /** A driftwood pier over the water: the marina, and every island's landing. */
+/**
+ * A LAUNCH POST: the marker at the head of a pier where you call your boat in.
+ * A capstan with a coiled rope, a mooring cleat and a small painted board, so
+ * the spot reads as somewhere you do something rather than as more decking.
+ */
+function buildLaunchPost() {
+  const g = new THREE.Group();
+  const post = cylMesh(0.15, 0.19, 1.0, '#6e5334', 8);
+  post.position.y = 0.5; g.add(post);
+  const cap = cylMesh(0.22, 0.17, 0.14, '#8a6a44', 8);
+  cap.position.y = 1.05; g.add(cap);
+  // coiled rope round the capstan
+  for (let i = 0; i < 3; i++) {
+    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.035, 5, 12),
+      sharedMat('#c8b48a'));
+    coil.rotation.x = Math.PI / 2;
+    coil.position.y = 0.58 + i * 0.09;
+    g.add(coil);
+  }
+  // a brass cleat to tie off on
+  const cleat = boxMesh(0.34, 0.07, 0.09, '#c8a03a');
+  cleat.position.set(0, 1.16, 0); g.add(cleat);
+  const brace = boxMesh(0.06, 0.34, 0.06, '#6e5334');
+  brace.position.y = 1.32; g.add(brace);
+  // the board
+  const tex = new THREE.CanvasTexture(makeSignTexture('LAUNCH', 'fish', '#7fd0f0'));
+  tex.magFilter = THREE.NearestFilter;
+  const bw = 0.42 * (tex.image.width / tex.image.height);
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, 0.42),
+    new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
+  board.position.set(0, 1.62, 0);
+  g.add(board);
+  return g;
+}
+
 function buildPier(len, dir) {
   const g = new THREE.Group();
   const planks = Math.max(3, Math.round(len / 0.9));
@@ -385,6 +421,9 @@ export function createIsles(scene, terrain, decorBlocked) {
 
   // --- dress every island by kind -------------------------------------------
   const DETAIL = QL.decorScale;
+  // where a player can call their boat in — one per pier, so nobody has to walk
+  // back across the map (and, later, so two players never fight over one berth)
+  const launches = [];
   for (const isl of terrain.islands) {
     const big = isl.r >= 7;
     if (isl.kind === 'palm') {
@@ -453,6 +492,13 @@ export function createIsles(scene, terrain, decorBlocked) {
       pier.position.set(x, WATER_Y + 0.3, z);
       group.add(pier);
       isl.pier = { x: x + Math.cos(toward) * 1.6, z: z + Math.sin(toward) * 1.6 };
+      // a launch post at the shore end of the pier, pointing out to sea
+      const lp = buildLaunchPost();
+      const lx = x + Math.cos(toward) * 1.5, lz = z + Math.sin(toward) * 1.5;
+      lp.position.set(lx, surf(lx, lz) - 0.05, lz);
+      lp.rotation.y = Math.atan2(-Math.cos(toward), -Math.sin(toward));
+      group.add(lp);
+      launches.push({ x: lx, z: lz, dir: Math.atan2(x - lx, z - lz), name: isl.name || 'Island' });
       break;
     }
   }
@@ -565,6 +611,12 @@ export function createIsles(scene, terrain, decorBlocked) {
         z: shore.z + Math.sin(out) * berth,
         landX: shore.x, landZ: shore.z, dir: out, berth,
       };
+      const lp = buildLaunchPost();
+      const lx = shore.x - Math.cos(out) * 0.8, lz = shore.z - Math.sin(out) * 0.8;
+      lp.position.set(lx, surf(lx, lz) - 0.05, lz);
+      lp.rotation.y = Math.atan2(Math.cos(out), Math.sin(out));
+      group.add(lp);
+      launches.push({ x: lx, z: lz, dir: Math.atan2(Math.cos(out), Math.sin(out)), name: 'Marina' });
     }
   }
 
@@ -647,5 +699,5 @@ export function createIsles(scene, terrain, decorBlocked) {
     scene.remove(group);
   }
 
-  return { group, update, dispose, marina, islands: terrain.islands };
+  return { group, update, dispose, marina, launches, islands: terrain.islands };
 }

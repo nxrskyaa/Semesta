@@ -40,7 +40,10 @@ export const CRAFT_DEFS = {
     lean: 0.5,          // how hard it banks
     porpoise: 0.09,     // vertical bounce over the swell
     spray: 1,
-    seatH: 0.52,
+    // SEAT HEIGHT is measured to the hero's feet, and the hero's body sits
+    // another 0.55 above that. Both craft were built to a realistic scale next
+    // to a deliberately chibi character, so the rider towered out of them.
+    seatH: 0.62,
     blurb: 'Skips across the swell and throws a rooster tail of spray.',
   },
   dinghy: {
@@ -54,7 +57,7 @@ export const CRAFT_DEFS = {
     lean: 0.2,
     porpoise: 0.05,
     spray: 0.45,
-    seatH: 0.34,
+    seatH: 0.30,
     blurb: 'A cozy little rowboat with a lantern on the bow.',
   },
 };
@@ -229,81 +232,144 @@ function buildJetski() {
 
   g.userData.exhaust = new THREE.Vector3(-1.25, 0.15, 0);
   g.userData.bow = new THREE.Vector3(1.25, 0.12, 0);
+  // SCALE FOR A CHIBI RIDER. The whole craft was drawn at a realistic size next
+  // to a hero with a head a third as tall as their body, so the rider sat on top
+  // of it like a doll on a shoe. Scaling the assembled group keeps every
+  // proportion inside the machine intact.
+  const inner = new THREE.Group();
+  for (const c of [...g.children]) inner.add(c);
+  inner.scale.setScalar(1.34);
+  g.add(inner);
+  g.userData.exhaust.multiplyScalar(1.34);
+  g.userData.bow.multiplyScalar(1.34);
   return g;
 }
 
 function buildDinghy() {
   const g = new THREE.Group();
-  const WOOD = '#a8804c', DARK = '#84633a', TRIM = '#e8dcc0';
+  const WOOD = '#b0854f', DARK = '#7d5c36', RAIL = '#caa269', FLOOR = '#96754d';
 
-  // A DISPLACEMENT HULL: round-bottomed, beamy, with a sheer that sweeps up at
-  // both ends the way a clinker dinghy does.
+  // A DISPLACEMENT HULL, sized for a CHIBI rider. The first version was drawn to
+  // a realistic scale: a 2.4m dinghy with a 0.62 gunwale, which came up to the
+  // hero's shins and left them looking like a crate balanced on a canoe. This is
+  // longer, far beamier and much deeper, so the rider sits DOWN INSIDE it with
+  // the rail at chest height, which is what makes it read as a boat with someone
+  // in it rather than a boat with someone on it.
+  const LEN = 3.4, BEAM = 0.86, SHEER = 1.02;
   const hullGeo = buildHullGeometry(
-    2.4,
-    (t) => 0.5 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.92) + 0.07,
-    (t) => 0.36 + Math.pow(Math.abs(t - 0.45) * 2, 2) * 0.2,   // sheer lifts fore and aft
-    () => 0.22,
-    0.15,                                                      // nearly round-bottomed
+    LEN,
+    (t) => BEAM * Math.sin(Math.min(1, t * 1.12) * Math.PI * 0.94) + 0.09,
+    // the sheer sweeps up at BOTH ends, hardest at the bow
+    (t) => SHEER + Math.pow(Math.abs(t - 0.44) * 2, 2.1) * 0.42,
+    () => 0.34,
+    0.12,                                                      // round-bottomed
   );
   const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(WOOD) }));
-  hull.position.y = 0.26;
   hull.castShadow = true;
   g.add(hull);
 
-  // planking: three lap strakes following the sheer
-  for (let i = 0; i < 3; i++) {
+  // planking: four lap strakes following the sheer, alternating tone. These are
+  // thin shells nested just inside the hull, so the lapstrake shadow line reads
+  // from any angle without needing a texture.
+  for (let i = 0; i < 4; i++) {
+    const top = SHEER * (0.78 - i * 0.2);
     const strake = new THREE.Mesh(buildHullGeometry(
-      2.42 - i * 0.02,
-      (t) => (0.505 - i * 0.004) * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.92) + 0.07,
-      () => 0.2 - i * 0.13,
-      () => -0.16 + i * 0.13,
-      0.15,
-    ), new THREE.MeshLambertMaterial({ color: new THREE.Color(i % 2 ? DARK : '#96754d') }));
-    strake.position.y = 0.26;
+      LEN - 0.02 - i * 0.01,
+      (t) => (BEAM + 0.012) * Math.sin(Math.min(1, t * 1.12) * Math.PI * 0.94) + 0.09,
+      () => top,
+      () => -top + 0.14,
+      0.12,
+    ), new THREE.MeshLambertMaterial({ color: new THREE.Color(i % 2 ? DARK : WOOD) }));
     g.add(strake);
   }
 
-  // a capping rail all the way round the gunwale
-  const rail = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.045, 6, 20),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color(TRIM) }));
+  // FLOORBOARDS. Without them you look straight down through the hull into the
+  // sea, which is most of why the boat read as a hollow shell.
+  for (let i = 0; i < 5; i++) {
+    const bx = -0.95 + i * 0.5;
+    const w = 0.62 * Math.sin(Math.min(1, (bx / LEN + 0.5) * 1.12) * Math.PI * 0.94) + 0.3;
+    const plank = new THREE.Mesh(sharedBox(0.42, 0.05, w * 1.55),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(i % 2 ? FLOOR : '#8a6a44') }));
+    plank.position.set(bx, 0.02, 0);
+    g.add(plank);
+  }
+
+  // ribs across the inside, so the interior is not one flat tray
+  for (const rx of [-0.7, 0, 0.7]) {
+    const rib = new THREE.Mesh(sharedBox(0.07, 0.5, 1.5),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(DARK) }));
+    rib.position.set(rx, 0.3, 0);
+    g.add(rib);
+  }
+
+  // a capping rail all the way round the gunwale, in WOOD rather than the
+  // near-white trim that used to draw the whole boat as a pale outline
+  const rail = new THREE.Mesh(new THREE.TorusGeometry(BEAM + 0.1, 0.06, 6, 24),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(RAIL) }));
   rail.rotation.x = Math.PI / 2;
-  rail.scale.set(2.3, 1, 1);
-  rail.position.y = 0.62;
+  rail.scale.set(LEN / (2 * (BEAM + 0.1)), 1, 1);
+  rail.position.y = SHEER;
   g.add(rail);
 
-  // thwart, oars in their locks
-  const bench = new THREE.Mesh(sharedBox(0.42, 0.09, 0.92),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color(TRIM) }));
-  bench.position.set(-0.2, 0.6, 0); g.add(bench);
-  for (const sz of [-0.55, 0.55]) {
-    const oar = new THREE.Mesh(sharedCyl(0.032, 0.038, 1.6, 6),
+  // the thwart the rider sits on, plus a stern bench
+  const bench = new THREE.Mesh(sharedBox(0.5, 0.1, 1.5),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(RAIL) }));
+  bench.position.set(-0.18, 0.62, 0); g.add(bench);
+  const stern = new THREE.Mesh(sharedBox(0.42, 0.09, 1.2),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(FLOOR) }));
+  stern.position.set(-1.3, 0.68, 0); g.add(stern);
+
+  // OARS: each one a single unit — loom, grip and blade in line — pivoting on
+  // its rowlock. They used to be a flat cylinder with a detached box floating
+  // near it, which is exactly what the screenshot showed: loose planks.
+  const oars = [];
+  for (const sz of [-1, 1]) {
+    const oar = new THREE.Group();
+    const loom = new THREE.Mesh(sharedCyl(0.04, 0.05, 2.0, 6),
       new THREE.MeshLambertMaterial({ color: new THREE.Color('#8a6a44') }));
-    oar.rotation.z = Math.PI / 2;
-    oar.rotation.y = sz > 0 ? 0.42 : -0.42;
-    oar.position.set(-0.12, 0.66, sz); g.add(oar);
-    const blade = new THREE.Mesh(sharedBox(0.36, 0.03, 0.15),
-      new THREE.MeshLambertMaterial({ color: new THREE.Color('#96754d') }));
-    blade.position.set(-0.85, 0.6, sz + (sz > 0 ? 0.34 : -0.34));
-    blade.rotation.y = sz > 0 ? 0.42 : -0.42;
-    g.add(blade);
+    loom.rotation.z = Math.PI / 2;
+    loom.position.x = -0.35;
+    oar.add(loom);
+    const grip = new THREE.Mesh(sharedCyl(0.06, 0.06, 0.22, 6),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(DARK) }));
+    grip.rotation.z = Math.PI / 2;
+    grip.position.x = 0.6;
+    oar.add(grip);
+    const blade = new THREE.Mesh(sharedBox(0.5, 0.04, 0.2),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(FLOOR) }));
+    blade.position.x = -1.52;
+    oar.add(blade);
+    // the rowlock it turns in
+    const lock = new THREE.Mesh(sharedCyl(0.05, 0.05, 0.16, 6),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color('#8d9294') }));
+    lock.position.set(-0.18, SHEER + 0.08, sz * (BEAM + 0.06));
+    g.add(lock);
+    // pivot at the lock, blade out and down toward the water
+    oar.position.set(-0.18, SHEER + 0.1, sz * (BEAM + 0.06));
+    oar.rotation.y = sz * 0.5;
+    oar.rotation.z = -0.28;
+    oar.userData.dynamic = true;
+    g.add(oar);
+    oars.push({ o: oar, side: sz });
   }
+  g.userData.oars = oars;
 
   // bow lantern on a curved post
   const post = new THREE.Mesh(sharedCyl(0.035, 0.045, 0.46, 6),
     new THREE.MeshLambertMaterial({ color: new THREE.Color('#6e5334') }));
-  post.position.set(0.98, 0.78, 0); g.add(post);
+  post.position.set(1.42, 1.28, 0); g.add(post);
   const lamp = new THREE.Mesh(sharedCyl(0.13, 0.13, 0.24, 8),
     sharedMat('#ffdca0', { unique: true, emissive: '#ffb85c' }));
-  lamp.position.set(0.98, 1.1, 0);
+  lamp.position.set(1.42, 1.62, 0);
   lamp.material.emissiveIntensity = 0.7;
   g.add(lamp);
   const lampCap = new THREE.Mesh(sharedCyl(0.03, 0.16, 0.07, 8),
     new THREE.MeshLambertMaterial({ color: new THREE.Color('#c46a3a') }));
-  lampCap.position.set(0.98, 1.26, 0); g.add(lampCap);
+  lampCap.position.set(1.42, 1.78, 0); g.add(lampCap);
 
   g.userData.lamp = lamp;
-  g.userData.exhaust = new THREE.Vector3(-1.25, 0.1, 0);
-  g.userData.bow = new THREE.Vector3(1.3, 0.1, 0);
+  g.userData.exhaust = new THREE.Vector3(-1.75, 0.1, 0);
+  g.userData.bow = new THREE.Vector3(1.75, 0.1, 0);
   return g;
 }
 
@@ -404,7 +470,7 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     ridden.rotation.set(0, 0, 0);
     player.state.craft = { id, ...CRAFT_DEFS[id] };
     // sit the hero ON it: knees up, hands forward on the bars
-    player.setCraftPose?.(true);
+    player.setCraftPose?.(true, id);
     // drop the hero onto the waterline
     // SIT ON THE CRAFT. Boarding used to leave the rider standing wherever they
     // pressed the button — on the pier, on dry land — while the hull was out on
@@ -576,6 +642,22 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     // PITCH: the bow lifts as it climbs onto plane, settles once planing, and
     // noses down when the throttle is cut. Plus the swell underneath.
     state.bob += dt * (2.0 + state.speed * 0.55);
+    // ROWING. The oars are what make a rowboat move, so they have to move with
+    // it: the stroke rate follows the actual speed, and player.js reads the same
+    // phase so the hero pulls in time with the blades instead of sitting still
+    // while the boat glides.
+    if (state.active === 'dinghy') {
+      state.row = (state.row || 0) + dt * (1.1 + fast * 4.2);
+      player.state.rowPhase = state.row;
+      const oars = ridden?.userData.oars;
+      if (oars) {
+        const pull = Math.sin(state.row);
+        for (const { o, side } of oars) {
+          o.rotation.z = -0.28 + pull * 0.34;              // blade dips and lifts
+          o.rotation.y = side * (0.5 + Math.cos(state.row) * 0.26);
+        }
+      }
+    }
     const plane = Math.min(1, fast * 1.6);
     const wantPitch = -plane * 0.2 + (throttle < 0.05 ? 0.06 : 0);
     state.pitch += (wantPitch - state.pitch) * Math.min(1, dt * 4);
@@ -677,5 +759,48 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     scene.remove(group);
   }
 
-  return { state, moor, nearest, board, leave, drive, update, dispose, CRAFT_DEFS };
+  /**
+   * LAUNCH STATIONS. A boat that lives at one fixed berth on the far side of the
+   * map is a boat you walk past on foot. Every pier registers a station, and you
+   * summon your craft to whichever one you are standing on — which is also the
+   * shape multiplayer needs, since each player has to be able to put their own
+   * hull in the water without fighting over one berth.
+   */
+  const stations = [];
+  function addStation(st) { stations.push(st); return st; }
+  /** The station within `r` of a point, or null. */
+  function nearestStation(pos, r = 3.2) {
+    let best = null, bd = r * r;
+    for (const st of stations) {
+      const d = (st.x - pos.x) ** 2 + (st.z - pos.z) ** 2;
+      if (d < bd) { bd = d; best = st; }
+    }
+    return best;
+  }
+  /** Re-berth an owned craft at a station and return it, or null if not owned. */
+  function summon(id, st) {
+    if (!hooks.owns?.(CRAFT_DEFS[id].item)) return null;
+    if (state.active === id) return null;               // already riding it
+    const m = state.moored[id];
+    // walk out from the station along its heading until the hull floats
+    let bx = st.x, bz = st.z;
+    for (let d = 0; d <= 12; d += 0.5) {
+      const x = st.x + Math.sin(st.dir) * d, z = st.z + Math.cos(st.dir) * d;
+      if (floats(x, z)) { bx = x; bz = z; break; }
+    }
+    if (!m) return moor(id, bx, bz, st.dir);
+    m.x = bx; m.z = bz; m.dir = st.dir;
+    m.mesh.position.set(bx, WATER_Y, bz);
+    m.mesh.rotation.set(0, st.dir, 0);
+    state.homeBerth[id] = { x: bx, z: bz, dir: st.dir };
+    particles?.burst(new THREE.Vector3(bx, WATER_Y + 0.1, bz), '#dff6ff', 16, 3, 4.5, 0.5);
+    return m;
+  }
+  /** Which craft the player owns, for the launch prompt. */
+  const owned = () => Object.keys(CRAFT_DEFS).filter((k) => hooks.owns?.(CRAFT_DEFS[k].item));
+
+  return {
+    state, moor, nearest, board, leave, drive, update, dispose, CRAFT_DEFS,
+    addStation, nearestStation, summon, owned, stations,
+  };
 }
