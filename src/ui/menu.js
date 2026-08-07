@@ -7,6 +7,7 @@ import logoUrl from '../../logoasset/semesta.png';
 import mascotUrl from '../../logoasset/nxrmascott.png';
 import { paintRialoMark } from '../world/landmarks.js';
 import { aboutInner, paintAboutRialo } from './about.js';
+import { docsInner, wireDocs, DOCS_CSS } from './docs.js';
 import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
 
@@ -115,6 +116,7 @@ const CSS = `
   font-size: 9px; letter-spacing: 3px; color: rgba(240,248,255,0.75); text-shadow: 0 1px 0 #2a4a7a;
 }
 
+/* the guide's own styles are appended below via DOCS_CSS */
 /* about modal */
 #opening .about {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
@@ -281,7 +283,7 @@ export function showOpening(saved) {
     const [logo, mascot] = await Promise.all([cleanImage(logoUrl), cleanImage(mascotUrl)]);
 
     const style = document.createElement('style');
-    style.textContent = CSS;
+    style.textContent = CSS + DOCS_CSS;
     document.head.appendChild(style);
 
     const root = document.createElement('div');
@@ -367,6 +369,7 @@ export function showOpening(saved) {
       <button class="primary" data-m="new">⚔ &nbsp;NEW ADVENTURE</button>
       ${saved ? `<button data-m="continue">▶ &nbsp;CONTINUE</button>
         <div class="continfo">${saved.character?.name || 'Adventurer'} · Lv${saved.level || 1}</div>` : ''}
+      <button data-m="docs">📖 &nbsp;HOW TO PLAY</button>
       <button data-m="roadmap">◈ &nbsp;ROADMAP</button>
       <button data-m="about">✦ &nbsp;ABOUT</button>
     `;
@@ -391,6 +394,17 @@ export function showOpening(saved) {
     paintAboutRialo(about);
     about.querySelector('.closebtn').addEventListener('click', () => about.classList.remove('show'));
     about.addEventListener('click', (e) => { if (e.target === about) about.classList.remove('show'); });
+
+    // --- the GUIDE: everything the game can teach, before you commit to a
+    // character. New players' questions all arrive before NEW ADVENTURE, not
+    // after, so the guide belongs here rather than only in the in-game menu.
+    const docs = document.createElement('div');
+    docs.className = 'about docs';
+    docs.innerHTML = docsInner();
+    root.appendChild(docs);
+    const docsNav = wireDocs(docs);
+    docs.querySelector('.closebtn').addEventListener('click', () => docs.classList.remove('show'));
+    docs.addEventListener('click', (e) => { if (e.target === docs) docs.classList.remove('show'); });
 
     // --- roadmap modal: where Semesta is headed ---
     const roadmap = document.createElement('div');
@@ -449,6 +463,7 @@ export function showOpening(saved) {
       const b = e.target.closest('[data-m]');
       if (!b) return;
       if (b.dataset.m === 'about') { about.classList.add('show'); return; }
+      if (b.dataset.m === 'docs') { docs.classList.add('show'); docsNav.reset(); return; }
       if (b.dataset.m === 'roadmap') { roadmap.classList.add('show'); return; }
       const action = b.dataset.m;
       gfx.dispose();

@@ -3,6 +3,7 @@
 // footprints); the windmill's sails turn.
 import * as THREE from 'three';
 import { bakeStatic } from '../gfx/bake.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WATER_LEVEL, WATER_Y } from './terrain.js';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
@@ -1379,24 +1380,77 @@ function buildGarden(rng, kind, detail = 1) {
   const mix = kind === 'rose' ? [0.15, 0.7, 0.15]
     : kind === 'sun' ? [0.2, 0.15, 0.65]
       : [0.6, 0.25, 0.15];                       // lily garden
-  // WORLD DETAIL scales the planting: a garden should still read at LOW, it
-  // just has fewer blooms in the bed
-  const N = Math.max(7, Math.round(22 * detail));
-  for (let i = 0; i < N; i++) {
+  // PLANTED IN DRIFTS, not scattered. A real bed is groups of one species
+  // repeating, which is why an even sprinkle of three flower types reads as a
+  // random pile rather than a garden. Density is up sharply too: with each plant
+  // now baking down to about five meshes, 54 blooms cost LESS than the old 22 —
+  // and a bed you can see the soil through was the actual complaint.
+  // LOW still gets a full-looking bed — sparse planting was the complaint, and
+  // a plant is only ~5 meshes after baking, so the floor can afford to be high
+  const N = Math.max(34, Math.round(58 * detail));
+  const CLUMPS = Math.max(6, Math.round(9 * detail));
+  const clumps = [];
+  for (let i = 0; i < CLUMPS; i++) {
     const a = rng() * Math.PI * 2;
-    const rr = Math.sqrt(rng()) * (R - 0.45);
-    if (Math.abs(Math.cos(a) * rr) < 0.5 && Math.sin(a) * rr > 0) continue;  // keep the path clear
+    const rr = Math.sqrt(rng()) * (R - 1.35);   // leaves room for the drift itself
     const roll = rng();
-    let f;
-    if (roll < mix[0]) f = buildLily(rng, LILY_COLS[Math.floor(rng() * LILY_COLS.length)]);
-    else if (roll < mix[0] + mix[1]) f = buildRose(rng, ROSE_COLS[Math.floor(rng() * ROSE_COLS.length)]);
-    else f = buildSunflower(rng);
-    f.position.set(Math.cos(a) * rr, 0.27, Math.sin(a) * rr);
+    const kindOf = roll < mix[0] ? 'lily' : roll < mix[0] + mix[1] ? 'rose' : 'sun';
+    clumps.push({
+      x: Math.cos(a) * rr, z: Math.sin(a) * rr, kind: kindOf,
+      // one colour per drift — that repetition is what makes it look planted
+      col: kindOf === 'lily' ? LILY_COLS[Math.floor(rng() * LILY_COLS.length)]
+        : ROSE_COLS[Math.floor(rng() * ROSE_COLS.length)],
+      r: 0.5 + rng() * 0.75,
+    });
+  }
+  const plant = (x, z, c) => {
+    if (Math.hypot(x, z) > R - 0.4) return false;
+    if (Math.abs(x) < 0.52 && z > 0) return false;        // keep the path clear
+    const f = c.kind === 'lily' ? buildLily(rng, c.col)
+      : c.kind === 'rose' ? buildRose(rng, c.col)
+        : buildSunflower(rng);
+    f.position.set(x, 0.27, z);
     f.rotation.y = rng() * Math.PI * 2;
-    const s = 0.85 + rng() * 0.35;
-    f.scale.setScalar(s);
+    f.scale.setScalar(0.82 + rng() * 0.4);
     g.add(f);
     heads.push({ o: f, phase: rng() * 10, sun: !!f.userData.sunflower });
+    return true;
+  };
+  // KEEP TRYING until the bed actually holds N plants. Placing exactly N times
+  // and discarding the rejects (outside the coping, on the path) was quietly
+  // losing two thirds of them — a bed asked for 54 and grew 15.
+  for (let placed = 0, tries = 0; placed < N && tries < N * 12; tries++) {
+    const c = clumps[tries % clumps.length];
+    const a = rng() * Math.PI * 2, d = Math.sqrt(rng()) * c.r;
+    if (plant(c.x + Math.cos(a) * d, c.z + Math.sin(a) * d, c)) placed++;
+  }
+
+  // GROUND COVER between the tall stems, so there is no bare soil showing
+  // through the drifts. These are two-triangle crossed blades and they all merge
+  // into the bed's static bake, so a hundred of them cost one draw call.
+  {
+    const coverGeo = (() => {
+      const p1 = new THREE.PlaneGeometry(0.16, 0.2);
+      const p2 = new THREE.PlaneGeometry(0.16, 0.2);
+      p2.rotateY(Math.PI / 2);
+      return mergeGeometries([p1, p2], false);
+    })();
+    const COVER_COLS = ['#5e9a44', '#6faa4e', '#87c05e'];
+    const BLOOM_COLS = ['#f6e07a', '#f0a8c8', '#e8f0f8', '#c79bf0'];
+    const M = Math.max(70, Math.round(130 * detail));
+    for (let i = 0; i < M; i++) {
+      const a = rng() * Math.PI * 2, rr = Math.sqrt(rng()) * (R - 0.3);
+      const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+      if (Math.abs(x) < 0.5 && z > 0) continue;
+      const bloom = rng() < 0.3;
+      const m = new THREE.Mesh(coverGeo,
+        lam(bloom ? BLOOM_COLS[Math.floor(rng() * BLOOM_COLS.length)]
+          : COVER_COLS[Math.floor(rng() * COVER_COLS.length)]));
+      m.position.set(x, 0.31 + (bloom ? 0.05 : 0), z);
+      m.rotation.y = rng() * Math.PI;
+      m.scale.setScalar(bloom ? 0.55 + rng() * 0.3 : 0.8 + rng() * 0.6);
+      g.add(m);
+    }
   }
 
   // a rose arch over the path entrance
@@ -1441,7 +1495,7 @@ function buildGarden(rng, kind, detail = 1) {
 
   // butterflies over the bed — a garden should have something moving in it
   const flutter = [];
-  for (let i = 0; i < Math.max(2, Math.round(5 * detail)); i++) {
+  for (let i = 0; i < Math.max(4, Math.round(9 * detail)); i++) {
     const b = new THREE.Mesh(sharedBox(0.11, 0.02, 0.16),
       lam(['#f0b8d8', '#f5e88a', '#a8c8f0'][i % 3]));
     b.position.set(0, 1, 0);

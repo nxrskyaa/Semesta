@@ -26,6 +26,36 @@ const SWELL = [
   [0.075, -0.075, 0.50, 0.070],   // the long ocean ground swell
 ];
 
+/**
+ * The EXACT surface height and slope of the sea at a world point, from the same
+ * wave sum the mesh is displaced by.
+ *
+ * Without this, anything that floats has to guess. The watercraft were pinned to
+ * the mean waterline while the surface swung +-0.4 around them, so every crest
+ * rose almost half a unit above the keel and swallowed the hull — the boats read
+ * as sinking. Ride this instead and they sit ON the swell.
+ *
+ * Plane space maps to the world as x = wx, y = -wz, which is why dz is negated.
+ *
+ * @returns {{h:number, dx:number, dz:number}} height above WATER_Y and the
+ *   surface gradient, for pitching a hull along the wave it is sitting on.
+ */
+export function waveAt(x, z, time, ocean = true) {
+  const a = ocean ? 2.1 : 0.85;
+  const y = -z;
+  let h = 0, dhdx = 0, dhdy = 0;
+  for (let k = 0; k < SWELL.length; k++) {
+    const [fx, fy, sp, A] = SWELL[k];
+    const aA = A * a;
+    const phase = x * fx + y * fy + time * sp;
+    h += Math.sin(phase) * aA;
+    const c = Math.cos(phase) * aA;
+    dhdx += c * fx;
+    dhdy += c * fy;
+  }
+  return { h, dx: dhdx, dz: -dhdy };
+}
+
 export function buildWater(terrain, scene) {
   const S = terrain.size;
   const group = new THREE.Group();

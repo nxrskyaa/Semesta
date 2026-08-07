@@ -4,6 +4,7 @@
 // Also builds the village itself: huts, a well, stalls, fences, crops, lamps.
 import * as THREE from 'three';
 import { bakeStatic } from '../gfx/bake.js';
+import { makeSignTexture } from '../gfx/signs.js';
 import { makeCritterFaceTexture, PALETTE } from '../gfx/textures.js';
 import { WATER_LEVEL } from '../world/terrain.js';
 import { sharedMat, sharedBox, sharedCyl, hipRoofGeometry } from '../gfx/meshcache.js';
@@ -827,11 +828,32 @@ function buildCenterShrine() {
     g.add(step);
     y += h;
   }
-  // the water basin
-  const basin = new THREE.Mesh(sharedCyl(1.5, 1.5, 0.16, 8),
-    new THREE.MeshLambertMaterial({ color: 0x5ec8e8, transparent: true, opacity: 0.82 }));
-  basin.position.y = y + 0.02;
+  // THE BASIN: a rippling disc, not a flat plate. It is a subdivided plane so
+  // update() can roll a couple of crossing sines through it, which is the whole
+  // difference between "there is water here" and a blue lid.
+  const basinGeo = new THREE.CircleGeometry(1.5, 24, 0, Math.PI * 2);
+  {
+    // subdivide by pushing a second ring of vertices in — CircleGeometry is a
+    // fan, so the rim moves and the centre does not unless we help it
+    const pos = basinGeo.attributes.position;
+    basinGeo.userData.base = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) basinGeo.userData.base[i] = pos.getZ(i);
+  }
+  const basin = new THREE.Mesh(basinGeo, new THREE.MeshPhongMaterial({
+    color: 0x4fbfe4, transparent: true, opacity: 0.86, shininess: 90,
+    specular: 0x9fe8ff, side: THREE.DoubleSide,
+  }));
+  basin.rotation.x = -Math.PI / 2;
+  basin.position.y = y + 0.11;
+  basin.userData.dynamic = true;
   g.add(basin);
+  // a pale shallow ring where the water meets the stone, so the basin has an
+  // edge instead of ending in a hard line
+  const shallow = new THREE.Mesh(new THREE.RingGeometry(1.24, 1.5, 24),
+    new THREE.MeshBasicMaterial({ color: 0xcdf2ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+  shallow.rotation.x = -Math.PI / 2;
+  shallow.position.y = y + 0.115;
+  g.add(shallow);
   const rim = new THREE.Mesh(sharedCyl(1.62, 1.66, 0.2, 8), lam(PZ.stoneDark));
   rim.position.y = y + 0.04; g.add(rim);
 
@@ -851,22 +873,158 @@ function buildCenterShrine() {
   const spike = new THREE.Mesh(sharedCyl(0.02, 0.1, 0.5, 6), lam(PZ.gold));
   spike.position.y = y + 3.1; g.add(spike);
 
-  // four water spouts arcing into the basin
+  // FOUR ARCING JETS. These were four thin boxes at 0.6 opacity — literally
+  // vertical blue lines, which is exactly what they looked like. Water thrown
+  // from a spout follows a parabola, so each jet is a TUBE swept along one, with
+  // a scrolling streak texture running down it. That, the splash where it lands
+  // and the mist above the basin are what make it read as a fountain.
+  const jetTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 8; c.height = 32;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = 'rgba(190,235,250,0.30)';
+    ctx.fillRect(0, 0, 8, 32);
+    // uneven bright streaks: falling water is not a uniform ribbon
+    for (let i = 0; i < 22; i++) {
+      const x = Math.floor(Math.random() * 8);
+      const yy = Math.floor(Math.random() * 32);
+      const h = 2 + Math.floor(Math.random() * 6);
+      ctx.fillStyle = `rgba(240,253,255,${0.35 + Math.random() * 0.5})`;
+      ctx.fillRect(x, yy, 1, h);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.magFilter = THREE.NearestFilter;
+    t.repeat.set(1, 3);
+    return t;
+  })();
+
   const spouts = [];
+  const splashes = [];
+  const SPOUT_R = 0.46, LAND_R = 1.12, SPOUT_Y = 1.78, RISE = 0.28;
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const sp = new THREE.Mesh(sharedBox(0.1, 0.1, 0.42), lam(PZ.goldDim));
-    sp.position.set(Math.cos(a) * 0.45, y + 1.75, Math.sin(a) * 0.45);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const sp = new THREE.Mesh(sharedBox(0.12, 0.12, 0.46), lam(PZ.goldDim));
+    sp.position.set(ca * SPOUT_R, y + SPOUT_Y, sa * SPOUT_R);
     sp.rotation.y = -a;
     g.add(sp);
-    // the falling water
-    const jet = new THREE.Mesh(sharedBox(0.07, 1.55, 0.07),
-      new THREE.MeshBasicMaterial({ color: 0xbfeaf5, transparent: true, opacity: 0.6 }));
-    jet.position.set(Math.cos(a) * 0.72, y + 0.95, Math.sin(a) * 0.72);
+
+    // the parabola: out of the nozzle, up a touch, then down into the basin
+    const p0 = new THREE.Vector3(ca * (SPOUT_R + 0.18), y + SPOUT_Y, sa * (SPOUT_R + 0.18));
+    const p2 = new THREE.Vector3(ca * LAND_R, y + 0.13, sa * LAND_R);
+    const pts = [];
+    for (let t = 0; t <= 1.0001; t += 1 / 10) {
+      // quadratic in the horizontal, ballistic in the vertical
+      const x = p0.x + (p2.x - p0.x) * t;
+      const z = p0.z + (p2.z - p0.z) * t;
+      const yy = p0.y + (p2.y - p0.y) * t + Math.sin(t * Math.PI) * RISE;
+      pts.push(new THREE.Vector3(x, yy, z));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const jet = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 16, 0.055, 6, false),
+      new THREE.MeshBasicMaterial({
+        map: jetTex.clone(), transparent: true, opacity: 0.85,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }),
+    );
+    jet.material.map.wrapS = jet.material.map.wrapT = THREE.RepeatWrapping;
+    jet.material.map.repeat.set(1, 3);
+    jet.material.userData = { dynamic: true };
+    jet.userData.dynamic = true;
+    jet.renderOrder = 2;
     g.add(jet);
     spouts.push(jet);
+
+    // the splash where it lands: a ring that expands and fades, recycled
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.16, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xeafcff, transparent: true, opacity: 0, side: THREE.DoubleSide,
+        depthWrite: false,
+      }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(ca * LAND_R, y + 0.13, sa * LAND_R);
+    ring.userData.dynamic = true;
+    ring.material.userData = { dynamic: true };
+    g.add(ring);
+    // a low churn puff sitting on the landing point
+    const churn = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6),
+      new THREE.MeshBasicMaterial({
+        color: 0xf2feff, transparent: true, opacity: 0.5, depthWrite: false,
+      }));
+    churn.position.set(ca * LAND_R, y + 0.16, sa * LAND_R);
+    churn.scale.y = 0.5;
+    churn.userData.dynamic = true;
+    churn.material.userData = { dynamic: true };
+    g.add(churn);
+    splashes.push({ ring, churn, t: i * 0.25, ang: a });
   }
-  g.userData.shrine = { spouts, basin, orb, baseY: y };
+
+  // MIST over the basin — one soft additive disc, the cheapest possible way to
+  // say "there is spray in the air here"
+  const mist = new THREE.Mesh(new THREE.CircleGeometry(1.45, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0xd8f4ff, transparent: true, opacity: 0.13,
+      depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+  mist.rotation.x = -Math.PI / 2;
+  mist.position.y = y + 0.42;
+  mist.userData.dynamic = true;
+  mist.material.userData = { dynamic: true };
+  g.add(mist);
+
+  g.userData.shrine = { spouts, splashes, basin, basinGeo, mist, orb, baseY: y };
+  g.userData.dynamic = true;   // the baker must not freeze any of this
+  return g;
+}
+
+/**
+ * A SIGNBOARD on two posts: a painted plank naming what the building does.
+ *
+ * Walking into the plaza for the first time you saw three matching daises with a
+ * prop on each and no way to tell the shop from the forge from the capsule
+ * machine. The board is double-sided so it reads from either approach, and it
+ * carries a pictogram as well as the word — at plaza distance the picture lands
+ * first and the word confirms it.
+ */
+export function buildSignboard(label, glyph, accent, h = 2.5) {
+  const g = new THREE.Group();
+  const tex = new THREE.CanvasTexture(makeSignTexture(label, glyph, accent));
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  const aspect = tex.image.width / tex.image.height;
+  const bh = 0.62, bw = bh * aspect;
+
+  const post = (dx) => {
+    const p = new THREE.Mesh(sharedBox(0.11, h, 0.11), lam('#6a4a30'));
+    p.position.set(dx, h / 2, 0);
+    p.castShadow = true;
+    g.add(p);
+    const capB = new THREE.Mesh(sharedBox(0.2, 0.12, 0.2), lam('#5a3f26'));
+    capB.position.set(dx, h + 0.05, 0);
+    g.add(capB);
+  };
+  post(-bw / 2 - 0.14);
+  post(bw / 2 + 0.14);
+  // the cross beam the board hangs from
+  const beam = new THREE.Mesh(sharedBox(bw + 0.62, 0.13, 0.13), lam('#5a3f26'));
+  beam.position.y = h - 0.06;
+  g.add(beam);
+  // two little chains
+  for (const dx of [-bw * 0.34, bw * 0.34]) {
+    const link = new THREE.Mesh(sharedBox(0.04, 0.2, 0.04), lam('#8d9294'));
+    link.position.set(dx, h - 0.2, 0);
+    g.add(link);
+  }
+  const boardMat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), boardMat);
+  board.position.y = h - 0.32 - bh / 2;
+  board.castShadow = true;
+  g.add(board);
+  // the board swings, very slightly, on its chains
+  g.userData.swing = board;
+  board.userData.dynamic = true;
   return g;
 }
 
@@ -1196,9 +1354,20 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
     prop.position.y = pSpot.y;
     return pSpot;
   };
-  const stallSpot = stationOf(AV[0], '#a8e06a', '#5e8a3c', buildStall(), 0.35);
-  const forgeSpot = stationOf(AV[1], '#e8a35d', '#a85a2c', buildForgeCorner(), 0.35);
-  const gachaSpot = stationOf(AV[2], '#f0a8c8', '#a8548a', buildGachaMachine(), 0.35);
+  const signs = [];
+  const stationOfSigned = (ang, color, trim, prop, off, label, glyph) => {
+    const spot = stationOf(ang, color, trim, prop, off);
+    // the board stands just OUTSIDE the dais on the same avenue, facing the
+    // plaza centre — so you read it on the way in, and it never blocks the prop
+    const [bx, bz] = polar(ang, STATION_R + 1.9);
+    const sign = buildSignboard(label, glyph, color);
+    place(sign, bx, bz, true, -1);      // no blocked cells: you walk under it
+    signs.push(sign);
+    return spot;
+  };
+  const stallSpot = stationOfSigned(AV[0], '#a8e06a', '#5e8a3c', buildStall(), 0.35, 'SHOP', 'coin');
+  const forgeSpot = stationOfSigned(AV[1], '#e8a35d', '#a85a2c', buildForgeCorner(), 0.35, 'FORGE', 'anvil');
+  const gachaSpot = stationOfSigned(AV[2], '#f0a8c8', '#a8548a', buildGachaMachine(), 0.35, 'GACHA', 'capsule');
 
   // the hearth sits between two avenues, clear of the shrine and the stations
   const [ckx, ckz] = polar(AV[3] + Math.PI / 4, 10.6);
@@ -1430,6 +1599,54 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
   }
 
   function update(dt, playerPos, time, isNight = false) {
+    // THE FOUNTAIN. Skipped entirely when nobody is near enough to see it.
+    const F = shrine.userData.shrine;
+    if (F && (shrine.position.x - playerPos.x) ** 2 + (shrine.position.z - playerPos.z) ** 2 < 2500) {
+      // the jets: scroll the streak texture DOWN the tube so the water falls,
+      // and breathe the pressure so it never looks like a frozen ribbon
+      for (let i = 0; i < F.spouts.length; i++) {
+        const m = F.spouts[i].material;
+        if (m.map) m.map.offset.y -= dt * 1.9;
+        m.opacity = 0.72 + Math.sin(time * 4.2 + i * 1.7) * 0.13;
+      }
+      // the basin surface: two crossing sines through the fan's vertices
+      const pos = F.basinGeo.attributes.position;
+      const base = F.basinGeo.userData.base;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), yv = pos.getY(i);
+        pos.setZ(i, base[i]
+          + Math.sin(x * 4.2 + time * 2.3) * 0.022
+          + Math.sin(yv * 3.6 - time * 1.7) * 0.018);
+      }
+      pos.needsUpdate = true;
+      // splash rings expand out from each landing point and fade, recycled
+      for (const sp of F.splashes) {
+        sp.t += dt * 1.35;
+        if (sp.t >= 1) sp.t -= 1;
+        const w = sp.t;
+        sp.ring.scale.setScalar(0.5 + w * 2.6);
+        sp.ring.material.opacity = (1 - w) * 0.5;
+        sp.churn.scale.set(
+          0.9 + Math.sin(time * 7 + sp.ang) * 0.16,
+          0.5 + Math.sin(time * 9 + sp.ang) * 0.1,
+          0.9 + Math.cos(time * 6.4 + sp.ang) * 0.16,
+        );
+        sp.churn.material.opacity = 0.42 + Math.sin(time * 8 + sp.ang) * 0.12;
+      }
+      // mist drifts and breathes above the water
+      F.mist.material.opacity = 0.10 + Math.sin(time * 1.1) * 0.045;
+      F.mist.position.y = F.baseY + 0.42 + Math.sin(time * 0.8) * 0.05;
+      F.mist.rotation.z = time * 0.12;
+      // the finial catches the light on its own rhythm
+      F.orb.rotation.y += dt * 0.5;
+    }
+
+    // the signboards creak on their chains
+    for (let i = 0; i < signs.length; i++) {
+      const b = signs[i].userData.swing;
+      if (b) b.rotation.x = Math.sin(time * 0.9 + i * 2.1) * 0.045;
+    }
+
     // village lantern flames: lit at night, embers by day
     const lit = isNight ? 1 : 0.06;
     for (const lamp of villageLamps) {

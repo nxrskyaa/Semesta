@@ -136,6 +136,10 @@ const CSS = `
   display: inline-block; font-size: 9px; letter-spacing: 2px; color: #6a5220;
   padding: 6px 12px; margin-bottom: 14px; box-shadow: inset 0 0 0 2px #b99a52;
 }
+#hud .story .nx {
+  font-size: 8px; letter-spacing: 2px; color: #7a6330; margin-bottom: 12px;
+  padding-top: 10px; border-top: 1px solid rgba(138,111,54,0.35);
+}
 #hud .story button {
   width: 100%; font-family: var(--font-display, inherit); font-size: 9px; letter-spacing: 3px;
   cursor: pointer; padding: 8px 4px; border: 0; color: #f4ecd4;
@@ -666,14 +670,18 @@ export function createHUD(root, { inventory, character, forge, audio }) {
    * from the world, and gets out of the way on its own.
    */
   const storyEl = root.querySelector('.story');
-  let storyTimer = null;
+  const storyLog = [];              // every chapter shown, for the journal
   function hideStory() {
-    clearTimeout(storyTimer);
     storyEl.classList.add('out');
     setTimeout(() => { storyEl.classList.remove('show', 'out'); }, 480);
   }
   function showStory(ch) {
-    clearTimeout(storyTimer);
+    // IT WAITS. This used to dismiss itself after 16 seconds, which meant the
+    // card vanished mid-sentence — a story beat that deletes itself while you
+    // are reading it is worse than no story at all. It now stays until the
+    // player closes it, and every chapter is kept in the journal (☰ > GUIDE)
+    // so anything missed can be read again.
+    storyLog.push(ch);
     const rw = ch.reward ? `<div class="rw">◆ ${ch.reward.label.toUpperCase()}</div>` : '';
     storyEl.querySelector('.card').innerHTML = `
       <div class="ch">ANAVELA · ${ch.title.split(' · ')[0]}</div>
@@ -681,13 +689,13 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <div class="rule"></div>
       ${ch.lines.map((l) => `<p>${l}</p>`).join('')}
       ${rw}
-      <button>DISMISS</button>`;
+      ${ch.hint ? `<div class="nx">NEXT · ${ch.hint}</div>` : ''}
+      <button>CONTINUE</button>`;
     storyEl.classList.remove('out');
     storyEl.classList.add('show');
     storyEl.querySelector('button').addEventListener('click', hideStory);
-    // long enough to read, short enough never to nag
-    storyTimer = setTimeout(hideStory, 16000);
   }
+  const getStoryLog = () => storyLog;
 
   function closeMenu() { menuPop.classList.remove('show'); }
   // pulsing "!" on the ☰ button + a count on the DAILY tile whenever a
@@ -915,6 +923,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory,
+    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog,
   };
 }

@@ -2,6 +2,7 @@
 // plant them on a plot, wait for 3 growth stages, harvest, sell for coins.
 // Extra plots can be purchased as your farm empire grows.
 import * as THREE from 'three';
+import { buildSignboard } from '../entities/npcs.js';
 import { ITEMS } from './items.js';
 
 const MAX_PLOTS = 8;
@@ -89,6 +90,17 @@ export function createFarming(scene, terrain, decorBlocked, particles) {
                           // into the paving, which is what the screenshot shows
   const fcx = terrain.spawn.x + Math.sin(FIELD_ANG) * FIELD_R;
   const fcz = terrain.spawn.z + Math.cos(FIELD_ANG) * FIELD_R;
+
+  // A BOARD ON THE FIELD. Eight bare soil beds beside the village told a new
+  // player nothing; the sign names it and the pictogram reads from the plaza.
+  {
+    const sx = terrain.spawn.x + Math.sin(FIELD_ANG) * (FIELD_R - 3.0);
+    const sz = terrain.spawn.z + Math.cos(FIELD_ANG) * (FIELD_R - 3.0);
+    const sign = buildSignboard('FARM', 'sprout', '#7fc44f', 2.3);
+    sign.position.set(sx, terrain.surfaceY(sx, sz), sz);
+    sign.rotation.y = Math.atan2(terrain.spawn.x - sx, terrain.spawn.z - sz);
+    scene.add(sign);
+  }
   const ca = Math.cos(-FIELD_ANG), sa = Math.sin(-FIELD_ANG);
   for (let i = 0; i < MAX_PLOTS; i++) {
     // rows run along the field's own axis, so the grid faces the village

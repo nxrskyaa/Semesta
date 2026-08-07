@@ -13,12 +13,17 @@
 //   - a foam wake behind, a bow spray in front, and a widening V of ripples.
 import * as THREE from 'three';
 import { WATER_Y } from '../world/terrain.js';
+import { waveAt } from '../world/water.js';
 import { disposeObject } from '../util/dispose.js';
 import { boxMesh, cylMesh, sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
 
 // A hull needs water under it, not just a water-flagged cell. Anything shallower
 // than this grounds the craft — that is what stops a boat driving up the beach.
 const HULL_DRAFT = 0.42;
+// How far the hull sits INTO the water it is floating on. Without it the keel
+// rides exactly on the surface and the craft reads as a bath toy resting on top
+// of the sea rather than displacing any of it.
+const WATERLINE = 0.16;
 
 const box = (w, h, d, c, opts) => boxMesh(w, h, d, c, opts);
 const cyl = (rt, rb, h, c, seg = 8) => cylMesh(rt, rb, h, c, seg);
@@ -319,6 +324,8 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     lean: 0, leanV: 0, pitch: 0,
     bob: 0,
     ringT: 0,
+    waveT: 0,           // the same clock water.js rolls its swell on
+    surfY: WATER_Y,     // live surface height under the craft
     moored: {},          // id -> { mesh, x, z, dir }
     homeBerth: {},       // id -> the original marina berth, for stranded craft
     offWater: 0,         // seconds the rider has spent off the water (grace)
@@ -393,7 +400,7 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     // the craft rides under the hero; the player group carries it so the camera
     // and every other system keep treating the player as the thing that moves
     player.state.group.add(ridden);
-    ridden.position.set(0, -CRAFT_DEFS[id].seatH, 0);
+    ridden.position.set(0, -CRAFT_DEFS[id].seatH - WATERLINE, 0);
     ridden.rotation.set(0, 0, 0);
     player.state.craft = { id, ...CRAFT_DEFS[id] };
     // sit the hero ON it: knees up, hands forward on the bars
@@ -459,6 +466,7 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
    */
   function drive(dt, player, mv, time) {
     if (!state.active) return;
+    state.waveT = time;          // stay in step with the sea's own clock
     const def = CRAFT_DEFS[state.active];
 
     // If the rider is no longer over water at all, they were teleported,
@@ -571,10 +579,24 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     const plane = Math.min(1, fast * 1.6);
     const wantPitch = -plane * 0.2 + (throttle < 0.05 ? 0.06 : 0);
     state.pitch += (wantPitch - state.pitch) * Math.min(1, dt * 4);
-    player.state.pos.y = WATER_Y + def.seatH + Math.sin(state.bob) * def.porpoise * (0.3 + fast);
+    // FLOAT ON THE ACTUAL SWELL. The craft used to be pinned to the mean
+    // waterline while the sea heaved +-0.4 around it, so every crest rose above
+    // the keel and washed straight over the deck — which is why the boats looked
+    // like they were sinking. Sampling the same wave sum the mesh is displaced
+    // by means the hull rides the water it is actually sitting on, and the
+    // surface gradient gives an honest pitch and roll for free.
+    const w = waveAt(player.state.pos.x, player.state.pos.z, state.waveT,
+      terrain.inOcean(player.state.pos.x, player.state.pos.z));
+    state.surfY = WATER_Y + w.h;
+    player.state.pos.y = state.surfY + def.seatH
+      + Math.sin(state.bob) * def.porpoise * (0.3 + fast);
     if (ridden) {
-      ridden.rotation.z = state.lean;
-      ridden.rotation.x = state.pitch - Math.sin(state.bob * 0.8) * 0.04;
+      // the hull leans into its turn AND heels with the face of the wave
+      const sh2 = Math.sin(state.heading), ch2 = Math.cos(state.heading);
+      const slopeAlong = w.dx * sh2 + w.dz * ch2;      // up/down the wave
+      const slopeAcross = w.dx * ch2 - w.dz * sh2;     // across it
+      ridden.rotation.z = state.lean + slopeAcross * 0.55;
+      ridden.rotation.x = state.pitch - slopeAlong * 0.7 - Math.sin(state.bob * 0.8) * 0.04;
       ridden.rotation.y = state.lean * 0.1;
     }
 
@@ -635,7 +657,13 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
   function update(dt, time) {
     for (const m of Object.values(state.moored)) {
       if (state.active === m.id) continue;
-      m.mesh.position.y = WATER_Y + Math.sin(time * 1.4 + m.x) * 0.05;
+      // moored craft ride the same swell as everything else, so a boat at the
+      // pier is never left hanging above a trough or buried under a crest
+      const mw = waveAt(m.x, m.z, time, terrain.inOcean(m.x, m.z));
+      m.mesh.position.y = WATER_Y + mw.h - WATERLINE;
+      const s2 = Math.sin(m.dir), c2 = Math.cos(m.dir);
+      m.mesh.rotation.z = (mw.dx * c2 - mw.dz * s2) * 0.5;
+      m.mesh.rotation.x = -(mw.dx * s2 + mw.dz * c2) * 0.6;
       m.mesh.rotation.z = Math.sin(time * 1.1 + m.z) * 0.05;
       m.mesh.rotation.x = Math.cos(time * 0.9 + m.x) * 0.035;
       if (m.mesh.userData.lamp) {
