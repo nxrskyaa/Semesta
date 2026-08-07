@@ -127,7 +127,7 @@ export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
   economy, cooking, estate, gacha, wardrobe, dailies, gamepass, gfxPanelFactory,
-  onDrink, onBoostActive,
+  onDrink, onBoostActive, skilltree,
 }) {
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -149,6 +149,7 @@ export function createPanels(hudRoot, {
     daily: document.createElement('div'),
     pass: document.createElement('div'),
     gfx: document.createElement('div'),
+    life: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
     p.className = 'panel';
@@ -1370,11 +1371,82 @@ export function createPanels(hudRoot, {
     panels.gfx.querySelector('.gfx-host').appendChild(gfxInstance.el);
   }
 
+  /**
+   * LIFE SKILLS. Three trees side by side — fishing, farming, cooking — each
+   * with its own level bar, its unspent points, and nodes that show what they
+   * actually change rather than a bare percentage.
+   */
+  function renderLife() {
+    const t = skilltree;
+    if (!t) { panels.life.innerHTML = '<h3>LIFE SKILLS</h3><p>Not available.</p>'; return; }
+    const cols = t.SKILLS.map((sk) => {
+      const pr = t.progress(sk.id);
+      const pct = Math.min(100, (pr.xp / pr.need) * 100);
+      const nodes = t.NODES.filter((n) => n.skill === sk.id).map((n) => {
+        const have = t.ranksOf(sk.id, n.id);
+        const c = t.canBuy(n.id);
+        const cls = have >= n.ranks ? 'maxed' : c.ok ? 'buyable' : 'locked';
+        return `<div class="lnode ${cls}" data-buy="${n.id}">
+          <div class="ln-h"><span class="ln-n">${n.name}</span><span class="ln-r">${have}/${n.ranks}</span></div>
+          <div class="ln-d">${n.desc}</div>
+          <div class="ln-f">${have >= n.ranks ? 'MAXED'
+            : c.ok ? `BUY · ${n.cost} pt${n.cost > 1 ? 's' : ''}` : c.why}</div>
+        </div>`;
+      }).join('');
+      return `<div class="lcol" style="--sc:${sk.color}">
+        <div class="lhead">
+          <span class="li">${sk.icon}</span>
+          <span class="lname">${sk.name}</span>
+          <span class="llv">Lv ${pr.lv}</span>
+        </div>
+        <div class="lbar"><div style="width:${pct}%"></div></div>
+        <div class="lxp">${pr.xp} / ${pr.need} XP${pr.pts ? ` · <b>${pr.pts} point${pr.pts > 1 ? 's' : ''}</b>` : ''}</div>
+        ${nodes}
+      </div>`;
+    }).join('');
+    panels.life.innerHTML = `<h3>LIFE SKILLS <small>[Esc] close</small></h3>
+      <style>
+        .lgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .lcol { padding: 8px; background: rgba(8,12,8,0.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+        .lhead { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .lhead .li { font-size: 14px; }
+        .lhead .lname { font-size: 10px; color: var(--sc); letter-spacing: 1px; flex: 1; }
+        .lhead .llv { font-size: 9px; color: #ffe27a; }
+        .lbar { height: 7px; background: #17120f; border: 1px solid #0a0f0a; }
+        .lbar > div { height: 100%; background: var(--sc); transition: width 0.2s; }
+        .lxp { font-size: 8px; color: #9fb08c; margin: 3px 0 8px; }
+        .lxp b { color: #ffe27a; }
+        .lnode { padding: 6px 7px; margin-bottom: 5px; cursor: default;
+          background: rgba(0,0,0,0.3); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); }
+        .lnode.buyable { cursor: pointer; box-shadow: inset 0 0 0 1px var(--sc); }
+        .lnode.buyable:hover { background: rgba(255,255,255,0.06); }
+        .lnode.maxed { opacity: 0.72; box-shadow: inset 0 0 0 1px #6a7a5a; }
+        .lnode.locked { opacity: 0.5; }
+        .ln-h { display: flex; justify-content: space-between; gap: 6px; }
+        .ln-n { font-size: 9px; color: #e8ecd8; }
+        .ln-r { font-size: 8px; color: var(--sc); }
+        .ln-d { font-size: 8px; line-height: 1.6; color: #a8b596; margin: 3px 0 4px; }
+        .ln-f { font-size: 8px; letter-spacing: 1px; color: #ffe27a; }
+        .lnode.locked .ln-f { color: #8a9a7a; }
+        .lnode.maxed .ln-f { color: #9ab86a; }
+        @media (max-width: 720px) { .lgrid { grid-template-columns: 1fr; } }
+      </style>
+      <p class="hint">Fishing, farming and cooking level on their own. Every level pays a point; spend it on a node that changes how the work plays.</p>
+      <div class="lgrid">${cols}</div>`;
+    panels.life.querySelectorAll('.lnode.buyable').forEach((el) => {
+      el.addEventListener('click', () => {
+        const r = t.buy(el.dataset.buy);
+        audio.sfx(r.ok ? 'craft' : 'deny');
+        renderLife();
+      });
+    });
+  }
+
   const RENDER = {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
     gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp, about: renderAbout,
-    daily: renderDaily, pass: renderPass, gfx: renderGfx,
+    daily: renderDaily, pass: renderPass, gfx: renderGfx, life: renderLife,
   };
 
   function toggle(which) {

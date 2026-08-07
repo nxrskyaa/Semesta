@@ -852,7 +852,13 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       // the player is BUSY (fishing, chatting) OR standing inside a sanctuary
       // — cozy rule: nothing hunts you. Everyone loses interest, so monsters
       // never pile up bumping against the safe-zone boundary either.
-      const playerSafe = hooks.inSafeZone?.(playerPos.x, playerPos.z);
+      // A SWIMMER IS UNREACHABLE. Land monsters cannot follow into the water, so
+      // a pack that stays aggro'd on someone out of their depth just lines up on
+      // the beach and shoots — which is exactly the "monsters attack me in the
+      // water" complaint. Being off your feet drops aggro the same way a
+      // sanctuary does.
+      const playerSafe = hooks.inSafeZone?.(playerPos.x, playerPos.z)
+        || (playerState.swimming && !e.def.water && !e.def.floats);
       if ((playerState.busy || playerSafe) && e.state === 'aggro') {
         e.state = 'wander';
         e.wanderT = 2 + Math.random() * 2;
@@ -880,7 +886,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (e.state === 'wander') {
         e.wanderT -= dt;
         if (e.wanderT <= 0) { e.wanderT = 1.5 + Math.random() * 3; e.dir = Math.random() * Math.PI * 2; }
-        if (distP < e.def.aggro && !playerState.busy
+        if (distP < e.def.aggro && !playerState.busy && !playerSafe
           && !hooks.inSafeZone?.(playerPos.x, playerPos.z)) e.state = 'aggro';
         // FACE THE WAY YOU WALK. Wander never set the rotation, so a monster
         // kept whatever heading it last had while drifting off in a new one —
@@ -1056,8 +1062,16 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     const nx = p.x + vx * dt, nz = p.z + vz * dt;
     const [ix, iz] = terrain.cellOf(nx, nz);
     if (!terrain.inBounds(ix, iz) || decorBlocked.has(`${ix},${iz}`)) { e.dir += 1.7; e.chargeT = 0; return; }
-    const h = terrain.heightCell(ix, iz);
-    if (h <= WATER_LEVEL && !e.def.water && !e.def.floats) { e.dir += 1.7; e.chargeT = 0; return; }
+    // THE REAL WATERLINE, not a corner sample. heightCell is the height stored
+    // at the grid cell, but the shoreline band interpolates between a land
+    // corner and a water one — so a point that is genuinely under water can sit
+    // in a cell whose stored height is above WATER_LEVEL, and a land monster
+    // could wade straight out into the sea through that gap. swimmable() is the
+    // same test the player's own movement uses.
+    if (!e.def.water && !e.def.floats
+        && (terrain.swimmable?.(nx, nz) || terrain.heightCell(ix, iz) <= WATER_LEVEL)) {
+      e.dir += 1.7; e.chargeT = 0; return;
+    }
     const ny = terrain.surfaceY(nx, nz);
     if (ny - p.y > BLOCK_H * 1.6) { e.dir += 1.7; e.chargeT = 0; return; }
     p.x = nx; p.z = nz;

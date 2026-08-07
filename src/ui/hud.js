@@ -1,7 +1,7 @@
 // Semesta HUD — character plate, skill bar with cooldowns, minimap, quest
 // tracker, interact prompt, pickup toasts, damage vignette. Compact, doesn't
 // smother the world.
-import { ITEMS } from '../systems/items.js';
+import { ITEMS, RARITY, RARITY_ORDER } from '../systems/items.js';
 import { itemIconUrl, skillIconUrl, makePlayerFaceTexture } from '../gfx/textures.js';
 import { SKILLS } from '../systems/skills.js';
 import { CLASSES, SKIN_TONES, HAIR_COLORS, EYE_COLORS, BALD_STYLE } from '../systems/classes.js';
@@ -136,6 +136,47 @@ const CSS = `
   display: inline-block; font-size: 9px; letter-spacing: 2px; color: #6a5220;
   padding: 6px 12px; margin-bottom: 14px; box-shadow: inset 0 0 0 2px #b99a52;
 }
+/* CATCH CARD — what you actually pulled out of the water. A toast reading
+   "+1 item" told the player nothing: not the species, not the rarity, not
+   whether it was worth keeping. */
+#hud .catch {
+  position: absolute; left: 50%; top: 26%; transform: translateX(-50%);
+  display: none; z-index: 58; pointer-events: none; text-align: center;
+}
+#hud .catch.show { display: block; }
+#hud .catch .cbox {
+  position: relative; padding: 12px 22px 10px; min-width: 170px;
+  background: linear-gradient(180deg, rgba(12,20,26,0.95), rgba(6,10,14,0.96));
+  box-shadow: inset 0 0 0 2px var(--rc), 0 0 26px color-mix(in srgb, var(--rc) 55%, transparent);
+  animation: c-pop 0.42s cubic-bezier(0.2, 1.9, 0.4, 1);
+}
+#hud .catch.out { animation: c-out 0.45s ease-in forwards; }
+@keyframes c-pop { from { transform: scale(0.4) rotate(-5deg); opacity: 0; } }
+@keyframes c-out { to { opacity: 0; transform: translateX(-50%) translateY(-22px); } }
+#hud .catch .cr {
+  font-size: 8px; letter-spacing: 4px; color: var(--rc); margin-bottom: 7px;
+  text-shadow: 0 0 8px var(--rc);
+}
+#hud .catch img {
+  width: 54px; height: 54px; image-rendering: pixelated; display: block; margin: 0 auto 6px;
+  animation: c-flip 0.6s cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+@keyframes c-flip { from { transform: rotateY(180deg) scale(0.5); } }
+#hud .catch .cn { font-size: 11px; color: #f0f4e6; margin-bottom: 5px; }
+#hud .catch .cs { font-size: 8px; letter-spacing: 1px; color: #9fb08c; }
+#hud .catch .cs b { color: #ffe27a; }
+#hud .catch .spark {
+  position: absolute; width: 5px; height: 5px; background: var(--rc);
+  pointer-events: none; animation: c-spark 0.8s ease-out forwards;
+}
+@keyframes c-spark { to { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; } }
+
+#hud .mtile .lbadge {
+  display: none; position: absolute; top: 3px; right: 3px;
+  width: 7px; height: 7px; background: #ffd23e; box-shadow: 0 0 6px #ffd23e;
+}
+#hud .mtile .lbadge.on { display: block; }
+
 #hud .story .nx {
   font-size: 8px; letter-spacing: 2px; color: #7a6330; margin-bottom: 12px;
   padding-top: 10px; border-top: 1px solid rgba(138,111,54,0.35);
@@ -531,6 +572,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       </div>
     </div>
     <div class="story"><div class="card"></div></div>
+    <div class="catch"><div class="cbox"></div></div>
     <div class="qtrack">
       <button class="qhead"><span class="qcaret">▾</span>QUESTS<span class="qn"></span></button>
       <div class="quests"></div>
@@ -564,6 +606,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="home"><span class="mi">⌂</span>TELEPORT<small>T</small></button>
         <button class="mtile autobtn" data-menu="auto"><span class="mi">⚔</span>AUTO-BATTLE<small>B</small></button>
         <button class="mtile" data-menu="help"><span class="mi">?</span>GUIDE<small>H</small></button>
+        <button class="mtile" data-menu="life"><span class="mi">🎣</span>LIFE SKILLS<small>L</small><i class="lbadge"></i></button>
         <button class="mtile" data-menu="daily"><span class="mi">🎁</span>DAILY<small>J</small></button>
         <button class="mtile" data-menu="pass"><span class="mi">★</span>GAMEPASS<small>U</small></button>
         <button class="mtile" data-menu="gfx"><span class="mi">⚙</span>GRAPHICS<small></small></button>
@@ -697,12 +740,45 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   }
   const getStoryLog = () => storyLog;
 
+  // --- CATCH CARD -----------------------------------------------------------
+  const catchEl = root.querySelector('.catch');
+  let catchTimer = null;
+  function showCatch(fishId, rarity, xp, sell) {
+    clearTimeout(catchTimer);
+    const R = RARITY[rarity] || RARITY.common;
+    const big = rarity === 'legendary' || rarity === 'mythic' || rarity === 'epic';
+    const sparks = big ? Array.from({ length: 12 }, (_, i) => {
+      const a = (i / 12) * Math.PI * 2;
+      return `<i class="spark" style="left:50%;top:44%;--dx:${Math.cos(a) * 70}px;--dy:${Math.sin(a) * 70}px;animation-delay:${i * 0.02}s"></i>`;
+    }).join('') : '';
+    catchEl.style.setProperty('--rc', R.color);
+    catchEl.querySelector('.cbox').innerHTML = `
+      ${sparks}
+      <div class="cr">${'◆'.repeat(RARITY_ORDER.indexOf(rarity) + 1)} ${R.name.toUpperCase()}</div>
+      <img src="${itemIconUrl(fishId)}">
+      <div class="cn">${ITEMS[fishId].name}</div>
+      <div class="cs">+<b>${xp}</b> XP · worth <b>${sell}c</b></div>`;
+    catchEl.classList.remove('out');
+    catchEl.classList.add('show');
+    // longer for a rare fish — it is the payoff for the cast
+    catchTimer = setTimeout(() => {
+      catchEl.classList.add('out');
+      setTimeout(() => catchEl.classList.remove('show', 'out'), 460);
+    }, big ? 3400 : 2000);
+  }
+
   function closeMenu() { menuPop.classList.remove('show'); }
   // pulsing "!" on the ☰ button + a count on the DAILY tile whenever a
   // check-in or a finished daily quest is waiting to be claimed
   const menuBtn = root.querySelector('.menubtn');
   const dailyTile = root.querySelector('[data-menu="daily"]');
   let badgeN = -1;
+  /** A dot on the LIFE SKILLS tile whenever a point is waiting to be spent. */
+  function setLifeBadge(n) {
+    const b = root.querySelector('.mtile[data-menu="life"] .lbadge');
+    if (b) b.classList.toggle('on', n > 0);
+  }
+
   function setMenuBadge(n) {
     if (n === badgeN) return;
     badgeN = n;
@@ -923,6 +999,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog,
+    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge,
   };
 }

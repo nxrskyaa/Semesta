@@ -30,10 +30,25 @@ export const ITEMS = {
   static_fluff: { name: 'Static Fluff', sell: 6 },
   soft_plume:   { name: 'Soft Plume', sell: 8 },
 
-  // fish (fishing)
-  fish_minnow: { name: 'Mossy Minnow', fish: true, sell: 4 },
-  fish_perch:  { name: 'Sunset Perch', fish: true, sell: 10 },
-  fish_koi:    { name: 'Golden Koi', fish: true, rare: true, sell: 60 },
+  // FISH. Three species was not a fishing system, it was a loot table with a
+  // rod attached. Fourteen now, spread across the six rarity tiers and split by
+  // WHERE they live — lake, ocean, the winter reach, and night — so casting in a
+  // new place is worth doing and a rare catch is an event.
+  // `water`: 'lake' | 'sea' | 'any';  `only`: 'night' | 'snow' | undefined
+  fish_minnow:  { name: 'Mossy Minnow', fish: true, rarity: 'common', water: 'lake', sell: 4 },
+  fish_bitterling: { name: 'Bitterling', fish: true, rarity: 'common', water: 'any', sell: 5 },
+  fish_sardine: { name: 'Silver Sardine', fish: true, rarity: 'common', water: 'sea', sell: 6 },
+  fish_perch:   { name: 'Sunset Perch', fish: true, rarity: 'uncommon', water: 'lake', sell: 10 },
+  fish_mackerel: { name: 'Banded Mackerel', fish: true, rarity: 'uncommon', water: 'sea', sell: 12 },
+  fish_catfish: { name: 'Whiskered Catfish', fish: true, rarity: 'uncommon', water: 'lake', only: 'night', sell: 16 },
+  fish_snapper: { name: 'Coral Snapper', fish: true, rarity: 'rare', water: 'sea', sell: 26 },
+  fish_trout:   { name: 'Spotted Trout', fish: true, rarity: 'rare', water: 'lake', sell: 24 },
+  fish_icefin:  { name: 'Icefin', fish: true, rarity: 'rare', water: 'any', only: 'snow', sell: 30 },
+  fish_koi:     { name: 'Golden Koi', fish: true, rare: true, rarity: 'epic', water: 'lake', sell: 60 },
+  fish_lantern: { name: 'Lanternfish', fish: true, rare: true, rarity: 'epic', water: 'sea', only: 'night', sell: 70 },
+  fish_sunfish: { name: 'Sunfish', fish: true, rare: true, rarity: 'legendary', water: 'sea', sell: 150 },
+  fish_ghostcarp: { name: 'Ghost Carp', fish: true, rare: true, rarity: 'legendary', water: 'lake', only: 'night', sell: 165 },
+  fish_leviathan: { name: 'Anavela Leviathan', fish: true, rare: true, rarity: 'mythic', water: 'sea', sell: 480 },
 
   // gathering
   iron_ore: { name: 'Iron Ore', sell: 10 },

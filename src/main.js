@@ -54,6 +54,7 @@ import { getQuality, onQualityChange, buildSnapshot } from './gfx/quality.js';
 import { createGfxPanel } from './ui/gfxpanel.js';
 import { createDailies } from './systems/dailies.js';
 import { createGamePass, PASS_PRICES } from './systems/gamepass.js';
+import { createSkillTree, SKILLS as SKILL_DEFS } from './systems/skilltree.js';
 import { createStory } from './systems/story.js';
 import { createLoadScreen } from './ui/loadscreen.js';
 import { itemIconUrl } from './gfx/textures.js';
@@ -412,10 +413,16 @@ async function init(character, saved, audio) {
         if (inventory.count(id) < n) { audio.sfx('deny'); return; }
       }
       for (const [id, n] of Object.entries(r.cost)) inventory.remove(id, n);
-      inventory.add(out, 1);
+      // COOKING SKILL. Big Pot is the one that changes the loop: the same
+      // ingredients sometimes make two portions, which is what turns cooking
+      // from a chore into something worth levelling.
+      const portions = Math.random() < skilltree.bonus('cooking', 'doubleCook') ? 2 : 1;
+      inventory.add(out, portions);
       audio.sfx('craft');
       particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffb055', 8, 2);
-      hud.toast(out, 1);
+      hud.toast(out, portions);
+      if (portions > 1) hud.toastText('The pot stretched to two.');
+      skilltree.gain('cooking', portions > 1 ? 'uncommon' : 'common');
       dailies?.event('cook'); gamepass?.event('cook');
     },
   };
@@ -699,6 +706,19 @@ async function init(character, saved, audio) {
   });
   dailies.load(saved?.dailies);
 
+  // --- LIFE SKILLS: fishing, farming and cooking each level on their own ---
+  const skilltree = createSkillTree({
+    onLevel: (skill, lv) => {
+      const S2 = SKILL_DEFS.find((x) => x.id === skill);
+      hud.banner(`${S2.name.toUpperCase()} LEVEL ${lv}`);
+      hud.toastText(`${S2.icon} ${S2.name} reached level ${lv} — a skill point is waiting.`);
+      audio.sfx('levelup');
+      particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), S2.color, 14);
+    },
+    onToast: (msg) => hud.toastText(msg),
+  });
+  skilltree.load(saved?.skilltree);
+
   // --- GAMEPASS: a season pass bought with gold you earned ---
   const gamepass = createGamePass({
     grant(r) {
@@ -740,6 +760,7 @@ async function init(character, saved, audio) {
   const panels = createPanels(hudRoot, {
     inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
     economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
+    skilltree,
     onDrink: (id) => drinkBooster(id),
     // how long a booster has left, so the bag can say ACTIVE 42m
     onBoostActive: (id) => {
@@ -1183,15 +1204,19 @@ async function init(character, saved, audio) {
   const fishing = createFishing({
     scene, terrain, player, particles, audio,
     hooks: {
-      onCatch(fishId, xp) {
+      isNight: () => { const hr = lighting.state.time / 60; return hr >= 19.5 || hr < 5.5; },
+      skillBonus: (key) => skilltree.bonus('fishing', key),
+      onCatch(fishId, xp, rarity = 'common', extra = false) {
         inventory.add(fishId, 1);
-        hud.toast(fishId, 1);
-        hud.banner(`CAUGHT: ${ITEMS[fishId].name.toUpperCase()}!`);
         const gained = Math.round(xp * xpMult());
+        // A CATCH CARD, not a toast. "You got something" told the player
+        // nothing — not the species, not whether it was worth keeping.
+        if (extra) hud.toastText(`A second ${ITEMS[fishId].name} came up with it!`);
+        else hud.showCatch(fishId, rarity, gained, ITEMS[fishId].sell || 0);
         leveling.addXp(gained);
-        dmgNums.spawn(player.state.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), `+${gained} XP`, 'xp');
         quests.event('fish');
         dailies.event('fish'); gamepass.event('fish');
+        skilltree.gain('fishing', rarity);
       },
       onMiss(msg) { hud.toastText(msg); },
     },
@@ -1371,10 +1396,26 @@ async function init(character, saved, audio) {
     const plot = farming.nearest(player.state.pos, 1.9);
     if (plot && plot.owned && plot.seed && plot.stage >= 2) {
       add('farm', 'Harvest crop', () => {
+        const seedId = plot.seed;
         const crop = farming.harvest(plot);
         if (crop) {
-          pickups.spawn(crop.id, crop.count, new THREE.Vector3(plot.x, plot.y, plot.z));
+          // FARMING SKILL. Heavy Yield adds crops, Seed Saver returns the seed,
+          // and Perennial occasionally leaves the plant standing and fully grown
+          // — three nodes you notice rather than three hidden percentages.
+          let n = crop.count;
+          if (Math.random() < skilltree.bonus('farming', 'extraCrop')) n++;
+          pickups.spawn(crop.id, n, new THREE.Vector3(plot.x, plot.y, plot.z));
+          if (Math.random() < skilltree.bonus('farming', 'seedBack') && seedId) {
+            inventory.add(seedId, 1);
+            hud.toastText('The seed came back with it.');
+          }
+          if (Math.random() < skilltree.bonus('farming', 'regrow') && seedId) {
+            farming.plant(plot, seedId);
+            plot.stage = 2;                 // straight back to ripe
+            hud.toastText('The plant is still standing.');
+          }
           audio.sfx('catch');
+          skilltree.gain('farming', n > 1 ? 'uncommon' : 'common');
           dailies.event('harvest'); gamepass.event('harvest');
         }
       });
@@ -1476,6 +1517,7 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyK') { audio.sfx('ui'); panels.toggle('skills'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
+    if (e.code === 'KeyL') { audio.sfx('ui'); panels.toggle('life'); }
     if (e.code === 'KeyJ') { audio.sfx('ui'); panels.toggle('daily'); }
     if (e.code === 'KeyU') { audio.sfx('ui'); panels.toggle('pass'); }
     if (e.code === 'KeyT') teleportHome();
@@ -1596,6 +1638,7 @@ async function init(character, saved, audio) {
         wardrobe: wardrobe.serialize(),
         gachaPity: gacha.pity,
         dailies: dailies.serialize(),
+        skilltree: skilltree.serialize(),
         gamepass: gamepass.serialize(),
         story: story.serialize(),
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
@@ -1607,7 +1650,7 @@ async function init(character, saved, audio) {
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
-    dailies, gamepass, story, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
+    dailies, gamepass, story, skilltree, landmarks, watercraft, isles, hud, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     composer, usePost,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
@@ -1821,7 +1864,8 @@ async function init(character, saved, audio) {
       bloomPass.strength = 0.72 - dayness * 0.32;
     }
     dailies.tick(dt);
-    hud.setMenuBadge?.(dailies.pending() + gamepass.pending());
+    hud.setMenuBadge?.(dailies.pending() + gamepass.pending() + skilltree.pending());
+    hud.setLifeBadge?.(skilltree.pending());
     // cosmetic movement trail (wardrobe slot 3)
     if (player.state.isMoving && !player.state.dead) {
       const tr = wardrobe.trailColor(time);

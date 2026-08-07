@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { WATER_Y } from '../world/terrain.js';
 import { itemIconTexture } from '../gfx/textures.js';
+import { ITEMS } from './items.js';
 
 const BITE_WINDOW = 0.9;
 
@@ -184,25 +185,62 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     return true;
   }
 
+  /**
+   * The catch table for WHERE AND WHEN you are fishing.
+   *
+   * A single fixed table meant every cast anywhere in the world drew from the
+   * same three fish, so there was no reason to fish anywhere but the nearest
+   * puddle. Species declare the water they live in and, some of them, the
+   * condition they only appear under; this filters ITEMS down to what could
+   * plausibly be on your hook right now and weights it by rarity.
+   */
+  const RARITY_W = { common: 1, uncommon: 0.52, rare: 0.2, epic: 0.062, legendary: 0.017, mythic: 0.0035 };
+  const RARITY_XP = { common: 6, uncommon: 13, rare: 26, epic: 46, legendary: 90, mythic: 220 };
+  function catchTable() {
+    const p = player.state.pos;
+    const sea = !!terrain.inOcean?.(p.x, p.z);
+    const snow = !!terrain.inSnow?.(p.x, p.z);
+    const night = !!hooks.isNight?.();
+    const rows = [];
+    for (const [id, def] of Object.entries(ITEMS)) {
+      if (!def.fish) continue;
+      if (def.water === 'sea' && !sea) continue;
+      if (def.water === 'lake' && sea) continue;
+      if (def.only === 'night' && !night) continue;
+      if (def.only === 'snow' && !snow) continue;
+      // MYTHIC is gated behind the Deep Water node — it is the only thing in
+      // the game that unlocks it, which is what makes the node worth 3 points
+      if (def.rarity === 'mythic' && !(hooks.skillBonus?.('mythicUnlock') > 0)) continue;
+      let w = RARITY_W[def.rarity || 'common'] ?? 1;
+      const rareLuck = hooks.skillBonus?.('rareLuck') || 0;
+      if (rareLuck && def.rarity && def.rarity !== 'common' && def.rarity !== 'uncommon') {
+        w *= 1 + rareLuck;
+      }
+      // AFK is hands-free, so it is deliberately bad at the top end; paying
+      // attention (and a luck charm) is what earns the rare fish
+      if (state.afk) {
+        const setLines = hooks.skillBonus?.('afkQuality') || 0;
+        w *= (def.rarity === 'common' ? 1.6 : def.rarity === 'uncommon' ? 0.5 : 0.06 * (1 + setLines * 4));
+      }
+      else if (player.buffVal?.('fish')) w *= (def.rarity === 'common' ? 0.6 : 1.9);
+      rows.push({ id, w, xp: RARITY_XP[def.rarity || 'common'], rarity: def.rarity || 'common' });
+    }
+    if (!rows.length) rows.push({ id: 'fish_bitterling', w: 1, xp: 6, rarity: 'common' });
+    const total = rows.reduce((a, b) => a + b.w, 0);
+    for (const row of rows) row.w /= total;
+    return rows;
+  }
+
   function strike() {
     if (state.phase === 'bite') {
-      let r = Math.random(), acc = 0, caught = CATCH_TABLE[0];
-      const luck = player.buffVal?.('fish') || 0;
-      // manual fishing rewards attention with better rarity; AFK mode is
-      // hands-free but heavily skewed toward common fish
-      let table;
-      if (state.afk) {
-        table = [{ id: 'fish_minnow', w: 0.82, xp: 4 }, { id: 'fish_perch', w: 0.17, xp: 9 }, { id: 'fish_koi', w: 0.01, xp: 30 }];
-      } else if (luck > 0) {
-        table = [{ id: 'fish_minnow', w: 0.45, xp: 6 }, { id: 'fish_perch', w: 0.38, xp: 12 }, { id: 'fish_koi', w: 0.17, xp: 40 }];
-      } else {
-        table = CATCH_TABLE;
-      }
+      let r = Math.random(), acc = 0;
+      const table = catchTable();
+      let caught = table[table.length - 1];
       for (const c of table) { acc += c.w; if (r <= acc) { caught = c; break; } }
       // play the catch arc, deliver the fish when it lands
       state.phase = 'catching';
       alert.visible = false;
-      catchAnim = { from: bobber.position.clone(), t: 0, id: caught.id, xp: caught.xp };
+      catchAnim = { from: bobber.position.clone(), t: 0, id: caught.id, xp: caught.xp, rarity: caught.rarity };
       if (!fishTexCache.has(caught.id)) fishTexCache.set(caught.id, itemIconTexture(caught.id));
       fishSpr.material.map = fishTexCache.get(caught.id);
       fishSpr.material.needsUpdate = true;
@@ -300,7 +338,11 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       if (t >= 1) {
         fishSpr.visible = false;
         particles.fountain(p.clone().add(new THREE.Vector3(0, 0.9, 0)), '#7ab8e8', 10);
-        hooks.onCatch(catchAnim.id, catchAnim.xp);
+        hooks.onCatch(catchAnim.id, catchAnim.xp, catchAnim.rarity);
+        // DOUBLE HOOK: a second fish of the same species on the same cast
+        if (Math.random() < (hooks.skillBonus?.('doubleCatch') || 0)) {
+          hooks.onCatch(catchAnim.id, Math.round(catchAnim.xp * 0.6), catchAnim.rarity, true);
+        }
         catchAnim = null;
         end();
       }
@@ -352,7 +394,8 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
       state.t -= dt;
       if (state.t <= 0) {
         state.phase = 'bite';
-        state.t = BITE_WINDOW;
+        // PATIENCE widens the window a late strike can still land in
+        state.t = BITE_WINDOW * (1 + (hooks.skillBonus?.('biteWindow') || 0));
         bobber.position.y = WATER_Y - 0.1; // plunge!
         alert.position.set(bobber.position.x, WATER_Y + 0.75, bobber.position.z);
         alert.visible = true;

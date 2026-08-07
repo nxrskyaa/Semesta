@@ -835,6 +835,49 @@ const ICON_MAPS = {
   },
 };
 
+// FISH ICONS, generated. Every fish shares one silhouette and differs by palette
+// and by a couple of accent pixels, so writing fourteen 16x16 maps by hand would
+// be fourteen chances to typo the same picture. The shape below is the minnow's;
+// `fin` adds a dorsal ridge and `spot` a flank marking, which is enough to tell
+// a snapper from a trout at icon size.
+const FISH_BODY = [
+  '................',
+  '................',
+  '......bbbb......',
+  '..b..bBBBBb.....',
+  '..bb bBeBBBb....',
+  '..bbbBBBBBBb....',
+  '..bbbBBBBBb.....',
+  '..b..bBBBb......',
+  '......bbb.......',
+  '................',
+];
+const FISH_LOOKS = {
+  fish_bitterling: ['#6a7a9a', '#a8b8d0'],
+  fish_sardine:    ['#8a94a0', '#d0d8e0'],
+  fish_mackerel:   ['#2f5a7a', '#7fb0c8', 'fin'],
+  fish_catfish:    ['#4a4030', '#8a7a58', 'fin'],
+  fish_snapper:    ['#a8322f', '#e8746a', 'spot'],
+  fish_trout:      ['#5a6a3a', '#9fbc72', 'spot'],
+  fish_icefin:     ['#4a86a8', '#c8ecf8', 'fin'],
+  fish_lantern:    ['#2a2438', '#6a5a9a', 'spot'],
+  fish_sunfish:    ['#b06a10', '#ffd23e', 'fin'],
+  fish_ghostcarp:  ['#5a6a78', '#dfeaf2', 'spot'],
+  fish_leviathan:  ['#2a1a3a', '#9a6ad0', 'fin'],
+};
+for (const [id, [dark, light, extra]] of Object.entries(FISH_LOOKS)) {
+  const map = FISH_BODY.slice();
+  if (extra === 'fin') {
+    // a dorsal ridge along the back
+    map[2] = '.....fbbbbf.....';
+  } else if (extra === 'spot') {
+    // a darker marking on the flank
+    map[5] = '..bbbBBfBBBb....';
+  }
+  ICON_MAPS[id] = { map, legend: { b: dark, B: light, f: dark, e: '#26221e' } };
+}
+
+
 export const CHARM_COLORS = {
   charm_moku: '#7ac86a',
   charm_piko: '#f0d05a',
