@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { ITEMS, RARITY, RARITY_ORDER } from '../systems/items.js';
 import { aboutInner, paintAboutRialo, ABOUT_BADGE_CSS } from './about.js';
 import { itemIconUrl } from '../gfx/textures.js';
+import { machineUrl, crankUrl, capsuleUrl, capsuleHalfUrl, CAPSULE_COLORS } from '../gfx/gachaart.js';
 import { buildCharacterMesh } from '../entities/player.js';
 import { buildCosmetic } from '../systems/cosmetics.js';
 import { CLASSES } from '../systems/classes.js';
@@ -606,18 +607,36 @@ export function createPanels(hudRoot, {
       return;
     }
 
+    // The machine sprite plus its moving parts. Capsule slots are given in the
+    // sprite's own 48x64 pixel grid and scaled x3, so they sit inside the
+    // painted dome instead of being nudged into place by eye.
+    const CAP_SLOTS = [[9, 15], [19, 12], [29, 15], [14, 8], [24, 7], [34, 11]];
+    const machineHtml = (spinning) => {
+      const caps = CAP_SLOTS.map(([cx, cy], i) => {
+        const [a, b] = CAPSULE_COLORS[i % CAPSULE_COLORS.length];
+        return `<img class="g-cap" src="${capsuleUrl(a, b)}" style="left:${cx * 3}px;top:${cy * 3}px;`
+          + `animation-delay:${(i * 0.17).toFixed(2)}s">`;
+      }).join('');
+      return `<div class="g-machine${spinning ? ' spin' : ''}">
+        <img class="g-mach-body" src="${machineUrl()}">
+        ${caps}
+        <img class="g-crankarm" src="${crankUrl()}">
+        <div class="g-glowpool"></div>
+      </div>`;
+    };
+
     let stage;
     if (phase === 'spin') {
-      stage = `<div class="g-machine spin">
-          <div class="g-dome"><div class="g-caps a"></div><div class="g-caps b"></div><div class="g-caps c"></div></div>
-          <div class="g-body">◈</div><div class="g-crank">✦</div>
-        </div>
+      stage = `${machineHtml(true)}
         <div class="g-hint">The capsule tumbles...</div>`;
     } else if (phase === 'drop' && result) {
       // the won capsule falls out, bounces, and cracks open in rarity light
       const R = RARITY[result.rarity];
       stage = `<div class="g-dropzone" style="--rc:${R.color}">
-          <div class="g-fallcap"><div class="g-captop"></div><div class="g-capbot"></div></div>
+          <div class="g-fallcap">
+            <img class="g-half t" src="${capsuleHalfUrl(R.color, true)}">
+            <img class="g-half b" src="${capsuleHalfUrl('#f2f2ea', false)}">
+          </div>
           <div class="g-crackglow"></div>
         </div>
         <div class="g-hint" style="color:${R.color}">It's opening...</div>`;
@@ -649,10 +668,7 @@ export function createPanels(hudRoot, {
         }).join('')}
       </div>`;
     } else {
-      stage = `<div class="g-machine">
-          <div class="g-dome"><div class="g-caps a"></div><div class="g-caps b"></div><div class="g-caps c"></div></div>
-          <div class="g-body">◈</div><div class="g-crank">✦</div>
-        </div>
+      stage = `${machineHtml(false)}
         <div class="g-hint">Cosmetics · exclusive pets · exclusive mounts... maybe a MYTHIC.</div>`;
     }
 
@@ -665,43 +681,41 @@ export function createPanels(hudRoot, {
     panels.gacha.innerHTML = `<h3>WONDER CAPSULES <small>[Esc] close</small></h3>
       <style>
         .g-stage { text-align: center; padding: 10px 0 4px; min-height: 190px; position: relative; }
-        /* pixel capsule machine */
-        .g-machine { display: inline-block; position: relative; width: 96px; }
-        .g-dome { width: 84px; height: 56px; margin: 0 auto; border: 3px solid #3a2e18;
-          border-bottom: none; border-radius: 42px 42px 0 0; position: relative; overflow: hidden;
-          background: linear-gradient(180deg, rgba(200,230,255,0.16), rgba(140,180,220,0.06)); }
-        .g-caps { position: absolute; width: 18px; height: 18px; border-radius: 50%; }
-        .g-caps::after { content: ''; position: absolute; inset: 50% 0 0 0; border-radius: 0 0 9px 9px; background: #f4f0e4; }
-        .g-caps.a { background: #f06a7a; left: 12px; bottom: 2px; }
-        .g-caps.b { background: #5aa8e8; left: 34px; bottom: 6px; }
-        .g-caps.c { background: #ffd23e; left: 54px; bottom: 1px; }
-        .g-body { width: 96px; height: 46px; margin-top: -1px; display: flex; align-items: center; justify-content: center;
-          background: linear-gradient(180deg, #c23a44, #8a2830); border: 3px solid #3a2e18;
-          color: #ffd7a8; font-size: 18px; text-shadow: 0 0 8px rgba(255,200,120,0.6); }
-        .g-crank { position: absolute; right: -7px; bottom: 14px; width: 20px; height: 20px; line-height: 20px;
-          background: #ffd23e; border: 2px solid #3a2e18; border-radius: 50%; font-size: 10px; color: #5e3c10; }
-        .g-machine .g-caps { animation: g-idle 2.6s ease-in-out infinite; }
-        .g-machine .g-caps.b { animation-delay: 0.5s; }
-        .g-machine .g-caps.c { animation-delay: 1.1s; }
-        @keyframes g-idle { 50% { transform: translateY(-2.5px); } }
-        .g-machine.spin { animation: g-rattle 0.14s linear infinite; }
-        .g-machine.spin .g-caps.a { animation: g-jump 0.22s ease-in-out infinite; }
-        .g-machine.spin .g-caps.b { animation: g-jump 0.19s ease-in-out infinite 0.05s; }
-        .g-machine.spin .g-caps.c { animation: g-jump 0.25s ease-in-out infinite 0.1s; }
-        .g-machine.spin .g-crank { animation: g-spin 0.5s linear infinite; }
-        @keyframes g-rattle { 25% { transform: translate(-2px, 0) rotate(-1.5deg); } 75% { transform: translate(2px, 0) rotate(1.5deg); } }
-        @keyframes g-jump { 50% { transform: translateY(-14px); } }
+        /* THE CAPSULE MACHINE — a painted pixel sprite, upscaled, not a stack of
+           rounded divs with a glyph in the middle. Everything else in this game
+           is procedural pixel art and the old one did not belong next to it. */
+        .g-machine { display: inline-block; position: relative;
+          width: 144px; height: 192px; image-rendering: pixelated; }
+        .g-machine img { image-rendering: pixelated; position: absolute; }
+        .g-mach-body { left: 0; top: 0; width: 144px; height: 192px; }
+        /* capsules live INSIDE the painted dome, so they are positioned in the
+           sprite's own pixel grid (x3) rather than by eye */
+        .g-cap { width: 30px; height: 30px; }
+        /* centred on the painted crank boss: sprite x26..38, y39..51 -> centre
+           (32,45) in the 48x64 grid, so 96,135 at x3 */
+        .g-crankarm { left: 72px; top: 111px; width: 48px; height: 48px;
+          transform-origin: 50% 50%; }
+        .g-glowpool { position: absolute; left: 18px; top: 12px; width: 108px; height: 66px;
+          background: radial-gradient(ellipse at 50% 60%, rgba(255,240,190,0.30), transparent 70%);
+          pointer-events: none; }
+        .g-cap { animation: g-idle 2.6s ease-in-out infinite; }
+        @keyframes g-idle { 50% { transform: translateY(-3px); } }
+        .g-machine.spin { animation: g-rattle 0.13s linear infinite; }
+        .g-machine.spin .g-cap { animation: g-jump 0.24s ease-in-out infinite; }
+        .g-machine.spin .g-crankarm { animation: g-spin 0.42s linear infinite; }
+        .g-machine.spin .g-glowpool { animation: g-pulse 0.5s ease-in-out infinite; }
+        @keyframes g-rattle { 25% { transform: translate(-2px, 0) rotate(-1.2deg); } 75% { transform: translate(2px, 0) rotate(1.2deg); } }
+        @keyframes g-jump { 50% { transform: translateY(-15px) rotate(140deg); } }
         @keyframes g-spin { to { transform: rotate(360deg); } }
+        @keyframes g-pulse { 50% { opacity: 0.45; } }
+        .g-half { position: absolute; left: 0; width: 44px; height: 26px; image-rendering: pixelated; }
+        .g-half.t { top: 0; animation: g-crack-top 0.3s ease-in 0.66s forwards; }
+        .g-half.b { top: 24px; animation: g-crack-bot 0.3s ease-in 0.66s forwards; }
         .g-hint { font-size: 10px; color: var(--muted); margin-top: 10px; letter-spacing: 1px; }
         /* capsule drop + crack-open phase */
         .g-dropzone { position: relative; height: 130px; }
         .g-fallcap { position: absolute; left: 50%; top: 0; width: 44px; height: 44px; margin-left: -22px;
           animation: g-fall 0.62s cubic-bezier(0.3, 0, 0.6, 1.4) forwards; }
-        .g-captop, .g-capbot { position: absolute; left: 0; width: 44px; height: 22px; }
-        .g-captop { top: 0; border-radius: 22px 22px 0 0; background: var(--rc);
-          animation: g-crack-top 0.3s ease-in 0.66s forwards; }
-        .g-capbot { bottom: 0; border-radius: 0 0 22px 22px; background: #f4f0e4;
-          animation: g-crack-bot 0.3s ease-in 0.66s forwards; }
         @keyframes g-fall {
           0% { transform: translateY(-8px); }
           55% { transform: translateY(72px); }
