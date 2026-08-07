@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { bakeStatic } from '../gfx/bake.js';
 import { makeCritterFaceTexture, PALETTE } from '../gfx/textures.js';
 import { WATER_LEVEL } from '../world/terrain.js';
-import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
+import { sharedMat, sharedBox, sharedCyl, hipRoofGeometry } from '../gfx/meshcache.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Static prop colours are SHARED — a built world was carrying ~2,465 distinct
@@ -473,16 +473,21 @@ function buildHut(scale = 1, wallColor = '#c8b090', roofColor = '#a85a48') {
   const cross = new THREE.Mesh(sharedBox(2.5 * scale, 0.12, 0.12), beam);
   cross.position.set(0, 1.45 * scale, 1.08 * scale);
   g.add(cross);
-  for (let i = 0; i < 3; i++) {
-    const w = (2.8 - i * 0.7) * scale;
-    const r = new THREE.Mesh(sharedBox(w, 0.3 * scale, (2.6 - i * 0.6) * scale), i % 2 ? roofDark : roof);
-    r.position.y = (1.6 + i * 0.3) * scale;
-    r.castShadow = true;
-    g.add(r);
-  }
+  // A REAL HIP ROOF. This used to be three flat slabs of decreasing size stacked
+  // on each other, which reads as a tiered cake, not a building — it was the
+  // main reason the basecamp looked unfinished. Now it is the actual solid:
+  // an overhanging eave line rising to a ridge, sitting on a fascia band.
+  const eaveW = 3.0 * scale, eaveD = 2.8 * scale;
+  const fascia = new THREE.Mesh(sharedBox(eaveW, 0.16 * scale, eaveD), roofDark);
+  fascia.position.y = 1.56 * scale;
+  fascia.castShadow = true;
+  const hip = new THREE.Mesh(hipRoofGeometry(eaveW, eaveD, 0.95 * scale, 0.42), roof);
+  hip.position.y = 1.64 * scale;
+  hip.castShadow = true;
+  g.add(fascia, hip);
   // chimney
   const chimney = new THREE.Mesh(sharedBox(0.3 * scale, 0.6 * scale, 0.3 * scale), lam('#8d9294'));
-  chimney.position.set(0.7 * scale, 2.1 * scale, -0.4 * scale);
+  chimney.position.set(0.62 * scale, 2.28 * scale, -0.35 * scale);
   g.add(chimney);
   const door = new THREE.Mesh(sharedBox(0.55 * scale, 0.95 * scale, 0.08), beam);
   door.position.set(0, 0.5 * scale, 1.12 * scale);
@@ -510,8 +515,9 @@ function buildHut(scale = 1, wallColor = '#c8b090', roofColor = '#a85a48') {
     new THREE.MeshBasicMaterial({ color: 0xffd88a }));
   lantern.position.set(-0.55 * scale, 0.56 * scale, 1.25 * scale);
   // roof ridge beam
-  const ridge = new THREE.Mesh(sharedBox(1.5 * scale, 0.1, 0.18), lam('#6a4a30'));
-  ridge.position.y = 2.36 * scale;
+  // ridge cap, on the real ridge line (eave 1.64 + rise 0.95)
+  const ridge = new THREE.Mesh(sharedBox(1.34 * scale, 0.12 * scale, 0.2 * scale), roofDark);
+  ridge.position.y = 2.6 * scale;
   g.add(base, door, knob, win, winFrame, flowerBox, step, lanternPost, lantern, ridge);
   return g;
 }

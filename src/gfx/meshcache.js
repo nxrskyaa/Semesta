@@ -25,6 +25,45 @@ const tag = (o) => { o[SHARED] = true; return o; };
 
 const k = (...a) => a.join('|');
 
+/**
+ * A real HIP ROOF, not a stack of shrinking boxes.
+ *
+ * Every roof in the village was three flat slabs of decreasing size piled on top
+ * of each other, which reads as a tiered cake rather than a building — it is the
+ * single thing that made the basecamp look unfinished next to the terrain. This
+ * builds the actual solid: a rectangular eave line rising to a ridge, so the four
+ * faces are two trapezoids and two triangular hips.
+ *
+ * @param w      width at the eaves (x)
+ * @param d      depth at the eaves (z)
+ * @param h      height from eave to ridge
+ * @param ridge  ridge length as a fraction of w — 0 gives a pyramid, 1 a gable
+ */
+export function hipRoofGeometry(w, d, h, ridge = 0.45) {
+  const key = `roof:${w.toFixed(3)},${d.toFixed(3)},${h.toFixed(3)},${ridge.toFixed(3)}`;
+  const hit = geos.get(key);
+  if (hit) return hit;
+  const x = w / 2, z = d / 2, r = (w * ridge) / 2;
+  // eave corners (y=0) and the two ridge ends (y=h)
+  const A = [-x, 0, z], B = [x, 0, z], C = [x, 0, -z], D = [-x, 0, -z];
+  const P = [-r, h, 0], Q = [r, h, 0];
+  const tri = (a, b, c) => [...a, ...b, ...c];
+  const pos = new Float32Array([
+    ...tri(A, B, Q), ...tri(A, Q, P),   // front slope
+    ...tri(C, D, P), ...tri(C, P, Q),   // back slope
+    ...tri(B, C, Q),                    // right hip
+    ...tri(D, A, P),                    // left hip
+  ]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  const n = pos.length / 3;
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
+  tag(g);
+  geos.set(key, g);
+  return g;
+}
+
 export function sharedBox(w, h, d) {
   const key = k('b', w, h, d);
   let g = geos.get(key);

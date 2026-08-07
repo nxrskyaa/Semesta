@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { bakeStatic } from '../gfx/bake.js';
 import { WATER_LEVEL } from '../world/terrain.js';
-import { sharedMat, sharedBox, sharedCyl } from '../gfx/meshcache.js';
+import { sharedMat, sharedBox, sharedCyl, hipRoofGeometry } from '../gfx/meshcache.js';
 
 export const LAND_PRICE = 250;
 export const HOUSE_SAFE_R = 8;
@@ -107,18 +107,25 @@ function buildHouse(designId) {
     band.position.y = 1.25;
     g.add(band);
   }
-  // roof stack
-  for (let i = 0; i < 3; i++) {
-    const w = 3.3 - i * 0.8;
-    const r = new THREE.Mesh(sharedBox(w, 0.32, 3.0 - i * 0.7), i % 2 ? roofDark : roofM);
-    r.position.y = H + 0.16 + i * 0.3;
-    r.castShadow = true;
-    g.add(r);
+  // A REAL HIP ROOF, same fix as the village huts: three stacked slabs of
+  // decreasing size read as a tiered cake, not a house.
+  {
+    const eaveW = 3.5, eaveD = 3.2;
+    const fascia = new THREE.Mesh(sharedBox(eaveW, 0.18, eaveD), roofDark);
+    fascia.position.y = H + 0.09;
+    fascia.castShadow = true;
+    const hip = new THREE.Mesh(hipRoofGeometry(eaveW, eaveD, 1.15, 0.4), roofM);
+    hip.position.y = H + 0.18;
+    hip.castShadow = true;
+    // ridge cap along the real ridge line
+    const cap = new THREE.Mesh(sharedBox(1.5, 0.14, 0.22), roofDark);
+    cap.position.y = H + 1.33;
+    g.add(fascia, hip, cap);
   }
   // chimney (cottage & villa)
   if (designId !== 'cabin') {
     const chimney = new THREE.Mesh(sharedBox(0.34, 0.7, 0.34), lam('#8d9294'));
-    chimney.position.set(0.85, H + 0.85, -0.5);
+    chimney.position.set(0.8, H + 1.05, -0.45);
     g.add(chimney);
   }
   const door = new THREE.Mesh(sharedBox(0.6, 1.0, 0.09), beam);
