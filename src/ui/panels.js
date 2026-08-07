@@ -1379,6 +1379,9 @@ export function createPanels(hudRoot, {
 
   function toggle(which) {
     const target = panels[which];
+    // an unknown id used to throw on `.classList` and take the whole input
+    // handler down with it; closing everything is the sane answer instead
+    if (!target) { closeAll(); return; }
     for (const [k, p] of Object.entries(panels)) {
       if (k !== which) p.classList.remove('show');
     }
