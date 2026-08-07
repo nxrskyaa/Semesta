@@ -2,3 +2,9 @@ node_modules
 dist
 .DS_Store
 *.local
+
+# secrets: Supabase keys and the server URL live here, never in git
+.env
+.env.*
+!.env.example
+server/node_modules
