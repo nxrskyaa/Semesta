@@ -128,6 +128,48 @@ export function createAudio() {
   let bar = 0;
   let progB = false; // which progression is playing
 
+  // --- MOTIFS ---------------------------------------------------------------
+  // Eight-step shapes in SCALE DEGREES (null = rest). They are deliberately
+  // simple and mostly stepwise, because a phrase you can hum is the whole point;
+  // the variation comes from how they are answered, not from complexity.
+  const MOTIF_SPAN = 8;
+  const MOTIFS = [
+    [0, null, 2, null, 4, null, 2, null],        // rising, open
+    [4, 3, 2, null, 1, null, 0, null],           // falling, settled
+    [0, 2, null, 4, 5, null, 4, null],           // arch
+    [2, null, 2, 1, null, 3, null, 0],           // conversational
+    [0, null, null, 3, null, 2, 4, null],        // sparse, wandering
+    [5, 4, null, 2, null, 3, null, 1],           // descending answer
+    [1, null, 3, null, 5, 4, null, 2],           // lifting
+    [0, 1, 2, 3, null, 2, null, null],           // scalar run into a rest
+  ];
+  let motif = MOTIFS[0];
+  let motifShift = 0;       // transposition in scale degrees
+  let motifInvert = false;  // the answering phrase can mirror the question
+  let motifOct = 2;         // 1 = low, 2 = an octave up
+  let phraseBar = 0;        // 0..3 within the four-bar phrase
+
+  /**
+   * Pick the shape for the next two bars.
+   * Bars 0-1 STATE a motif; bars 2-3 ANSWER it — same shape, moved, mirrored or
+   * dropped an octave. That call-and-response is what makes eight notes sound
+   * like a tune instead of a list.
+   */
+  function nextPhrase() {
+    if (phraseBar === 0) {
+      motif = MOTIFS[Math.floor(Math.random() * MOTIFS.length)];
+      motifShift = 0;
+      motifInvert = false;
+      motifOct = 2;
+    } else if (phraseBar === 2) {
+      // the answer: usually a step down, sometimes mirrored, rarely an octave
+      const r = Math.random();
+      if (r < 0.45) motifShift = -2;
+      else if (r < 0.75) { motifInvert = true; motifShift = 0; }
+      else { motifOct = 1; motifShift = 2; }
+    }
+  }
+
   function noteHz(root, semi) { return root * Math.pow(2, semi / 12); }
 
   function scheduleMusic() {
@@ -138,6 +180,8 @@ export function createAudio() {
       step = (step + 1) % 8;
       if (step === 0) {
         bar = (bar + 1) % 4;
+        phraseBar = bar;
+        nextPhrase();
         if (bar === 0) {
           progB = !progB;              // swap progressions every 4 bars
           // and swap the whole TRACK every 16, so a session hears several
@@ -178,21 +222,42 @@ export function createAudio() {
       for (const semi of chord) pad(noteHz(root, semi), t, dur * 8.4, 0.046);
       bassPluck(noteHz(root / 2, chord[0]), t, dur * 7, 0.1);
     }
-    // melody: warm kalimba by day, softer pluck by night — sparse & lazy
-    const density = 0.3 + combat * 0.4 + (mood === 'night' ? -0.08 : 0);
-    if (Math.random() < density && s % 2 === (mood === 'day' ? 0 : 1)) {
-      const semi = scale[Math.floor(Math.random() * scale.length)];
-      const v = tr.voice;
-      if (v === 'kalimba') kalimba(noteHz(root * 2, semi), t, 0.055 + Math.random() * 0.02);
-      else if (v === 'bell') bell(noteHz(root * 2, semi), t, 0.05 + Math.random() * 0.02);
-      else pluck(noteHz(root * 2, semi), t, 0.05 + Math.random() * 0.02);
-    }
-    // occasional playful grace pair (two quick kalimba 16ths) in the day
-    if (mood === 'day' && s === 5 && Math.random() < 0.2 && combat < 0.2) {
-      const a = scale[Math.floor(Math.random() * 4)];
-      const b = scale[Math.min(scale.length - 1, Math.floor(Math.random() * 4) + 2)];
-      kalimba(noteHz(root * 2, a), t, 0.04);
-      kalimba(noteHz(root * 2, b), t + dur * 0.5, 0.04);
+    // MELODY BY MOTIF, not by dice.
+    //
+    // Every note used to be an independent random pick out of the scale. That
+    // is why the music felt boring no matter how many chord progressions were
+    // added: a random walk has no phrase, nothing repeats, and there is nothing
+    // to remember. Music is memorable because it REPEATS and then varies.
+    //
+    // So: each phrase takes one 8-step motif of scale degrees (null = rest),
+    // states it, and answers it — the answer is the same shape transposed,
+    // reversed or octave-shifted. Bars 1-2 ask, bars 3-4 reply.
+    if (mood !== 'menu') {
+      const deg = motif[s];
+      if (deg !== null && deg !== undefined) {
+        let d = deg + motifShift;
+        if (motifInvert) d = (MOTIF_SPAN - 1) - deg + motifShift;
+        const semi = scale[Math.max(0, Math.min(scale.length - 1, d))];
+        const oct = motifOct;
+        const v = tr.voice;
+        // the note is a touch stronger on the beat, so the phrase has stress
+        const vol = (s % 4 === 0 ? 0.062 : 0.048) + combat * 0.012;
+        if (v === 'kalimba') kalimba(noteHz(root * oct, semi), t, vol);
+        else if (v === 'bell') bell(noteHz(root * oct, semi), t, vol * 0.92);
+        else pluck(noteHz(root * oct, semi), t, vol * 0.95);
+        // a soft echo a beat later — cheap, and it makes a small phrase sound
+        // like it is happening in a place rather than in a box
+        if (s % 4 === 0 && combat < 0.3) {
+          const eV = v === 'bell' ? bell : v === 'kalimba' ? kalimba : pluck;
+          eV(noteHz(root * oct, semi), t + dur * 3, vol * 0.3);
+        }
+      }
+      // COUNTER-LINE: a slow arpeggio walking the current chord underneath the
+      // melody, so there is always a second thing moving
+      if (s === 2 || s === 6) {
+        const ci = s === 2 ? 1 : 2;
+        pluck(noteHz(root, chord[ci % chord.length]), t, 0.026);
+      }
     }
     // perkusi saat combat (gentler than before)
     if (combat > 0.15) {

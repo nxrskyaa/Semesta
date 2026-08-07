@@ -182,7 +182,7 @@ async function init(character, saved, audio) {
   // somewhere, and this is what stops that line reading as the edge of a box
   const horizon = buildHorizon(scene, '#9ec49a', qual.drawDistance);
   // WIND: one shared vector everything leans off, plus drifting leaves
-  const wind = buildWind(scene, terrain);
+  const wind = buildWind();
   const lighting = setupLighting(scene);
   const particles = createParticles(scene);
   const weather = createWeather(scene, terrain, particles);
@@ -214,7 +214,8 @@ async function init(character, saved, audio) {
   const wildlife = createWildlife(scene, terrain, particles);
   const watercraft = createWatercraft(scene, terrain, particles, {
     owns: (item) => inventory.count(item) > 0,
-    onBoard: (def) => { audio.sfx('mount'); hud.toastText(`${def.name} — steer with the stick, [F] to step off.`); },
+    onBoard: (def) => {
+      dailies.event('sail'); gamepass.event('sail'); audio.sfx('mount'); hud.toastText(`${def.name} — steer with the stick, [F] to step off.`); },
     onLeave: () => { audio.sfx('ui'); },
     onBeach: () => audio.sfx('hit'),
     onDenied: (def) => hud.toastText(`${def.name} is locked — buy the key at Pip's Shop.`),
@@ -223,8 +224,9 @@ async function init(character, saved, audio) {
     // both craft wait at the marina, a stride apart along the pier
     const { x, z, dir } = isles.marina;
     const off = dir + Math.PI / 2;
-    watercraft.moor('dinghy', x + Math.cos(off) * 1.5, z + Math.sin(off) * 1.5, dir);
-    watercraft.moor('jetski', x - Math.cos(off) * 1.5, z - Math.sin(off) * 1.5, dir);
+    // a full boat-length apart, not 1.5 — the dinghy alone is 3.4 long
+    watercraft.moor('dinghy', x + Math.cos(off) * 2.6, z + Math.sin(off) * 2.6, dir);
+    watercraft.moor('jetski', x - Math.cos(off) * 2.6, z - Math.sin(off) * 2.6, dir);
   }
   // LAUNCH POSTS: one at the marina and one at every island pier. Walk up and
   // call your boat in rather than swimming back across the map to fetch it.
@@ -822,6 +824,7 @@ async function init(character, saved, audio) {
   story.load(saved?.story);
   // things the story asks about that nothing else tracks
   const lore = { kills: 0, swam: false, visitedIsland: false };
+  const restedCamps = new Set();   // distinct camps rested at, for the daily
   let storyT = 0;
 
   const panels = createPanels(hudRoot, {
@@ -1058,7 +1061,14 @@ async function init(character, saved, audio) {
     }
     for (const d of drops) pickups.spawn(d.id, d.count, e.mesh.position);
     quests.event('kill', { type: e.type, worldBoss: !!e.isWorldBoss });
-    dailies.event('kill'); gamepass.event('kill'); lore.kills++;
+    // the daily board now asks for SPECIFIC prey, so a kill has to report what
+    // it was, whether it was elite, and where and when it happened
+    dailies.event('kill', {
+      kind: e.type || e.def?.id, elite: !!e.elite,
+      where: terrain.inSnow?.(e.mesh.position.x, e.mesh.position.z) ? 'snow' : 'land',
+      when: (lighting.state.time / 60 >= 19.5 || lighting.state.time / 60 < 5.5) ? 'night' : 'day',
+    });
+    gamepass.event('kill'); lore.kills++;
     if (e.isWorldBoss) { dailies.event('boss'); gamepass.event('boss'); }
   }
 
@@ -1282,7 +1292,12 @@ async function init(character, saved, audio) {
         else hud.showCatch(fishId, rarity, gained, ITEMS[fishId].sell || 0);
         leveling.addXp(gained);
         quests.event('fish');
-        dailies.event('fish'); gamepass.event('fish');
+        dailies.event('fish', {
+          rarity,
+          where: terrain.inOcean?.(player.state.pos.x, player.state.pos.z) ? 'sea' : 'lake',
+          when: (lighting.state.time / 60 >= 19.5 || lighting.state.time / 60 < 5.5) ? 'night' : 'day',
+        });
+        gamepass.event('fish');
         skilltree.gain('fishing', rarity);
       },
       onMiss(msg) { hud.toastText(msg); },
@@ -1520,6 +1535,9 @@ async function init(character, saved, audio) {
     const ranger = camps.nearestRanger(player.state.pos, 2.4);
     if (ranger && player.state.hp < player.state.maxHp) {
       add('heal', 'Rest with Ranger (full heal)', () => {
+        // the daily asks for TWO camps, so the same fire twice must not count
+        restedCamps.add(`${Math.round(ranger.x)},${Math.round(ranger.z)}`);
+        if (restedCamps.size <= 6) dailies.event('camp');
         player.state.hp = player.state.maxHp; player.state.sinceHurt = 999;
         audio.sfx('potion');
         particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#7dff8a', 16);
@@ -1584,6 +1602,9 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyK') { audio.sfx('ui'); panels.toggle('skills'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
+    // Shift also rolls. The on-screen hint and the guide both said it did;
+    // right-click was the only binding that actually existed.
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') doRoll();
     if (e.code === 'KeyL') { audio.sfx('ui'); panels.toggle('life'); }
     if (e.code === 'KeyJ') { audio.sfx('ui'); panels.toggle('daily'); }
     if (e.code === 'KeyU') { audio.sfx('ui'); panels.toggle('pass'); }
@@ -1606,8 +1627,21 @@ async function init(character, saved, audio) {
   window.addEventListener('keyup', (e) => input.keys.delete(e.code));
   window.addEventListener('blur', () => input.keys.clear());
 
-  renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-  renderer.domElement.addEventListener('mousedown', (e) => {
+  // ATTACK AND ROLL LISTEN ON THE WINDOW, not on the canvas.
+  //
+  // Bound to renderer.domElement, both were swallowed whenever the cursor
+  // happened to be resting over any part of the HUD — the skill bar, the quest
+  // tracker, a toast, the interact prompt. The click landed on that DOM node and
+  // the game never saw it, which is exactly the reported "sometimes roll just
+  // does not work, but it is fine on mobile" (mobile has its own button and
+  // never goes through this path at all).
+  //
+  // The only things that legitimately swallow a click are real controls, so that
+  // is the one case filtered out.
+  const onUI = (e) => !!(e.target.closest && e.target.closest('button, input, select, textarea, a, .panel'));
+  window.addEventListener('contextmenu', (e) => { if (!onUI(e)) e.preventDefault(); });
+  window.addEventListener('mousedown', (e) => {
+    if (onUI(e)) return;
     if (e.button === 0) doAttack();
     if (e.button === 2) doRoll();
   });
@@ -1895,7 +1929,7 @@ async function init(character, saved, audio) {
     decor.update(dt, player.state.pos, time, isNight);
     isles.update(dt, time, isNight, player.state.pos);
     horizon.update(player.state.pos);
-    wind.update(dt, player.state.pos);
+    wind.update(dt);
     wildlife.update(dt, player.state.pos, time);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
@@ -1929,7 +1963,10 @@ async function init(character, saved, audio) {
     if (player.state.swimming) lore.swam = true;
     {
       const [ix, iz] = terrain.cellOf(player.state.pos.x, player.state.pos.z);
-      if (terrain.isIslandCell(ix, iz)) lore.visitedIsland = true;
+      if (terrain.isIslandCell(ix, iz)) {
+        if (!lore.visitedIsland) { dailies.event('island'); gamepass.event('island'); }
+        lore.visitedIsland = true;
+      }
     }
     storyT -= dt;
     if (storyT <= 0) {

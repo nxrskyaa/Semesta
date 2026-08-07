@@ -615,7 +615,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <button class="menubtn">☰ MENU<span class="badge">!</span></button>
     </div>
     <div class="hint-desktop">
-      <b>LMB</b> Attack (auto-aim) · <b>RMB</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
+      <b>LMB</b> Attack (auto-aim) · <b>RMB / Shift</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
       <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>O</b> Wardrobe · <b>T</b> Home · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Camera
     </div>
     <div class="toasts"></div>

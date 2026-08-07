@@ -47,32 +47,65 @@ export const CHECKIN_DAYS = [
 // ---------------------------------------------------------------------------
 // play-time milestones, per session (they reset when the tab reloads)
 // ---------------------------------------------------------------------------
+// PLAY-TIME LADDER. It used to stop at an hour, which meant a long session had
+// nothing left to reach for after the first sixty minutes. It now runs out to
+// four hours, and the rewards get correspondingly serious at the top.
 export const PLAYTIME_TIERS = [
-  { min: 5,  coins: 80,  label: '80 coins' },
-  { min: 15, item: 'tonic', n: 3, label: 'Tonic x3' },
-  { min: 30, item: 'forge_stone', n: 5, label: 'Forge Stone x5' },
-  { min: 45, coins: 300, label: '300 coins' },
-  { min: 60, cosmetic: 'trail_leaf', label: 'Leaf Trail', big: true },
+  { min: 5,   coins: 80,  label: '80 coins' },
+  { min: 15,  item: 'tonic', n: 3, label: 'Tonic x3' },
+  { min: 30,  item: 'forge_stone', n: 5, label: 'Forge Stone x5' },
+  { min: 60,  coins: 400, label: '400 coins' },
+  { min: 120, cosmetic: 'trail_lantern', label: 'Lantern Trail', big: true },
+  { min: 240, cosmetic: 'hat_antlers', label: 'Spirit Antlers', big: true, grand: true },
 ];
 
 // ---------------------------------------------------------------------------
 // daily quest pool — three are drawn per day, seeded by the day number so a
 // given day always shows the same board (no reroll-by-refresh)
 // ---------------------------------------------------------------------------
+/**
+ * DAILY QUEST POOL.
+ *
+ * The board used to be twelve flat counters — "defeat 12 monsters", "catch 5
+ * fish" — which told you to keep doing what you were already doing. These ask
+ * for something SPECIFIC: a named species, a place, a time of day, a rarity.
+ * That is the difference between a checklist and a reason to go somewhere.
+ *
+ * `ev` is the event main.js already fires. `need` narrows it: `{ kind }` matches
+ * an enemy id, `{ rarity }` a minimum rarity, `{ where }` a place ('sea',
+ * 'lake', 'snow', 'island'), `{ when }` a time ('night', 'day'). A quest with no
+ * `need` counts every event of that type, as before.
+ */
 const DQ_POOL = [
-  { id: 'dq_slay',   label: 'Defeat 12 monsters',        goal: 12, ev: 'kill',    coins: 150, item: 'tonic', n: 2 },
-  { id: 'dq_slay_l', label: 'Defeat 25 monsters',        goal: 25, ev: 'kill',    coins: 280, item: 'forge_stone', n: 3 },
-  { id: 'dq_fish',   label: 'Catch 5 fish',              goal: 5,  ev: 'fish',    coins: 160, item: 'tonic', n: 2 },
-  { id: 'dq_chest',  label: 'Open 3 treasure chests',    goal: 3,  ev: 'chest',   coins: 180, item: 'forge_stone', n: 2 },
-  { id: 'dq_gather', label: 'Gather 10 wood or ore',     goal: 10, ev: 'gather',  coins: 170, item: 'iron_ore', n: 3 },
-  { id: 'dq_plant',  label: 'Plant 4 crops',             goal: 4,  ev: 'plant',   coins: 140, item: 'seed_berry', n: 3 },
-  { id: 'dq_harvest',label: 'Harvest 4 crops',           goal: 4,  ev: 'harvest', coins: 160, item: 'seed_wheat', n: 4 },
-  { id: 'dq_cook',   label: 'Cook 2 meals',              goal: 2,  ev: 'cook',    coins: 150, item: 'green_herb', n: 3 },
-  { id: 'dq_forge',  label: 'Forge your weapon once',    goal: 1,  ev: 'forge',   coins: 200, item: 'forge_stone', n: 4 },
-  { id: 'dq_skill',  label: 'Cast 15 skills',            goal: 15, ev: 'skill',   coins: 150, item: 'tonic', n: 2 },
-  { id: 'dq_boss',   label: 'Defeat a world boss',       goal: 1,  ev: 'boss',    coins: 500, item: 'forge_stone', n: 6 },
-  { id: 'dq_gacha',  label: 'Spin the Wonder Capsules',  goal: 1,  ev: 'gacha',   coins: 120, item: 'tonic', n: 1 },
+  // --- hunting: named prey, not "twelve of anything" ---
+  { id: 'dq_slime',  label: 'Hunt 10 slimes',                 goal: 10, ev: 'kill', need: { kind: 'slime' },     coins: 170, item: 'tonic', n: 2 },
+  { id: 'dq_boar',   label: 'Hunt 8 boars in the long grass', goal: 8,  ev: 'kill', need: { kind: 'boar' },      coins: 190, item: 'forge_stone', n: 2 },
+  { id: 'dq_bat',    label: 'Hunt 10 bats after dark',        goal: 10, ev: 'kill', need: { when: 'night' },     coins: 210, item: 'tonic', n: 3 },
+  { id: 'dq_frost',  label: 'Hunt 6 beasts in the snow',      goal: 6,  ev: 'kill', need: { where: 'snow' },     coins: 240, item: 'forge_stone', n: 3 },
+  { id: 'dq_elite',  label: 'Bring down 3 elites',            goal: 3,  ev: 'kill', need: { elite: true },       coins: 320, item: 'forge_stone', n: 4 },
+  { id: 'dq_boss',   label: 'Defeat a world boss',            goal: 1,  ev: 'boss',                              coins: 600, item: 'forge_stone', n: 6, big: true },
+  { id: 'dq_slay_l', label: 'Clear 25 of the wilds',          goal: 25, ev: 'kill',                              coins: 300, item: 'forge_stone', n: 3 },
+
+  // --- fishing: where and what, not just how many ---
+  { id: 'dq_fish_sea',  label: 'Land 5 fish from the open sea', goal: 5, ev: 'fish', need: { where: 'sea' },     coins: 200, item: 'tonic', n: 2 },
+  { id: 'dq_fish_lake', label: 'Land 6 fish from a lake',       goal: 6, ev: 'fish', need: { where: 'lake' },    coins: 190, item: 'seed_berry', n: 3 },
+  { id: 'dq_fish_night',label: 'Fish 4 times under the stars',  goal: 4, ev: 'fish', need: { when: 'night' },    coins: 230, item: 'tonic', n: 3 },
+  { id: 'dq_fish_rare', label: 'Land something RARE or better', goal: 1, ev: 'fish', need: { rarity: 'rare' },   coins: 350, item: 'forge_stone', n: 3, big: true },
+
+  // --- going somewhere ---
+  { id: 'dq_island', label: 'Set foot on an island',        goal: 1,  ev: 'island',                             coins: 260, item: 'tonic', n: 3 },
+  { id: 'dq_sail',   label: 'Take a craft out on the water', goal: 1, ev: 'sail',                               coins: 180, item: 'tonic', n: 2 },
+  { id: 'dq_camp',   label: 'Rest at 2 wilderness camps',   goal: 2,  ev: 'camp',                               coins: 200, item: 'green_herb', n: 3 },
+
+  // --- the quiet work ---
+  { id: 'dq_chest',  label: 'Open 3 treasure chests',       goal: 3,  ev: 'chest',                              coins: 200, item: 'forge_stone', n: 2 },
+  { id: 'dq_gather', label: 'Gather 10 wood or ore',        goal: 10, ev: 'gather',                             coins: 180, item: 'iron_ore', n: 3 },
+  { id: 'dq_harvest',label: 'Harvest 4 crops',              goal: 4,  ev: 'harvest',                            coins: 170, item: 'seed_wheat', n: 4 },
+  { id: 'dq_cook',   label: 'Cook 3 meals',                 goal: 3,  ev: 'cook',                               coins: 190, item: 'green_herb', n: 3 },
+  { id: 'dq_forge',  label: 'Forge your weapon once',       goal: 1,  ev: 'forge',                              coins: 220, item: 'forge_stone', n: 4 },
+  { id: 'dq_gacha',  label: 'Spin the Wonder Capsules',     goal: 1,  ev: 'gacha',                              coins: 140, item: 'tonic', n: 1 },
 ];
+
 
 // deterministic day-seeded shuffle so the board is stable within a day
 function pickDaily(dayIndex) {
@@ -90,6 +123,17 @@ function pickDaily(dayIndex) {
 function dayNumber(ts = Date.now()) {
   const d = new Date(ts);
   return Math.floor((ts - d.getTimezoneOffset() * 60000) / DAY_MS);
+}
+
+/** Does what just happened satisfy a quest's narrowing conditions? */
+const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, mythic: 5 };
+function matches(need, info) {
+  if (need.kind && info.kind !== need.kind) return false;
+  if (need.elite && !info.elite) return false;
+  if (need.where && info.where !== need.where) return false;
+  if (need.when && info.when !== need.when) return false;
+  if (need.rarity && (RARITY_RANK[info.rarity] ?? -1) < RARITY_RANK[need.rarity]) return false;
+  return true;
 }
 
 export function createDailies({ grant, onToast, onBanner }) {
@@ -165,11 +209,21 @@ export function createDailies({ grant, onToast, onBanner }) {
 
   // --- daily quests ---
   /** Feed gameplay events in; returns true if something advanced. */
-  function event(ev, amount = 1) {
+  /**
+   * @param ev   the event id main.js fires
+   * @param ctx  what happened, for quests that care: { kind, elite, rarity,
+   *             where, when }. A quest with no `need` ignores it entirely, so
+   *             every existing call site keeps working unchanged.
+   */
+  function event(ev, ctx = 1) {
     rollDay();
+    // back-compat: event('kill', 2) still means "two of them"
+    const amount = typeof ctx === 'number' ? ctx : (ctx.amount || 1);
+    const info = typeof ctx === 'number' ? {} : ctx;
     let changed = false;
     for (const q of state.quests) {
       if (q.ev !== ev || q.done) continue;
+      if (q.need && !matches(q.need, info)) continue;
       q.p = Math.min(q.goal, q.p + amount);
       changed = true;
       if (q.p >= q.goal) {

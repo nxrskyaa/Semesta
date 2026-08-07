@@ -82,6 +82,22 @@ export const CRAFT_DEFS = {
  * @param keelAt    (t) -> how far the V drops below the waterline
  * @param vSharp    0 = flat bottom (a dinghy), 1 = a deep knife (a jetski)
  */
+/**
+ * The material a swept hull must use.
+ *
+ * buildHullGeometry sweeps an OPEN section — gunwale down to the keel and back
+ * up — so the result is a trough, not a closed solid, and its faces only wind
+ * one way. With the default FrontSide culling that made both craft invisible
+ * from outside: everything you could see was the rail, the floorboards and the
+ * oars, which is exactly the "hollow skeleton" in the report. An open shell has
+ * to be drawn from both sides, because you are meant to see the inside of a boat.
+ */
+function hullMat(color) {
+  return new THREE.MeshLambertMaterial({
+    color: new THREE.Color(color), side: THREE.DoubleSide,
+  });
+}
+
 function buildHullGeometry(len, widthAt, deckAt, keelAt, vSharp, segs = 18) {
   const pos = [], idx = [];
   const RING = 7;                       // points around one cross-section
@@ -140,7 +156,7 @@ function buildJetski() {
     (t) => 0.3 * (1 - t * 0.55),                                           // keel deepest at the stern
     0.85,
   );
-  const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(HULL) }));
+  const hull = new THREE.Mesh(hullGeo, hullMat(HULL));
   hull.position.y = 0.3;
   hull.castShadow = true;
   g.add(hull);
@@ -153,7 +169,7 @@ function buildJetski() {
     (t) => 0.31 * (1 - t * 0.55),
     0.85,
   );
-  const boot = new THREE.Mesh(bootGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(DARK) }));
+  const boot = new THREE.Mesh(bootGeo, hullMat(DARK));
   boot.position.y = 0.3;
   g.add(boot);
 
@@ -165,7 +181,7 @@ function buildJetski() {
     () => -0.3,
     0,
   );
-  const deck = new THREE.Mesh(deckGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(HULL) }));
+  const deck = new THREE.Mesh(deckGeo, hullMat(HULL));
   deck.position.set(-0.05, 0.62, 0);
   g.add(deck);
 
@@ -264,22 +280,25 @@ function buildDinghy() {
     () => 0.34,
     0.12,                                                      // round-bottomed
   );
-  const hull = new THREE.Mesh(hullGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(WOOD) }));
+  const hull = new THREE.Mesh(hullGeo, hullMat(WOOD));
   hull.castShadow = true;
   g.add(hull);
 
   // planking: four lap strakes following the sheer, alternating tone. These are
   // thin shells nested just inside the hull, so the lapstrake shadow line reads
   // from any angle without needing a texture.
+  // Each strake is a THIN BAND at its own height, nested a hair outside the
+  // hull. The first version passed a keel ABOVE its own deck line, which is an
+  // inverted cross-section — the sweep folded through itself and drew garbage.
   for (let i = 0; i < 4; i++) {
-    const top = SHEER * (0.78 - i * 0.2);
+    const top = SHEER * (0.8 - i * 0.19);
     const strake = new THREE.Mesh(buildHullGeometry(
       LEN - 0.02 - i * 0.01,
-      (t) => (BEAM + 0.012) * Math.sin(Math.min(1, t * 1.12) * Math.PI * 0.94) + 0.09,
+      (t) => (BEAM + 0.014) * Math.sin(Math.min(1, t * 1.12) * Math.PI * 0.94) + 0.09,
       () => top,
-      () => -top + 0.14,
+      () => -(top - 0.1),          // keel line BELOW the deck line, always
       0.12,
-    ), new THREE.MeshLambertMaterial({ color: new THREE.Color(i % 2 ? DARK : WOOD) }));
+    ), hullMat(i % 2 ? DARK : WOOD));
     g.add(strake);
   }
 
@@ -782,12 +801,25 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     if (!hooks.owns?.(CRAFT_DEFS[id].item)) return null;
     if (state.active === id) return null;               // already riding it
     const m = state.moored[id];
-    // walk out from the station along its heading until the hull floats
-    let bx = st.x, bz = st.z;
-    for (let d = 0; d <= 12; d += 0.5) {
-      const x = st.x + Math.sin(st.dir) * d, z = st.z + Math.cos(st.dir) * d;
-      if (floats(x, z)) { bx = x; bz = z; break; }
+    // Walk out from the station along its heading until the hull floats, then
+    // step SIDEWAYS until the berth is clear of any other craft. Summoning both
+    // boats to one post used to drop them in the same spot, and two hulls
+    // occupying the same water is the "ketumpuk" in the report.
+    const CLEAR = 2.6;                    // hulls are 3.4 long; this is beam-ish
+    const occupied = (x, z) => Object.values(state.moored)
+      .some((o) => o.id !== id && Math.hypot(o.x - x, o.z - z) < CLEAR);
+    let bx = st.x, bz = st.z, found = false;
+    const side = st.dir + Math.PI / 2;
+    for (let d = 0; d <= 12 && !found; d += 0.5) {
+      const fx = st.x + Math.sin(st.dir) * d, fz = st.z + Math.cos(st.dir) * d;
+      if (!floats(fx, fz)) continue;
+      // dead ahead first, then alternating left and right along the pier
+      for (const off of [0, 1.6, -1.6, 3.2, -3.2, 4.8, -4.8]) {
+        const x = fx + Math.sin(side) * off, z = fz + Math.cos(side) * off;
+        if (floats(x, z) && !occupied(x, z)) { bx = x; bz = z; found = true; break; }
+      }
     }
+    if (!found) return null;              // no clear water: better than stacking
     if (!m) return moor(id, bx, bz, st.dir);
     m.x = bx; m.z = bz; m.dir = st.dir;
     m.mesh.position.set(bx, WATER_Y, bz);
