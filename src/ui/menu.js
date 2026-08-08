@@ -10,7 +10,7 @@ import { aboutInner, paintAboutRialo } from './about.js';
 import { docsInner, wireDocs, DOCS_CSS } from './docs.js';
 import {
   cloudConfigured, currentUser, signInWithGoogle, signInWithEmail, signOut, onAuthChange,
-  enabledProviders,
+  enabledProviders, mountGoogleButton,
 } from '../net/auth.js';
 import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
@@ -143,6 +143,9 @@ const CSS = `
   border: 0; outline: 0; color: #10160f; background: #dfe8f4;
 }
 #opening .acct .note { color: #b8d0e8; width: 100%; }
+/* Google renders its own button here; it brings its own styling and must not
+   be fought with, so this only reserves the space. */
+#opening .acct .gbtn { display: flex; align-items: center; min-height: 32px; }
 
 /* the guide's own styles are appended below via DOCS_CSS */
 /* about modal */
@@ -446,11 +449,24 @@ export function showOpening(saved) {
         // player can do nothing about.
         const prov = await enabledProviders();
         acct.innerHTML = `
-          ${prov.google ? '<button data-a="google">▶ SIGN IN WITH GOOGLE</button>' : ''}
+          ${prov.google ? '<div class="gbtn"></div>' : ''}
           ${prov.email ? `<input class="mail" type="email" placeholder="${
             prov.google ? 'or your email' : 'your email'}" autocomplete="email">
           <button data-a="mail">SEND LINK</button>` : ''}
           <span class="note">Optional — it just carries your save between devices.</span>`;
+        if (prov.google) {
+          // Google's OWN button, rendered in the page. It keeps Supabase out of
+          // the conversation Google narrates, so the consent screen names this
+          // site instead of the database behind it. If it cannot be mounted —
+          // script blocked, no client id — fall back to our own button and the
+          // redirect route, which always works.
+          const slot = acct.querySelector('.gbtn');
+          const mounted = await mountGoogleButton(slot, (r) => {
+            if (r.ok) renderAccount();
+            else { acct.innerHTML = `<span class="note">${r.error}</span>`; setTimeout(renderAccount, 2600); }
+          });
+          if (!mounted) slot.outerHTML = '<button data-a="google">▶ SIGN IN WITH GOOGLE</button>';
+        }
       }
     }
     acct.addEventListener('click', async (e) => {

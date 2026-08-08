@@ -130,8 +130,49 @@ export async function currentUser() {
   };
 }
 
-/** Google sign-in. Redirects away and comes back to the same page. */
-export async function signInWithGoogle() {
+// ---------------------------------------------------------------------------
+// GOOGLE
+//
+// Two routes, and which one runs decides what the player reads on Google's own
+// consent screen.
+//
+// The REDIRECT route (signInWithOAuth) sends the browser to Google, Google
+// answers to Supabase, and Supabase bounces back here. Because Supabase is the
+// address receiving the answer, Google shows the player
+// `xxxx.supabase.co` — which is honest of Google, and meaningless to the player.
+// It cannot be changed from our side: that callback URL is built by Supabase
+// from its own project address.
+//
+// The ID-TOKEN route (Google Identity Services) never leaves our page. Google
+// hands the ID token straight to us, we pass it to Supabase, and Supabase is
+// not part of the conversation the player sees — so Google shows OUR origin
+// instead. It is also faster, has no full-page redirect, and costs nothing.
+//
+// So: use the ID-token route when a client ID is configured, and keep the
+// redirect route as the fallback so login never depends on a script from
+// another host loading.
+// ---------------------------------------------------------------------------
+const GOOGLE_CLIENT_ID = (import.meta.env?.VITE_GOOGLE_CLIENT_ID || '').trim();
+
+let gisPromise = null;
+function loadGis() {
+  if (window.google?.accounts?.id) return Promise.resolve(true);
+  if (gisPromise) return gisPromise;
+  gisPromise = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => resolve(true);
+    // A blocked or slow script is not an error — we simply fall back.
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+    setTimeout(() => resolve(!!window.google?.accounts?.id), 6000);
+  });
+  return gisPromise;
+}
+
+/** The redirect route. Kept as the fallback. */
+async function googleRedirect() {
   const c = await getClient();
   if (!c) return { ok: false, error: 'Cloud saves are not set up on this build.' };
   const { error } = await c.auth.signInWithOAuth({
@@ -139,6 +180,52 @@ export async function signInWithGoogle() {
     options: { redirectTo: window.location.origin + window.location.pathname },
   });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/**
+ * Mount Google's own sign-in button inside `container`.
+ *
+ * This is used in preference to One Tap. One Tap is prettier when it appears,
+ * but Google suppresses it aggressively — a previous dismissal, blocked
+ * third-party cookies, incognito — and every suppression would drop the player
+ * back onto the redirect route showing the Supabase URL, which is the exact
+ * thing this route exists to avoid. A rendered button always appears.
+ *
+ * Returns false if it could not be mounted, so the caller can draw its own.
+ */
+export async function mountGoogleButton(container, onResult) {
+  if (!GOOGLE_CLIENT_ID) return false;
+  const c = await getClient();
+  if (!c) return false;
+  if (!(await loadGis())) return false;
+  try {
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: async (resp) => {
+        if (!resp?.credential) return onResult?.({ ok: false, error: 'No credential from Google.' });
+        const { error } = await c.auth.signInWithIdToken({
+          provider: 'google', token: resp.credential,
+        });
+        onResult?.(error ? { ok: false, error: error.message } : { ok: true });
+      },
+    });
+    window.google.accounts.id.renderButton(container, {
+      theme: 'filled_blue', size: 'medium', shape: 'rectangular',
+      text: 'signin_with', logo_alignment: 'left',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fallback sign-in: the redirect route. Used when no client id is configured or
+ * Google's script cannot be reached. Works everywhere; the only cost is that
+ * Google names the Supabase project on its consent screen.
+ */
+export async function signInWithGoogle() {
+  return googleRedirect();
 }
 
 /** Magic link, for anyone who would rather not use Google. */
