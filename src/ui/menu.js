@@ -10,6 +10,7 @@ import { aboutInner, paintAboutRialo } from './about.js';
 import { docsInner, wireDocs, DOCS_CSS } from './docs.js';
 import {
   cloudConfigured, currentUser, signInWithGoogle, signInWithEmail, signOut, onAuthChange,
+  enabledProviders,
 } from '../net/auth.js';
 import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
@@ -440,10 +441,15 @@ export function showOpening(saved) {
         // textContent: the display name comes from Google and is not ours
         acct.querySelector('.who').textContent = u.name;
       } else {
+        // Only draw the doors that actually open. Offering a Google button on a
+        // project where the provider is switched off just produces an error the
+        // player can do nothing about.
+        const prov = await enabledProviders();
         acct.innerHTML = `
-          <button data-a="google">▶ SIGN IN WITH GOOGLE</button>
-          <input class="mail" type="email" placeholder="or your email" autocomplete="email">
-          <button data-a="mail">SEND LINK</button>
+          ${prov.google ? '<button data-a="google">▶ SIGN IN WITH GOOGLE</button>' : ''}
+          ${prov.email ? `<input class="mail" type="email" placeholder="${
+            prov.google ? 'or your email' : 'your email'}" autocomplete="email">
+          <button data-a="mail">SEND LINK</button>` : ''}
           <span class="note">Optional — it just carries your save between devices.</span>`;
       }
     }

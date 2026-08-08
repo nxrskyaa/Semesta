@@ -81,6 +81,34 @@ async function getClient() {
   return loading;
 }
 
+/**
+ * Which sign-in methods this project actually has switched on.
+ *
+ * The menu used to offer Google whether or not the provider existed, so the
+ * button was there to be clicked and then fail with a message nobody can act
+ * on. Supabase publishes what is enabled at /auth/v1/settings, so the menu can
+ * simply not draw a door that does not open.
+ *
+ * Cached, and it fails soft: if the probe cannot be reached we assume email
+ * works, because that is on by default and being wrong in that direction only
+ * costs one error message instead of hiding the only way in.
+ */
+let providersCache = null;
+export async function enabledProviders() {
+  if (providersCache) return providersCache;
+  if (!cloudConfigured()) return { google: false, email: false };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
+      headers: { apikey: SUPABASE_ANON },
+    });
+    const d = await res.json();
+    providersCache = { google: !!d?.external?.google, email: !!d?.external?.email };
+  } catch {
+    providersCache = { google: false, email: true };
+  }
+  return providersCache;
+}
+
 // ---------------------------------------------------------------------------
 // SESSION
 // ---------------------------------------------------------------------------
