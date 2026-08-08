@@ -78,7 +78,7 @@ All core features verified end-to-end in-browser: opening menu (New/Continue/Abo
 
 ## Conventions
 
-- All in-game text & code comments are in English
+- All in-game text & code comments are in English — including anything a third party renders for us. Google's sign-in button localises itself from the browser's language, which put one Indonesian string in the middle of an otherwise English game; the fix is `?hl=en` on the **GIS script URL**, not the `locale` option on `renderButton`, which does not override a script that has already resolved its language
 - Never add image/audio asset files — everything stays procedural (canvas/WebAudio) per the original design. The ONLY exceptions are the two branding images in `logoasset/` (logo + creator mascot)
 - Color palette is locked in `PALETTE` (src/gfx/textures.js) — keep the cozy 2.5D voxel style consistent
 - `window.__semesta` exposes the live systems for automated verification

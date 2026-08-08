@@ -160,7 +160,11 @@ function loadGis() {
   if (gisPromise) return gisPromise;
   gisPromise = new Promise((resolve) => {
     const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
+    // `hl=en` on the SCRIPT is what actually fixes the language. The `locale`
+    // option on renderButton is documented but does not override a script that
+    // has already picked up the browser's language, and Semesta is entirely in
+    // English — one Indonesian button in the middle of it reads as a bug.
+    s.src = 'https://accounts.google.com/gsi/client?hl=en';
     s.async = true;
     s.onload = () => resolve(true);
     // A blocked or slow script is not an error — we simply fall back.
@@ -212,6 +216,10 @@ export async function mountGoogleButton(container, onResult) {
     window.google.accounts.id.renderButton(container, {
       theme: 'filled_blue', size: 'medium', shape: 'rectangular',
       text: 'signin_with', logo_alignment: 'left',
+      // Pinned to English. Google localises this button from the browser's
+      // language by default, which left the one Indonesian string sitting in an
+      // otherwise entirely English game — see the note in CLAUDE.md.
+      locale: 'en',
     });
     return true;
   } catch {
