@@ -26,7 +26,23 @@ fi
 
 APP_USER=semesta
 APP_DIR=/opt/semesta
-PORT=8787
+
+# PICK A FREE PORT.
+#
+# 8787 was the default and on the first real box it was already taken by another
+# node process. A port collision fails at start-up with EADDRINUSE, systemd
+# restarts the service, it fails again, and the only symptom you see from the
+# outside is a 502 from Caddy — which sends you looking in entirely the wrong
+# place. Cheaper to just look first.
+PORT=""
+for p in 8787 8788 8789 8790 8791; do
+  if ! ss -tlnH "sport = :$p" 2>/dev/null | grep -q .; then PORT=$p; break; fi
+done
+if [ -z "$PORT" ]; then
+  echo "Could not find a free port in 8787-8791. Free one up, or set PORT by hand."
+  exit 1
+fi
+echo "==> using port $PORT"
 
 echo "==> 1/7  System packages"
 export DEBIAN_FRONTEND=noninteractive

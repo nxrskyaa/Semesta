@@ -402,6 +402,25 @@ Urutan yang masuk akal berikutnya:
 
 ---
 
+## Kalau port 8787 sudah dipakai
+
+Skrip setup sudah menanganinya sendiri: dia mencari port bebas di rentang
+8787–8791 dan memakai yang pertama kosong, lalu menuliskan port itu ke
+Caddyfile **dan** ke service systemd sekaligus, jadi keduanya tidak mungkin
+tidak sinkron.
+
+Kenapa ini penting: bentrok port gagal saat start dengan `EADDRINUSE`, systemd
+menyalakannya lagi, gagal lagi — dan satu-satunya gejala dari luar adalah
+**502 dari Caddy**, yang mengarahkanmu mencari di tempat yang sama sekali salah.
+
+Untuk tahu proses apa yang memakainya:
+
+```bash
+ss -tlnp | grep 8787          # dapat PID-nya
+ps -fp <PID>                  # proses apa
+ls -l /proc/<PID>/cwd         # jalan dari folder mana
+```
+
 ## Catatan tentang Hermes agent
 
 VPS kamu sudah terpasang Hermes agent. Itu **tidak mengganggu** apa pun di sini:
