@@ -228,18 +228,6 @@ export async function signInWithGoogle() {
   return googleRedirect();
 }
 
-/** Magic link, for anyone who would rather not use Google. */
-export async function signInWithEmail(email) {
-  const c = await getClient();
-  if (!c) return { ok: false, error: 'Cloud saves are not set up on this build.' };
-  const { error } = await c.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin + window.location.pathname },
-  });
-  return error ? { ok: false, error: error.message }
-    : { ok: true, message: 'Check your email for the sign-in link.' };
-}
-
 export async function signOut() {
   const c = await getClient();
   await c?.auth.signOut();

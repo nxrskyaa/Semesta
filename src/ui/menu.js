@@ -9,7 +9,7 @@ import { paintRialoMark } from '../world/landmarks.js';
 import { aboutInner, paintAboutRialo } from './about.js';
 import { docsInner, wireDocs, DOCS_CSS } from './docs.js';
 import {
-  cloudConfigured, currentUser, signInWithGoogle, signInWithEmail, signOut, onAuthChange,
+  cloudConfigured, currentUser, signInWithGoogle, signOut, onAuthChange,
   enabledProviders, mountGoogleButton,
 } from '../net/auth.js';
 import { createGfxPanel } from './gfxpanel.js';
@@ -138,10 +138,6 @@ const CSS = `
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28);
 }
 #opening .acct button:hover { filter: brightness(1.25); }
-#opening .acct .mail {
-  font-family: inherit; font-size: 9px; padding: 5px 8px; width: 150px;
-  border: 0; outline: 0; color: #10160f; background: #dfe8f4;
-}
 #opening .acct .note { color: #b8d0e8; width: 100%; }
 /* Google renders its own button here; it brings its own styling and must not
    be fought with, so this only reserves the space. */
@@ -447,13 +443,19 @@ export function showOpening(saved) {
         // Only draw the doors that actually open. Offering a Google button on a
         // project where the provider is switched off just produces an error the
         // player can do nothing about.
+        // GOOGLE ONLY, on purpose.
+        //
+        // The magic-link route was removed rather than kept as a backup. It
+        // fails in the worst possible way: Supabase's built-in mail allows
+        // roughly three or four sends an HOUR across the whole project, so at a
+        // demo the fourth person to try it silently gets nothing and concludes
+        // the game is broken. A door that is sometimes locked is worse than no
+        // door — especially one you cannot unlock while people are watching.
         const prov = await enabledProviders();
-        acct.innerHTML = `
-          ${prov.google ? '<div class="gbtn"></div>' : ''}
-          ${prov.email ? `<input class="mail" type="email" placeholder="${
-            prov.google ? 'or your email' : 'your email'}" autocomplete="email">
-          <button data-a="mail">SEND LINK</button>` : ''}
-          <span class="note">Optional — it just carries your save between devices.</span>`;
+        acct.innerHTML = prov.google
+          ? `<div class="gbtn"></div>
+             <span class="note">Optional — it just carries your save between devices.</span>`
+          : '<span class="note">Progress saves to this browser.</span>';
         if (prov.google) {
           // Google's OWN button, rendered in the page. It keeps Supabase out of
           // the conversation Google narrates, so the consent screen names this
@@ -477,14 +479,6 @@ export function showOpening(saved) {
         b.textContent = 'OPENING…';
         const r = await signInWithGoogle();
         if (!r.ok) { acct.innerHTML = `<span class="note">${r.error}</span>`; setTimeout(renderAccount, 2600); }
-      } else if (a === 'mail') {
-        const input = acct.querySelector('.mail');
-        const email = (input?.value || '').trim();
-        if (!email.includes('@')) { input?.focus(); return; }
-        b.textContent = 'SENDING…';
-        const r = await signInWithEmail(email);
-        acct.innerHTML = `<span class="note">${r.ok ? r.message : r.error}</span>`;
-        if (!r.ok) setTimeout(renderAccount, 2600);
       } else if (a === 'out') {
         await signOut();
         renderAccount();

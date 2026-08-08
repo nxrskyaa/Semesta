@@ -365,7 +365,14 @@ adalah **Project URL** saja: `https://xxxxx.supabase.co`. Kode sudah memotong
 ini otomatis, tapi kalau kamu melihat pesan ini berarti build-nya masih lama —
 redeploy setelah membetulkan variabelnya.
 
-**"email rate limit exceeded"**
+> **Login email sudah dihapus dari game.** Sengaja: SMTP bawaan Supabase
+> membatasi ±3–4 email per JAM untuk seluruh project, jadi saat demo orang
+> keempat yang mencoba tidak akan menerima apa pun dan menyimpulkan game-nya
+> rusak. Pintu yang kadang terkunci lebih buruk daripada tidak ada pintu.
+> Google jadi satu-satunya jalur masuk; kalau seseorang tidak mau login, game
+> tetap bisa dimainkan penuh dengan save di browser.
+
+**"email rate limit exceeded"** (kalau kamu mengaktifkannya lagi)
 SMTP bawaan Supabase gratis dibatasi sangat ketat (**±3–4 email per jam untuk
 seluruh project**). Untuk dites sendiri masih cukup; untuk dipakai banyak orang
 sekaligus **tidak cukup**. Dua jalan keluar:
