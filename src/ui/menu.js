@@ -8,6 +8,9 @@ import mascotUrl from '../../logoasset/nxrmascott.png';
 import { paintRialoMark } from '../world/landmarks.js';
 import { aboutInner, paintAboutRialo } from './about.js';
 import { docsInner, wireDocs, DOCS_CSS } from './docs.js';
+import {
+  cloudConfigured, currentUser, signInWithGoogle, signInWithEmail, signOut, onAuthChange,
+} from '../net/auth.js';
 import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
 
@@ -115,6 +118,30 @@ const CSS = `
   position: absolute; bottom: 12px; left: 0; right: 0; text-align: center;
   font-size: 9px; letter-spacing: 3px; color: rgba(240,248,255,0.75); text-shadow: 0 1px 0 #2a4a7a;
 }
+
+/* ACCOUNT STRIP.
+   Deliberately small and above the buttons: signing in is optional, so it must
+   never look like a gate in front of the game. Someone who ignores it entirely
+   gets exactly the game they have today. */
+#opening .acct {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  flex-wrap: wrap; min-height: 26px; margin-bottom: 4px;
+  font-size: 9px; letter-spacing: 1px; color: #dce8f4;
+  text-shadow: 0 1px 0 #2a4a7a;
+}
+#opening .acct .who { color: #ffe27a; }
+#opening .acct button {
+  font-family: inherit; font-size: 9px; letter-spacing: 1px; cursor: pointer;
+  padding: 5px 10px; border: 0; color: #f0f4ff;
+  background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28);
+}
+#opening .acct button:hover { filter: brightness(1.25); }
+#opening .acct .mail {
+  font-family: inherit; font-size: 9px; padding: 5px 8px; width: 150px;
+  border: 0; outline: 0; color: #10160f; background: #dfe8f4;
+}
+#opening .acct .note { color: #b8d0e8; width: 100%; }
 
 /* the guide's own styles are appended below via DOCS_CSS */
 /* about modal */
@@ -366,6 +393,7 @@ export function showOpening(saved) {
     const menu = document.createElement('div');
     menu.className = 'menu';
     menu.innerHTML = `
+      <div class="acct"></div>
       <button class="primary" data-m="new">⚔ &nbsp;NEW ADVENTURE</button>
       ${saved ? `<button data-m="continue">▶ &nbsp;CONTINUE</button>
         <div class="continfo">${saved.character?.name || 'Adventurer'} · Lv${saved.level || 1}</div>` : ''}
@@ -394,6 +422,55 @@ export function showOpening(saved) {
     paintAboutRialo(about);
     about.querySelector('.closebtn').addEventListener('click', () => about.classList.remove('show'));
     about.addEventListener('click', (e) => { if (e.target === about) about.classList.remove('show'); });
+
+    // --- ACCOUNT STRIP ------------------------------------------------------
+    // Optional, always. If the project has no Supabase keys the strip explains
+    // that saves are local and stops there — the game is fully playable either
+    // way and must never look like it is asking permission.
+    const acct = root.querySelector('.acct');
+    async function renderAccount() {
+      if (!cloudConfigured()) {
+        acct.innerHTML = '<span class="note">Progress saves to this browser.</span>';
+        return;
+      }
+      const u = await currentUser();
+      if (u) {
+        acct.innerHTML = `<span>Signed in as <b class="who"></b></span>
+          <button data-a="out">SIGN OUT</button>`;
+        // textContent: the display name comes from Google and is not ours
+        acct.querySelector('.who').textContent = u.name;
+      } else {
+        acct.innerHTML = `
+          <button data-a="google">▶ SIGN IN WITH GOOGLE</button>
+          <input class="mail" type="email" placeholder="or your email" autocomplete="email">
+          <button data-a="mail">SEND LINK</button>
+          <span class="note">Optional — it just carries your save between devices.</span>`;
+      }
+    }
+    acct.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-a]');
+      if (!b) return;
+      const a = b.dataset.a;
+      if (a === 'google') {
+        b.textContent = 'OPENING…';
+        const r = await signInWithGoogle();
+        if (!r.ok) { acct.innerHTML = `<span class="note">${r.error}</span>`; setTimeout(renderAccount, 2600); }
+      } else if (a === 'mail') {
+        const input = acct.querySelector('.mail');
+        const email = (input?.value || '').trim();
+        if (!email.includes('@')) { input?.focus(); return; }
+        b.textContent = 'SENDING…';
+        const r = await signInWithEmail(email);
+        acct.innerHTML = `<span class="note">${r.ok ? r.message : r.error}</span>`;
+        if (!r.ok) setTimeout(renderAccount, 2600);
+      } else if (a === 'out') {
+        await signOut();
+        renderAccount();
+      }
+    });
+    renderAccount();
+    // coming back from the Google redirect lands here with a fresh session
+    onAuthChange(() => renderAccount());
 
     // --- the GUIDE: everything the game can teach, before you commit to a
     // character. New players' questions all arrive before NEW ADVENTURE, not

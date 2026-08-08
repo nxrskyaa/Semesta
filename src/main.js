@@ -56,6 +56,9 @@ import { createGfxPanel } from './ui/gfxpanel.js';
 import { createDailies } from './systems/dailies.js';
 import { createGamePass, PASS_PRICES } from './systems/gamepass.js';
 import { createSkillTree, SKILLS as SKILL_DEFS } from './systems/skilltree.js';
+import {
+  cloudConfigured, reconcile, writeLocal, startCloudAutosave, currentUser,
+} from './net/auth.js';
 import { createStory } from './systems/story.js';
 import { createLoadScreen } from './ui/loadscreen.js';
 import { itemIconUrl } from './gfx/textures.js';
@@ -67,6 +70,47 @@ function loadSave() {
     const raw = localStorage.getItem(SAVE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
+}
+
+/**
+ * Both saves exist and were written within minutes of each other, so neither is
+ * obviously the one the player wants. Ask rather than guess: silently throwing
+ * away somebody's afternoon is the worst thing a sync can do, and it is the one
+ * mistake they can never undo.
+ */
+function askWhichSave(info) {
+  return new Promise((resolve) => {
+    const when = (t) => new Date(t).toLocaleString();
+    const el = document.createElement('div');
+    el.style.cssText = `position:fixed;inset:0;z-index:9999;display:flex;
+      align-items:center;justify-content:center;background:rgba(6,10,14,0.88);
+      font-family:'Pixelify Sans',system-ui,sans-serif;color:#e8ecd8`;
+    el.innerHTML = `<div style="max-width:min(440px,90vw);padding:22px;
+        background:linear-gradient(180deg,#1a1f14,#0e120b);
+        box-shadow:inset 0 0 0 2px #46523c,0 14px 40px rgba(0,0,0,.6);text-align:center">
+      <h3 style="margin:0 0 6px;font-size:13px;letter-spacing:3px;color:#d8b866">TWO SAVES FOUND</h3>
+      <p style="font-size:10px;line-height:1.8;color:#a8b596;margin:0 0 16px">
+        This device and your account both have recent progress.<br>Which one do you want to keep playing?</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+        <button data-p="local" style="flex:1;min-width:150px;padding:10px;border:0;cursor:pointer;
+          font-family:inherit;font-size:10px;color:#f4ecd4;background:linear-gradient(180deg,#3a4a2c,#25301c);
+          box-shadow:0 -2px 0 #6a8a4a,0 2px 0 #141a10">THIS DEVICE<br>
+          <small style="color:#9fb08c">Lv ${info.localLevel} · ${when(info.localAt)}</small></button>
+        <button data-p="cloud" style="flex:1;min-width:150px;padding:10px;border:0;cursor:pointer;
+          font-family:inherit;font-size:10px;color:#f4ecd4;background:linear-gradient(180deg,#2c3a4a,#1c2530);
+          box-shadow:0 -2px 0 #4a7a8a,0 2px 0 #101418">MY ACCOUNT<br>
+          <small style="color:#9fb08c">Lv ${info.cloudLevel} · ${when(info.cloudAt)}</small></button>
+      </div>
+      <p style="font-size:8px;color:#7d8a70;margin:14px 0 0">The other one is not deleted — it stays where it is.</p>
+    </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-p]');
+      if (!b) return;
+      el.remove();
+      resolve(b.dataset.p);
+    });
+  });
 }
 
 const bootEl = document.getElementById('boot');
@@ -85,7 +129,26 @@ const frame = () => new Promise((r) => schedule(r));
 
 async function main() {
   bootEl.style.display = 'none';
-  const saved = loadSave();
+  // CLOUD SAVE, IF THERE IS ONE.
+  //
+  // Local stays primary: this resolves to the local save whenever the player is
+  // signed out, offline, or the project is not configured. Signing in is a way
+  // to carry progress between devices, never a requirement to play — and a bad
+  // night at Supabase must not be able to cost anyone their session.
+  let saved = loadSave();
+  if (cloudConfigured()) {
+    try {
+      const res = await Promise.race([
+        reconcile(askWhichSave),
+        // never let a slow network hold the menu hostage
+        new Promise((r) => setTimeout(() => r(null), 4000)),
+      ]);
+      if (res?.save) {
+        saved = res.save;
+        if (res.from === 'cloud') writeLocal(res.save);
+      }
+    } catch (e) { console.warn('[semesta] cloud sync skipped:', e.message); }
+  }
   const audio = createAudio();
 
   // The shipped PNG has a solid white background, so it has to be keyed out
@@ -1721,9 +1784,16 @@ async function init(character, saved, audio) {
   });
 
   // --- save game ---
+  // The cloud copy is written on a much slower beat than the local one: saving
+  // to localStorage costs nothing and happens constantly, but uploading every
+  // few seconds would be pointless traffic and would burn a free tier for no
+  // benefit. `mark()` just flags that something changed; the uploader batches.
+  const cloud = cloudConfigured() ? startCloudAutosave(() => lastSave) : null;
+  let lastSave = null;
+
   function save() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
+      lastSave = {
         character,
         level: leveling.state.level,
         xp: leveling.state.xp,
@@ -1743,7 +1813,10 @@ async function init(character, saved, audio) {
         gamepass: gamepass.serialize(),
         story: story.serialize(),
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
-      }));
+        at: Date.now(),
+      };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(lastSave));
+      cloud?.mark();
     } catch { /* storage full/blocked: ignore */ }
   }
   setInterval(save, 8000);
