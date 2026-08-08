@@ -26,9 +26,34 @@
 //    anon key in the client is designed to be public; it is not a secret and
 //    does not need hiding. See MULTIPLAYER.md for the exact SQL.
 
-const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
+/**
+ * The Supabase dashboard shows the REST endpoint (`.../rest/v1/`) far more
+ * prominently than the plain project URL, so pasting the wrong one is the
+ * normal mistake rather than a careless one. The client appends its own paths,
+ * so a trailing `/rest/v1/` produces requests to `/rest/v1/auth/v1/otp` and the
+ * only thing the player sees is `PGRST125: Invalid path specified in request
+ * URL` — which tells them nothing at all.
+ *
+ * So it is normalised here instead of being a trap. Cheap to do, and it turns a
+ * confusing dead end into nothing happening.
+ */
+function normaliseProjectUrl(raw) {
+  let u = String(raw || '').trim();
+  if (!u) return '';
+  u = u.replace(/\/+$/, '');                 // trailing slashes
+  u = u.replace(/\/rest\/v1$/i, '');          // the REST endpoint
+  u = u.replace(/\/auth\/v1$/i, '');          // and the auth one, same trap
+  return u;
+}
+
+const SUPABASE_URL = normaliseProjectUrl(import.meta.env?.VITE_SUPABASE_URL);
+const SUPABASE_ANON = (import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
 const CDN = 'https://esm.sh/@supabase/supabase-js@2';
+
+if (import.meta.env?.VITE_SUPABASE_URL
+    && SUPABASE_URL !== String(import.meta.env.VITE_SUPABASE_URL).trim().replace(/\/+$/, '')) {
+  console.info('[semesta] trimmed the endpoint path off VITE_SUPABASE_URL — using', SUPABASE_URL);
+}
 
 /** True when the project has been configured. Everything degrades if not. */
 export const cloudConfigured = () => !!(SUPABASE_URL && SUPABASE_ANON);

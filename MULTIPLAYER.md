@@ -287,6 +287,21 @@ lomba, buka dashboard-nya sekali seminggu, atau pasang cron ping. Datanya tidak
 hilang — tinggal di-resume, tapi butuh beberapa menit dan itu tidak lucu kalau
 sedang dinilai.
 
+**"Invalid path specified in request URL" saat kirim magic link**
+`VITE_SUPABASE_URL` masih memakai REST endpoint (`.../rest/v1/`). Yang benar
+adalah **Project URL** saja: `https://xxxxx.supabase.co`. Kode sudah memotong
+ini otomatis, tapi kalau kamu melihat pesan ini berarti build-nya masih lama —
+redeploy setelah membetulkan variabelnya.
+
+**"email rate limit exceeded"**
+SMTP bawaan Supabase gratis dibatasi sangat ketat (**±3–4 email per jam untuk
+seluruh project**). Untuk dites sendiri masih cukup; untuk dipakai banyak orang
+sekaligus **tidak cukup**. Dua jalan keluar:
+1. **Pakai Google login** — tidak lewat email sama sekali, tidak kena limit ini.
+   Ini yang paling masuk akal untuk dipakai orang banyak.
+2. Pasang SMTP sendiri: **Authentication → Emails → SMTP Settings**. Resend
+   gratis 3.000 email/bulan dan cukup 5 menit dipasang.
+
 **"Login berhasil tapi save-nya kosong"**
 Kemungkinan besar RLS. Buka **Table Editor → saves → RLS**, pastikan ketiga
 policy di langkah 1.2 ada.
