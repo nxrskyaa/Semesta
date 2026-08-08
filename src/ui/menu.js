@@ -143,6 +143,34 @@ const CSS = `
    be fought with, so this only reserves the space. */
 #opening .acct .gbtn { display: flex; align-items: center; min-height: 32px; }
 
+/* THE MENU HAS TO FIT.
+   It was positioned at a fixed 60% of the height with desktop-sized buttons and
+   no small-screen rules at all. Adding the account strip on top of five buttons
+   pushed the column 72px past the bottom of a 375x812 phone, taking ROADMAP and
+   ABOUT off screen entirely. Keyed on HEIGHT rather than width, because that is
+   the dimension that actually runs out — a short landscape window has the same
+   problem as a tall narrow one.
+
+   The 980 threshold is measured, not guessed: the column is 383px tall at full
+   size and sits at 60% of the height, so it needs 383/0.40 = 958px of viewport
+   to clear the bottom. A first pass used 880 and left the tall modern phones
+   (412x915, 430x932) still overflowing by 10-17px — comfortably enough to eat
+   the ABOUT button and nothing like enough to notice by eye. */
+@media (max-height: 980px) {
+  #opening .menu { top: 50%; gap: 8px; }
+  #opening .menu button { font-size: 13px; padding: 10px 8px; letter-spacing: 3px; }
+  #opening .acct { min-height: 0; margin-bottom: 0; gap: 6px; }
+  #opening .acct .note { font-size: 8px; }
+  #opening .menu .continfo { font-size: 8px; margin-top: -6px; }
+}
+@media (max-height: 720px) {
+  #opening .menu { top: 46%; gap: 6px; width: min(300px, 82vw); }
+  #opening .menu button { font-size: 12px; padding: 8px 6px; letter-spacing: 2px; }
+  /* the strapline is the first thing to go: it is nice to have, and a button
+     you cannot reach is not */
+  #opening .acct .note { display: none; }
+}
+
 /* the guide's own styles are appended below via DOCS_CSS */
 /* about modal */
 #opening .about {
