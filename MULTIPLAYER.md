@@ -103,19 +103,91 @@ dan di sebelah namanya ada label **RLS enabled**.
 
 ### 1.3 Nyalakan login Google
 
+Bagian paling banyak langkahnya, tapi cuma sekali seumur project. Kerjakan
+**di komputer**, bukan HP — form-nya panjang.
+
+Yang akan kamu butuhkan, salin dulu:
+
+```
+https://<PROJECT-REF>.supabase.co/auth/v1/callback
+```
+
+(`<PROJECT-REF>` ada di URL dashboard Supabase kamu.)
+
+#### A. Buat project di Google Cloud
+
+1. Buka **console.cloud.google.com**
+2. Klik dropdown project di kiri atas → **New Project**
+3. Nama: `Semesta` → **Create** → tunggu, lalu **pilih project itu**
+
+#### B. Isi OAuth consent screen
+
+Ini harus **selesai duluan** — kalau belum, menu Credentials akan menolak.
+
+1. Menu kiri → **APIs & Services** → **OAuth consent screen**
+2. **User Type: External** → **Create**
+3. Isi yang wajib saja:
+   - **App name**: `Semesta`
+   - **User support email**: email kamu
+   - **Developer contact information**: email kamu
+4. **Save and Continue**
+5. Halaman **Scopes** → **jangan tambah apa pun** → **Save and Continue**
+6. Halaman **Test users** → **Save and Continue**
+7. **Summary** → **Back to Dashboard**
+
+#### C. ⚠️ PUBLISH — jangan dilewat
+
+Di halaman **OAuth consent screen**, cari **Publishing status**.
+
+Kalau statusnya **Testing**, klik **PUBLISH APP** → **Confirm**.
+
+> **Kenapa ini penting.** Dalam mode *Testing*, Google hanya mengizinkan
+> maksimal **100 akun yang kamu daftarkan satu per satu** untuk login. Semua
+> orang lain — termasuk juri lomba — akan ditolak dengan pesan
+> *"Access blocked: Semesta has not completed the Google verification process"*.
+>
+> Meng-*publish* aplikasi yang **hanya memakai scope dasar** (email, profil)
+> **tidak butuh proses verifikasi Google** dan berlaku seketika. Karena di
+> langkah B kamu tidak menambah scope apa pun, kamu aman.
+
+#### D. Buat OAuth client
+
+1. **APIs & Services** → **Credentials**
+2. **+ Create Credentials** → **OAuth client ID**
+3. **Application type: Web application**
+4. Name: `Semesta Web`
+5. **Authorized JavaScript origins** → **+ Add URI**, masukkan semua yang dipakai:
+   - `https://namaproyekmu.vercel.app`
+   - `http://localhost:5173`
+6. **Authorized redirect URIs** → **+ Add URI**, masukkan **Callback URL
+   Supabase**, bukan alamat game kamu:
+   - `https://<PROJECT-REF>.supabase.co/auth/v1/callback`
+7. **Create** → muncul **Client ID** dan **Client Secret** → salin keduanya
+
+> Kesalahan paling sering di sini: menaruh alamat Vercel di *redirect URIs*.
+> Alurnya adalah browser → Google → **Supabase** → browser, jadi yang menerima
+> balikan dari Google adalah Supabase, bukan game kamu.
+
+#### E. Masukkan ke Supabase
+
 1. **Authentication** → **Providers** → **Google** → aktifkan
-2. Supabase menampilkan sebuah **Callback URL** — salin
-3. Buka console.cloud.google.com → **APIs & Services** → **Credentials**
-   → **Create Credentials** → **OAuth client ID** → **Web application**
-4. Di **Authorized redirect URIs**, tempel Callback URL tadi
-5. Salin **Client ID** dan **Client Secret** kembali ke Supabase → **Save**
+2. Tempel **Client ID** dan **Client Secret** → **Save**
 
-Juga aktifkan **Email** provider (sudah aktif secara bawaan). Ini jalur cadangan
-untuk yang tidak mau pakai Google — mereka dapat link masuk lewat email, tanpa
-password sama sekali.
+#### F. Daftarkan alamat game di Supabase
 
-**Cek berhasil:** di **Authentication → Providers**, Google dan Email keduanya
-bertanda hijau.
+Langkah yang paling sering terlupa. Tanpa ini login berhasil tapi kamu
+dilempar ke `localhost:3000` dan layarnya kosong.
+
+**Authentication** → **URL Configuration**:
+
+- **Site URL**: `https://namaproyekmu.vercel.app`
+- **Redirect URLs** → tambahkan keduanya:
+  - `https://namaproyekmu.vercel.app/**`
+  - `http://localhost:5173/**`
+
+**Cek berhasil:** di **Authentication → Providers**, Google dan Email
+keduanya hijau. Lalu buka game → **SIGN IN WITH GOOGLE** → pilih akun →
+kembali ke menu dengan nama kamu tertulis di situ.
 
 ### 1.4 Ambil kunci
 
