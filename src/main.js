@@ -971,6 +971,16 @@ async function init(character, saved, audio, online = false) {
       if (r.cosmetic) inventory.add(r.cosmetic, 1);
       if (r.mount) inventory.add(r.mount, 1);
       if (r.petCharm) inventory.add(r.petCharm, 1);
+      // A weapon reward is a TIER, not an item: it resolves to the one that
+      // matches whatever you are, so a Summoner is never handed a bow. Axe and
+      // cannon have no exotic family of their own yet, so they borrow the
+      // closest silhouette rather than granting nothing at all.
+      if (r.weaponTier) {
+        const fam = GACHA_WEAPONS[r.weaponTier];
+        const wt = CLASSES[character.cls]?.weaponType || 'sword';
+        const key = fam[wt] ? wt : (wt === 'axe' ? 'sword' : wt === 'cannon' ? 'staff' : 'sword');
+        if (fam[key]) inventory.add(fam[key], 1);
+      }
       audio.sfx(r.grand ? 'reveal_mythic' : r.big ? 'reveal_epic' : 'pickup');
       if (r.big || r.grand) {
         particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)),

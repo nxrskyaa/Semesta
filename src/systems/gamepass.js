@@ -43,30 +43,47 @@ export const PASS_XP = {
 export const PASS_TRACK = (() => {
   const t = [];
   for (let i = 1; i <= PASS_TIERS; i++) {
-    const free = i % 10 === 0 ? { coins: 300, label: '300 coins' }
-      : i % 5 === 0 ? { item: 'forge_stone', n: 3, label: 'Forge Stone x3' }
-        : i % 3 === 0 ? { item: 'tonic', n: 2, label: 'Tonic x2' }
-          : { coins: 40 + i * 6, label: `${40 + i * 6} coins` };
+    // FREE ROW. Every third tier now hands over something that is not money —
+    // a row of nothing but coins is a row nobody looks at, and the free track
+    // is the one most players will actually live on.
+    const free = i === 30 ? { cosmetic: 'hat_straw', label: 'Straw Hat', big: true }
+      : i === 20 ? { petCharm: 'charm_moku', label: 'Moku the Sprout', big: true }
+        : i === 10 ? { cosmetic: 'trail_leaf', label: 'Leaf Trail', big: true }
+          : i % 5 === 0 ? { item: 'forge_stone', n: 4, label: 'Forge Stone x4' }
+            : i % 3 === 0 ? { item: 'tonic', n: 3, label: 'Tonic x3' }
+              : { coins: 60 + i * 8, label: `${60 + i * 8} coins` };
 
+    // BASIC ROW. Three cosmetics, real consumable stacks, and a gacha-exclusive
+    // weapon at the top — the point of a pass is that it hands you things the
+    // shop cannot, so a row of coins at 3x the free rate was never worth 1,000.
     let basic;
-    if (i === 30) basic = { cosmetic: 'back_wings_prism', label: 'Prism Wings', big: true };
-    else if (i === 25) basic = { item: 'potion_luck', n: 3, label: 'Lucky Charm x3' };
-    else if (i === 20) basic = { cosmetic: 'hat_crown', label: 'Gilded Crown', big: true };
-    else if (i === 15) basic = { item: 'potion_xp', n: 3, label: 'Scholar Brew x3' };
-    else if (i === 10) basic = { cosmetic: 'trail_spark', label: 'Spark Trail', big: true };
-    else if (i === 5) basic = { item: 'forge_stone', n: 6, label: 'Forge Stone x6' };
-    else if (i % 2 === 0) basic = { coins: 120 + i * 10, label: `${120 + i * 10} coins` };
-    else basic = { item: i % 4 === 1 ? 'potion_xp' : 'potion_luck', n: 1, label: i % 4 === 1 ? 'Scholar Brew' : 'Lucky Charm' };
+    if (i === 30) basic = { weaponTier: 'epic', label: 'STARFORGED WEAPON', grand: true };
+    else if (i === 26) basic = { cosmetic: 'back_prism', label: 'Prism Wings', big: true };
+    else if (i === 22) basic = { item: 'potion_luck', n: 4, label: 'Lucky Charm x4' };
+    else if (i === 18) basic = { cosmetic: 'hat_crown', label: 'Gilded Crown', big: true };
+    else if (i === 14) basic = { item: 'potion_xp', n: 4, label: 'Scholar Brew x4' };
+    else if (i === 10) basic = { cosmetic: 'trail_star', label: 'Starfall Trail', big: true };
+    else if (i === 6) basic = { petCharm: 'charm_piko', label: 'Piko the Cub', big: true };
+    else if (i === 3) basic = { item: 'forge_stone', n: 8, label: 'Forge Stone x8' };
+    else if (i % 2 === 0) basic = { coins: 160 + i * 14, label: `${160 + i * 14} coins` };
+    else basic = { item: i % 4 === 1 ? 'potion_xp' : 'potion_luck', n: 2, label: i % 4 === 1 ? 'Scholar Brew x2' : 'Lucky Charm x2' };
 
+    // PREMIUM ROW. Two mounts, three pets, four cosmetics and a MYTHIC weapon
+    // at the end, so the last tier is genuinely a trophy rather than a bigger
+    // pile of coins. Nothing here is purchasable with gold anywhere else.
     let premium;
-    if (i === 30) premium = { mount: 'mount_aurora', label: 'AURORA MOUNT', grand: true };
-    else if (i === 27) premium = { petCharm: 'charm_seraphi', label: 'Seraphi the Dragon', big: true };
-    else if (i === 22) premium = { cosmetic: 'hat_kitsune', label: 'Kitsune Mask', big: true };
-    else if (i === 18) premium = { petCharm: 'charm_glimmer', label: 'Glimmer the Fox', big: true };
-    else if (i === 12) premium = { cosmetic: 'back_koi', label: 'Koi Kite', big: true };
+    if (i === 30) premium = { weaponTier: 'mythic', label: 'CELESTIUM — MYTHIC WEAPON', grand: true };
+    else if (i === 28) premium = { mount: 'mount_aurora', label: 'AURORA MOUNT', grand: true };
+    else if (i === 25) premium = { petCharm: 'charm_seraphi', label: 'Seraphi the Dragon', big: true };
+    else if (i === 21) premium = { weaponTier: 'legendary', label: 'DRAGONFANG WEAPON', big: true };
+    else if (i === 19) premium = { cosmetic: 'hat_kitsune', label: 'Kitsune Mask', big: true };
+    else if (i === 16) premium = { petCharm: 'charm_nox', label: 'Nox the Shade', big: true };
+    else if (i === 13) premium = { cosmetic: 'back_koi', label: 'Koi Kite', big: true };
+    else if (i === 11) premium = { petCharm: 'charm_glimmer', label: 'Glimmer the Fox', big: true };
     else if (i === 8) premium = { mount: 'mount_pebble', label: 'Pebble Mount', big: true };
-    else if (i % 3 === 0) premium = { item: 'potion_luck', n: 2, label: 'Lucky Charm x2' };
-    else premium = { coins: 250 + i * 20, label: `${250 + i * 20} coins` };
+    else if (i === 5) premium = { cosmetic: 'hat_pumpkin', label: 'Pumpkin Head', big: true };
+    else if (i % 3 === 0) premium = { item: 'potion_luck', n: 3, label: 'Lucky Charm x3' };
+    else premium = { coins: 320 + i * 26, label: `${320 + i * 26} coins` };
 
     t.push({ tier: i, free, basic, premium });
   }

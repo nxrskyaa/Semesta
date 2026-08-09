@@ -81,6 +81,7 @@ export const CATEGORIES = [
           ['World map', '<b>N</b> — tap the map to drop a waypoint'],
           ['Daily', '<b>J</b>'],
           ['Teleport home', '<b>T</b> — 1.6s channel, 20s cooldown'],
+          ['Teleport to basecamp', '<b>Y</b> — same channel, shared cooldown'],
           ['Teleport to the basecamp', '<b>Y</b> — same channel, shared cooldown'],
           ['Mount', '<b>M</b>'],
           ['AFK fishing', '<b>G</b>'],
@@ -176,21 +177,54 @@ export const CATEGORIES = [
         ])}`),
 
       S('classes', 'Classes & Skills', `
-        <p>Seven classes, each with its own stat spread, weapon family and three
-        skills. The weapon family matters most: it decides which crafting tree and
-        which capsule-machine weapons are useful to you.</p>
+        <p>You do <b>not</b> pick a class when you make a character. Everyone starts
+        as an <b>Origin</b>: one plain sword, and no skills at all. That is
+        deliberate — the first ten levels are where you learn that swinging,
+        dodging and reading a monster's tell is the actual game, and a hero handed
+        three abilities up front has nothing to earn.</p>
+        <p>At <b>Lv10</b> Elder Maple gives you <b>The Calling</b>, and
+        <b>Grand Master Vell</b> — the owl on the shrine avenue — awakens you into
+        one of six. This choice is <b>permanent</b>, so it asks twice.</p>
         ${kv([
-          ['Knight', 'Sword · high armour, holds a line'],
-          ['Archer', 'Bow · ranged, volleys and pierce'],
-          ['Mage', 'Staff · burst damage at range'],
-          ['Assassin', 'Dagger · fast, crit-heavy, mobile'],
-          ['Berserker', 'Sword · rage, cleave, leap slam'],
-          ['Hunter', 'Bow · traps and precision shots'],
-          ['Priest', 'Staff · heals, smites, blesses'],
+          ['Warrior', 'Sword <i>or</i> Axe — you pick at the awakening. Sword is faster with a shield; the axe is slower, wider and hits far harder'],
+          ['Archer', 'Bow · ranged, volleys, traps and one enormous snipe'],
+          ['Mage', 'Staff · chain lightning, gravity wells, meteors'],
+          ['Priest', 'Staff · heals, sanctuaries and pillars of light'],
+          ['Assassin', 'Twin blades · huge melee area, stuns, and vanishing'],
+          ['Summoner', 'Bazooka · the only basic attack with a blast radius. Calls beasts, walking robots, turrets and rocket barrages'],
         ])}
-        <p>You get <b>one skill point per level</b>, spent in the <b>K</b> panel.
-        A skill can reach level 5: each level is +22% power, −6% cooldown and
-        longer buffs.</p>`),
+        <h4>THE SKILL TREE</h4>
+        <p>Each class has its own tree of seven skills across three tiers, opening
+        at <b>Lv10 / Lv16 / Lv24</b>. Open it with <b>K</b>.</p>
+        ${call('do', 'THE TREE IN ONE LINE', [
+          'Learning a skill is permanent and costs points.',
+          'Slotting one is free — put any three learned skills on the bar and swap them whenever you like.',
+          'So experimenting with a loadout never costs you the points you ground for.',
+        ])}
+        <p>You get <b>one skill point per level</b>. A skill can also reach level 5:
+        each level is +22% power, −6% cooldown and longer buffs.</p>`),
+
+      S('slots', 'Heroes, Slots & Saving', `
+        <p>You get <b>three character slots</b>. Choosing CONTINUE or PLAY ONLINE
+        opens the hero select; a slot is either one of your characters or an empty
+        plinth with <b>+ NEW HERO</b> on it.</p>
+        <p>The level cap is <b>Lv30</b>. Auto-Battle unlocks there too — it is an
+        end-game convenience for grinding materials, not a way to skip the game.</p>
+        ${call('dont', 'DELETE IS FOREVER', [
+          'It asks twice, and then the character is gone.',
+          'It removes the cloud copy too, so signing in elsewhere will not bring them back.',
+        ])}
+        <p><b>MAIN MENU</b> in the ☰ menu saves, disconnects and returns you to the
+        title, where you can sign out or switch heroes.</p>`),
+
+      S('rialohub', 'The Rialo Hub', `
+        <p>Far out in the ocean, past the archipelago, there is a built island
+        roughly a hundred units from the village: a ring plaza of dark stone and
+        mint inlay with the Rialo monument at its centre.</p>
+        <p><b>Thirty-five agents</b> from Rialo Temple Play live there, and every
+        one of them will tell you something real about Rialo — live data, bridge
+        gates, onchain progress, identity, privacy. Walk up and press <b>F</b>.</p>
+        <p>Take a boat. It is too far to swim comfortably, and that is the point.</p>`),
 
       S('inv', 'Inventory, Hotbar & Levelling', `
         <p>Open the bag with <b>I</b>. Anything consumable can go on the hotbar.
