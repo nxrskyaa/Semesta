@@ -1534,7 +1534,14 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     // against a head topping out at 3.89. A carried weapon hangs back, down and
     // slightly out from the hip. This is applied only while NOT attacking, so
     // every swing animation still starts from the orientation it was tuned for.
-    if (state.attackT <= 0 && state.rolling <= 0 && !state.swimming) {
+    const carried = ITEMS[state.equipped]?.type;
+    if (carried === 'cannon') {
+      // A bazooka is SHOULDERED, not trailed at the hip. The blade carry pose
+      // rotates the hand back by -1.78, which on a 1.25-long tube drives the
+      // muzzle straight down through the ground.
+      parts.handR.rotation.set(-0.5, 0, -0.15);
+      parts.handR.position.set(0.02, -0.16, 0.0);
+    } else if (state.attackT <= 0 && state.rolling <= 0 && !state.swimming) {
       // The angle is a compromise found by measuring, not by eye: -2.25 cleared
       // the torso but drove the tip 0.37 below the feet, -1.95 still buried it
       // by 0.10. At -1.78 the blade rides back and level, clear of both.
@@ -1589,6 +1596,73 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
         vis.rotation.y = -0.6 * (1 - w);
         vis.position.z = 0.06 * (1 - w);
         parts.head.rotation.x = 0.08 * (1 - w);
+      }
+    } else if (kind === 'axe') {
+      // AXE: an overhead chop, not the sword's horizontal arc. All the weight
+      // is at the far end of the haft, so the tell is a long wind-up over the
+      // shoulder and the payoff is a drop the whole body follows through on.
+      if (t < 0.34) {                       // haul it back and up
+        const w = t / 0.34;
+        parts.armR.rotation.x = -2.5 * w;
+        parts.armR.rotation.z = -0.3 * w;
+        parts.armL.rotation.x = -1.1 * w;   // both hands on the haft
+        vis.rotation.y = 0.34 * w;
+        vis.position.y = visBase + 0.05 * w;
+        parts.head.rotation.x = -0.2 * w;
+      } else if (t < 0.58) {                // the drop
+        const w = (t - 0.34) / 0.24;
+        const e = w * w;                    // accelerate INTO the ground
+        parts.armR.rotation.x = -2.5 + 3.9 * e;
+        parts.armR.rotation.z = -0.3 + 0.5 * e;
+        parts.armL.rotation.x = -1.1 + 1.7 * e;
+        vis.rotation.y = 0.34 - 0.7 * e;
+        vis.position.y = visBase + 0.05 - 0.16 * e;   // sink with the swing
+        vis.position.z = 0.26 * Math.sin(w * Math.PI);
+        parts.head.rotation.x = -0.2 + 0.45 * e;
+        if (w > 0.3 && trailMat.opacity <= 0.01) flashTrail();
+      } else {                              // heavy recover — it costs you
+        const w = (t - 0.58) / 0.42;
+        parts.armR.rotation.x = 1.4 * (1 - w);
+        parts.armR.rotation.z = 0.2 * (1 - w);
+        parts.armL.rotation.x = 0.6 * (1 - w);
+        vis.rotation.y = -0.36 * (1 - w);
+        vis.position.y = visBase - 0.11 * (1 - w);
+        vis.position.z = 0.05 * (1 - w);
+        parts.head.rotation.x = 0.25 * (1 - w);
+      }
+    } else if (kind === 'cannon') {
+      // BAZOOKA: brace, fire, absorb the recoil. There is no swing here at all
+      // — the readable beat is the KICK, so the shot lands on a body that visibly
+      // rocks backwards rather than on one standing still.
+      if (t < 0.4) {                        // shoulder it and settle
+        const w = t / 0.4;
+        parts.armR.rotation.x = -1.35 * w;
+        parts.armR.rotation.z = -0.28 * w;
+        parts.armL.rotation.x = -1.15 * w;  // off hand up under the tube
+        parts.armL.rotation.z = 0.3 * w;
+        vis.rotation.y = -0.3 * w;          // turn side-on to aim down the tube
+        vis.position.y = visBase - 0.03 * w;
+        parts.head.rotation.x = -0.16 * w;
+      } else if (t < 0.56) {                // FIRE — a sharp kick backwards
+        const w = (t - 0.4) / 0.16;
+        const kick = Math.sin(w * Math.PI);
+        parts.armR.rotation.x = -1.35 + 0.42 * kick;
+        parts.armL.rotation.x = -1.15 + 0.34 * kick;
+        vis.rotation.y = -0.3 - 0.16 * kick;
+        vis.position.z = -0.22 * kick;      // shoved back by the blast
+        vis.position.y = visBase - 0.03 + 0.05 * kick;
+        parts.head.rotation.x = -0.16 - 0.22 * kick;
+      } else {                              // ride it out and lower the tube
+        const w = (t - 0.56) / 0.44;
+        const k = 1 - w;
+        parts.armR.rotation.x = -1.35 * k;
+        parts.armR.rotation.z = -0.28 * k;
+        parts.armL.rotation.x = -1.15 * k;
+        parts.armL.rotation.z = 0.3 * k;
+        vis.rotation.y = -0.3 * k;
+        vis.position.z = 0;
+        vis.position.y = visBase - 0.03 * k;
+        parts.head.rotation.x = -0.16 * k;
       }
     } else if (kind === 'dagger') {
       // fluid cross-slash: crouch -> diagonal right slash -> diagonal left

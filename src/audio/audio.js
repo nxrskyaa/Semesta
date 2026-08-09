@@ -73,6 +73,34 @@ export function createAudio() {
         a: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]],
         b: [[0, 4, 7], [-3, 0, 4], [-5, 0, 4], [-3, 2, 5]] },
     ],
+    // THE PROLOGUE AND THE LOADING SCREEN.
+    //
+    // A separate mood, because the title waltz is major and gentle and the
+    // prologue is about forty-one people who did not come back. Three pieces,
+    // all of them slow, all in NATURAL MINOR with a flattened sixth — the
+    // interval that makes a melody sound like it is remembering something
+    // rather than describing it.
+    //
+    // The chord sets deliberately never resolve to the root on the last bar:
+    // each loop lands a step away and has to fall back, which is what keeps it
+    // from feeling finished while somebody is still reading.
+    story: [
+      // the main theme: bell, very slow, aeolian
+      { name: 'Eleven Years', root: 220, bpm: 46, voice: 'bell',
+        scale: [0, 2, 3, 5, 7, 8, 10, 12],
+        a: [[0, 3, 7], [-4, 0, 3], [-2, 1, 5], [-5, -1, 3]],
+        b: [[0, 3, 7], [-5, -1, 3], [-7, -2, 1], [-4, 0, 5]] },
+      // the mother's theme: kalimba, sparser, the one that hurts
+      { name: 'Not Past The Gate', root: 196, bpm: 42, voice: 'kalimba',
+        scale: [0, 2, 3, 5, 7, 8, 10, 12],
+        a: [[0, 3, 8], [-2, 3, 7], [-5, 0, 3], [-4, 0, 3]],
+        b: [[-5, 0, 3], [0, 3, 7], [-7, -2, 3], [-2, 1, 5]] },
+      // the widest one, for the SEMESTA beat: low, open, almost still
+      { name: 'One World, Counted', root: 175, bpm: 40, voice: 'pluck',
+        scale: [0, 2, 3, 7, 8, 10, 12, 15],
+        a: [[0, 7, 12], [-5, 0, 7], [-4, 3, 8], [-7, 0, 5]],
+        b: [[-5, 0, 7], [0, 3, 10], [-9, -2, 3], [-4, 0, 7]] },
+    ],
   };
 
   // which track of the current mood is playing, and how long until it rotates

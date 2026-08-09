@@ -142,6 +142,12 @@ const CSS = `
 }
 #charcreate .cls:hover { box-shadow: inset 0 0 0 2px #5a6a4a; }
 #charcreate .cls.sel { background: #1c231a; box-shadow: inset 0 0 0 2px var(--cc), inset 0 0 16px rgba(0,0,0,0.55); }
+#charcreate .clsnote {
+  margin-top: 10px; padding: 10px 12px; font-size: 9px; line-height: 1.8;
+  color: #9fb08c; background: rgba(10,14,10,0.5);
+  box-shadow: inset 0 0 0 1px rgba(216,184,102,0.22);
+}
+#charcreate .clsnote b { color: #ffe9b0; }
 #charcreate .cls img.w { width: 24px; height: 24px; image-rendering: pixelated; }
 #charcreate .cls .cn { font-size: 11px; color: var(--cc); }
 #charcreate .cls .ct { font-size: 7px; color: #8a967f; letter-spacing: 1px; margin-top: 2px; }
@@ -216,7 +222,10 @@ export function showCharacterCreation(savedGame) {
 
     const config = { ...defaultCharacter(), ...(savedGame?.character || {}) };
     // migrate any legacy save fields
-    if (!(config.cls in CLASSES)) config.cls = 'knight';
+    // ORIGIN, always. A new hero has no class — that is chosen at Lv10 from
+    // Grand Master Vell, and offering the six here would give away the one
+    // decision the first ten levels exist to earn.
+    config.cls = 'origin';
 
     const root = document.createElement('div');
     root.id = 'charcreate';
@@ -236,7 +245,7 @@ export function showCharacterCreation(savedGame) {
         </div>
         <div class="panelbox">
           <div class="tabs">
-            <button data-tab="class" class="on">⚔ CLASS</button>
+            <button data-tab="class" class="on">⚔ ORIGIN</button>
             <button data-tab="body">☺ BODY</button>
             <button data-tab="outfit">🧥 OUTFIT</button>
           </div>
@@ -416,19 +425,29 @@ export function showCharacterCreation(savedGame) {
       swatchRow(els.outfit, OUTFIT_COLORS, config.outfit);
       swatchRow(els.cape, CAPE_COLORS, config.cape, true);
 
-      const c = CLASSES[config.cls];
-      els.classes.innerHTML = Object.entries(CLASSES).map(([id, cc]) =>
-        `<div class="cls ${config.cls === id ? 'sel' : ''}" data-c="${id}" style="--cc:${cc.color}">
-          <img class="w" src="${itemIconUrl(cc.startWeapon)}">
-          <div><div class="cn">${cc.name}</div><div class="ct">${cc.tagline.toUpperCase()}</div></div>
-        </div>`).join('');
+      const c = CLASSES.origin;
+      // One card, and it is not a choice — it is an explanation of why there is
+      // no choice yet. A greyed-out row of six locked classes would read as
+      // content withheld; one card that names the moment reads as a promise.
+      els.classes.innerHTML = `
+        <div class="cls sel" style="--cc:${c.color}">
+          <img class="w" src="${itemIconUrl(c.startWeapon)}">
+          <div><div class="cn">${c.name}</div><div class="ct">${c.tagline.toUpperCase()}</div></div>
+        </div>
+        <div class="clsnote">
+          Everyone begins the same way: one borrowed sword, no skills.<br>
+          At <b>Lv10</b> the Grand Master will ask what you mean to become —
+          Warrior, Archer, Mage, Priest, Assassin or Summoner.
+        </div>`;
       els.clsdesc.textContent = c.desc;
       els.stats.innerHTML = Object.entries({ POWER: c.stats.power, SPEED: c.stats.speed, RANGE: c.stats.range, DEFENSE: c.stats.defense })
         .map(([nm, v]) => `<div class="stat" style="--cc:${c.color}"><span class="sn">${nm}</span>
           <div class="sb">${Array.from({ length: 5 }, (_, i) => `<i class="${i < v ? 'on' : ''}"></i>`).join('')}</div></div>`).join('');
-      els.skills.innerHTML = c.skills.map((s) =>
-        `<div class="sk"><img src="${skillIconUrl(s, SKILLS[s].icon)}">
-          <div>${SKILLS[s].name}<small>${SKILLS[s].desc}</small></div></div>`).join('');
+      els.skills.innerHTML = c.skills.length
+        ? c.skills.map((s) => `<div class="sk"><img src="${skillIconUrl(s, SKILLS[s].icon)}">
+            <div>${SKILLS[s].name}<small>${SKILLS[s].desc}</small></div></div>`).join('')
+        : `<div class="sk noskill"><div>No skills yet<small>Swing, roll, and read the tell.
+            Your first three arrive with your class at Lv10.</small></div></div>`;
     }
     renderForm();
 
@@ -436,7 +455,7 @@ export function showCharacterCreation(savedGame) {
       const g = e.target.closest('[data-g]');
       if (g) { config.gender = g.dataset.g; renderForm(); rebuild(); return; }
       const c = e.target.closest('[data-c]');
-      if (c) { config.cls = c.dataset.c; renderForm(); rebuild(); return; }
+      if (c) return;   // the Origin card is not a choice — see renderForm()
       const hs = e.target.closest('[data-hs]');
       if (hs) { config.hairStyle = +hs.dataset.hs; renderForm(); rebuild(); return; }
       const os = e.target.closest('[data-os]');

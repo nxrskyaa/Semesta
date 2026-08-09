@@ -170,6 +170,13 @@ async function main() {
   // having one configured must not drag a player who picked CONTINUE into a
   // world with strangers in it.
   const online = action === 'online';
+
+  // RE-READ THE SAVE. `saved` was captured before the menu opened, and DELETE
+  // PROFILE happens inside the menu — so continuing (or going online, which
+  // also carries your hero in) was resurrecting the exact profile that had just
+  // been deleted. The menu can destroy it, so it has to be re-read at the point
+  // of use rather than trusted from before.
+  saved = loadSave();
   audio.start(); // menu click = first gesture, safe for autoplay
   audio.setMood('menu'); // dreamy title/creation track — the world flips it to day/night
   audio.sfx('ui');
@@ -193,6 +200,11 @@ async function main() {
   if (!continued) {
     bootEl.style.display = 'none';
     await pickLanguage();
+    // The title waltz is major and gentle; the prologue is about forty-one
+    // people who did not come back. Swap to the slow minor set for the story
+    // AND for the world build that follows it, so the mood carries through
+    // instead of snapping back to cheerful over the loading bar.
+    audio.setMood('story');
     await showPrologue();
   }
 
@@ -1060,9 +1072,10 @@ async function init(character, saved, audio, online = false) {
     if (lv >= AWAKEN_LEVEL && character.cls === 'origin' && !awakenNudged) {
       awakenNudged = true;
       setTimeout(() => {
-        hud.banner('YOUR PATH AWAITS');
-        hud.toastText('Grand Master Vell is waiting in the village. Choose your class.');
+        hud.banner('THE CALLING');
+        hud.toastText('Elder Maple has something to say to you. It is time to choose a path.');
         audio.sfx('quest_accept');
+        refreshMarkers();   // put the ! back over the Elder immediately
       }, 2200);
     }
     applyLevelStats();
@@ -1276,7 +1289,7 @@ async function init(character, saved, audio, online = false) {
           Math.sin(p.facing) * 0.9, 0.8, Math.cos(p.facing) * 0.9));
         particles.burst(muzzle, '#ffb055', 10, 3.4, 2);
         particles.flash(muzzle, '#ffd9a0', 4, 0.16);
-        shake(0.18);
+        addShake(0.18);
         // Siege Mode makes every shell bigger — the buff carries `splash`.
         const siege = p.buffs?.find((b) => b.id === 'siegemode');
         const aoe = (def.aoe || 1.8) * (siege ? 1.35 : 1);
@@ -1290,7 +1303,7 @@ async function init(character, saved, audio, online = false) {
             particles.burst(pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#ffdd88', 10, 3);
             particles.shockwave(pos, '#ff9944', aoe + 0.7, 0.34);
             audio.sfx('explosion');
-            shake(0.22);
+            addShake(0.22);
             for (const en of enemyMgr.enemies) {
               if (en.dead) continue;
               const d = Math.hypot(en.mesh.position.x - pos.x, en.mesh.position.z - pos.z);
@@ -1705,7 +1718,7 @@ async function init(character, saved, audio, online = false) {
       });
       return;
     }
-    const offer = quests.availableFor(def.id);
+    const offer = quests.availableFor(def.id, leveling.state.level);
     if (offer) {
       dialog.show({
         name: def.name, role: def.role, mode: 'offer', quest: offer, text: offer.offer,
@@ -2129,7 +2142,7 @@ async function init(character, saved, audio, online = false) {
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
     remote, get net() { return net; },
-    openAwakening, openSkillTree, classTree, summons, character,
+    openAwakening, openSkillTree, classTree, summons, character, doAttack, enemyMgr, projectiles, inventory, leveling,
     get skillIds() { return skillIds; },
     summonMount, summonPet, inSafeZone,
   };

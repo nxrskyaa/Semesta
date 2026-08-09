@@ -71,12 +71,19 @@ function buildOreNode() {
 }
 
 export function createGathering(scene, terrain, decorBlocked, particles) {
+  // SEEDED. Gathering nodes run BEFORE the landmarks and write into the shared
+  // `decorBlocked` set — so a different scatter of birches every load changed
+  // which of place()'s 140 attempts succeeded, and every structure in the world
+  // moved with it. This is the other half of why the same seed built a
+  // different-looking map on two devices.
+  const GR = (() => { let g = 31337; return () => { g = (g * 1103515245 + 12345) & 0x7fffffff; return g / 0x7fffffff; }; })();
+
   const nodes = [];
 
   function findSpot(minH, maxH, minSpawnDist) {
     for (let tries = 0; tries < 60; tries++) {
-      const ix = 6 + Math.floor(Math.random() * (terrain.size - 12));
-      const iz = 6 + Math.floor(Math.random() * (terrain.size - 12));
+      const ix = 6 + Math.floor(GR() * (terrain.size - 12));
+      const iz = 6 + Math.floor(GR() * (terrain.size - 12));
       const h = terrain.heightCell(ix, iz);
       if (h <= Math.max(WATER_LEVEL, minH - 1) || h < minH || h > maxH) continue;
       if (decorBlocked.has(`${ix},${iz}`)) continue;
@@ -90,9 +97,9 @@ export function createGathering(scene, terrain, decorBlocked, particles) {
   function spawnNode(kind) {
     const spot = kind === 'birch' ? findSpot(3, 7, 8) : findSpot(4, 10, 10);
     if (!spot) return;
-    const mesh = kind === 'birch' ? buildBirch(Math.random()) : buildOreNode();
+    const mesh = kind === 'birch' ? buildBirch(GR()) : buildOreNode();
     mesh.position.set(spot.x, spot.y, spot.z);
-    mesh.rotation.y = Math.random() * Math.PI * 2;
+    mesh.rotation.y = GR() * Math.PI * 2;
     scene.add(mesh);
     decorBlocked.add(`${spot.ix},${spot.iz}`);
     nodes.push({

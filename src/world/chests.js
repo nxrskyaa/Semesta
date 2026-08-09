@@ -45,12 +45,16 @@ function buildChestMesh() {
 }
 
 export function createChests(scene, terrain, decorBlocked, particles) {
+  // Seeded for the same reason gathering is — chests are placed before the
+  // landmarks and read the same shared blocked set.
+  const KR = (() => { let g = 777001; return () => { g = (g * 1103515245 + 12345) & 0x7fffffff; return g / 0x7fffffff; }; })();
+
   const chests = [];
 
   function findSpot() {
     for (let tries = 0; tries < 60; tries++) {
-      const ix = 8 + Math.floor(Math.random() * (terrain.size - 16));
-      const iz = 8 + Math.floor(Math.random() * (terrain.size - 16));
+      const ix = 8 + Math.floor(KR() * (terrain.size - 16));
+      const iz = 8 + Math.floor(KR() * (terrain.size - 16));
       const h = terrain.heightCell(ix, iz);
       if (h <= WATER_LEVEL || h >= 9) continue;
       if (decorBlocked.has(`${ix},${iz}`)) continue;

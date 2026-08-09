@@ -3,6 +3,19 @@
 import { ITEMS } from './items.js';
 
 export const QUESTS = {
+  // THE AWAKENING. A real quest entry, not a toast — a permanent choice should
+  // sit in the tracker with a name on it until you go and make it, the same way
+  // every other important thing in this game does. `minLevel` gates it so the
+  // Elder cannot offer it before the Grand Master would accept you.
+  the_calling: {
+    giver: 'elder', name: 'The Calling', minLevel: 10,
+    offer: 'You have been carrying that borrowed sword for ten levels now, and it shows. '
+      + 'Grand Master Vell has been watching. Go to the shrine avenue and speak to them — '
+      + 'it is time you stopped being nobody in particular.',
+    done: 'So you chose. Good. The road does not get easier, but from here it is YOURS.',
+    objective: { type: 'talk', target: 'grandmaster', n: 1, label: 'Speak to Grand Master Vell' },
+    reward: { xp: 300, items: [{ id: 'tonic', count: 3 }, { id: 'forge_stone', count: 3 }] },
+  },
   welcome: {
     giver: 'elder', name: 'Welcome to Anavela',
     offer: 'You look capable, adventurer! Let me show you around. First — go say hello to Finn the fisherman by the huts.',
@@ -134,11 +147,14 @@ export function createQuests({ inventory, leveling }) {
   }
 
   // first offerable quest from this NPC
-  function availableFor(npcId) {
+  function availableFor(npcId, level = 99) {
     for (const [id, q] of Object.entries(QUESTS)) {
       if (q.giver !== npcId) continue;
       if (id in state.active) continue;
       if (state.completed.has(id) && !q.repeatable) continue;
+      // A quest whose whole point is "you are ready now" must not be offered
+      // before you are.
+      if (q.minLevel && level < q.minLevel) continue;
       if (!isUnlocked(q)) continue;
       return { id, ...q };
     }

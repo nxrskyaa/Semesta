@@ -5,7 +5,7 @@
 // nothing else to do. A story told over a loading bar is the one piece of
 // exposition nobody resents.
 //
-// Six beats. Each is a painted pixel scene plus two or three lines of text that
+// Ten beats. Each is a painted pixel scene plus three lines of text that
 // TYPE ON, because text that appears all at once gets skimmed and text that
 // arrives a character at a time gets read. Everything is skippable from the
 // first frame: a prologue you cannot escape is a prologue people come to hate
@@ -22,18 +22,50 @@ import { t, getLang } from './lang.js';
 // the words
 // ---------------------------------------------------------------------------
 
+// TEN BEATS, and the shape is deliberate: it opens on something warm, takes it
+// away in the middle, and ends on one small thing you can actually do. A tragedy
+// that ends in tragedy is a reason to put the controller down; a tragedy that
+// ends in a job is a reason to play.
+//
+// The grief is SPECIFIC. "The world ended" is not sad — it is scenery. What is
+// sad is that your mother's name is on a list of people who went out to relight
+// the road and did not come back, and that you were left behind because you
+// were nine.
+
 const BEATS = [
+  {
+    scene: 'semesta',
+    title: { en: 'SEMESTA', id: 'SEMESTA' },
+    lines: [
+      {
+        en: 'Semesta means "everything". It is not a boast — it is a census.',
+        id: 'Semesta berarti "segalanya". Itu bukan sesumbar — itu sebuah pendataan.',
+      },
+      {
+        en: 'One world, one sky, one long coast, and every living thing on it counted by name.',
+        id: 'Satu dunia, satu langit, satu garis pantai panjang, dan setiap makhluk di atasnya dicatat namanya.',
+      },
+      {
+        en: 'Anavela was the province that did the counting.',
+        id: 'Anavela adalah wilayah yang melakukan pendataan itu.',
+      },
+    ],
+  },
   {
     scene: 'lanterns',
     title: { en: 'THE LIGHT THAT WAS KEPT', id: 'CAHAYA YANG DIJAGA' },
     lines: [
       {
-        en: 'For four hundred years, the lanterns of Anavela were never allowed to go out.',
+        en: 'For four hundred years the lanterns of Anavela were never allowed to go out.',
         id: 'Selama empat ratus tahun, lentera-lentera Anavela tidak pernah dibiarkan padam.',
       },
       {
         en: 'Not because the dark was dangerous. Because a light on a road means somebody is expected home.',
         id: 'Bukan karena gelap itu berbahaya. Tapi karena cahaya di jalan berarti ada yang ditunggu pulang.',
+      },
+      {
+        en: 'Nine hundred lamps. Every one of them lit by hand, every night, without exception.',
+        id: 'Sembilan ratus lampu. Semuanya dinyalakan dengan tangan, setiap malam, tanpa kecuali.',
       },
     ],
   },
@@ -42,12 +74,34 @@ const BEATS = [
     title: { en: 'THE LANTERNKEEPERS', id: 'PARA PENJAGA LENTERA' },
     lines: [
       {
-        en: 'They were not soldiers. They carried oil, wick and a long brass match, and they walked the same roads every night.',
-        id: 'Mereka bukan prajurit. Mereka membawa minyak, sumbu, dan korek kuningan panjang, lalu menyusuri jalan yang sama setiap malam.',
+        en: 'They were not soldiers. Oil, wick, a long brass match, and the same road every night.',
+        id: 'Mereka bukan prajurit. Minyak, sumbu, korek kuningan panjang, dan jalan yang sama setiap malam.',
       },
       {
-        en: 'It was the least heroic work in the world, and it held the world together.',
-        id: 'Itu pekerjaan paling tidak heroik di dunia, dan justru itu yang menahan dunia tetap utuh.',
+        en: 'Your mother walked the northern road. Twenty-two years, and she never once handed it to anybody else.',
+        id: 'Ibumu menyusuri jalan utara. Dua puluh dua tahun, dan tak sekali pun ia menyerahkannya pada orang lain.',
+      },
+      {
+        en: 'It was the least heroic work in the world, and it was the only thing holding it together.',
+        id: 'Itu pekerjaan paling tidak heroik di dunia, dan hanya itu yang menahannya tetap utuh.',
+      },
+    ],
+  },
+  {
+    scene: 'lastnight',
+    title: { en: 'THE LAST ORDINARY EVENING', id: 'SENJA BIASA YANG TERAKHIR' },
+    lines: [
+      {
+        en: 'You were nine. She let you carry the oil can as far as the gate, the way she always did.',
+        id: 'Umurmu sembilan. Ia membiarkanmu membawa kaleng minyak sampai gerbang, seperti biasanya.',
+      },
+      {
+        en: '"Not past the gate," she said. "You are not a Keeper yet."',
+        id: '"Jangan lewat gerbang," katanya. "Kamu belum jadi Penjaga."',
+      },
+      {
+        en: 'You were annoyed about it. That is the last thing you ever felt about her.',
+        id: 'Kamu kesal soal itu. Dan itulah perasaan terakhirmu tentang dia.',
       },
     ],
   },
@@ -56,12 +110,34 @@ const BEATS = [
     title: { en: 'THE NIGHT THEY FAILED', id: 'MALAM SAAT MEREKA GAGAL' },
     lines: [
       {
-        en: 'Nobody agrees on what came first — the lights going out, or the wilds walking back in.',
+        en: 'Nobody agrees what came first — the lights going out, or the wilds walking back in.',
         id: 'Tidak ada yang sepakat mana yang lebih dulu — lampu yang padam, atau hutan liar yang kembali masuk.',
       },
       {
-        en: 'By morning the roads were gone under the grass, and the Keepers were gone with them.',
-        id: 'Menjelang pagi, jalan-jalan itu hilang tertutup rumput, dan para Penjaga hilang bersamanya.',
+        en: 'Forty-one Keepers went out to relight the roads. The gate was shut behind them.',
+        id: 'Empat puluh satu Penjaga pergi untuk menyalakan kembali jalan-jalan itu. Gerbang ditutup di belakang mereka.',
+      },
+      {
+        en: 'By morning the roads were gone under the grass, and so were they.',
+        id: 'Menjelang pagi, jalan-jalan itu hilang tertutup rumput, dan mereka pun begitu.',
+      },
+    ],
+  },
+  {
+    scene: 'names',
+    title: { en: 'THE LIST', id: 'DAFTAR NAMA' },
+    lines: [
+      {
+        en: 'They carved the forty-one names into the shrine wall, because there was nothing to bury.',
+        id: 'Empat puluh satu nama diukir di dinding kuil, karena tidak ada yang bisa dimakamkan.',
+      },
+      {
+        en: 'Hers is the eleventh from the left. You have never once had to count to find it.',
+        id: 'Namanya yang kesebelas dari kiri. Kamu tidak pernah perlu menghitung untuk menemukannya.',
+      },
+      {
+        en: 'Eleven years now. The stone has moss on it. You clean it. Nobody asked you to.',
+        id: 'Sudah sebelas tahun. Batunya berlumut. Kamu membersihkannya. Tidak ada yang menyuruh.',
       },
     ],
   },
@@ -70,12 +146,16 @@ const BEATS = [
     title: { en: 'ALL BUT ONE', id: 'KECUALI SATU' },
     lines: [
       {
-        en: 'You were too young to walk the roads. That is the only reason you are still here.',
-        id: 'Kamu terlalu kecil untuk ikut menyusuri jalan itu. Hanya karena itu kamu masih di sini.',
+        en: 'You were too young to walk the roads. That is the only reason you are still breathing.',
+        id: 'Kamu terlalu kecil untuk menyusuri jalan itu. Hanya karena itu kamu masih bernapas.',
       },
       {
-        en: 'They left you a sword you have never swung, and a name nobody has said out loud in years: apprentice.',
-        id: 'Mereka mewariskan pedang yang belum pernah kamu ayunkan, dan sebutan yang bertahun-tahun tak diucapkan orang: murid.',
+        en: 'It is not a comfortable thing to be alive because of. It never becomes one.',
+        id: 'Bukan alasan yang nyaman untuk tetap hidup. Dan tidak pernah menjadi nyaman.',
+      },
+      {
+        en: 'They left you her sword. You have never swung it. It is heavier than it looks.',
+        id: 'Mereka mewariskan pedangnya padamu. Kamu belum pernah mengayunkannya. Lebih berat dari kelihatannya.',
       },
     ],
   },
@@ -85,11 +165,33 @@ const BEATS = [
     lines: [
       {
         en: 'One village still stands, because somebody there refuses to stop lighting the square at dusk.',
-        id: 'Satu desa masih berdiri, karena ada orang di sana yang menolak berhenti menyalakan alun-alun saat senja.',
+        id: 'Satu desa masih berdiri, karena ada yang menolak berhenti menyalakan alun-alun saat senja.',
       },
       {
-        en: 'They farm, they fish, they trade, and they do not talk about the road out.',
-        id: 'Mereka bertani, memancing, berdagang, dan tidak pernah membicarakan jalan keluar.',
+        en: 'They farm, they fish, they trade. They are kind to you and they are careful around you.',
+        id: 'Mereka bertani, memancing, berdagang. Mereka baik padamu, dan berhati-hati di dekatmu.',
+      },
+      {
+        en: 'Nobody says the word "road" while you are in the room.',
+        id: 'Tidak ada yang menyebut kata "jalan" selama kamu ada di ruangan itu.',
+      },
+    ],
+  },
+  {
+    scene: 'oath',
+    title: { en: 'WHAT THE ORDER WAS FOR', id: 'UNTUK APA ORDE ITU ADA' },
+    lines: [
+      {
+        en: 'The Keepers had one line they said to each other at the gate, every night, for four centuries.',
+        id: 'Para Penjaga punya satu kalimat yang mereka ucapkan di gerbang, tiap malam, selama empat abad.',
+      },
+      {
+        en: '"We are not keeping the dark out."',
+        id: '"Kita bukan menahan kegelapan di luar."',
+      },
+      {
+        en: '"We are keeping the place worth coming back to."',
+        id: '"Kita menjaga agar tempat ini layak untuk dipulangi."',
       },
     ],
   },
@@ -98,16 +200,16 @@ const BEATS = [
     title: { en: 'YOUR FIRST NIGHT', id: 'MALAM PERTAMAMU' },
     lines: [
       {
-        en: 'You are not going to save anyone yet. You do not know a single skill, and the sword is heavier than it looks.',
-        id: 'Kamu belum akan menyelamatkan siapa pun. Kamu belum menguasai satu skill pun, dan pedang itu lebih berat dari kelihatannya.',
+        en: 'You are not going to save anyone yet. You know no skills, and you have no class at all.',
+        id: 'Kamu belum akan menyelamatkan siapa pun. Kamu tak punya skill, dan belum punya class apa pun.',
       },
       {
-        en: 'But there is a lantern at the edge of the village that has been dark for eleven years.',
-        id: 'Tapi ada satu lentera di ujung desa yang sudah sebelas tahun padam.',
+        en: 'You are just somebody who is finally past the gate.',
+        id: 'Kamu hanya seseorang yang akhirnya melewati gerbang.',
       },
       {
-        en: 'Start there.',
-        id: 'Mulai dari sana.',
+        en: 'There is a lantern at the edge of the village that has been dark for eleven years. Start there.',
+        id: 'Ada satu lentera di ujung desa yang sudah sebelas tahun padam. Mulai dari sana.',
       },
     ],
   },
@@ -151,6 +253,20 @@ function ridge(ctx, baseY, amp, color, seed = 1) {
   ctx.fill();
 }
 
+/** A soft round glow. fillRect halos read as literal squares at this scale —
+ *  the whole illusion of light is that it has no edge. */
+function glow(ctx, x, y, r, color, alpha = 0.5) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, color);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
 function star(ctx, n, seed = 7) {
   let s = seed;
   const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
@@ -173,13 +289,7 @@ function lantern(ctx, x, groundY, lit, scale = 1) {
   px(10, 2, '#8a8a80', -5, -35);
   px(3, 3, '#8a8a80', -1.5, -38);          // cap
   if (lit) {
-    // an additive-looking halo, painted as three fading rings
-    for (let r = 3; r >= 1; r--) {
-      ctx.globalAlpha = 0.1 * r;
-      ctx.fillStyle = '#ffd77a';
-      ctx.fillRect(x - (5 + r * 4) * s, groundY - (30 + r * 3) * s, (10 + r * 8) * s, (9 + r * 6) * s);
-    }
-    ctx.globalAlpha = 1;
+    glow(ctx, x, groundY - 26 * s, 22 * s, '#ffd77a', 0.55);
     px(4, 4, '#fff3c8', -2, -28);          // flame core
   }
 }
@@ -196,6 +306,131 @@ function chibi(ctx, x, groundY, coat = '#7a9ac8', hair = '#3a2a20') {
 }
 
 const SCENES = {
+  // SEMESTA — the whole world at a glance: a wide coast under a huge sky, and
+  // a scatter of tiny lights along it. The point of the image is SCALE, so the
+  // land is a thin band and the sky takes four fifths of the frame.
+  semesta(ctx) {
+    sky(ctx, '#101a2e', '#4a6a8a');
+    star(ctx, 90, 5);
+    // a low sun sitting right on the sea, so the horizon reads as enormous
+    ctx.fillStyle = '#f0c078';
+    ctx.beginPath(); ctx.arc(200, 128, 13, 0, Math.PI * 2); ctx.fill();
+    glow(ctx, 200, 128, 46, '#f0c078', 0.35);
+    // sea
+    ctx.fillStyle = '#1c3448';
+    ctx.fillRect(0, 128, W, 22);
+    for (let y = 130; y < 150; y += 3) {
+      ctx.fillStyle = y % 6 ? 'rgba(120,180,220,0.10)' : 'rgba(120,180,220,0.05)';
+      ctx.fillRect(0, y, W, 1);
+    }
+    // the long coast
+    ridge(ctx, 146, 4, '#1a2a20', 1.4);
+    ctx.fillStyle = '#1e2c22';
+    ctx.fillRect(0, 150, W, 30);
+    // nine little lights strung along it — Anavela, counted
+    for (let i = 0; i < 9; i++) {
+      const x = 18 + i * 34;
+      const y = 152 + Math.sin(i * 1.7) * 4;
+      glow(ctx, x + 1, y + 1, 11, '#ffd77a', 0.5);
+      ctx.fillStyle = '#fff3c8';
+      ctx.fillRect(x, y, 2, 2);
+    }
+  },
+
+  // THE LAST ORDINARY EVENING — mother and child at the gate, warm, backlit.
+  // The only fully warm frame in the prologue, so what follows lands.
+  lastnight(ctx) {
+    sky(ctx, '#5a4a5e', '#e0a068');
+    ridge(ctx, 118, 8, '#6a5250', 1.1);
+    ridge(ctx, 134, 6, '#4a3a3e', 1.8);
+    ctx.fillStyle = '#3a2e30';
+    ctx.fillRect(0, 140, W, 40);
+    // the gate: two posts and a lintel, wide open
+    ctx.fillStyle = '#2e2426';
+    ctx.fillRect(120, 96, 8, 50);
+    ctx.fillRect(196, 96, 8, 50);
+    ctx.fillRect(112, 90, 100, 8);
+    ctx.fillRect(108, 84, 108, 5);
+    lantern(ctx, 124, 96, true, 0.55);
+    lantern(ctx, 200, 96, true, 0.55);
+    // the two of them, the child a head shorter, standing close
+    chibi(ctx, 150, 172, '#6a5a48', '#4a3020');   // mother
+    ctx.fillStyle = '#c8ccd4';                     // her sword at her hip
+    ctx.fillRect(157, 158, 2, 12);
+    chibi(ctx, 172, 174, '#7a9ac8', '#3a2a20');    // you, smaller
+    ctx.fillStyle = '#8a8a80';                     // the oil can you were allowed to carry
+    ctx.fillRect(179, 166, 6, 7);
+    ctx.fillStyle = '#6a6a62';
+    ctx.fillRect(180, 164, 4, 2);
+    // low warm light pooling around them
+    glow(ctx, 164, 164, 52, '#ffcf88', 0.3);
+  },
+
+  // THE LIST — the shrine wall, forty-one carved names, one of them cleaned.
+  names(ctx) {
+    sky(ctx, '#141c26', '#2c3a44');
+    star(ctx, 22, 13);
+    ctx.fillStyle = '#1a222a';
+    ctx.fillRect(0, 120, W, 60);
+    // the wall
+    ctx.fillStyle = '#4a4a46';
+    ctx.fillRect(48, 44, 224, 104);
+    ctx.fillStyle = '#3a3a36';
+    ctx.fillRect(48, 44, 224, 6);
+    ctx.fillStyle = '#5a5a54';
+    ctx.fillRect(44, 38, 232, 7);
+    // forty-one names as carved bars, in rows
+    let n = 0;
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 6 && n < 41; col++, n++) {
+        const x = 60 + col * 35, y = 58 + row * 13;
+        // the eleventh from the left, second row — hers, and it is CLEAN
+        const hers = n === 10;
+        ctx.fillStyle = hers ? '#c8c4b0' : '#3a3a34';
+        ctx.fillRect(x, y, 26, 4);
+        if (!hers && (n % 3 === 0)) {           // moss on the rest
+          ctx.fillStyle = '#2e3a26';
+          ctx.fillRect(x + 2, y + 3, 20, 2);
+        }
+      }
+    }
+    // a small offering below hers: one lit candle stub
+    glow(ctx, 67, 138, 20, '#ffd77a', 0.45);
+    ctx.fillStyle = '#e8e0d0';
+    ctx.fillRect(65, 138, 4, 10);
+    ctx.fillStyle = '#ffcf88';
+    ctx.fillRect(66, 134, 2, 4);
+    chibi(ctx, 200, 176, '#7a9ac8', '#3a2a20');
+  },
+
+  // THE OATH — the gate from inside, at the moment they used to say it: a line
+  // of Keepers silhouetted against their own lamps, walking out.
+  oath(ctx) {
+    sky(ctx, '#0e1420', '#26344a');
+    star(ctx, 40, 29);
+    ridge(ctx, 124, 6, '#161e2a', 1.5);
+    ctx.fillStyle = '#1a2028';
+    ctx.fillRect(0, 140, W, 40);
+    // the gate arch, seen from inside, framing the dark
+    ctx.fillStyle = '#0c1016';
+    ctx.fillRect(96, 60, 128, 90);
+    ctx.fillStyle = '#242c34';
+    ctx.fillRect(88, 54, 10, 96);
+    ctx.fillRect(222, 54, 10, 96);
+    ctx.fillRect(82, 46, 156, 10);
+    // five keepers walking out, each carrying one point of light, receding
+    const walk = [[112, 172, 1.0], [138, 166, 0.86], [160, 160, 0.72], [178, 155, 0.6], [193, 151, 0.5]];
+    for (const [x, y, sc] of walk) {
+      glow(ctx, x + 1, y - 14 * sc, 17 * sc, '#ffd77a', 0.5 * sc);
+      // a simple dark silhouette — faces would break the mood
+      ctx.fillStyle = '#0e141a';
+      ctx.fillRect(x - 4 * sc, y - 18 * sc, 9 * sc, 18 * sc);
+      ctx.fillRect(x - 5 * sc, y - 27 * sc, 11 * sc, 10 * sc);
+      ctx.fillStyle = '#fff3c8';
+      ctx.fillRect(x + 5 * sc, y - 14 * sc, 2 * sc, 2 * sc);
+    }
+  },
+
   // four hundred years of light: a road of lanterns receding into the dark
   lanterns(ctx) {
     sky(ctx, '#1a2438', '#38445a');
@@ -234,10 +469,7 @@ const SCENES = {
     chibi(ctx, 174, 168, '#4a5a52', '#2a2018');
     // each carries a small warm point of light
     for (const x of [122, 144, 166]) {
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = '#ffd77a';
-      ctx.fillRect(x - 3, 152, 8, 8);
-      ctx.globalAlpha = 1;
+      glow(ctx, x + 1, 156, 14, '#ffd77a', 0.5);
       ctx.fillStyle = '#fff3c8';
       ctx.fillRect(x, 155, 2, 2);
     }
@@ -287,10 +519,7 @@ const SCENES = {
     ctx.fillRect(187, 168, 8, 2);
     ctx.fillRect(190, 170, 2, 5);
     // a first, weak glow off the player — the light is in them, not the lamp
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = '#ffd77a';
-    ctx.fillRect(150, 146, 40, 30);
-    ctx.globalAlpha = 1;
+    glow(ctx, 170, 160, 30, '#ffd77a', 0.3);
   },
 
   // what is left: the village square, one fire, warm windows
@@ -313,10 +542,7 @@ const SCENES = {
     hut(232, 38, 30, '#8a7458', '#6a4a38');
     hut(140, 30, 22, '#7f6a50', '#5e4232');
     // the square fire
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = '#ff9a3a';
-    ctx.fillRect(140, 132, 44, 34);
-    ctx.globalAlpha = 1;
+    glow(ctx, 162, 148, 34, '#ff9a3a', 0.45);
     ctx.fillStyle = '#ff7722'; ctx.fillRect(156, 146, 10, 12);
     ctx.fillStyle = '#ffd23e'; ctx.fillRect(158, 150, 6, 8);
     ctx.fillStyle = '#5a4630'; ctx.fillRect(150, 158, 22, 4);

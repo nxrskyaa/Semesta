@@ -152,6 +152,10 @@ function buildHouse(designId) {
 }
 
 export function createHousing(scene, terrain, decorBlocked, particles, avoid = []) {
+  // Seeded for the same reason the camps are: a land parcel is a footprint, and
+  // a footprint that moves on every load drags whatever is placed after it.
+  const HR = (() => { let g = 55501; return () => { g = (g * 1103515245 + 12345) & 0x7fffffff; return g / 0x7fffffff; }; })();
+
   const lands = [];
   const S2 = terrain.size / 2;
   // a parcel (future house ~3x3 cells) must never overlap a landmark/camp
@@ -171,8 +175,8 @@ export function createHousing(scene, terrain, decorBlocked, particles, avoid = [
   ];
   targets.forEach((t, idx) => {
     for (let tries = 0; tries < 120; tries++) {
-      const x = t[0] + (Math.random() - 0.5) * (14 + tries * 0.1);
-      const z = t[1] + (Math.random() - 0.5) * (14 + tries * 0.1);
+      const x = t[0] + (HR() - 0.5) * (14 + tries * 0.1);
+      const z = t[1] + (HR() - 0.5) * (14 + tries * 0.1);
       const [ix, iz] = terrain.cellOf(x, z);
       if (!terrain.inBounds(ix, iz)) continue;
       const h = terrain.heightCell(ix, iz);
