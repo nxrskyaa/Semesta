@@ -23,6 +23,9 @@ const SAY = 'Grialo, spider is here! miaw miaw';
 // how close before she notices you and comes over to be affectionate
 const NOTICE = 5.5;
 const NUZZLE = 1.5;
+// She stops at NUZZLE and does not set off again until NUZZLE_OUT. Without the
+// gap she oscillated across the stop distance at framerate.
+const NUZZLE_OUT = 2.3;
 
 const BUB_W = 512, BUB_H = 96;
 
@@ -148,7 +151,7 @@ function buildSpider() {
     parent = pivot;
   }
 
-  g.userData = { headPivot, ears, eyes, legs, tailRoot, tailSegs };
+  g.userData = { headPivot, ears, eyes, legs, tailRoot, tailSegs, body };
   return g;
 }
 
@@ -177,6 +180,12 @@ export function createSpider(scene, terrain, opts = {}) {
     bubbleT: 0,
     affection: 0,     // rises while you are close, drives the nuzzle
     blink: 2,
+    // latched so a distance right on a threshold cannot chatter
+    interested: false,
+    approaching: false,
+    move: 0,          // smoothed 0..1 "am I trotting", so legs never pop
+    turnCd: 0,        // one deliberate turn when blocked, not one per frame
+    earCd: 2, earT: 0, earWhich: 0,
   };
 
   const MODES = [
@@ -215,109 +224,175 @@ export function createSpider(scene, terrain, opts = {}) {
   }
 
   function update(dt, playerPos) {
+    // A FIXED TIMESTEP FOR THE POSE.
+    //
+    // Everything below eases toward a target at `dt * k`. On a frame that
+    // stutters, dt spikes and those eases overshoot — which is a decent part of
+    // what the twitching was. Clamping dt means a hitch makes her briefly slow
+    // rather than briefly explode.
+    dt = Math.min(dt, 1 / 30);
     state.phase += dt;
     state.t -= dt;
+    if (state.turnCd > 0) state.turnCd -= dt;
 
     const d = playerPos
       ? Math.hypot(mesh.position.x - playerPos.x, mesh.position.z - playerPos.z)
       : 99;
 
-    // NOTICING YOU. She breaks whatever she was doing, turns, and if you stay
-    // close she comes over — a cat that ignores you entirely is scenery.
-    if (d < NOTICE) {
-      state.affection = Math.min(4, state.affection + dt * 1.4);
-    } else {
-      state.affection = Math.max(0, state.affection - dt * 0.8);
-    }
-    const interested = state.affection > 1.2 && d < NOTICE;
+    // HYSTERESIS, everywhere a decision is made from a distance.
+    //
+    // `interested` used to be `affection > 1.2 && d < NOTICE`, a hard edge. Stand
+    // at exactly that distance and it flipped true/false every single frame, and
+    // since the tail, the ears and the head all pick a different target based on
+    // it, the whole cat vibrated. Entering and leaving now use different radii,
+    // so there is no value of `d` that can chatter.
+    if (d < NOTICE) state.affection = Math.min(4, state.affection + dt * 1.4);
+    else state.affection = Math.max(0, state.affection - dt * 0.8);
+
+    const wantInterest = state.interested
+      ? (state.affection > 0.6 && d < NOTICE + 1.2)   // stays keen a bit longer
+      : (state.affection > 1.4 && d < NOTICE);
+    state.interested = wantInterest;
+    const interested = state.interested;
 
     if (state.t <= 0 && state.mode !== 'greet') nextMode();
 
-    let moving = false;
+    // ---- movement --------------------------------------------------------
+    let wantMove = false;
+    let heading = mesh.rotation.y;
+
     if (state.mode === 'greet') {
-      // a small excited hop in place
-      // ONE small hop, not a vibration. 14Hz was a buzz; a cat greeting you
-      // lifts its front end once and settles.
-      mesh.position.y = terrain.surfaceY(mesh.position.x, mesh.position.z)
-        + Math.abs(Math.sin(state.phase * 4.5)) * 0.07;
       if (state.t <= 0) nextMode();
-    } else if (interested && d > NUZZLE) {
-      // trot toward you
-      const a = Math.atan2(playerPos.x - mesh.position.x, playerPos.z - mesh.position.z);
-      mesh.rotation.y = a;
-      const sp = 2.4 * dt;
-      mesh.position.x += Math.sin(a) * sp;
-      mesh.position.z += Math.cos(a) * sp;
-      moving = true;
+    } else if (interested) {
+      // APPROACH WITH A DEADBAND. She walks in until NUZZLE and does not set off
+      // again until she has drifted past NUZZLE_OUT — without that gap she
+      // reached the stop distance, halted, floated a hair over it and started
+      // again, forty times a second.
+      if (state.approaching && d < NUZZLE) state.approaching = false;
+      else if (!state.approaching && d > NUZZLE_OUT) state.approaching = true;
+
+      if (state.approaching && playerPos) {
+        heading = Math.atan2(playerPos.x - mesh.position.x, playerPos.z - mesh.position.z);
+        const sp = 2.0 * dt;
+        const nx = mesh.position.x + Math.sin(heading) * sp;
+        const nz = mesh.position.z + Math.cos(heading) * sp;
+        if (terrain.walkable(nx, nz, mesh.position.y)) {
+          mesh.position.x = nx;
+          mesh.position.z = nz;
+          wantMove = true;
+        }
+      }
     } else if (state.mode === 'walk') {
-      const nx = mesh.position.x + Math.sin(state.dir) * 1.5 * dt;
-      const nz = mesh.position.z + Math.cos(state.dir) * 1.5 * dt;
-      // turn back rather than leave the plaza or walk into water
-      if (Math.hypot(nx - centre.x, nz - centre.z) > R || !terrain.walkable(nx, nz, mesh.position.y)) {
-        state.dir += 2.0;
+      const nx = mesh.position.x + Math.sin(state.dir) * 1.4 * dt;
+      const nz = mesh.position.z + Math.cos(state.dir) * 1.4 * dt;
+      const outside = Math.hypot(nx - centre.x, nz - centre.z) > R;
+      if (outside || !terrain.walkable(nx, nz, mesh.position.y)) {
+        // TURN ONCE, then commit to it. This used to add 2.0 radians on every
+        // frame it was blocked — a hundred and twenty radians a second — so a
+        // cat that reached the edge of the plaza span like a top. The cooldown
+        // makes it one deliberate turn.
+        if (state.turnCd <= 0) {
+          state.dir += Math.PI * 0.6 + Math.random() * 0.8;
+          state.turnCd = 0.5;
+        }
       } else {
-        mesh.position.x = nx; mesh.position.z = nz;
-        mesh.rotation.y = state.dir;
-        moving = true;
+        mesh.position.x = nx;
+        mesh.position.z = nz;
+        heading = state.dir;
+        wantMove = true;
       }
     }
 
-    if (state.mode !== 'greet') {
-      mesh.position.y = terrain.surfaceY(mesh.position.x, mesh.position.z);
-    }
+    // EASED HEADING, never snapped. She used to be assigned a facing directly,
+    // so circling her made the body jump between angles every frame.
+    let df = heading - mesh.rotation.y;
+    while (df > Math.PI) df -= Math.PI * 2;
+    while (df < -Math.PI) df += Math.PI * 2;
+    mesh.rotation.y += df * Math.min(1, dt * 7);
 
-    // --- the gestures -------------------------------------------------------
+    // `moving` is smoothed too, so the trot fades in and out instead of the
+    // legs popping between posed and decaying on alternate frames.
+    state.move += ((wantMove ? 1 : 0) - state.move) * Math.min(1, dt * 8);
+    const moving = state.move;
+
+    // ---- one place decides the pose --------------------------------------
+    //
+    // The old version let three branches write the same bones: the trot posed
+    // all four legs, then the groom branch overwrote leg 0 regardless, so a cat
+    // trotting toward you was also licking a raised paw. Each bone is written
+    // exactly once now, from a single blended target.
     const legs = P.legs;
-    if (moving) {
-      // a light four-beat trot, diagonal pairs together
-      const w = state.phase * 7.5;
-      legs[0].rotation.x = Math.sin(w) * 0.5;
-      legs[3].rotation.x = Math.sin(w) * 0.5;
-      legs[1].rotation.x = Math.sin(w + Math.PI) * 0.5;
-      legs[2].rotation.x = Math.sin(w + Math.PI) * 0.5;
-      mesh.position.y += Math.abs(Math.sin(w)) * 0.02;
-    } else {
-      for (const l of legs) l.rotation.x *= 0.85;
+    const groundY = terrain.surfaceY(mesh.position.x, mesh.position.z);
+    const gait = state.phase * 7.5;
+
+    const sitting = moving < 0.2 && (state.mode === 'sit' || state.mode === 'groom');
+    const grooming = moving < 0.2 && state.mode === 'groom';
+    const stretching = moving < 0.2 && state.mode === 'stretch';
+    const greeting = state.mode === 'greet';
+
+    // legs: trot blended against whatever the still pose wants
+    const trot = [0, Math.PI, Math.PI, 0].map((o) => Math.sin(gait + o) * 0.5);
+    let still = [0, 0, 0, 0];
+    if (grooming) still = [-0.85 + Math.sin(state.phase * 3.2) * 0.16, 0, 0, 0];
+    else if (stretching) {
+      const w = Math.sin(Math.min(1, Math.max(0, (1.4 - state.t) * 2)) * Math.PI);
+      still = [-0.7 * w, -0.7 * w, 0, 0];
+    }
+    for (let i = 0; i < 4; i++) {
+      const target = trot[i] * moving + still[i] * (1 - moving);
+      legs[i].rotation.x += (target - legs[i].rotation.x) * Math.min(1, dt * 12);
     }
 
-    // sitting drops the rump and lifts the chest
-    const sitting = !moving && (state.mode === 'sit' || state.mode === 'groom');
-    mesh.children[0].position.y += ((sitting ? 0.26 : 0.3) - mesh.children[0].position.y) * Math.min(1, dt * 5);
+    // body height: terrain + one bob, chosen once
+    let lift = 0;
+    if (greeting) lift = Math.abs(Math.sin(state.phase * 4.5)) * 0.07;
+    else lift = Math.abs(Math.sin(gait)) * 0.02 * moving;
+    mesh.position.y = groundY + lift;
 
-    // grooming: short licks at a raised front paw
-    if (state.mode === 'groom') {
-      legs[0].rotation.x = -0.85 + Math.sin(state.phase * 3.2) * 0.16;
-      P.headPivot.rotation.x = 0.42 + Math.sin(state.phase * 3.2) * 0.11;
-    } else if (state.mode === 'stretch') {
-      const w = Math.sin(Math.min(1, (1.4 - state.t) * 2) * Math.PI);
-      P.headPivot.rotation.x = -0.35 * w;
-      legs[0].rotation.x = -0.7 * w;
-      legs[1].rotation.x = -0.7 * w;
-      mesh.children[0].rotation.x = -0.16 * w;
-    } else {
-      mesh.children[0].rotation.x *= 0.9;
-      // LOOK AT THE PLAYER when interested, otherwise idle head sway
-      if (interested && playerPos) {
-        const a = Math.atan2(playerPos.x - mesh.position.x, playerPos.z - mesh.position.z);
-        let df = a - mesh.rotation.y;
-        while (df > Math.PI) df -= Math.PI * 2;
-        while (df < -Math.PI) df += Math.PI * 2;
-        P.headPivot.rotation.y += (Math.max(-0.9, Math.min(0.9, df)) - P.headPivot.rotation.y) * Math.min(1, dt * 4);
-        P.headPivot.rotation.x += (-0.12 - P.headPivot.rotation.x) * Math.min(1, dt * 4);
-      } else {
-        P.headPivot.rotation.y = Math.sin(state.phase * 0.7) * 0.22;
-        P.headPivot.rotation.x *= 0.9;
-      }
+    // the body box: sits lower when she is sitting, leans on a stretch
+    const body = P.body;
+    body.position.y += ((sitting ? 0.26 : 0.3) - body.position.y) * Math.min(1, dt * 5);
+    const bodyTilt = stretching
+      ? -0.16 * Math.sin(Math.min(1, Math.max(0, (1.4 - state.t) * 2)) * Math.PI)
+      : 0;
+    body.rotation.x += (bodyTilt - body.rotation.x) * Math.min(1, dt * 6);
+
+    // head: tracks you when interested, otherwise a slow idle sway — one write
+    let headY = Math.sin(state.phase * 0.7) * 0.22;
+    let headX = 0;
+    if (interested && playerPos) {
+      const a = Math.atan2(playerPos.x - mesh.position.x, playerPos.z - mesh.position.z);
+      let hd = a - mesh.rotation.y;
+      while (hd > Math.PI) hd -= Math.PI * 2;
+      while (hd < -Math.PI) hd += Math.PI * 2;
+      headY = Math.max(-0.9, Math.min(0.9, hd));
+      headX = -0.12;
     }
+    if (grooming) { headX = 0.42 + Math.sin(state.phase * 3.2) * 0.11; headY = 0; }
+    else if (stretching) {
+      headX = -0.35 * Math.sin(Math.min(1, Math.max(0, (1.4 - state.t) * 2)) * Math.PI);
+    }
+    P.headPivot.rotation.y += (headY - P.headPivot.rotation.y) * Math.min(1, dt * 4);
+    P.headPivot.rotation.x += (headX - P.headPivot.rotation.x) * Math.min(1, dt * 4);
 
-    // ears: a fast independent twitch, one at a time, at random
+    // EARS. The flick used to be `sin(...) > 0.985`, which is true for a run of
+    // consecutive frames and then false — a stutter, not a flick. It is a timer
+    // now: one ear, one quick twitch, then a long wait.
+    state.earCd -= dt;
+    if (state.earCd <= 0) {
+      state.earCd = 1.8 + Math.random() * 3.5;
+      state.earWhich = Math.random() < 0.5 ? 0 : 1;
+      state.earT = 0.18;
+    }
+    if (state.earT > 0) state.earT -= dt;
     for (let i = 0; i < P.ears.length; i++) {
       const e = P.ears[i];
-      // an occasional flick, not a permanent wobble
-      const tw = Math.sin(state.phase * 1.4 + i * 2.3);
-      e.rotation.z = (i ? -1 : 1) * (0.06 + (tw > 0.985 ? 0.28 : 0));
-      // pinned forward when she is paying attention to you
-      e.rotation.x = interested ? -0.18 : 0;
+      const flick = (i === state.earWhich && state.earT > 0)
+        ? Math.sin((1 - state.earT / 0.18) * Math.PI) * 0.3 : 0;
+      const targetZ = (i ? -1 : 1) * (0.06 + flick);
+      e.rotation.z += (targetZ - e.rotation.z) * Math.min(1, dt * 14);
+      const targetX = interested ? -0.18 : 0;
+      e.rotation.x += (targetX - e.rotation.x) * Math.min(1, dt * 5);
     }
 
     // blink
@@ -326,17 +401,18 @@ export function createSpider(scene, terrain, opts = {}) {
     const lid = state.blink < 0.12 ? 0.15 : 1;
     for (const e of P.eyes) e.scale.y += (lid - e.scale.y) * Math.min(1, dt * 22);
 
-    // the tail: a slow S-curl at rest, a happy upright quiver when interested
+    // the tail: a slow S-curl at rest, held up when she is interested
     for (let i = 0; i < P.tailSegs.length; i++) {
       const seg = P.tailSegs[i];
-      if (interested) {
-        // tail up, with a slow sway — not a buzzing quiver
-        seg.rotation.x += ((i === 0 ? -1.05 : -0.1) - seg.rotation.x) * Math.min(1, dt * 4);
-        seg.rotation.z = Math.sin(state.phase * 2.4 + i * 0.7) * 0.07;
-      } else {
-        seg.rotation.x += ((i === 0 ? -0.45 : 0.18) - seg.rotation.x) * Math.min(1, dt * 3);
-        seg.rotation.z = Math.sin(state.phase * 1.1 + i * 0.9) * 0.16;
-      }
+      const upX = i === 0 ? -1.05 : -0.1;
+      const restX = i === 0 ? -0.45 : 0.18;
+      const targetX = interested ? upX : restX;
+      seg.rotation.x += (targetX - seg.rotation.x) * Math.min(1, dt * 3);
+      // one sway, amplitude blended by interest — not two different waves
+      // fighting over the same bone
+      const amp = 0.16 + (0.07 - 0.16) * (interested ? 1 : 0);
+      const targetZ = Math.sin(state.phase * (interested ? 2.4 : 1.1) + i * 0.8) * amp;
+      seg.rotation.z += (targetZ - seg.rotation.z) * Math.min(1, dt * 6);
     }
 
     // the bubble expires on its own
