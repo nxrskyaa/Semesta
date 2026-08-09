@@ -252,13 +252,22 @@ export async function onAuthChange(fn) {
 // ---------------------------------------------------------------------------
 // SAVES
 // ---------------------------------------------------------------------------
-const LOCAL_KEY = 'semesta.save.v3';
+// THE ACTIVE SLOT, never a fixed key.
+//
+// This module used to hardcode 'semesta.save.v3'. That was correct when there
+// was one save; it became a data-loss bug the moment slots existed, because
+// slot 0 IS that key — so a player on slot 1 had their new hero pushed to the
+// cloud and then written straight back down over the hero in slot 0. Making a
+// second character deleted the first.
+//
+// Cloud sync only ever touches the slot you are actually playing.
+import { activeKey } from '../systems/profiles.js';
 
 export const readLocal = () => {
-  try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null'); } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(activeKey()) || 'null'); } catch { return null; }
 };
 export const writeLocal = (save) => {
-  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(save)); } catch {}
+  try { localStorage.setItem(activeKey(), JSON.stringify(save)); } catch {}
 };
 
 /** Pull this account's save. Returns null when there is none or no session. */

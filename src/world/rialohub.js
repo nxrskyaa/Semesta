@@ -194,6 +194,17 @@ function markTexture(size = 512) {
   return t;
 }
 
+// MEASURED LAYOUT. Every number below was checked against the one above it,
+// because the first version put the sign at y=5.5 while the pillar reached 5.30
+// and 1.15 units of stone drove straight through the middle of the board.
+const MON = {
+  stepTop: 1.19,        // three 0.34 courses
+  pillarTop: 5.30,      // 4.2 tall, centred at 3.2
+  signY: 7.10,          // 2.7 tall -> spans 5.75..8.45, clearing the pillar by 0.45
+  signSize: 2.7,
+  finialY: 9.10,        // above the sign top (8.45) with room to glow
+};
+
 function buildMonument() {
   const g = new THREE.Group();
   for (let i = 0; i < 3; i++) {
@@ -210,25 +221,28 @@ function buildMonument() {
     band.position.y = y;
     g.add(band);
   }
+  // a short neck carrying the sign clear of the pillar's cap
+  const neck = cylMesh(0.3, 0.4, MON.signY - MON.pillarTop, PAL.structure, 8);
+  neck.position.y = (MON.pillarTop + MON.signY) / 2;
+  g.add(neck);
 
   const tex = markTexture(512);
-  // a frame slightly LARGER than the pane, so the mark sits inside a border
-  // rather than running off the edge of the board
+  // ONE frame with real thickness, and the two painted faces sit just proud of
+  // it — a plane and a box at the same Z is a z-fight waiting to happen.
+  const frame = boxMesh(MON.signSize + 0.4, MON.signSize + 0.4, 0.34, PAL.trim);
+  frame.position.y = MON.signY;
+  g.add(frame);
   for (const rot of [0, Math.PI]) {
-    const frame = boxMesh(3.1, 3.1, 0.16, PAL.trim);
-    frame.position.set(0, 5.5, rot ? -0.26 : 0.26);
-    frame.rotation.y = rot;
-    g.add(frame);
     const pane = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.7, 2.7),
+      new THREE.PlaneGeometry(MON.signSize, MON.signSize),
       new THREE.MeshBasicMaterial({ map: tex }));
-    pane.position.set(0, 5.5, rot ? -0.35 : 0.35);
+    pane.position.set(0, MON.signY, rot ? -0.19 : 0.19);
     pane.rotation.y = rot;
     g.add(pane);
   }
 
   const finial = sphereMesh(0.42, PAL.glow);
-  finial.position.y = 7.4;
+  finial.position.y = MON.finialY;
   finial.material = finial.material.clone();
   finial.material.emissive = new THREE.Color(PAL.glow);
   finial.material.emissiveIntensity = 1.4;
@@ -236,7 +250,7 @@ function buildMonument() {
   g.userData.finial = finial;
 
   const light = new THREE.PointLight(0x78ecff, 1.4, 26, 2);
-  light.position.y = 6.6;
+  light.position.y = MON.finialY - 0.6;
   g.add(light);
   return g;
 }
@@ -246,9 +260,20 @@ function buildMonument() {
  * of it — a board this size sharing a footprint with anything would look like
  * an accident.
  */
+// Also measured. The board's bottom edge sits at BOARD_Y; the legs run from the
+// dais up to it, and the whole thing is tilted back 6 degrees so that from the
+// plaza — where you approach it from, looking slightly up — the artwork faces
+// you square instead of foreshortening away.
+const BAN = {
+  W: 16, H: 9,
+  daisH: 0.5,
+  boardY: 4.2,          // bottom edge: well above a 1.8-unit hero
+  tilt: -0.105,         // ~6 degrees back
+};
+
 function buildBanner(texture) {
   const g = new THREE.Group();
-  const W = 16, H = 9;              // the artwork is 16:9; the board matches it
+  const W = BAN.W, H = BAN.H;       // the artwork is 16:9; the board matches it
 
   // dais
   const base = boxMesh(W + 3, 0.5, 4, PAL.stone);
@@ -259,35 +284,42 @@ function buildBanner(texture) {
   g.add(step);
 
   // two legs and a lintel
+  // legs run from the dais top to the board's bottom edge, and no further
   for (const sx of [-1, 1]) {
-    const leg = cylMesh(0.44, 0.52, 4.6, PAL.structure, 8);
-    leg.position.set(sx * (W / 2 + 0.7), 2.8, 0);
+    const legH = BAN.boardY - BAN.daisH;
+    const leg = cylMesh(0.44, 0.52, legH, PAL.structure, 8);
+    leg.position.set(sx * (W / 2 + 0.7), BAN.daisH + legH / 2, 0);
     g.add(leg);
     const foot = boxMesh(1.5, 0.4, 1.5, PAL.trim);
-    foot.position.set(sx * (W / 2 + 0.7), 0.7, 0);
+    foot.position.set(sx * (W / 2 + 0.7), BAN.daisH + 0.2, 0);
     g.add(foot);
   }
 
+  // THE BOARD, on its own tilted pivot so the frame, the artwork and the lintel
+  // all lean together instead of the panel sliding off the frame.
+  const board = new THREE.Group();
+  board.position.y = BAN.boardY + H / 2;
+  board.rotation.x = BAN.tilt;
+  g.add(board);
+
   const frame = boxMesh(W + 1.2, H + 1.2, 0.5, PAL.trim);
-  frame.position.y = 5.2 + H / 2;
-  g.add(frame);
+  board.add(frame);
   const backer = boxMesh(W + 0.4, H + 0.4, 0.34, PAL.structure);
-  backer.position.y = 5.2 + H / 2;
-  g.add(backer);
+  board.add(backer);
 
   // the artwork, on both faces so it reads from either side of the island
   for (const rot of [0, Math.PI]) {
     const pane = new THREE.Mesh(
       new THREE.PlaneGeometry(W, H),
       new THREE.MeshBasicMaterial({ map: texture }));
-    pane.position.set(0, 5.2 + H / 2, rot ? -0.3 : 0.3);
+    pane.position.set(0, 0, rot ? -0.3 : 0.3);
     pane.rotation.y = rot;
-    g.add(pane);
+    board.add(pane);
   }
 
   const lintel = boxMesh(W + 3.4, 0.6, 1.0, PAL.trim);
-  lintel.position.y = 5.2 + H + 1.1;
-  g.add(lintel);
+  lintel.position.y = H / 2 + 0.9;
+  board.add(lintel);
 
   // WHITE LIGHTS. A row of bulbs on a rail below the board washing up at it,
   // plus two floods. Basic materials so they stay bright at night and bloom
@@ -295,25 +327,25 @@ function buildBanner(texture) {
   // more than the whole island.
   const bulbs = [];
   const N = 9;
+  const railY = BAN.boardY - 0.5;   // a rail just under the board's bottom edge
   for (let i = 0; i < N; i++) {
     const x = -W / 2 + (W / (N - 1)) * i;
     const post = cylMesh(0.07, 0.07, 0.5, PAL.structure, 6);
-    post.position.set(x, 5.0, 0.72);
+    post.position.set(x, railY, 1.0);
     g.add(post);
     const bulb = sphereMesh(0.17, '#ffffff');
     bulb.material = bulb.material.clone();
-    bulb.position.set(x, 5.35, 0.72);
+    bulb.position.set(x, railY + 0.35, 1.0);
     g.add(bulb);
     bulbs.push(bulb);
-    // a small shade so the bulb reads as aimed at the board
     const shade = cylMesh(0.24, 0.1, 0.16, PAL.trim, 6);
-    shade.position.set(x, 5.5, 0.72);
+    shade.position.set(x, railY + 0.5, 1.0);
     g.add(shade);
   }
   const floods = [];
   for (const sx of [-1, 1]) {
-    const l = new THREE.PointLight(0xffffff, 0, 20, 2);
-    l.position.set(sx * (W / 3), 5.6, 2.2);
+    const l = new THREE.PointLight(0xffffff, 0, 22, 2);
+    l.position.set(sx * (W / 3), BAN.boardY + 1.5, 3.0);
     g.add(l);
     floods.push(l);
   }
@@ -487,8 +519,29 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
     return best;
   }
 
+  // WHAT YOU CANNOT WALK INTO. The monument's steps and the banner's dais and
+  // legs are solid; without this the hero walked inside the plinth and stood
+  // under the board looking like the island had swallowed them.
+  const solids = [
+    { x: cx, z: cz, r: 3.6 },                                    // monument steps
+  ];
+  if (banner) {
+    const bz = cz + banner.position.z;
+    // the dais, as three overlapping circles rather than a box — cheaper to
+    // test and the corners were never reachable anyway
+    for (const ox of [-7, 0, 7]) solids.push({ x: cx + ox, z: bz, r: 3.2 });
+  }
+
+  /** True if this spot is inside one of the Hub's structures. */
+  function blocked(x, z) {
+    for (const c of solids) {
+      if ((x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r) return true;
+    }
+    return false;
+  }
+
   return {
-    root, agents, spider, banner, update, nearest,
+    root, agents, spider, banner, update, nearest, blocked, solids,
     centre: { x: cx, z: cz }, radius: island.r,
     count: agents.length,
   };

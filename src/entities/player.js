@@ -18,10 +18,14 @@ const SHIELD_BLOCK = 0.8;
 const STAM_REGEN = 26;
 const GRAVITY = 16;
 const JUMP_V = 5.6;
-// swimming: slower than a walk, costs stamina, and when the tank runs dry the
-// hero is washed ashore instead of drowned — this is a cozy game
+// swimming: slower than a walk and FREE. It used to drain stamina and wash you
+// ashore when the tank ran dry, which in practice meant being yanked back
+// mid-crossing over and over — an ocean you are not allowed to cross is a wall
+// with a texture on it. The rescue still exists for anything else that strands
+// you, because this is a cozy game and drowning is not in it.
 const SWIM_SPEED_MULT = 0.62;
-const SWIM_STAM_DRAIN = 5.4;
+// Swimming no longer drains anything — see the swim block below. The constant
+// is gone rather than left at 0, so nobody re-wires it by accident.
 const SWIM_SINK = 0.30;          // how deep the waterline sits on the body
 const SWIM_DEPTH = 0.32;         // water this deep and you're off your feet
 // Afloat, the dodge-roll becomes a DIVE: same button, same i-frames, but you
@@ -1330,11 +1334,16 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       state.grounded = true;             // buoyant: no gravity, no fall damage
       state.vy = 0;
       state.swimT += dt * (moving ? 7.5 : 2.4);
-      state.stamina = Math.max(0, state.stamina - SWIM_STAM_DRAIN * dt);
-      if (state.stamina <= 0 && !state.washingAshore) {
-        state.washingAshore = shoreTarget();
-        onSwimExhausted?.();
-      }
+      // SWIMMING IS FREE.
+      //
+      // The drain existed to make open water a risk, but the sea is 32% of the
+      // map and the only way across it on foot — so in practice it meant being
+      // yanked back to shore mid-crossing with no warning, over and over. An
+      // ocean you are not allowed to cross is not an ocean, it is a wall with a
+      // texture. Stamina still governs rolling, diving and blocking, which is
+      // where it costs a decision; paddling is not a decision.
+      state.stamina = Math.min(state.maxStamina,
+        state.stamina + STAM_REGEN * 0.5 * (1 + buffVal('stamRegen')) * dt);
       // wake bubbles behind a moving swimmer
       if (moving && Math.random() < dt * 14) {
         particles?.burst(state.pos.clone().setY(WATER_Y + 0.05), '#e6fbff', 1, 0.9, 1.5, 0.35);

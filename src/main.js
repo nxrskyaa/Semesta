@@ -155,8 +155,17 @@ async function main() {
   // signed out, offline, or the project is not configured. Signing in is a way
   // to carry progress between devices, never a requirement to play — and a bad
   // night at Supabase must not be able to cost anyone their session.
+  // Only enough to know whether the menu should offer CONTINUE. The cloud
+  // reconcile deliberately does NOT run here: it used to, and since it writes
+  // through `writeLocal` it could drop somebody else's hero into whichever slot
+  // happened to be active from last session. It runs once the player has told
+  // us which slot they mean.
   let saved = loadSlot(activeSlot());
-  if (cloudConfigured()) {
+
+  /** Reconcile the CHOSEN slot against the cloud. Never called for a new hero:
+   *  an empty slot the player asked to fill must stay theirs to fill. */
+  async function syncChosenSlot() {
+    if (!cloudConfigured()) return;
     try {
       const res = await Promise.race([
         reconcile(askWhichSave),
@@ -226,6 +235,8 @@ async function main() {
   }
 
   saved = loadSlot(activeSlot());
+  // Continuing a hero is the only case where the cloud has anything to say.
+  if (!pickedNew) await syncChosenSlot();
 
   if (!pickedNew && saved) {
     config = { ...defaultCharacter(), ...saved.character };
@@ -372,6 +383,22 @@ async function init(character, saved, audio, online = false) {
   if (rialoHub) {
     // the plaza is paved, so nothing should be growing through it
     decor.clearArea(rialoHub.centre.x, rialoHub.centre.z, 17);
+    // and the structures are SOLID — the monument plinth and the banner dais go
+    // into the same blocked-cell set every other building uses, so the hero
+    // cannot end up standing inside the stonework or under the board.
+    let solidCells = 0;
+    for (const c of rialoHub.solids) {
+      const [cx0, cz0] = terrain.cellOf(c.x, c.z);
+      const rc = Math.ceil(c.r);
+      for (let dz = -rc; dz <= rc; dz++) {
+        for (let dx = -rc; dx <= rc; dx++) {
+          if (dx * dx + dz * dz > c.r * c.r) continue;
+          decor.blocked.add(`${cx0 + dx},${cz0 + dz}`);
+          solidCells++;
+        }
+      }
+    }
+    console.info(`[semesta] Rialo Hub: ${solidCells} cells marked solid`);
   }
 
   // A tree inside a wall is one you can see and never reach, so it can never be
