@@ -225,74 +225,6 @@ function buildHeartTorches() {
   return g;
 }
 
-// A cozy Japanese-style schoolhouse — cream walls, hip roof, rows of windows,
-// a clock, an entrance porch and a flagpole.
-function buildSchool() {
-  const g = new THREE.Group();
-  const wall = lam('#ede4d2'), wallLow = lam('#d8cdb8'), beam = lam('#7a5a44');
-  const roof = lam('#9a5648'), roofDark = lam('#7a4438'), win = lam('#8fc8dc'), gold = lam('#d8a83a');
-  const W = 6.4, D = 3.2, H = 2.2;
-  // two floors
-  const lower = new THREE.Mesh(sharedBox(W, H, D), wallLow);
-  lower.position.y = H / 2; lower.castShadow = true; lower.receiveShadow = true;
-  const upper = new THREE.Mesh(sharedBox(W - 0.1, H, D - 0.1), wall);
-  upper.position.y = H + H / 2; upper.castShadow = true;
-  const band = new THREE.Mesh(sharedBox(W + 0.05, 0.16, D + 0.05), beam);
-  band.position.y = H;
-  g.add(lower, upper, band);
-  // corner beams
-  for (const dx of [-1, 1]) for (const dz of [-1, 1]) {
-    const b = new THREE.Mesh(sharedBox(0.16, H * 2, 0.16), beam);
-    b.position.set(dx * (W / 2 - 0.08), H, dz * (D / 2 - 0.08));
-    g.add(b);
-  }
-  // hip roof (stacked slabs)
-  for (let i = 0; i < 3; i++) {
-    const r = new THREE.Mesh(sharedBox(W + 0.6 - i * 0.7, 0.28, D + 0.6 - i * 0.5), i % 2 ? roofDark : roof);
-    r.position.y = 2 * H + 0.14 + i * 0.26; r.castShadow = true;
-    g.add(r);
-  }
-  // window rows on both floors (front)
-  for (let f = 0; f < 2; f++) {
-    for (let i = 0; i < 5; i++) {
-      const wm = new THREE.Mesh(sharedBox(0.7, 0.7, 0.08), win);
-      wm.position.set(-W / 2 + 0.9 + i * 1.15, 0.7 + f * H, D / 2 + 0.02);
-      const frame = new THREE.Mesh(sharedBox(0.8, 0.8, 0.05), beam);
-      frame.position.set(wm.position.x, wm.position.y, D / 2 - 0.01);
-      g.add(frame, wm);
-    }
-  }
-  // entrance porch + double doors
-  const porch = new THREE.Mesh(sharedBox(1.6, 0.16, 0.9), roofDark);
-  porch.position.set(0, 1.15, D / 2 + 0.45);
-  for (const sx of [-1, 1]) {
-    const post = new THREE.Mesh(sharedBox(0.12, 1.1, 0.12), beam);
-    post.position.set(sx * 0.6, 0.55, D / 2 + 0.8); g.add(post);
-  }
-  const door = new THREE.Mesh(sharedBox(1.0, 1.1, 0.1), beam);
-  door.position.set(0, 0.55, D / 2 + 0.05);
-  const doorGlass = new THREE.Mesh(sharedBox(0.8, 0.8, 0.12), win);
-  doorGlass.position.set(0, 0.62, D / 2 + 0.06);
-  g.add(porch, door, doorGlass);
-  // round clock high on the front gable
-  const clock = new THREE.Mesh(sharedCyl(0.32, 0.32, 0.1, 12), lam('#f4f0e4'));
-  clock.rotation.x = Math.PI / 2; clock.position.set(0, 2 * H + 0.3, D / 2 + 0.02);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.04, 6, 14), gold);
-  rim.position.set(0, 2 * H + 0.3, D / 2 + 0.03);
-  const hand1 = new THREE.Mesh(sharedBox(0.03, 0.22, 0.02), beam);
-  hand1.position.set(0, 2 * H + 0.36, D / 2 + 0.08);
-  const hand2 = new THREE.Mesh(sharedBox(0.16, 0.03, 0.02), beam);
-  hand2.position.set(0.06, 2 * H + 0.3, D / 2 + 0.08);
-  g.add(clock, rim, hand1, hand2);
-  // flagpole with a little flag
-  const pole = new THREE.Mesh(sharedCyl(0.04, 0.04, 2.6, 6), lam('#9aa0a2'));
-  pole.position.set(-W / 2 - 0.8, 1.3, D / 2 - 0.5);
-  const flag = new THREE.Mesh(sharedBox(0.5, 0.32, 0.03), lam('#e05a6a'));
-  flag.position.set(-W / 2 - 0.55, 2.4, D / 2 - 0.5);
-  g.add(pole, flag);
-  g.userData.clockHand = hand2;
-  return g;
-}
 
 // Rialo monument — a stone plinth with a tall flagpole; the cream banner
 // carries the Rialo mark (painted procedurally on canvas) and ripples in the
@@ -676,20 +608,20 @@ function buildWaterfall() {
   // upper fall: cliff lip down to the mid ledge
   const bodyA = waterTex(8, false);
   const upper = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.4),
-    new THREE.MeshBasicMaterial({ map: bodyA, transparent: true, opacity: 0.9, depthWrite: false }));
+    new THREE.MeshBasicMaterial({ map: bodyA, transparent: true, opacity: 0.9, depthWrite: true, alphaTest: 0.35 }));
   upper.position.set(0, 2.6, 0.14);
   g.add(upper); sheets.push({ t: bodyA, sp: 2.2 });
   // lower fall: mid ledge down into the pool, wider
   const bodyB = waterTex(9, false);
   const lower = new THREE.Mesh(new THREE.PlaneGeometry(1.75, 1.3),
-    new THREE.MeshBasicMaterial({ map: bodyB, transparent: true, opacity: 0.9, depthWrite: false }));
+    new THREE.MeshBasicMaterial({ map: bodyB, transparent: true, opacity: 0.9, depthWrite: true, alphaTest: 0.35 }));
   lower.position.set(0, 1.15, 0.34);
   g.add(lower); sheets.push({ t: bodyB, sp: 2.6 });
   // a bright fast core over both, scrolling quicker — this is the "rush"
   const coreT = waterTex(14, true);
   const core = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 2.7),
     new THREE.MeshBasicMaterial({
-      map: coreT, transparent: true, opacity: 0.75, depthWrite: false,
+      map: coreT, transparent: true, opacity: 0.75, depthWrite: false, depthTest: true,
       blending: THREE.AdditiveBlending,
     }));
   core.position.set(0, 1.85, 0.4);
@@ -1629,8 +1561,8 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   if (place(shrine, -S2 * 0.45, S2 * 0.2, 1, 12, 3.5)) built.push(shrine);
   const tower = buildRuinTower();
   if (place(tower, S2 * 0.15, S2 * 0.5, 1, 12, 3)) built.push(tower);
-  const school = buildSchool();
-  if (place(school, -S2 * 0.2, -S2 * 0.42, 2, 12, 6, 0.7)) built.push(school);
+  // The schoolhouse is gone — it never had anything to do and it ate one of
+  // the flattest sites on the map, which the island housing needs more.
   const heart = buildHeartTorches();
   if (place(heart, S2 * 0.38, S2 * 0.22, 2, 12, 4)) built.push(heart);
   // the Rialo monument stands right at the basecamp so nobody misses it —
@@ -1742,7 +1674,6 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     dyn(windmill.userData.sails);
     dyn(shrine.userData.gem);
     dynAll(heart.userData.flames);
-    dyn(school.userData.clockHand);
     for (const lm of [bridge, mine]) { dynAll(lm.userData.lamps); (lm.userData.lamps || []).forEach(dynMat); }
     dynAll(pagoda.userData.bells);
     for (const gd of gardens) {
@@ -1822,7 +1753,6 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
         f.scale.setScalar(1 + Math.sin(time * 8 + i * 1.3) * 0.22);
       }
     }
-    if (school.userData.clockHand && near(school)) school.userData.clockHand.rotation.z = -time * 0.2;
 
     // the new buildings: bridge & mine lamps glow at night, pagoda bells sway
     for (const lm of [bridge, mine]) {

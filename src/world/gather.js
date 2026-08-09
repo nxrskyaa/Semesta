@@ -169,5 +169,29 @@ export function createGathering(scene, terrain, decorBlocked, particles) {
     return best;
   }
 
-  return { nodes, hit, update, nearest };
+  /**
+   * Remove any node that a later build landed on top of.
+   *
+   * Gathering runs BEFORE the landmarks and the houses, so a birch can be
+   * standing exactly where the barn ends up — and a tree inside a wall is one
+   * you can see but never walk up to, so it can never be chopped either. The
+   * caller sweeps the finished footprints through here once the world is built.
+   */
+  function cullInside(circles) {
+    let removed = 0;
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i];
+      for (const c of circles) {
+        if (Math.hypot(n.x - c.x, n.z - c.z) <= (c.r || 3) + 0.8) {
+          scene.remove(n.mesh);
+          nodes.splice(i, 1);
+          removed++;
+          break;
+        }
+      }
+    }
+    return removed;
+  }
+
+  return { nodes, hit, update, nearest, cullInside };
 }

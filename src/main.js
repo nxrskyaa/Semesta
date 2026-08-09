@@ -12,6 +12,7 @@ import { createChests } from './world/chests.js';
 import { createWeather } from './world/weather.js';
 import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
+import { createSpider } from './world/spider.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
@@ -306,6 +307,24 @@ async function init(character, saved, audio, online = false) {
   const housing = createHousing(scene, terrain, decor.blocked, particles, landmarks.foots);
   // keep land parcels free of clipping scenery too (covers houses loaded from save)
   for (const l of housing.lands) decor.clearArea(l.x, l.z, 3.8);
+
+  // SPIDER, the basecamp cat. Not a villager and not wildlife — she is the one
+  // creature that answers being touched instead of being fought or farmed.
+  const spider = createSpider(scene, terrain, {
+    centre: { x: terrain.spawn.x, z: terrain.spawn.z }, radius: 11,
+  });
+
+  // A tree inside a wall is one you can see and never reach, so it can never be
+  // chopped — and gathering nodes are scattered BEFORE the landmarks and houses
+  // are placed, so some of them end up under whatever got built there. Sweep
+  // the finished footprints and take those nodes back out.
+  const culled = gathering.cullInside([
+    ...landmarks.foots,
+    ...camps.camps.map((c) => ({ x: c.x, z: c.z, r: 4.2 })),
+    ...housing.lands.map((l) => ({ x: l.x, z: l.z, r: 3.8 })),
+    { x: terrain.spawn.x, z: terrain.spawn.z, r: 12.5 },
+  ]);
+  if (culled) console.info(`[semesta] removed ${culled} gathering nodes buried in structures`);
 
   // --- the archipelago: tropical island dressing + the marina pier ---
   const isles = createIsles(scene, terrain, decor.blocked);
@@ -1782,10 +1801,26 @@ async function init(character, saved, audio, online = false) {
   // --- interact system: gathers ALL nearby actions in priority order so the
   // HUD can offer a PRIMARY (F / ★) and a distinct SECONDARY (R / ★₂) — this
   // is what stops "Plant" and "Talk" from fighting over one button. ---
+  /** Pet the cat. Also reachable by clicking or tapping her directly. */
+  function petSpider() {
+    const line = spider.greet();
+    audio.sfx('ui');
+    particles.burst(
+      spider.mesh.position.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ff9ad8', 14, 2.4);
+    hud.toastText(line);
+  }
+
   function gatherInteractions() {
     if (player.state.dead || panels.anyOpen() || dialog.isOpen()) return [];
     const list = [];
     const add = (kind, label, run, extra = {}) => list.push({ kind, label, run, ...extra });
+
+    // Spider goes in FIRST when you are close. She is tiny and she moves, so if
+    // she loses the button to a market stall three metres away you will never
+    // manage to pet her at all.
+    if (spider.near(player.state.pos, 2.0)) {
+      add('pet', 'Pet Spider', () => petSpider());
+    }
 
     // RIDING: while you're on a hull, the only thing the button does is get off
     if (watercraft.state.active) {
@@ -2029,6 +2064,26 @@ async function init(character, saved, audio, online = false) {
   // the bar is a view of the loadout, so paint it from the loadout once both
   // the HUD and (on a phone) the touch controls exist
   refreshLoadout();
+  // TOUCH THE CAT DIRECTLY. Raycast on click/tap — the brief is that she reacts
+  // to being touched, and requiring the interact key for that is the wrong verb.
+  {
+    const ray = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const tryTouch = (cx, cy) => {
+      if (panels.anyOpen() || dialog.isOpen()) return false;
+      ndc.x = (cx / window.innerWidth) * 2 - 1;
+      ndc.y = -(cy / window.innerHeight) * 2 + 1;
+      ray.setFromCamera(ndc, camera);
+      if (!ray.intersectObject(spider.mesh, true).length) return false;
+      petSpider();
+      return true;
+    };
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      tryTouch(e.clientX, e.clientY);
+    });
+  }
+
   hud.els.minimapCanvas.style.pointerEvents = 'auto';
   hud.els.minimapCanvas.style.cursor = 'pointer';
   hud.els.minimapCanvas.addEventListener('click', toggleWorldMap);
@@ -2141,7 +2196,7 @@ async function init(character, saved, audio, online = false) {
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
-    remote, get net() { return net; },
+    remote, get net() { return net; }, spider,
     openAwakening, openSkillTree, classTree, summons, character, doAttack, enemyMgr, projectiles, inventory, leveling,
     get skillIds() { return skillIds; },
     summonMount, summonPet, inSafeZone,
@@ -2359,6 +2414,7 @@ async function init(character, saved, audio, online = false) {
     fishing.update(dt, time);
     tickTeleport(dt);
     summons.update(dt, player.state.pos);
+    spider.update(dt, player.state.pos);
     wardrobe.update(dt, time);
     // play-time milestones + badge the menu when a reward is waiting
     // wading into water dunks a land mount — it can't swim

@@ -482,7 +482,13 @@ export function buildDecor(terrain, scene) {
 
   // --- fireflies (night): soft glowing motes drifting over the meadows and
   // gathering around the stone lanterns — the night should feel enchanted
-  const FFLY = Math.round(110 * QL.fireflyScale);
+  // MORE OF THEM, and a floor under the budget.
+  //
+  // At night the hero is a small dark silhouette on dark grass, and 110 motes
+  // spread over the whole map put almost none of them anywhere near you. The
+  // count is nearly tripled and never drops below 90 even on the lowest preset,
+  // because "can I see my own character" is not a graphics setting.
+  const FFLY = Math.max(90, Math.round(300 * QL.fireflyScale));
   const ffTex = canvasTex((ctx) => {
     const g2 = ctx.createRadialGradient(8, 8, 0.5, 8, 8, 7.5);
     g2.addColorStop(0, 'rgba(240,255,190,1)');
