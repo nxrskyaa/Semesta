@@ -666,7 +666,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     </div>
     <div class="hint-desktop">
       <b>LMB</b> Attack (auto-aim) · <b>RMB / Shift</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
-      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>O</b> Wardrobe · <b>Z</b> Stats · <b>T</b> Home · <b>Y</b> Basecamp · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Camera
+      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>O</b> Wardrobe · <b>Z</b> Stats · <b>T</b> Home · <b>Y</b> Basecamp · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Turn · <b>↑↓</b> Tilt
     </div>
     <div class="toasts"></div>
     <div class="banner"></div>

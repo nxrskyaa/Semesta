@@ -284,9 +284,20 @@ function buildMonument() {
 // plaza — where you approach it from, looking slightly up — the artwork faces
 // you square instead of foreshortening away.
 const BAN = {
-  W: 16, H: 9,
+  // SIZED FOR THE CAMERA, not for a mockup. 16x9 was 9 units tall, and against
+  // a view that looks down even at its flattest that meant the top third was
+  // permanently off-screen. 12x6.75 keeps the artwork's 16:9 exactly and is
+  // still by far the biggest thing on the island.
+  W: 12, H: 6.75,
   daisH: 0.5,
-  boardY: 4.2,          // bottom edge: well above a 1.8-unit hero
+  // BOTTOM EDGE, and it is low on purpose.
+  //
+  // At 4.2 the board's top sat at 13.2, and the game camera looks DOWN at a
+  // fixed 56 degrees — so the top third of the artwork was always off the top
+  // of the screen no matter how far back you stood. It reads as a billboard you
+  // stand in FRONT of now rather than one you walk under, which is also what a
+  // sign this size wants to be.
+  boardY: 1.35,
   tilt: -0.105,         // ~6 degrees back
 };
 

@@ -244,17 +244,23 @@ export function createTouchControls(input, skillIds, callbacks) {
   // a phone you naturally pinch wherever you happen to be looking; restricting
   // it to a strip on the right made it feel broken. The joystick and the action
   // buttons stop propagation, so a pinch never fights a control.
-  let camId = null, camLastX = 0;
+  let camId = null, camLastX = 0, camLastY = 0;
   camzone.addEventListener('touchstart', (e) => {
     const t = e.changedTouches[0];
-    camId = t.identifier; camLastX = t.clientX;
+    camId = t.identifier; camLastX = t.clientX; camLastY = t.clientY;
   }, { passive: true });
   camzone.addEventListener('touchmove', (e) => {
     if (pinchDist !== null) return;     // a pinch is in progress; don't also spin
     for (const t of e.changedTouches) {
       if (t.identifier !== camId) continue;
-      callbacks.onCameraDrag((t.clientX - camLastX) * 0.008);
+      // horizontal spins, VERTICAL TILTS — the second argument is new, and it
+      // is what lets you look up at anything taller than the hero.
+      callbacks.onCameraDrag(
+        (t.clientX - camLastX) * 0.008,
+        (t.clientY - camLastY) * 0.006,
+      );
       camLastX = t.clientX;
+      camLastY = t.clientY;
     }
   }, { passive: true });
 

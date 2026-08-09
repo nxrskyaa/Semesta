@@ -1265,12 +1265,52 @@ async function init(character, saved, audio, online = false) {
   const input = { keys: new Set(), mouse: { x: innerWidth / 2, y: innerHeight / 2 }, joy: { active: false, x: 0, y: 0 } };
 
   // --- camera (with shake) ---
-  const cam = { yaw: Math.PI * 0.25, dist: 17, pitch: 0.98, shake: 0 };
+// THE CAMERA CAN LOOK UP NOW.
+//
+// `pitch` was a constant 0.98 radians — 56 degrees down — and nothing ever
+// changed it. That is fine for walking around, and hopeless the moment there is
+// something tall to look at: the Rialo banner's top edge was simply off the top
+// of the screen no matter how far back you stood, because backing up on a fixed
+// down-angle just adds more ground.
+//
+// The range is clamped rather than free. Past ~0.42 the horizon climbs into the
+// middle of the frame and the game stops reading as 2.5D; past ~1.30 you are
+// looking at the top of your own head.
+const CAM_PITCH_MIN = 0.42;    // ~24 degrees: nearly level, good for tall things
+const CAM_PITCH_MAX = 1.30;    // ~75 degrees: almost straight down
+const CAM_PITCH_DEFAULT = 0.98;
+
+  const cam = { yaw: Math.PI * 0.25, dist: 17, pitch: CAM_PITCH_DEFAULT, shake: 0, tiltHeld: 0 };
   function addShake(amt) { cam.shake = Math.min(0.8, cam.shake + amt); }
   function updateCamera(dt) {
+    const p = player.state.pos;
     if (input.keys.has('KeyQ')) cam.yaw += dt * 1.8;
     if (input.keys.has('KeyE')) cam.yaw -= dt * 1.8;
-    const p = player.state.pos;
+    // arrow up tilts the view UP (a smaller pitch is a more level camera)
+    let manualTilt = false;
+    if (input.keys.has('ArrowUp')) { cam.pitch -= dt * 1.1; manualTilt = true; }
+    if (input.keys.has('ArrowDown')) { cam.pitch += dt * 1.1; manualTilt = true; }
+    if (manualTilt) cam.tiltHeld = 4;              // leave them alone for a bit
+    if (cam.tiltHeld > 0) cam.tiltHeld -= dt;
+
+    // THE CAMERA LIFTS ITSELF IN FRONT OF THE BANNER.
+    //
+    // Measured: a 12x6.75 upright board 14 units away is entirely above the top
+    // of the frame at the default 56-degree down-angle, and no amount of backing
+    // up or tilting the board itself changes that — the camera is simply aimed
+    // at the ground. It fits from about 0.55 downward, so standing in front of
+    // the sign eases the view there and walking away eases it back. Touching the
+    // tilt keys suspends this for four seconds, because a camera that argues
+    // with you is worse than one that never helps.
+    if (rialoHub?.banner && cam.tiltHeld <= 0) {
+      const b = rialoHub.banner;
+      const bx = rialoHub.centre.x + b.position.x;
+      const bz = rialoHub.centre.z + b.position.z;
+      const near = Math.hypot(p.x - bx, p.z - bz) < 22;
+      const want = near ? 0.52 : CAM_PITCH_DEFAULT;
+      cam.pitch += (want - cam.pitch) * Math.min(1, dt * 1.6);
+    }
+    cam.pitch = Math.max(CAM_PITCH_MIN, Math.min(CAM_PITCH_MAX, cam.pitch));
     const cx = p.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
     const cz = p.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
     const cy = p.y + Math.sin(cam.pitch) * cam.dist;
@@ -1280,7 +1320,14 @@ async function init(character, saved, audio, online = false) {
       camera.position.y += (Math.random() - 0.5) * cam.shake * 0.4;
       cam.shake *= Math.max(0, 1 - dt * 7);
     }
-    camera.lookAt(p.x, p.y + 0.6, p.z);
+    // THE LOOK-AT RISES WITH THE TILT.
+    //
+    // Tilting up is useless on its own: the camera still aimed at the player's
+    // feet, so a tall sign stayed above the top of the frame no matter what the
+    // pitch was. Raising the target as the pitch flattens is what actually puts
+    // the sky — and anything standing in it — into view.
+    const tiltLift = (CAM_PITCH_DEFAULT - cam.pitch) * 7.5;
+    camera.lookAt(p.x, p.y + 0.6 + Math.max(0, tiltLift), p.z);
   }
   updateCamera(10);
 
@@ -2312,7 +2359,14 @@ async function init(character, saved, audio, online = false) {
         if (fishing.toggleAfk()) hud.toastText('AFK fishing on — common fish only. Move to stop.');
       },
       onCloseMenu: () => { audio.sfx('ui'); panels.closeAll(); dialog.hide(); worldmap.hide(); fishing.cancel(); },
-      onCameraDrag: (d) => { cam.yaw -= d; },
+      onCameraDrag: (d, dv) => {
+        cam.yaw -= d;
+        // vertical drag tilts. Dragging DOWN looks up, matching every camera
+        // control anybody has ever used on a phone.
+        if (dv) {
+          cam.pitch = Math.max(CAM_PITCH_MIN, Math.min(CAM_PITCH_MAX, cam.pitch - dv));
+        }
+      },
       // pinch to zoom — same clamp as the desktop scroll wheel
       onCameraZoom: (d) => { cam.dist = Math.max(9, Math.min(30, cam.dist + d)); },
     });
