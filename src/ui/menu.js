@@ -10,8 +10,9 @@ import { aboutInner, paintAboutRialo } from './about.js';
 import { docsInner, wireDocs, DOCS_CSS } from './docs.js';
 import {
   cloudConfigured, currentUser, signInWithGoogle, signOut, onAuthChange,
-  enabledProviders, mountGoogleButton,
+  enabledProviders, mountGoogleButton, deleteCloudSave,
 } from '../net/auth.js';
+import { serverConfigured } from '../net/client.js';
 import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
 
@@ -110,6 +111,15 @@ const CSS = `
 }
 #opening .menu button:hover:not(:disabled) { filter: brightness(1.25); transform: scale(1.03); }
 #opening .menu button:disabled { opacity: 0.45; cursor: default; }
+/* PLAY ONLINE is a different KIND of choice, not a bigger version of the same
+   one — solo is your own world, online is everybody's. Colouring it apart is
+   what stops someone joining a shared world when they wanted to be alone. */
+#opening .menu button.online {
+  color: #cfe8ff; border-color: #4a7a9a;
+  background: linear-gradient(180deg, rgba(30,52,72,0.94), rgba(18,32,48,0.94));
+  box-shadow: inset 0 0 0 1px rgba(140,200,255,0.3), 0 4px 14px rgba(10,20,40,0.45);
+}
+#opening .menu button.online:hover:not(:disabled) { filter: brightness(1.3); }
 #opening .menu button.primary {
   background: linear-gradient(180deg, rgba(88,68,34,0.95), rgba(58,46,24,0.95));
   border-color: #d8b866;
@@ -330,8 +340,11 @@ function drawMountains(ctx, w, h) {
 }
 
 // ---------------------------------------------------------------------------
-// showOpening(saved) -> Promise<{ action: 'new' | 'continue' }>
+// showOpening(saved) -> Promise<{ action: 'new' | 'continue' | 'online' }>
 // ---------------------------------------------------------------------------
+const escapeText = (t) => String(t).replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 export function showOpening(saved) {
   return new Promise(async (resolve) => {
     // key out the solid PNG backgrounds so the logo/mascot float cleanly
@@ -418,18 +431,43 @@ export function showOpening(saved) {
     root.appendChild(loadbox);
     paintRialoMark(loadbox.querySelector('.rlogo').getContext('2d'), 40);
 
+    // SOLO AND ONLINE ARE SEPARATE CHOICES.
+    //
+    // Having a server configured must not mean everybody is pushed into a shared
+    // world — plenty of people want their own quiet Anavela, and a world you
+    // share is a different thing to walk into, not a setting on the same one.
+    // So there are two doors, and the solo ones say so on the label.
+    //
+    // `saved` is re-read rather than captured: deleting the profile has to make
+    // CONTINUE disappear without a page reload.
+    let savedRef = saved;
     const menu = document.createElement('div');
     menu.className = 'menu';
-    menu.innerHTML = `
+
+    function menuHTML() {
+      const online = serverConfigured();
+      return `
       <div class="acct"></div>
       <button class="primary" data-m="new">⚔ &nbsp;NEW ADVENTURE</button>
-      ${saved ? `<button data-m="continue">▶ &nbsp;CONTINUE</button>
-        <div class="continfo">${saved.character?.name || 'Adventurer'} · Lv${saved.level || 1}</div>` : ''}
+      ${savedRef ? `<button data-m="continue">▶ &nbsp;CONTINUE</button>
+        <div class="continfo">${escapeText(savedRef.character?.name || 'Adventurer')} · Lv${
+          Number(savedRef.level) || 1}</div>` : ''}
+      ${online ? `<button class="online" data-m="online">🌐 &nbsp;PLAY ONLINE</button>
+        <div class="continfo">Shared world · other players, chat, one clock</div>` : ''}
       <button data-m="docs">📖 &nbsp;HOW TO PLAY</button>
       <button data-m="roadmap">◈ &nbsp;ROADMAP</button>
       <button data-m="about">✦ &nbsp;ABOUT</button>
     `;
+    }
+    menu.innerHTML = menuHTML();
     root.appendChild(menu);
+
+    // the account strip is rebuilt with the buttons, so it has to be re-found
+    function rebuildMenuButtons() {
+      menu.innerHTML = menuHTML();
+      acct = menu.querySelector('.acct');
+      renderAccount();
+    }
 
     // graphics settings live on the opening screen — pinned to the RIGHT edge,
     // so someone on a slow machine can turn things down before the world builds
@@ -455,7 +493,7 @@ export function showOpening(saved) {
     // Optional, always. If the project has no Supabase keys the strip explains
     // that saves are local and stops there — the game is fully playable either
     // way and must never look like it is asking permission.
-    const acct = root.querySelector('.acct');
+    let acct = menu.querySelector('.acct');
     async function renderAccount() {
       if (!cloudConfigured()) {
         acct.innerHTML = '<span class="note">Progress saves to this browser.</span>';
@@ -464,7 +502,8 @@ export function showOpening(saved) {
       const u = await currentUser();
       if (u) {
         acct.innerHTML = `<span>Signed in as <b class="who"></b></span>
-          <button data-a="out">SIGN OUT</button>`;
+          <button data-a="out">SIGN OUT</button>
+          <button data-a="wipe" class="danger">DELETE PROFILE</button>`;
         // textContent: the display name comes from Google and is not ours
         acct.querySelector('.who').textContent = u.name;
       } else {
@@ -510,6 +549,31 @@ export function showOpening(saved) {
       } else if (a === 'out') {
         await signOut();
         renderAccount();
+      } else if (a === 'wipe') {
+        // TWO steps, on purpose. This is the one action in the menu that cannot
+        // be undone, so a mis-tap must not be enough to do it — the button has
+        // to change into a different button and be pressed again.
+        if (b.dataset.armed !== '1') {
+          b.dataset.armed = '1';
+          b.textContent = 'REALLY DELETE?';
+          setTimeout(() => {
+            if (!b.isConnected) return;
+            b.dataset.armed = '';
+            b.textContent = 'DELETE PROFILE';
+          }, 4000);
+          return;
+        }
+        b.textContent = 'DELETING…';
+        const ok = await deleteCloudSave();
+        // the local save goes too, or CONTINUE would resurrect what was just
+        // deleted the next time the page loads — which is not what anybody
+        // means by "delete my profile"
+        try { localStorage.removeItem('semesta.save.v3'); } catch {}
+        savedRef = null;               // so CONTINUE goes away with it
+        acct.innerHTML = `<span class="note">${ok
+          ? 'Profile deleted. Start a new adventure whenever you like.'
+          : 'Could not reach the server — nothing was deleted.'}</span>`;
+        setTimeout(() => { renderAccount(); rebuildMenuButtons(); }, 2600);
       }
     });
     renderAccount();

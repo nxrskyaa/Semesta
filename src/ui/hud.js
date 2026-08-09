@@ -603,7 +603,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="ward"><span class="mi">🧢</span>WARDROBE<small>O</small></button>
         <button class="mtile" data-menu="skills"><span class="mi">✦</span>SKILLS<small>K</small></button>
         <button class="mtile" data-menu="map"><span class="mi">🗺</span>MAP<small>N</small></button>
-        <button class="mtile" data-menu="home"><span class="mi">⌂</span>TELEPORT<small>T</small></button>
+        <button class="mtile" data-menu="home"><span class="mi">⌂</span>GO HOME<small>T</small></button>
+        <button class="mtile" data-menu="village"><span class="mi">⛺</span>BASECAMP<small>Y</small></button>
         <button class="mtile autobtn" data-menu="auto"><span class="mi">⚔</span>AUTO-BATTLE<small>B</small></button>
         <button class="mtile" data-menu="help"><span class="mi">?</span>GUIDE<small>H</small></button>
         <button class="mtile" data-menu="life"><span class="mi">🎣</span>LIFE SKILLS<small>L</small><i class="lbadge"></i></button>

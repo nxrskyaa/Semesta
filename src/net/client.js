@@ -126,6 +126,17 @@ export function createNetClient(handlers = {}) {
         break;
       }
 
+      case S2C.GEAR: {
+        const p = state.players.get(data.id);
+        if (p) {
+          p.weapon = data.weapon; p.pet = data.pet; p.mount = data.mount;
+          // a version counter is what lets the renderer notice a change without
+          // comparing three strings for every body, every frame
+          p.gearV = (p.gearV || 0) + 1;
+        }
+        break;
+      }
+
       case S2C.ENTITIES: handlers.onEntities?.(data); break;
       case S2C.ENTITY_HIT: handlers.onEntityHit?.(data); break;
       case S2C.ENTITY_GONE: handlers.onEntityGone?.(data.ids || []); break;
@@ -161,6 +172,17 @@ export function createNetClient(handlers = {}) {
     connect,
     disconnect() { closedOnPurpose = true; clearTimeout(reconnectTimer); stopTimers(); ws?.close(); },
     chat: (text) => raw(C2S.CHAT, { text }),
+    // Sent on CHANGE only, and de-duplicated here so a caller can safely poll it
+    // every frame without putting a string on the wire 60 times a second.
+    gear: (() => {
+      let last = '';
+      return (g) => {
+        const key = `${g.weapon || ''}|${g.pet || ''}|${g.mount || ''}`;
+        if (key === last) return;
+        last = key;
+        raw(C2S.GEAR, g);
+      };
+    })(),
     attack: (id, dmg, skill) => raw(C2S.ATTACK, { id, dmg, skill }),
     interact: (payload) => raw(C2S.INTERACT, payload),
     isOnline: () => state.connected,

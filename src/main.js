@@ -161,12 +161,18 @@ async function main() {
 
   // opening: loading splash -> main menu (New / Continue / About)
   const { action } = await showOpening(saved);
+  // SOLO IS THE DEFAULT. Only the PLAY ONLINE door connects to the server —
+  // having one configured must not drag a player who picked CONTINUE into a
+  // world with strangers in it.
+  const online = action === 'online';
   audio.start(); // menu click = first gesture, safe for autoplay
   audio.setMood('menu'); // dreamy title/creation track — the world flips it to day/night
   audio.sfx('ui');
 
   let config, continued;
-  if (action === 'continue' && saved) {
+  // Going online with a hero already made carries that hero in — nobody wants
+  // to rebuild their character just to see other people.
+  if ((action === 'continue' || online) && saved) {
     config = { ...defaultCharacter(), ...saved.character };
     continued = true;
   } else {
@@ -180,10 +186,10 @@ async function main() {
   loadScreen = createLoadScreen({ logoSrc: cleanLogo });
   document.body.appendChild(loadScreen.el);
   await frame();
-  await init(config, continued ? saved : null, audio);
+  await init(config, continued ? saved : null, audio, online);
 }
 
-async function init(character, saved, audio) {
+async function init(character, saved, audio, online = false) {
   setBoot(0.04, 'Opening the canvas…'); await frame();
   const cls = CLASSES[character.cls];
 
@@ -618,8 +624,12 @@ async function init(character, saved, audio) {
   // --- teleport home (T): back to your house, or the village if you have none.
   // Short channel so it can't cheese combat; always lands on a CLEAR walkable
   // cell OUTSIDE any building footprint (never inside your own house).
-  const tele = { channel: 0, cd: 0 };
-  function teleportHome() {
+  // TWO DESTINATIONS, because they are wanted at different moments: the
+  // basecamp is where the shops, the forge and the gacha are, and your house is
+  // where your land and your crops are. Collapsing them into one button meant
+  // that once you owned a house you could never fast-travel to town again.
+  const tele = { channel: 0, cd: 0, dest: 'home' };
+  function teleportHome(dest = 'home') {
     if (player.state.dead || player.state.busy) return;
     // you cannot teleport off a hull — step off first, or the craft comes with
     // you and ends up buried in the hillside at the far end
@@ -630,9 +640,13 @@ async function init(character, saved, audio) {
     }
     if (tele.channel > 0) { tele.channel = 0; hud.toastText('Teleport cancelled.'); return; }
     if (tele.cd > 0) { audio.sfx('deny'); hud.toastText(`Teleport recharging (${Math.ceil(tele.cd)}s)...`); return; }
+    // set AFTER the guards: a rejected press must not repoint a channel that is
+    // already running toward somewhere else
+    tele.dest = dest;
     tele.channel = 1.6;
     audio.sfx('teleport');
-    hud.toastText('Channeling teleport... stand still!');
+    hud.toastText(`Channeling teleport to ${
+      dest === 'village' ? 'the basecamp' : 'your home'}... stand still!`);
   }
   function tickTeleport(dt) {
     if (tele.cd > 0) tele.cd -= dt;
@@ -647,7 +661,9 @@ async function init(character, saved, audio) {
     tele.cd = 20;
     fishing.cancel();
     dismountIfRiding();
-    const home = housing.lands.find((l) => l.built);
+    // asking for town always means town; asking for home falls back to town if
+    // there is no house yet, which is the only sensible thing to do
+    const home = tele.dest === 'home' ? housing.lands.find((l) => l.built) : null;
     particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#8ae0d8', 18, 2.5);
     if (home) {
       // land beside the door — never inside the blocked footprint
@@ -659,7 +675,7 @@ async function init(character, saved, audio) {
     audio.sfx('teleport');
     particles.shockwave(player.state.pos.clone().add(new THREE.Vector3(0, 0.15, 0)), '#8ae0d8', 2.6, 0.4);
     particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#c8fff5', 16);
-    hud.banner(home ? 'WELCOME HOME' : 'BACK TO RIVERBROOK');
+    hud.banner(home ? 'WELCOME HOME' : 'BACK TO THE BASECAMP');
   }
 
   // --- Master NXR's gacha v2: six-tier rarity ladder with soft pity ---
@@ -1385,7 +1401,8 @@ async function init(character, saved, audio) {
   let net = null;
   let chat = null;
 
-  if (serverConfigured()) {
+  if (online && serverConfigured()) {
+    remote.bindSelf(player.state.group);
     chat = createChat(hudRoot, (text) => net?.chat(text), {
       isBusy: () => panels.anyOpen() || dialog.isOpen() || hud.isMenuPopOpen?.(),
     });
@@ -1398,7 +1415,12 @@ async function init(character, saved, audio) {
       onDisconnect: () => { remote.clear(); hud.toastText('Lost the connection — retrying…'); },
       onReconnecting: (secs) => hud.toastText(`Reconnecting in ${secs}s…`),
       onReject: (why) => hud.toastText(why),
-      onChat: (m) => chat.push(m, net?.state.id),
+      onChat: (m) => {
+        chat.push(m, net?.state.id);
+        // and over their head, which is where a shared world actually reads
+        if (m.id && m.id !== net?.state.id) remote.say(m.id, m.text);
+        else if (m.id && m.id === net?.state.id) remote.sayLocal(m.text);
+      },
       onToast: (t) => hud.toastText(t),
       onClock: (c) => { netClock.time = c.time; netClock.weather = c.weather; },
     });
@@ -1420,7 +1442,12 @@ async function init(character, saved, audio) {
       () => ({
         x: player.state.pos.x, y: player.state.pos.y, z: player.state.pos.z,
         f: player.state.facing,
-        a: player.state.swimming ? 'swim' : 'idle',
+        // One word, and swinging beats swimming: what other people need to read
+        // off a distant body is "that one is fighting", and the remote renderer
+        // treats this as a TRIGGER rather than a pose, so a swing survives the
+        // gaps between packets.
+        a: player.state.attackT > 0 ? 'atk'
+          : player.state.swimming ? 'swim' : 'idle',
         sw: !!player.state.swimming,
         b: !!player.state.busy,
         lv: leveling.state.level,
@@ -1732,7 +1759,8 @@ async function init(character, saved, audio) {
     if (e.code === 'KeyL') { audio.sfx('ui'); panels.toggle('life'); }
     if (e.code === 'KeyJ') { audio.sfx('ui'); panels.toggle('daily'); }
     if (e.code === 'KeyU') { audio.sfx('ui'); panels.toggle('pass'); }
-    if (e.code === 'KeyT') teleportHome();
+    if (e.code === 'KeyT') teleportHome('home');
+    if (e.code === 'KeyY') teleportHome('village');
     if (e.code === 'KeyF') doInteract();
     if (e.code === 'KeyR') doInteract2(); // secondary nearby action
     if (e.code === 'Space') { e.preventDefault(); doJump(); }
@@ -1791,7 +1819,8 @@ async function init(character, saved, audio) {
     onPotion: usePotion,
     onMenu: (which) => {
       if (which === 'auto') { toggleAutoBattle(); return; }
-      if (which === 'home') { teleportHome(); return; }
+      if (which === 'home') { teleportHome('home'); return; }
+      if (which === 'village') { teleportHome('village'); return; }
       if (which === 'map') { toggleWorldMap(); return; }
       audio.sfx('ui'); panels.toggle(which);
     },
@@ -1892,6 +1921,7 @@ async function init(character, saved, audio) {
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
+    remote, get net() { return net; },
     summonMount, summonPet, inSafeZone,
   };
 
@@ -2078,7 +2108,14 @@ async function init(character, saved, audio) {
 
     // remote players: eased toward the targets the server sent, and animated
     // from how far they actually moved rather than from anything on the wire
-    if (net) remote.update(dt, net.state.players, player.state.pos);
+    if (net) {
+      net.gear({
+        weapon: inventory.state.equipped,
+        pet: pets.state.active,
+        mount: mounts.state.active,
+      });
+      remote.update(dt, net.state.players, player.state.pos);
+    }
     wildlife.update(dt, player.state.pos, time);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);

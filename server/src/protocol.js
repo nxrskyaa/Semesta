@@ -32,6 +32,10 @@ export const C2S = {
   STATE: 'st',               // { x, z, y, f, a } position, facing, anim
   CHAT: 'chat',              // { text }
   ATTACK: 'atk',             // { targetId, dmg, skill }
+  // What you are HOLDING and what is trotting behind you. Sent only when it
+  // changes, never on the tick — a weapon id is a string, and paying for it 8
+  // times a second to say "still the same sword" would be absurd.
+  GEAR: 'gear',              // { weapon, pet, mount }
   INTERACT: 'int',           // { kind, id }  e.g. plant/harvest/gather
   PING: 'ping',              // { t }
 };
@@ -51,6 +55,7 @@ export const S2C = {
   FARM: 'farm',              // [{ i, seed, stage, owner }]
   PONG: 'pong',              // { t }
   TOAST: 'toast',            // { text }
+  GEAR: 'gear',              // { id, weapon, pet, mount } — somebody re-equipped
 };
 
 /** Cheap, dependency-free message framing. */

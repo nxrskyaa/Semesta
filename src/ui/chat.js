@@ -10,10 +10,17 @@
 // but two independent layers is the right number for something a stranger types.
 
 const CSS = `
+/* A LAYER OF ITS OWN, at body level.
+   This lived inside #hud, which carries z-index: 10 and therefore its own
+   stacking context — so #chat's z-index: 40 was scoped INSIDE that context and
+   could never rise above #touchui at 20. The button was drawn, sat under the
+   joystick zone, and every tap on it moved the character instead. Position in
+   the tree, not the number, was the whole problem.
+   30 puts it over the touch controls and under dialogs (40) and the map (60). */
 #chat {
-  position: absolute; left: 10px; bottom: 96px; width: min(360px, 46vw);
+  position: fixed; left: 10px; bottom: 96px; width: min(360px, 46vw);
   display: flex; flex-direction: column; gap: 3px;
-  pointer-events: none; z-index: 40; font-size: 10px;
+  pointer-events: none; z-index: 30; font-size: 10px;
 }
 #chat .log { display: flex; flex-direction: column; gap: 2px; max-height: 26vh; overflow: hidden; }
 #chat .ln {
@@ -37,12 +44,43 @@ const CSS = `
   background: rgba(8, 12, 8, 0.94); border: 0; outline: 0; padding: 6px 8px;
   box-shadow: inset 0 0 0 1px var(--gold-dim, #7d8a70);
 }
-#chat .hintkey {
-  align-self: flex-start; font-size: 8px; letter-spacing: 2px; color: #7d8a70;
-  background: rgba(8,12,8,0.6); padding: 2px 6px;
+/* THE WAY IN.
+   This was a line of text reading "↵ CHAT" and nothing else — which meant chat
+   could only be opened with a keyboard, and on a phone there was no way in at
+   all. It is a real button now, on both platforms. */
+#chat .open {
+  align-self: flex-start; pointer-events: auto; cursor: pointer;
+  font-family: inherit; font-size: 9px; letter-spacing: 2px; color: #cfd8c8;
+  padding: 6px 10px; border: 0;
+  background: rgba(8, 12, 8, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(216,184,102,0.4);
 }
-#chat.typing .hintkey, #chat.hidehint .hintkey { display: none; }
-body.touch #chat { bottom: 150px; width: 52vw; }
+#chat .open:hover { color: #ffe9b0; filter: brightness(1.3); }
+#chat .open .k { color: var(--gold-dim, #7d8a70); }
+#chat.typing .open { display: none; }
+#chat .box .send {
+  pointer-events: auto; cursor: pointer; font-family: inherit; font-size: 10px;
+  padding: 6px 10px; border: 0; color: #10160f; background: var(--gold, #d8b866);
+}
+body.touch #chat { bottom: 210px; width: 60vw; }
+body.touch #chat .k { display: none; }
+/* On a phone the bottom belongs to the joystick and the action cluster, and the
+   log has to keep its distance from both. The BUTTON goes up top instead, into
+   the measured gap between the HP plate (ends x=188) and the minimap (starts
+   x=269) — the one patch of screen no gesture zone claims. */
+body.touch #chat .open {
+  position: fixed; left: 198px; top: 14px; width: 46px; height: 46px;
+  padding: 0; font-size: 20px; line-height: 46px; text-align: center;
+  background: rgba(8, 12, 8, 0.86);
+}
+/* And while typing, the box pins to the TOP. Left where it was, the on-screen
+   keyboard covers the bottom ~300px of the screen and you would be typing into
+   a box you cannot see. */
+body.touch #chat.typing .box {
+  position: fixed; left: 8px; right: 8px; top: 8px;
+}
+body.touch #chat.typing .box input { font-size: 16px; padding: 10px; }
+body.touch #chat.typing .box .send { font-size: 12px; padding: 10px 14px; }
 `;
 
 /**
@@ -58,14 +96,22 @@ export function createChat(root, onSend, opts = {}) {
 
   const el = document.createElement('div');
   el.id = 'chat';
+  // `root` is kept in the signature for callers, but the element is deliberately
+  // NOT parented to it — see the CSS note above.
+  void root;
   el.innerHTML = `
     <div class="log"></div>
-    <div class="hintkey">↵ CHAT</div>
-    <div class="box"><input maxlength="140" placeholder="Say something…" autocomplete="off"></div>`;
-  root.appendChild(el);
+    <button class="open">💬 CHAT <span class="k">↵</span></button>
+    <div class="box">
+      <input maxlength="140" placeholder="Say something…" autocomplete="off">
+      <button class="send">SEND</button>
+    </div>`;
+  document.body.appendChild(el);
 
   const log = el.querySelector('.log');
   const input = el.querySelector('input');
+  const openBtn = el.querySelector('.open');
+  const sendBtn = el.querySelector('.send');
   let idleTimer = null;
   let typing = false;
   const MAX_LINES = 8;
@@ -114,6 +160,20 @@ export function createChat(root, onSend, opts = {}) {
     touch();
   }
 
+  openBtn.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+  // A phone has no Enter to submit with while the on-screen keyboard is up in
+  // some browsers, so SEND is not decoration.
+  sendBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const text = input.value.trim();
+    if (text) onSend(text);
+    close();
+  });
+  // stop taps inside the chat from reaching the game (attack, camera drag)
+  for (const ev of ['pointerdown', 'mousedown', 'touchstart']) {
+    el.addEventListener(ev, (e) => e.stopPropagation());
+  }
+
   input.addEventListener('keydown', (e) => {
     e.stopPropagation();     // movement keys must not leak into the game
     if (e.key === 'Enter') {
@@ -133,6 +193,6 @@ export function createChat(root, onSend, opts = {}) {
     push, open, close,
     isTyping: () => typing,
     setVisible: (v) => { el.style.display = v ? 'flex' : 'none'; },
-    hideHint: () => el.classList.add('hidehint'),
+    hideHint: () => openBtn.classList.add('hidden'),
   };
 }

@@ -381,6 +381,10 @@ const BUILDERS = {
   },
 };
 
+// Exported so OTHER players' pets can be built too — a companion only its owner
+// can see is not a companion in a shared world.
+export const PET_BUILDERS = BUILDERS;
+
 // ---------------------------------------------------------------------------
 // pet runtime — follows the player with a springy trot
 // ---------------------------------------------------------------------------

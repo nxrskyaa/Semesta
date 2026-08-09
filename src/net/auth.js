@@ -291,6 +291,24 @@ export async function saveCloud(save) {
 }
 
 /**
+ * Wipe this account's cloud save.
+ *
+ * Deliberately does NOT touch localStorage: "delete my profile" means the copy
+ * kept on the server, and quietly destroying what is on the device as well
+ * would be an unrecoverable surprise. The caller decides separately whether to
+ * clear local, and asks first.
+ */
+export async function deleteCloudSave() {
+  const c = await getClient();
+  if (!c) return false;
+  const u = await currentUser();
+  if (!u) return false;
+  const { error } = await c.from('saves').delete().eq('user_id', u.id);
+  if (error) { console.warn('[semesta] delete failed:', error.message); return false; }
+  return true;
+}
+
+/**
  * Decide which save to actually play, on sign-in.
  *
  * @param ask  async (info) => 'local' | 'cloud'  — only called when it is a

@@ -118,6 +118,20 @@ wss.on('connection', (ws, req) => {
         if (d.lv) player.level = clamp(Number(d.lv), 1, 99);
         break;
       }
+      case C2S.GEAR: {
+        // Ids only, length-capped. They are looked up in the receiver's OWN
+        // item table, so an id that does not exist there simply draws nothing —
+        // a made-up string cannot become code in somebody else's browser.
+        const d = msg.data || {};
+        const id16 = (v) => (typeof v === 'string' && v ? v.slice(0, 24) : null);
+        player.weapon = id16(d.weapon);
+        player.pet = id16(d.pet);
+        player.mount = id16(d.mount);
+        broadcast(S2C.GEAR, {
+          id: player.id, weapon: player.weapon, pet: player.pet, mount: player.mount,
+        }, player.id);
+        break;
+      }
       case C2S.CHAT: {
         const now = Date.now();
         if (now - player.lastChat < CHAT_COOLDOWN_MS) return;   // flood guard
@@ -230,6 +244,7 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const publicPlayer = (p) => ({
   id: p.id, name: p.name, cls: p.cls, appearance: p.appearance,
   x: r2(p.x), y: r2(p.y), z: r2(p.z), f: +p.f.toFixed(2), lv: p.level,
+  weapon: p.weapon || null, pet: p.pet || null, mount: p.mount || null,
 });
 const publicBoss = (b) => ({
   id: b.id, kind: b.kind, x: r2(b.x), z: r2(b.z), f: +b.f.toFixed(2),
