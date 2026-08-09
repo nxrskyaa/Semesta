@@ -218,8 +218,14 @@ body.touch #hud .quests::before { display: none; }
 #hud .quests .q .qp { color: #b8d89a; }
 
 /* ---- interact prompt (bottom center, above skill bar) ---- */
+/* THE CENTRE COLUMN, stacked bottom-up: weapon chip (106) -> secondary prompt
+   (142) -> primary prompt (176). These three were positioned independently and
+   never checked together, which put .prompt2 at bottom:108 directly on top of
+   .weapon-chip at bottom:106 — a 2px offset, so the interact button and the
+   weapon name drew straight through each other. Measured heights are ~26px, so
+   each step is height + 10px of air. */
 #hud .prompt {
-  position: absolute; left: 50%; bottom: 136px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 176px; transform: translateX(-50%);
   font-size: 12px; color: #f0ead8; background: rgba(14,18,12,0.85);
   border: 2px solid #4a5a42; padding: 6px 14px; display: none; white-space: nowrap;
   letter-spacing: 1px;
@@ -229,7 +235,7 @@ body.touch #hud .quests::before { display: none; }
 @keyframes prompt-in { from { transform: translateX(-50%) translateY(4px); opacity: 0; } }
 /* secondary interact prompt sits just under the primary */
 #hud .prompt2 {
-  position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 142px; transform: translateX(-50%);
   font-size: 11px; color: #cfd8c8; background: rgba(14,18,12,0.7);
   border: 2px solid #3a463a; padding: 4px 12px; display: none; white-space: nowrap;
   letter-spacing: 1px;
@@ -321,6 +327,23 @@ body.touch #hud .quests::before { display: none; }
 #hud .menupop .mtile:hover { box-shadow: inset 0 0 0 2px var(--gold); color: #ffe9b0; }
 #hud .menupop .mtile .mi { font-size: 14px; width: 18px; text-align: center; }
 #hud .menupop .mtile small { margin-left: auto; color: var(--gold-dim); font-size: 8px; }
+#hud .autoflag {
+  position: absolute; left: 50%; top: 58px; transform: translateX(-50%) translateY(-6px);
+  display: none; align-items: center; gap: 8px;
+  padding: 6px 14px; font-size: 10px; letter-spacing: 2px; color: #ffd0c0;
+  background: rgba(40,14,10,0.86);
+  box-shadow: inset 0 0 0 1px rgba(232,87,74,0.6);
+  pointer-events: none; z-index: 6;
+}
+#hud .autoflag.show { display: flex; animation: af-in 0.3s ease-out; }
+#hud .autoflag .dot {
+  width: 7px; height: 7px; background: #e8574a; border-radius: 50%;
+  animation: af-pulse 1.1s ease-in-out infinite;
+}
+#hud .autoflag small { color: #c09080; font-size: 8px; letter-spacing: 1px; }
+@keyframes af-in { from { opacity: 0; transform: translateX(-50%) translateY(-14px); } }
+@keyframes af-pulse { 50% { opacity: 0.25; } }
+body.touch #hud .autoflag { top: 200px; font-size: 9px; padding: 5px 10px; }
 #hud .menupop .mtile.auto-on { box-shadow: inset 0 0 0 2px #e8574a; color: #ffd0c0; }
 
 /* ---- toasts (bottom left) ---- */
@@ -550,7 +573,29 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   document.head.appendChild(style);
 
   const cls = CLASSES[character.cls];
-  const skillIds = cls.skills;
+  let skillIds = cls.skills;
+
+  /** One cell per loadout slot. An unfilled slot is drawn as a LOCKED plate
+   *  rather than omitted: an Origin has no skills at all, and a skill row that
+   *  silently shrinks to nothing looks broken instead of looking earned. */
+  function skillCells(ids) {
+    const out = [];
+    for (let i = 0; i < 3; i++) {
+      const id = ids[i];
+      if (id && SKILLS[id]) {
+        out.push(`<div class="skill" data-skill="${id}"
+          style="background-image:url(${skillIconUrl(id, SKILLS[id].icon)})"
+          title="${SKILLS[id].name} — ${SKILLS[id].desc}">
+          <span class="key">${i + 1}</span><span class="slv"></span><div class="cd"></div><span class="cdt"></span>
+        </div>`);
+      } else {
+        out.push(`<div class="skill empty" title="No skill yet — the Grand Master awakens your class at Lv10.">
+          <span class="key">${i + 1}</span><span class="lock">·</span>
+        </div>`);
+      }
+    }
+    return out.join('');
+  }
 
   root.innerHTML = `
     <div class="vignette"></div>
@@ -585,10 +630,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     <div class="actionbar">
       <div class="xpline"><span class="xplvl"></span><div class="xpbar"><div></div></div></div>
       <div class="skillrow frame">
-        ${skillIds.map((s, i) => `
-          <div class="skill" data-skill="${s}" style="background-image:url(${skillIconUrl(s, SKILLS[s].icon)})" title="${SKILLS[s].name} — ${SKILLS[s].desc}">
-            <span class="key">${i + 1}</span><span class="slv"></span><div class="cd"></div><span class="cdt"></span>
-          </div>`).join('')}
+        ${skillCells(skillIds)}
         <div class="skill potion" data-potion="1" style="background-image:url(${itemIconUrl('tonic')})" title="Health Tonic">
           <span class="key">4</span><span class="cnt">0</span>
         </div>
@@ -925,7 +967,27 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   function setWeather(r) { raining = r; }
   function showDead(show) { els.dead.classList.toggle('show', show); }
   const autoBtn = root.querySelector('.autobtn');
-  function setAuto(on) { autoBtn?.classList.toggle('auto-on', !!on); }
+
+  /** Auto-battle needs a marker that STAYS. A toast that fades leaves the
+   *  player watching their character fight on its own with nothing on screen
+   *  explaining why — which reads as losing control, not as a feature. The
+   *  menu tile also flips its label to STOP, so the way out is the same button
+   *  that got you in. */
+  const autoFlag = document.createElement('div');
+  autoFlag.className = 'autoflag';
+  autoFlag.innerHTML = '<span class="dot"></span>AUTO BATTLE ACTIVATED<small>B / ⚔ to stop</small>';
+  root.appendChild(autoFlag);
+
+  function setAuto(on) {
+    autoBtn?.classList.toggle('auto-on', !!on);
+    autoFlag.classList.toggle('show', !!on);
+    const tile = root.querySelector('.mtile[data-menu="auto"]');
+    if (tile) {
+      const label = tile.childNodes[1];
+      if (label) label.textContent = on ? 'STOP AUTO' : 'AUTO-BATTLE';
+      tile.classList.toggle('auto-on', !!on);
+    }
+  }
 
   // live rename support (Wardrobe → APPEARANCE): refresh the plate name
   function setName(name) {
@@ -997,7 +1059,33 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     onboardEl.addEventListener('click', (e) => { if (e.target === onboardEl) close(); });
   }
 
+  /** Rebuild the three action cells. Called when a skill is learned, slotted
+   *  or unslotted — the bar is a view of the loadout, never its own state. */
+  /** Repaint the class chip. Awakening changes what you ARE, and the plate was
+   *  still reading ORIGIN afterwards — the one label whose whole job is to say
+   *  what you are. */
+  function setClassName(name) {
+    const el = root.querySelector('.pname .cls');
+    if (el) el.textContent = String(name || '').toUpperCase();
+  }
+
+  function setSkills(ids) {
+    skillIds = ids || [];
+    const row = root.querySelector('.skillrow');
+    if (!row) return;
+    const potion = row.querySelector('.potion');
+    row.innerHTML = skillCells(skillIds);
+    if (potion) row.appendChild(potion);
+    // els.skillEls is a CACHED node list that the cooldown loop walks every
+    // frame. Replacing the markup without refreshing it leaves the loop ticking
+    // detached elements — the bar would draw but never show a cooldown.
+    els.skillEls = [...root.querySelectorAll('[data-skill]')];
+    els.potionEl = root.querySelector('[data-potion]');
+    // No re-binding needed: the click handler is delegated on `.skillrow`.
+  }
+
   return {
+    setSkills, setClassName,
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
     refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge,

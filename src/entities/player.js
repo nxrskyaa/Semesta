@@ -557,6 +557,93 @@ export function buildCharacterMesh(config) {
         }
       }
       handR.add(g);
+    } else if (def.type === 'axe') {
+      // AXE. Not a re-coloured sword: the whole silhouette is mass at the far
+      // end of a long haft, which is what sells the slow, heavy swing arc the
+      // stats give it. A crescent bit built from three tapering slabs, a
+      // counterweight spike on the back, and a leather-wrapped haft.
+      const headMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
+      const haft = new THREE.Mesh(new THREE.BoxGeometry(0.07 * s, 1.15 * s, 0.075 * s), lam(PALETTE.torchWood));
+      haft.position.y = 0.5 * s;
+      haft.castShadow = true;
+      // the bit: three slabs of falling height, so the edge reads as a crescent
+      const bit1 = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.44 * s, 0.2 * s), headMat);
+      bit1.position.set(0, 0.95 * s, 0.17 * s);
+      const bit2 = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.34 * s, 0.16 * s), headMat);
+      bit2.position.set(0, 0.95 * s, 0.33 * s);
+      const bit3 = new THREE.Mesh(new THREE.BoxGeometry(0.045 * s, 0.2 * s, 0.11 * s), lam(lightC));
+      bit3.position.set(0, 0.95 * s, 0.45 * s);
+      // the bright cutting edge, matching every other blade in the game
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.46 * s, 0.09 * s),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.85 }));
+      edge.position.set(0.028 * s, 0.95 * s, 0.42 * s);
+      // counterweight spike on the poll, so it is not lopsided
+      const poll = new THREE.Mesh(new THREE.BoxGeometry(0.06 * s, 0.16 * s, 0.16 * s), lam(darkC));
+      poll.position.set(0, 0.95 * s, -0.1 * s);
+      const spike = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.07 * s, 0.1 * s), lam(shadeHex(darkC, -0.2)));
+      spike.position.set(0, 0.95 * s, -0.22 * s);
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.08 * s, 0.1 * s), goldMat);
+      collar.position.y = 0.82 * s;
+      const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.085 * s, 0.26 * s, 0.09 * s), lam('#5a4630'));
+      wrap.position.y = 0.16 * s;
+      const buttcap = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.06, 0.1 * s), goldMat);
+      buttcap.position.y = -0.06 * s;
+      g.add(haft, bit1, bit2, bit3, edge, poll, spike, collar, wrap, buttcap);
+      if (tier >= 2) {
+        const rune = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24 * s, 0.1 * s),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
+        rune.position.set(-0.028 * s, 0.95 * s, 0.28 * s);
+        g.add(rune);
+      }
+      if (def.glow) {
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.06),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow) }));
+        gem.position.set(0, 0.82 * s, 0);
+        g.add(gem);
+      }
+      handR.add(g);
+    } else if (def.type === 'cannon') {
+      // BAZOOKA. Deliberately oversized and a bit ridiculous — a Summoner is
+      // hauling a workshop around, and the joke only lands if the thing is
+      // visibly too big to be carrying. Tube on the shoulder, drum magazine,
+      // brass banding, a stubby bipod and a glowing charge coil.
+      const tubeMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.115 * s, 0.13 * s, 1.25 * s, 10), tubeMat);
+      tube.rotation.x = Math.PI / 2;
+      tube.position.set(0, 0.34 * s, 0.4 * s);
+      tube.castShadow = true;
+      // flared muzzle, so the business end is obvious from behind the hero
+      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * s, 0.135 * s, 0.22 * s, 10), lam(darkC));
+      muzzle.rotation.x = Math.PI / 2;
+      muzzle.position.set(0, 0.34 * s, 1.06 * s);
+      const band1 = new THREE.Mesh(new THREE.CylinderGeometry(0.145 * s, 0.145 * s, 0.07 * s, 10), goldMat);
+      band1.rotation.x = Math.PI / 2;
+      band1.position.set(0, 0.34 * s, 0.72 * s);
+      const band2 = band1.clone(); band2.position.z = 0.16 * s;
+      // drum magazine on top — where the shells obviously come from
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.17 * s, 0.17 * s, 0.16 * s, 10), lam(shadeHex(darkC, -0.15)));
+      drum.rotation.z = Math.PI / 2;
+      drum.position.set(0, 0.54 * s, 0.34 * s);
+      const drumCap = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * s, 0.08 * s, 0.2 * s, 8), goldMat);
+      drumCap.rotation.z = Math.PI / 2;
+      drumCap.position.set(0, 0.54 * s, 0.34 * s);
+      // charge coil: the one glowing part, so it reads as powered even at tier 0
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.15 * s, 0.032 * s, 6, 12),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow || lightC), transparent: true, opacity: 0.9 }));
+      coil.position.set(0, 0.34 * s, 0.9 * s);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07 * s, 0.22 * s, 0.09 * s), lam('#5a4630'));
+      grip.position.set(0, 0.15 * s, 0.18 * s);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.11 * s, 0.16 * s, 0.3 * s), lam(PALETTE.torchWood));
+      stock.position.set(0, 0.3 * s, -0.3 * s);
+      const sight = new THREE.Mesh(new THREE.BoxGeometry(0.04 * s, 0.11 * s, 0.05 * s), lam(darkC));
+      sight.position.set(0, 0.52 * s, 0.78 * s);
+      g.add(tube, muzzle, band1, band2, drum, drumCap, coil, grip, stock, sight);
+      // The whole thing is carried across the body rather than held out in
+      // front, or the muzzle sits inside the hero's own head.
+      g.rotation.y = -0.34;
+      g.position.set(0, -0.1, 0);
+      g.userData.anim = { ring: coil };
+      handR.add(g);
     } else if (def.type === 'dagger') {
       const mk = (isOff) => {
         const d = new THREE.Group();

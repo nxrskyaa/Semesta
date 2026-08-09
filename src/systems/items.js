@@ -181,6 +181,27 @@ export const ITEMS = {
   crystal_staff:    { name: 'Crystal Staff',    weapon: true, type: 'staff', tier: 2, dmg: 19, speed: 1.55, range: 15, projSpeed: 15, aoe: 1.6, blade: ['#7a9ad8', '#bfe0ff'], scale: 1.06 },
   treant_staff:     { name: 'Treant Staff',     weapon: true, type: 'staff', tier: 3, dmg: 28, speed: 1.4, range: 16, projSpeed: 15, aoe: 1.9, blade: ['#3e5e46', '#9fe86e'], scale: 1.15 },
 
+  // AXE (Warrior's other hand). A real second type rather than a re-skinned
+  // sword: slower, shorter reach, but a much wider arc and a heavier hit, so
+  // picking it at the awakening actually changes how the class plays.
+  iron_axe:      { name: 'Iron Axe',       weapon: true, type: 'axe', tier: 0, dmg: 13, speed: 1.35, range: 2.4, arc: 2.7, blade: ['#7a7f86', '#b4bcc4'], scale: 1.22 },
+  bearded_axe:   { name: 'Bearded Axe',    weapon: true, type: 'axe', tier: 1, dmg: 20, speed: 1.3,  range: 2.5, arc: 2.8, blade: ['#8a6b42', '#c8a86a'], scale: 1.26 },
+  obsidian_axe:  { name: 'Obsidian Axe',   weapon: true, type: 'axe', tier: 2, dmg: 30, speed: 1.25, range: 2.6, arc: 2.9, blade: ['#3a3440', '#8a7a9a'], scale: 1.3 },
+  worldsplitter: { name: 'Worldsplitter',  weapon: true, type: 'axe', tier: 3, dmg: 44, speed: 1.15, range: 2.8, arc: 3.0, blade: ['#5a3a2a', '#e0a050'], scale: 1.4 },
+
+  // CANNON (Summoner). Slow, arcing, and it explodes — the only weapon whose
+  // basic attack has an area, which is what makes standing behind an army of
+  // summons and lobbing shells a playstyle rather than a gimmick.
+  scrap_bazooka:  { name: 'Scrap Bazooka',  weapon: true, type: 'cannon', tier: 0, dmg: 14, speed: 0.85, range: 12, projSpeed: 15, aoe: 1.8, blade: ['#6c7480', '#a8b0ba'], scale: 1.0 },
+  brass_mortar:   { name: 'Brass Mortar',   weapon: true, type: 'cannon', tier: 1, dmg: 22, speed: 0.85, range: 13, projSpeed: 16, aoe: 2.0, blade: ['#8a6a30', '#d8b060'], scale: 1.05 },
+  tesla_launcher: { name: 'Tesla Launcher', weapon: true, type: 'cannon', tier: 2, dmg: 32, speed: 0.9,  range: 14, projSpeed: 17, aoe: 2.2, blade: ['#3a5a6a', '#6ec8d8'], scale: 1.1 },
+  siege_engine:   { name: 'Siege Engine',   weapon: true, type: 'cannon', tier: 3, dmg: 46, speed: 0.8,  range: 15, projSpeed: 18, aoe: 2.6, blade: ['#4a4038', '#ffb055'], scale: 1.2 },
+
+  // the awakening hand-me-downs: one rung above what an Origin carries, so
+  // choosing a class feels like being given something
+  iron_sword:    { name: 'Iron Sword',      weapon: true, type: 'sword', tier: 0, dmg: 11, speed: 2.0, range: 2.3, arc: 2.1, blade: ['#7a7f86', '#c4ccd4'], scale: 1.04 },
+  oak_staff:     { name: 'Oak Staff',       weapon: true, type: 'staff', tier: 0, dmg: 10, speed: 1.5, range: 13, projSpeed: 14, aoe: 1.3, blade: ['#6e5438', '#b09ae8'], scale: 1.0 },
+
   // extra starter weapons for the new classes (reuse existing weapon types so
   // they share the sword/bow/staff crafting trees & attack animations)
   battle_axe:   { name: 'Battle Axe',    weapon: true, type: 'sword', tier: 0, dmg: 10, speed: 1.6, range: 2.5, arc: 2.4, blade: ['#8a8e92', '#c8ccd0'], scale: 1.2 },

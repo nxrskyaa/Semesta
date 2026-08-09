@@ -71,6 +71,18 @@ export const NPC_DEFS = [
       'One spin, one destiny. The capsules never lie!',
     ],
   },
+  {
+    // THE GRAND MASTER. Stands apart from the trade stations on purpose: this
+    // is not a shop, and a player who has just hit Lv10 should have to walk
+    // somewhere specific to become something.
+    id: 'grandmaster', name: 'Grand Master Vell', species: 'owl', role: 'Master of Arms',
+    fur: '#6a6a7e', furLight: '#a8a8c0', outfit: '#2e2a3e',
+    dialog: [
+      'You have been swinging that borrowed sword for a while now. It shows.',
+      'Six roads out of here, and every one of them is a whole life. Take your time.',
+      'A class is not a costume. It is the question you have decided to keep asking.',
+    ],
+  },
   // ambient villagers — no quests, just life
   {
     id: 'momo', name: 'Momo', species: 'squirrel', role: 'Village Kid', ambient: true,
@@ -334,6 +346,45 @@ function buildVillagerMesh(def) {
       wing.position.set(sx * 0.21, 0.36, -0.02);
       g.add(wing);
     }
+  } else if (def.species === 'owl') {
+    // THE GRAND MASTER — a great horned owl. Chosen because an owl reads as
+    // "old and knows things" from across a plaza without any props, and the ear
+    // tufts give the silhouette a clear point even at minimap size. Everything
+    // else is deliberately austere next to the village's bright cast: this is
+    // the one villager who is not trying to sell you something.
+    for (const sx of [-1, 1]) {
+      const tuft = new THREE.Mesh(sharedBox(0.09, 0.2, 0.09), fur);
+      tuft.position.set(sx * 0.16, 0.34, -0.02);
+      tuft.rotation.z = sx * 0.28;
+      head.add(tuft);
+    }
+    // the facial disc: two pale rings that frame the eyes, the thing that makes
+    // an owl an owl rather than a bird with a short beak
+    for (const sx of [-1, 1]) {
+      const disc = new THREE.Mesh(sharedBox(0.19, 0.2, 0.04), furLight);
+      disc.position.set(sx * 0.1, 0.02, 0.245);
+      head.add(disc);
+    }
+    const beak = new THREE.Mesh(sharedBox(0.07, 0.1, 0.09), lam('#e8c060'));
+    beak.position.set(0, -0.04, 0.29);
+    head.add(beak);
+    const brow = new THREE.Mesh(sharedBox(0.34, 0.05, 0.05), fur);
+    brow.position.set(0, 0.14, 0.26);
+    head.add(brow);
+    // folded wings held CLOSED against the body — an owl at rest, not in flight
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Mesh(sharedBox(0.07, 0.3, 0.16), fur);
+      wing.position.set(sx * 0.22, 0.3, -0.01);
+      wing.rotation.z = sx * 0.06;
+      g.add(wing);
+    }
+    // a plain stole and a shoulder clasp: rank without decoration
+    const stole = new THREE.Mesh(sharedBox(0.42, 0.09, 0.3), lam('#d8b866'));
+    stole.position.set(0, 0.46, 0);
+    g.add(stole);
+    const clasp = new THREE.Mesh(sharedBox(0.09, 0.09, 0.06), lam('#f0d878'));
+    clasp.position.set(0, 0.46, 0.17);
+    g.add(clasp);
   } else if (def.species === 'koala') {
     // Master NXR — modeled after the NXR mascot: fluffy koala, VR visor,
     // golden batik headband & sash

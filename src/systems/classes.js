@@ -1,30 +1,63 @@
 // MMO-style class definitions: base stats, weapon type, 3 skills each.
 
+// THE CLASS LADDER.
+//
+// Everybody starts as an ORIGIN — one plain sword, no skills at all. That is
+// deliberate: a hero who begins with three abilities has nothing to earn, and
+// the first ten levels are where a player learns that swinging, dodging and
+// reading a monster's tell is the actual game. At Lv10 the Grand Master
+// awakens them into one of six real classes, and THAT is the moment the
+// character becomes theirs.
+//
+// `advanced: true` marks the six. `origin` is never offered at the shrine.
+
 export const CLASSES = {
-  knight: {
-    name: 'Knight',
-    tagline: 'Frontline bulwark',
-    desc: 'Greatsword & shield. Tanky, wide swings. Hold Shift to block incoming damage.',
+  origin: {
+    name: 'Origin',
+    tagline: 'Unwritten',
+    desc: 'A borrowed sword and no training at all. Swing, roll, survive — at Lv10 the Grand Master will ask you what you mean to become.',
     weaponType: 'sword',
     startWeapon: 'wooden_sword',
-    baseHp: 60, baseStam: 100,
-    hpPerLevel: 13, stamPerLevel: 5,
-    dmgMult: 1.0, speed: 4.1,
+    baseHp: 48, baseStam: 100,
+    hpPerLevel: 11, stamPerLevel: 6,
+    dmgMult: 1.0, speed: 4.3,
+    hasShield: false,
+    skills: [],                 // NOTHING. This is the point of the class.
+    color: '#cbbf9a',
+    stats: { power: 2, speed: 3, range: 1, defense: 2 },
+  },
+
+  warrior: {
+    name: 'Warrior',
+    tagline: 'The wall that answers',
+    desc: 'Sword or axe, your call. Plants itself in the middle of a fight and refuses to be moved.',
+    weaponType: 'sword',        // overridden to 'axe' if the player picks the axe
+    startWeapon: 'iron_sword',
+    baseHp: 64, baseStam: 100,
+    hpPerLevel: 14, stamPerLevel: 5,
+    dmgMult: 1.05, speed: 4.1,
     hasShield: true,
+    advanced: true,
+    // Which physical weapon the awakening hands over. A branch, not a class.
+    branches: [
+      { id: 'sword', name: 'Sword', desc: 'Faster, wider arc, and a shield in the off hand.', weaponType: 'sword', weapon: 'iron_sword' },
+      { id: 'axe', name: 'Axe', desc: 'Slower and heavier: every swing hits harder and further.', weaponType: 'axe', weapon: 'iron_axe' },
+    ],
     skills: ['bash', 'whirlwind', 'warcry'],
     color: '#e08a5a',
-    stats: { power: 3, speed: 2, range: 1, defense: 5 },
+    stats: { power: 4, speed: 2, range: 1, defense: 5 },
   },
   archer: {
     name: 'Archer',
     tagline: 'Hawk-eye of the woods',
     desc: 'Long-range bow. Nimble — pepper enemies from afar before they ever reach you.',
     weaponType: 'bow',
-    startWeapon: 'short_bow',
-    baseHp: 42, baseStam: 110,
+    startWeapon: 'feather_bow',
+    baseHp: 44, baseStam: 110,
     hpPerLevel: 9, stamPerLevel: 7,
     dmgMult: 1.0, speed: 4.6,
     hasShield: false,
+    advanced: true,
     skills: ['powershot', 'multishot', 'swiftness'],
     color: '#8fce5a',
     stats: { power: 3, speed: 4, range: 5, defense: 2 },
@@ -34,56 +67,15 @@ export const CLASSES = {
     tagline: 'Weaver of elements',
     desc: 'Arcane staff with exploding bolts. Fragile, but no one clears crowds harder.',
     weaponType: 'staff',
-    startWeapon: 'apprentice_staff',
-    baseHp: 38, baseStam: 120,
+    startWeapon: 'oak_staff',
+    baseHp: 40, baseStam: 120,
     hpPerLevel: 8, stamPerLevel: 9,
-    dmgMult: 1.05, speed: 4.2,
+    dmgMult: 1.08, speed: 4.2,
     hasShield: false,
+    advanced: true,
     skills: ['fireball', 'icenova', 'blink'],
     color: '#a48ae8',
     stats: { power: 5, speed: 2, range: 4, defense: 1 },
-  },
-  assassin: {
-    name: 'Assassin',
-    tagline: 'Fanged shadow',
-    desc: 'Twin daggers, blinding speed. Slip in, shred, vanish before they can answer.',
-    weaponType: 'dagger',
-    startWeapon: 'rusty_daggers',
-    baseHp: 46, baseStam: 105,
-    hpPerLevel: 10, stamPerLevel: 6,
-    dmgMult: 1.0, speed: 4.9,
-    hasShield: false,
-    skills: ['dashstrike', 'fanknives', 'shadowstep'],
-    color: '#7a9ac8',
-    stats: { power: 4, speed: 5, range: 2, defense: 2 },
-  },
-  berserker: {
-    name: 'Berserker',
-    tagline: 'Fury unchained',
-    desc: 'A massive axe and a temper to match. The angrier it gets, the harder it hits.',
-    weaponType: 'sword',
-    startWeapon: 'battle_axe',
-    baseHp: 66, baseStam: 100,
-    hpPerLevel: 14, stamPerLevel: 5,
-    dmgMult: 1.1, speed: 4.2,
-    hasShield: false,
-    skills: ['rage', 'cleave', 'leapslam'],
-    color: '#d0553a',
-    stats: { power: 5, speed: 3, range: 1, defense: 3 },
-  },
-  hunter: {
-    name: 'Hunter',
-    tagline: 'Wildwood tracker',
-    desc: 'Bow, traps and instinct. Controls the field and picks foes off before they close in.',
-    weaponType: 'bow',
-    startWeapon: 'hunter_bow',
-    baseHp: 44, baseStam: 110,
-    hpPerLevel: 9, stamPerLevel: 7,
-    dmgMult: 1.0, speed: 4.7,
-    hasShield: false,
-    skills: ['volley', 'snipe', 'beasttrap'],
-    color: '#6aa04a',
-    stats: { power: 3, speed: 4, range: 5, defense: 2 },
   },
   priest: {
     name: 'Priest',
@@ -91,15 +83,52 @@ export const CLASSES = {
     desc: 'Holy staff that mends wounds and smites the wicked. Frail body, radiant will.',
     weaponType: 'staff',
     startWeapon: 'holy_staff',
-    baseHp: 42, baseStam: 120,
+    baseHp: 46, baseStam: 120,
     hpPerLevel: 9, stamPerLevel: 9,
     dmgMult: 1.0, speed: 4.2,
     hasShield: false,
+    advanced: true,
     skills: ['heal', 'smite', 'bless'],
     color: '#e6d488',
     stats: { power: 3, speed: 3, range: 4, defense: 3 },
   },
+  assassin: {
+    name: 'Assassin',
+    tagline: 'Fanged shadow',
+    desc: 'Twin blades. Hits a whole crowd at once, stuns what survives, and is gone before it answers.',
+    weaponType: 'dagger',
+    startWeapon: 'fang_daggers',
+    baseHp: 48, baseStam: 105,
+    hpPerLevel: 10, stamPerLevel: 6,
+    dmgMult: 1.06, speed: 4.9,
+    hasShield: false,
+    advanced: true,
+    skills: ['dashstrike', 'fanknives', 'shadowstep'],
+    color: '#7a9ac8',
+    stats: { power: 5, speed: 5, range: 2, defense: 2 },
+  },
+  summoner: {
+    name: 'Summoner',
+    tagline: 'Carries a workshop on its back',
+    desc: 'A cannon almost too big to hold, and a habit of calling things down. Fights beside its own little army.',
+    weaponType: 'cannon',
+    startWeapon: 'scrap_bazooka',
+    baseHp: 46, baseStam: 115,
+    hpPerLevel: 9, stamPerLevel: 8,
+    dmgMult: 1.0, speed: 4.0,
+    hasShield: false,
+    advanced: true,
+    skills: ['summonbeast', 'rocketrain', 'turretdrop'],
+    color: '#6ec8d8',
+    stats: { power: 4, speed: 2, range: 4, defense: 2 },
+  },
 };
+
+/** The six the Grand Master actually offers. Origin is not one of them. */
+export const ADVANCED_CLASSES = Object.keys(CLASSES).filter((k) => CLASSES[k].advanced);
+
+/** The level at which the awakening quest fires. */
+export const AWAKEN_LEVEL = 10;
 
 export const GENDERS = { male: 'Male', female: 'Female' };
 
@@ -163,7 +192,7 @@ export const CAPE_COLORS = [
 export function defaultCharacter() {
   return {
     name: 'Adventurer',
-    cls: 'knight',
+    cls: 'origin',
     gender: 'male',
     skin: 1,
     hairStyle: 0,

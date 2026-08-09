@@ -152,7 +152,23 @@ export function isTouchDevice() {
   return 'ontouchstart' in window && matchMedia('(pointer: coarse)').matches;
 }
 
+/** Three buttons, always. An empty slot is drawn dimmed rather than skipped,
+ *  or the arc of skill buttons would move every time a skill is learned and a
+ *  player's thumb would have to re-learn the layout. */
+function skillBtns(ids) {
+  const out = [];
+  for (let i = 0; i < 3; i++) {
+    const id = ids[i];
+    out.push(id && SKILLS[id]
+      ? `<button class="abtn sk sk${i + 1}" data-skill="${id}"
+          style="background-image:url(${skillIconUrl(id, SKILLS[id].icon)})"><span class="cdo"></span></button>`
+      : `<button class="abtn sk sk${i + 1} skempty" disabled></button>`);
+  }
+  return out.join('');
+}
+
 export function createTouchControls(input, skillIds, callbacks) {
+  skillIds = [...(skillIds || [])];
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -167,8 +183,7 @@ export function createTouchControls(input, skillIds, callbacks) {
       <button class="abtn attack">⚔</button>
       <button class="abtn roll">↺</button>
       <button class="abtn jump">⤒</button>
-      ${skillIds.map((s, i) => `<button class="abtn sk sk${i + 1}" data-skill="${s}"
-        style="background-image:url(${skillIconUrl(s, SKILLS[s].icon)})"><span class="cdo"></span></button>`).join('')}
+      ${skillBtns(skillIds)}
       <button class="abtn pot" style="background-image:url(${itemIconUrl('tonic')})"><span class="cnt">0</span></button>
       <button class="ctx"><span class="ic">★</span><span class="lbl"></span></button>
       <button class="ctx2"><span class="ic">✦</span><span class="lbl"></span></button>
@@ -285,12 +300,15 @@ export function createTouchControls(input, skillIds, callbacks) {
   const ctx2Btn = root.querySelector('.ctx2');
   const ctx2Lbl = root.querySelector('.ctx2 .lbl');
   const closeBtn = root.querySelector('.closebtn');
-  root.querySelectorAll('[data-skill]').forEach((b) => {
-    b.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      callbacks.onSkill(b.dataset.skill);
-    }, { passive: false });
-  });
+  // DELEGATED, not bound per button. The skill buttons are rebuilt whenever the
+  // loadout changes, and a handler attached to the old element would go with it
+  // — the button would still be drawn and would simply stop working.
+  root.querySelector('.btns').addEventListener('touchstart', (e) => {
+    const b = e.target.closest('[data-skill]');
+    if (!b) return;
+    e.preventDefault();
+    callbacks.onSkill(b.dataset.skill);
+  }, { passive: false });
 
   // contextual buttons: primary { label, afk? } + optional secondary { label }
   function setPrompt(p, p2 = null) {
@@ -336,5 +354,19 @@ export function createTouchControls(input, skillIds, callbacks) {
     root.querySelector('.pot .cnt').textContent = potionCount;
   }
 
-  return { update, setPrompt, setMenuOpen, root };
+  /** Rebuild the three skill buttons after the loadout changes. Safe because
+   *  the tap handler is delegated off `.btns` rather than bound per button. */
+  function setSkills(ids) {
+    skillIds = ids || [];
+    const btns = root.querySelector('.btns');
+    if (!btns) return;
+    const old = [...btns.querySelectorAll('.abtn.sk')];
+    if (!old.length) return;
+    const frag = document.createElement('div');
+    frag.innerHTML = skillBtns(skillIds);
+    const fresh = [...frag.children];
+    old.forEach((o, i) => { if (fresh[i]) btns.replaceChild(fresh[i], o); });
+  }
+
+  return { update, setPrompt, setMenuOpen, setSkills, root };
 }

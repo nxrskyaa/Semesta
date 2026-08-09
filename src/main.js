@@ -30,10 +30,13 @@ import { createNPCs, makeQuestMark, NPC_DEFS } from './entities/npcs.js';
 import { createPickups } from './entities/pickups.js';
 import { createProjectiles } from './entities/projectiles.js';
 import { createDamageNumbers, resolveMeleeHit } from './systems/combat.js';
-import { createLeveling } from './systems/level.js';
+import { createLeveling, MAX_LEVEL } from './systems/level.js';
 import { createInventory } from './systems/inventory.js';
 import { createForge, forgeMultiplier } from './systems/forge.js';
 import { createSkillSystem, SKILLS, MAX_SKILL_LEVEL } from './systems/skills.js';
+import { createClassTree, LOADOUT_SIZE } from './systems/classtree.js';
+import { showAwakening, showSkillTree } from './ui/awaken.js';
+import { createSummons } from './systems/summons.js';
 import { skillIconUrl } from './gfx/textures.js';
 import { createQuests } from './systems/quests.js';
 import { createPets, PET_DEFS } from './systems/pets.js';
@@ -41,12 +44,14 @@ import { createMounts, MOUNT_DEFS } from './systems/mounts.js';
 import { createFishing } from './systems/fishing.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
 import { createHousing, LAND_PRICE, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
-import { CLASSES, defaultCharacter } from './systems/classes.js';
+import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
 import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS } from './systems/items.js';
 import { createWardrobe, cosmeticsBySlot } from './systems/cosmetics.js';
 import { createAudio } from './audio/audio.js';
 import { showCharacterCreation } from './ui/charcreate.js';
 import { showOpening, logoUrl } from './ui/menu.js';
+import { pickLanguage, t } from './ui/lang.js';
+import { showPrologue } from './ui/prologue.js';
 import { cleanImage } from './gfx/logo.js';
 import { createHUD } from './ui/hud.js';
 import { createMinimap } from './ui/minimap.js';
@@ -179,6 +184,16 @@ async function main() {
     const res = await showCharacterCreation(null); // fresh hero
     config = res.config;
     continued = false;
+  }
+
+  // A NEW HERO GETS THE STORY. Language first, because the prologue is the
+  // first long thing the game asks anybody to read, and it is only asked once
+  // per browser. Continuing an existing character skips both — nobody wants
+  // the origin story again on their fourth session.
+  if (!continued) {
+    bootEl.style.display = 'none';
+    await pickLanguage();
+    await showPrologue();
   }
 
   // hand over to the cinematic loader: a different pixel vignette every boot
@@ -1039,6 +1054,17 @@ async function init(character, saved, audio, online = false) {
     return rewards;
   }
   leveling.state.onLevelUp = (lv) => {
+    // THE ONE NUDGE. Fired once, and it points rather than pulls: the ritual
+    // itself needs a walk to the Grand Master, so nobody is dragged into a
+    // permanent choice by a level-up they earned in the middle of a fight.
+    if (lv >= AWAKEN_LEVEL && character.cls === 'origin' && !awakenNudged) {
+      awakenNudged = true;
+      setTimeout(() => {
+        hud.banner('YOUR PATH AWAITS');
+        hud.toastText('Grand Master Vell is waiting in the village. Choose your class.');
+        audio.sfx('quest_accept');
+      }, 2200);
+    }
     applyLevelStats();
     player.state.hp = player.state.maxHp;
     skillPoints++;
@@ -1235,6 +1261,44 @@ async function init(character, saved, audio, online = false) {
           },
         });
       }, dur * 0.4);
+    } else if (def.type === 'cannon') {
+      // THE ONLY BASIC ATTACK WITH AN AREA. That is the Summoner's whole
+      // identity in one line: slow, telegraphed, and it does not matter much
+      // which of the six things in front of you it actually hits.
+      audio.sfx('swing_staff');
+      setTimeout(() => {
+        if (p.dead) return;
+        autoFace();
+        glowFx?.();
+        // muzzle flash, because a shell that appears from nowhere reads as a
+        // bug rather than as a shot
+        const muzzle = p.pos.clone().add(new THREE.Vector3(
+          Math.sin(p.facing) * 0.9, 0.8, Math.cos(p.facing) * 0.9));
+        particles.burst(muzzle, '#ffb055', 10, 3.4, 2);
+        particles.flash(muzzle, '#ffd9a0', 4, 0.16);
+        shake(0.18);
+        // Siege Mode makes every shell bigger — the buff carries `splash`.
+        const siege = p.buffs?.find((b) => b.id === 'siegemode');
+        const aoe = (def.aoe || 1.8) * (siege ? 1.35 : 1);
+        projectiles.spawn({
+          pos: muzzle,
+          dir: new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing)),
+          speed: def.projSpeed, range: def.range, radius: 0.6,
+          kind: 'orb', color: '#ffb055', trail: '#ff8a4a',
+          onHitEnemy: (e, pos) => {
+            particles.burst(pos.clone(), '#ff8a4a', 22, 4.5, 3);
+            particles.burst(pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#ffdd88', 10, 3);
+            particles.shockwave(pos, '#ff9944', aoe + 0.7, 0.34);
+            audio.sfx('explosion');
+            shake(0.22);
+            for (const en of enemyMgr.enemies) {
+              if (en.dead) continue;
+              const d = Math.hypot(en.mesh.position.x - pos.x, en.mesh.position.z - pos.z);
+              if (d <= aoe) dealHit(en, 1);
+            }
+          },
+        });
+      }, dur * 0.45);
     } else if (def.type === 'dagger') {
       audio.sfx('swing');
       const stab = () => {
@@ -1272,13 +1336,35 @@ async function init(character, saved, audio, online = false) {
 
   // --- AFK auto-battle: hands-free grinding. Approaches the nearest enemy,
   // auto-attacks, auto-casts ready skills, and sips a tonic when low. ---
+  // AUTO-BATTLE is an END-GAME convenience, not a way to skip the game.
+  //
+  // It is off by default and stays locked until the level cap, because handing
+  // a new player a button that plays for them is handing them a reason never to
+  // learn the combat — and the combat is the game. At 30 there is nothing left
+  // to learn and grinding materials is a chore worth automating.
+  const AUTO_UNLOCK_LEVEL = MAX_LEVEL;
   let autoBattle = false;
   let autoSkillT = 0;
+
+  function autoUnlocked() { return leveling.state.level >= AUTO_UNLOCK_LEVEL; }
+
   function toggleAutoBattle() {
+    if (!autoBattle && !autoUnlocked()) {
+      audio.sfx('deny');
+      hud.toastText(`Auto-Battle unlocks at Lv${AUTO_UNLOCK_LEVEL}. You are Lv${leveling.state.level}.`);
+      return;
+    }
     autoBattle = !autoBattle;
     dismountIfRiding();
     hud.setAuto?.(autoBattle);
-    hud.toastText(autoBattle ? 'Auto-Battle ON — grinding hands-free. Press B to stop.' : 'Auto-Battle off.');
+    if (autoBattle) {
+      // A mode that plays for you MUST say so somewhere you cannot miss, or the
+      // first time it triggers you think the game has taken the controls off you.
+      hud.banner('AUTO BATTLE ACTIVATED');
+      hud.toastText('Auto-Battle ON — press B or the ⚔ button to stop.');
+    } else {
+      hud.toastText('Auto-Battle stopped.');
+    }
     audio.sfx('ui');
   }
   function autoBattleTick(dt) {
@@ -1289,7 +1375,13 @@ async function init(character, saved, audio, online = false) {
     const dist = Math.hypot(dx, dz) || 1;
     player.state.facing = Math.atan2(dx, dz);
     const def = inventory.equippedDef();
-    const reach = (def.type === 'bow' || def.type === 'staff') ? (def.range - 2) : (def.range || 2) + 0.2;
+    // ENGAGEMENT DISTANCE, not maximum range. A bow reaches 15 units, so
+    // `range - 2` meant an auto-battling archer stood exactly where it spawned
+    // and plinked at the horizon — it looked broken, and it was: the target
+    // walked out of the cone constantly and nothing ever closed the gap. Ranged
+    // classes now walk to a distance where they can actually keep a target.
+    const ranged = def.type === 'bow' || def.type === 'staff' || def.type === 'cannon';
+    const reach = ranged ? Math.min((def.range || 12) - 2, 7.5) : (def.range || 2) + 0.2;
     // walk into range for melee / kite distance for ranged
     if (dist > reach) {
       const sp = cls.speed * 0.85 * dt;
@@ -1304,7 +1396,7 @@ async function init(character, saved, audio, online = false) {
     autoSkillT -= dt;
     if (autoSkillT <= 0) {
       autoSkillT = 2.2;
-      for (const sid of skillIds) { if (skillSys.ready(sid) && player.state.stamina > 20) { castSkill(sid); break; } }
+      for (const sid of skillIds) { if (sid && skillSys.ready(sid) && player.state.stamina > 20) { castSkill(sid); break; } }
     }
     // survival: sip a tonic when badly hurt
     if (player.state.hp < player.state.maxHp * 0.3 && inventory.count('tonic') > 0) usePotion();
@@ -1342,17 +1434,118 @@ async function init(character, saved, audio, online = false) {
   }
 
   // --- skill system ---
+  // The Summoner's army. Built before the skill system because the summoner
+  // skills hand it work, and it needs a way to deal damage that goes through
+  // the same crit/forge/level maths every other source does — hence hitEnemy
+  // being passed in rather than reimplemented.
+  const summons = createSummons({
+    scene, terrain, enemyMgr, projectiles, particles, dmgNums, audio,
+    hitEnemy: (e, mult) => {
+      const w = inventory.equippedDef();
+      const base = w.dmg * totalMult() * mult * forgeMult();
+      const crit = Math.random() < 0.1;
+      const dmg = Math.max(1, Math.round(base * (crit ? 1.6 : 1) * (0.9 + Math.random() * 0.2)));
+      dmgNums.spawn(e.mesh.position.clone().add(new THREE.Vector3(0, 1.1, 0)), dmg, crit ? 'crit' : '');
+      enemyMgr.damage(e, dmg, player.state.pos, onKill);
+    },
+  });
+
   const skillSys = createSkillSystem({
     player, enemyMgr, projectiles, particles, dmgNums, audio, terrain,
     aimPoint, onKill, shake: addShake,
     weaponDef: () => inventory.equippedDef(),
-    forgeMult,
+    forgeMult, summons,
   });
   skillsApi.skillSys = skillSys;
   skillSys.load(saved?.skills);
-  const skillIds = cls.skills;
+
+  // THE LOADOUT, not the class's fixed list.
+  //
+  // `cls.skills` is now only a suggestion for what a freshly awakened class
+  // starts with — what is actually on the bar is whatever the player learned
+  // and slotted. An Origin has an EMPTY bar, deliberately: the first ten levels
+  // are swing, roll and read the tell, and handing out three abilities up front
+  // is exactly what makes those levels feel like a tutorial to skip.
+  // Declared HERE, not next to createTouchControls: refreshLoadout runs as soon
+  // as the HUD exists, which is before the touch controls are built, and a
+  // `let` read ahead of its declaration throws instead of reading undefined.
+  let touchUI = null;
+
+  const classTree = createClassTree();
+  classTree.load(saved?.classTree);
+  let skillIds = classTree.activeSkills();
+
+  function refreshLoadout() {
+    skillIds = classTree.activeSkills();
+    hud.setSkills?.(skillIds);
+    touchUI?.setSkills?.(skillIds);
+  }
+
+  // ================= THE AWAKENING =================
+  //
+  // Fires from ONE place — talking to the Grand Master while you are an Origin
+  // at or past AWAKEN_LEVEL. The level-up hook only nudges; it never opens the
+  // ritual on its own, because being yanked into an irreversible choice by a
+  // level-up you got mid-fight is exactly the wrong moment to be asked.
+  let awakenNudged = !!saved?.awakenNudged;
+
+  function isOrigin() { return character.cls === 'origin'; }
+  function canAwaken() { return isOrigin() && leveling.state.level >= AWAKEN_LEVEL; }
+
+  async function openAwakening() {
+    if (!canAwaken()) return;
+    const pick = await showAwakening();
+    if (!pick) return;
+    const def = CLASSES[pick.cls];
+    character.cls = pick.cls;
+
+    // A branch class swaps its weapon TYPE, not just the item — a Warrior who
+    // chose the axe uses the axe line from here on.
+    let weapon = def.startWeapon;
+    if (pick.branch && def.branches) {
+      const br = def.branches.find((b) => b.id === pick.branch);
+      if (br) { weapon = br.weapon; character.branch = br.id; }
+    }
+    inventory.add(weapon, 1);
+    inventory.equip(weapon);
+    player.state.equipWeapon(weapon);
+
+    // The tree is per class, so anything learned as something else has to go —
+    // otherwise the bar carries a button the runtime has no effect for.
+    classTree.resetFor(pick.cls);
+    // One point per level already earned, so a player who took their time
+    // getting to 10 is not punished for it.
+    classTree.state.points = Math.max(classTree.state.points, leveling.state.level - 1);
+    refreshLoadout();
+
+    audio.sfx('levelup_big');
+    particles.shockwave(player.state.pos.clone(), def.color, 6, 0.9);
+    particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), def.color, 60);
+    particles.runeCircle?.(player.state.pos.clone(), def.color, 7, 1.8);
+    addShake(0.6);
+    hud.setClassName?.(def.name);
+    hud.banner(`${def.name.toUpperCase()} AWAKENED`);
+    hud.toastText(`You are a ${def.name}. Open the skill tree (K) and spend your points.`);
+    save();
+    openSkillTree();
+  }
+
+  function openSkillTree() {
+    if (isOrigin()) {
+      hud.toastText(canAwaken()
+        ? 'Find Grand Master Vell in the village to choose your class.'
+        : `Your class awakens at Lv${AWAKEN_LEVEL}. Keep going.`);
+      audio.sfx('deny');
+      return;
+    }
+    showSkillTree(
+      { cls: () => character.cls, level: () => leveling.state.level, tree: classTree },
+      { onChange: () => { refreshLoadout(); save(); } },
+    );
+  }
 
   function castSkill(id) {
+    if (!id) return;
     if (panels.anyOpen() || dialog.isOpen() || player.state.dead) return;
     dismountIfRiding();
     player.state.dmgMult = totalMult();
@@ -1527,13 +1720,23 @@ async function init(character, saved, audio, online = false) {
     }
     dialog.show({
       name: def.name, role: def.role,
-      text: def.dialog[npc.dialogIdx++ % def.dialog.length],
+      text: def.id === 'grandmaster' && isOrigin() && !canAwaken()
+        ? `Not yet. Come back at Lv${AWAKEN_LEVEL} — you are ${AWAKEN_LEVEL - leveling.state.level} short. `
+          + 'Until then the sword is the whole lesson.'
+        : def.dialog[npc.dialogIdx++ % def.dialog.length],
       // Pip runs the village shop; Master NXR spins the wonder capsules
       extra: def.id === 'merchant'
         ? { label: '◆ OPEN SHOP', onClick: () => { close(); panels.toggle('shop'); } }
         : def.id === 'nxr'
           ? { label: '🎰 WONDER CAPSULES', onClick: () => { close(); panels.toggle('gacha'); } }
-          : null,
+          // The Grand Master offers the ritual only when it is actually
+          // available. Showing a greyed-out "AWAKEN" to a Lv3 hero would just
+          // be a promise they cannot act on and will have forgotten by Lv10.
+          : def.id === 'grandmaster' && canAwaken()
+            ? { label: '✦ AWAKEN MY CLASS', onClick: () => { close(); openAwakening(); } }
+            : def.id === 'grandmaster' && !isOrigin()
+              ? { label: '✦ SKILL TREE', onClick: () => { close(); openSkillTree(); } }
+              : null,
       onClose: close,
     });
   }
@@ -1750,7 +1953,7 @@ async function init(character, saved, audio, online = false) {
     if (e.code === 'KeyC') { audio.sfx('ui'); panels.toggle('cra'); }
     if (e.code === 'KeyV') { audio.sfx('ui'); panels.toggle('forge'); }
     if (e.code === 'KeyP') { audio.sfx('ui'); panels.toggle('pets'); }
-    if (e.code === 'KeyK') { audio.sfx('ui'); panels.toggle('skills'); }
+    if (e.code === 'KeyK') { audio.sfx('ui'); openSkillTree(); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
     // Shift also rolls. The on-screen hint and the guide both said it did;
@@ -1771,9 +1974,9 @@ async function init(character, saved, audio, online = false) {
     }
     if (e.code === 'KeyB') toggleAutoBattle(); // AFK auto-battle grinding
     if (e.code === 'Escape') { panels.closeAll(); dialog.hide(); fishing.cancel(); worldmap.hide(); hud.closeMenu?.(); }
-    if (e.code === 'Digit1') castSkill(skillIds[0]);
-    if (e.code === 'Digit2') castSkill(skillIds[1]);
-    if (e.code === 'Digit3') castSkill(skillIds[2]);
+    if (e.code === 'Digit1' && skillIds[0]) castSkill(skillIds[0]);
+    if (e.code === 'Digit2' && skillIds[1]) castSkill(skillIds[1]);
+    if (e.code === 'Digit3' && skillIds[2]) castSkill(skillIds[2]);
     if (e.code === 'Digit4') usePotion();
   });
   window.addEventListener('keyup', (e) => input.keys.delete(e.code));
@@ -1810,6 +2013,9 @@ async function init(character, saved, audio, online = false) {
     audio.sfx('ui');
     worldmap.toggle({ player, npcs, camps, lands: housing, enemies: enemyMgr.enemies, quests, docks: landmarks.docks, isles });
   }
+  // the bar is a view of the loadout, so paint it from the loadout once both
+  // the HUD and (on a phone) the touch controls exist
+  refreshLoadout();
   hud.els.minimapCanvas.style.pointerEvents = 'auto';
   hud.els.minimapCanvas.style.cursor = 'pointer';
   hud.els.minimapCanvas.addEventListener('click', toggleWorldMap);
@@ -1832,7 +2038,6 @@ async function init(character, saved, audio, online = false) {
   });
 
   // --- touch controls ---
-  let touchUI = null;
   if (touch) {
     document.body.classList.add('touch');
     touchUI = createTouchControls(input, skillIds, {
@@ -1900,6 +2105,8 @@ async function init(character, saved, audio, online = false) {
         gachaPity: gacha.pity,
         dailies: dailies.serialize(),
         skilltree: skilltree.serialize(),
+        classTree: classTree.serialize(),
+        awakenNudged,
         gamepass: gamepass.serialize(),
         story: story.serialize(),
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
@@ -1922,6 +2129,8 @@ async function init(character, saved, audio, online = false) {
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
     remote, get net() { return net; },
+    openAwakening, openSkillTree, classTree, summons, character,
+    get skillIds() { return skillIds; },
     summonMount, summonPet, inSafeZone,
   };
 
@@ -2136,6 +2345,7 @@ async function init(character, saved, audio, online = false) {
     mounts.update(dt, player, terrain);
     fishing.update(dt, time);
     tickTeleport(dt);
+    summons.update(dt, player.state.pos);
     wardrobe.update(dt, time);
     // play-time milestones + badge the menu when a reward is waiting
     // wading into water dunks a land mount — it can't swim
