@@ -81,6 +81,7 @@ export const CATEGORIES = [
           ['World map', '<b>N</b> — tap the map to drop a waypoint'],
           ['Daily', '<b>J</b>'],
           ['Teleport home', '<b>T</b> — 1.6s channel, 20s cooldown'],
+          ['Teleport to the basecamp', '<b>Y</b> — same channel, shared cooldown'],
           ['Mount', '<b>M</b>'],
           ['AFK fishing', '<b>G</b>'],
           ['Auto-battle', '<b>B</b>'],
@@ -357,7 +358,9 @@ export const CATEGORIES = [
         World detail only takes effect on the next run; everything else is instant.</p>
 
         <h4>I am stuck inside a building.</h4>
-        <p>Press <b>T</b> to teleport home, or <b>N</b> and walk out along the road.
+        <p>Press <b>T</b> to teleport home and <b>Y</b> to teleport to the basecamp — your
+        crops are at one and the shops, the forge and the gacha are at the other, which
+        is why they are two buttons. Or press <b>N</b> and walk out along the road.
         The game also frees you automatically when a saved position turns out to be
         inside something.</p>
 
