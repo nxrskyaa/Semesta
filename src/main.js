@@ -16,6 +16,9 @@ import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
 import { buildWind } from './world/wind.js';
+import { createNetClient, serverConfigured } from './net/client.js';
+import { createRemotePlayers } from './net/remote.js';
+import { createChat } from './ui/chat.js';
 import { createWildlife } from './world/wildlife.js';
 import { createWatercraft, CRAFT_DEFS } from './systems/watercraft.js';
 import { setupLighting } from './gfx/lighting.js';
@@ -1129,7 +1132,7 @@ async function init(character, saved, audio) {
     dailies.event('kill', {
       kind: e.type || e.def?.id, elite: !!e.elite,
       where: terrain.inSnow?.(e.mesh.position.x, e.mesh.position.z) ? 'snow' : 'land',
-      when: (lighting.state.time / 60 >= 19.5 || lighting.state.time / 60 < 5.5) ? 'night' : 'day',
+      when: (lighting.state.minutes / 60 >= 19.5 || lighting.state.minutes / 60 < 5.5) ? 'night' : 'day',
     });
     gamepass.event('kill'); lore.kills++;
     if (e.isWorldBoss) { dailies.event('boss'); gamepass.event('boss'); }
@@ -1344,7 +1347,7 @@ async function init(character, saved, audio) {
   const fishing = createFishing({
     scene, terrain, player, particles, audio,
     hooks: {
-      isNight: () => { const hr = lighting.state.time / 60; return hr >= 19.5 || hr < 5.5; },
+      isNight: () => { const hr = lighting.state.minutes / 60; return hr >= 19.5 || hr < 5.5; },
       skillBonus: (key) => skilltree.bonus('fishing', key),
       onCatch(fishId, xp, rarity = 'common', extra = false) {
         inventory.add(fishId, 1);
@@ -1358,7 +1361,7 @@ async function init(character, saved, audio) {
         dailies.event('fish', {
           rarity,
           where: terrain.inOcean?.(player.state.pos.x, player.state.pos.z) ? 'sea' : 'lake',
-          when: (lighting.state.time / 60 >= 19.5 || lighting.state.time / 60 < 5.5) ? 'night' : 'day',
+          when: (lighting.state.minutes / 60 >= 19.5 || lighting.state.minutes / 60 < 5.5) ? 'night' : 'day',
         });
         gamepass.event('fish');
         skilltree.gain('fishing', rarity);
@@ -1366,6 +1369,64 @@ async function init(character, saved, audio) {
       onMiss(msg) { hud.toastText(msg); },
     },
   });
+
+  // --- MULTIPLAYER ---------------------------------------------------------
+  //
+  // Entirely optional. With no server configured `net` stays null and every
+  // call site below short-circuits, leaving exactly the single-player game that
+  // shipped before. That is not a fallback bolted on afterwards — it is why any
+  // of this can go out without risking the thing that already works.
+  //
+  // The server owns what must look the same to everybody: where other people
+  // are, the monsters, the boss, the clock, the weather. This client keeps its
+  // own movement, its own inventory, and all of the rendering.
+  const remote = createRemotePlayers(scene, terrain);
+  const netClock = { time: null, weather: null };
+  let net = null;
+  let chat = null;
+
+  if (serverConfigured()) {
+    chat = createChat(hudRoot, (text) => net?.chat(text), {
+      isBusy: () => panels.anyOpen() || dialog.isOpen() || hud.isMenuPopOpen?.(),
+    });
+
+    net = createNetClient({
+      onConnect: (d) => {
+        hud.toastText(`Connected — ${(d.players?.length || 0) + 1} in Anavela.`);
+        audio.sfx('ui');
+      },
+      onDisconnect: () => { remote.clear(); hud.toastText('Lost the connection — retrying…'); },
+      onReconnecting: (secs) => hud.toastText(`Reconnecting in ${secs}s…`),
+      onReject: (why) => hud.toastText(why),
+      onChat: (m) => chat.push(m, net?.state.id),
+      onToast: (t) => hud.toastText(t),
+      onClock: (c) => { netClock.time = c.time; netClock.weather = c.weather; },
+    });
+
+    net.connect(
+      {
+        name: character.name || 'Wanderer',
+        cls: character.cls,
+        level: leveling.state.level,
+        appearance: {
+          gender: character.gender, skin: character.skin,
+          hairStyle: character.hairStyle, hairColor: character.hairColor,
+          eyes: character.eyes, accessory: character.accessory,
+          outfitStyle: character.outfitStyle, outfit: character.outfit,
+          cape: character.cape,
+        },
+      },
+      // what we tell the server about ourselves, ten times a second
+      () => ({
+        x: player.state.pos.x, y: player.state.pos.y, z: player.state.pos.z,
+        f: player.state.facing,
+        a: player.state.swimming ? 'swim' : 'idle',
+        sw: !!player.state.swimming,
+        b: !!player.state.busy,
+        lv: leveling.state.level,
+      }),
+    );
+  }
 
   // --- quest markers above NPC heads ---
   function refreshMarkers() {
@@ -1824,7 +1885,8 @@ async function init(character, saved, audio) {
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
-    dailies, gamepass, story, skilltree, landmarks, watercraft, isles, hud, wind, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
+    dailies, gamepass, story, skilltree, landmarks, watercraft, isles, hud, wind,
+    net, remote, chat, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     composer, usePost,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
@@ -1989,6 +2051,16 @@ async function init(character, saved, audio) {
     }
 
     const hr = lighting.state.minutes / 60;
+    // ONE CLOCK FOR EVERYONE. While connected the server owns the time of day
+    // and we ease toward it rather than snapping — a late packet should read as
+    // a slight drift, never a lurch from noon to midnight. The wrap at 1440 has
+    // to be handled explicitly or crossing midnight would rewind the whole day.
+    if (netClock.time !== null) {
+      let d = netClock.time - lighting.state.minutes;
+      if (d > 720) d -= 1440;
+      if (d < -720) d += 1440;
+      lighting.state.minutes = (lighting.state.minutes + d * Math.min(1, dt * 0.6) + 1440) % 1440;
+    }
     const isNight = hr >= 19.5 || hr < 5.5;
 
     tickWorldBoss(dt);
@@ -2003,6 +2075,10 @@ async function init(character, saved, audio) {
     isles.update(dt, time, isNight, player.state.pos);
     horizon.update(player.state.pos);
     wind.update(dt);
+
+    // remote players: eased toward the targets the server sent, and animated
+    // from how far they actually moved rather than from anything on the wire
+    if (net) remote.update(dt, net.state.players, player.state.pos);
     wildlife.update(dt, player.state.pos, time);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
