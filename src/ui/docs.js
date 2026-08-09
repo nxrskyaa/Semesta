@@ -230,7 +230,7 @@ export const CATEGORIES = [
         nearest the village (⛵ on the world map).</p>
         ${kv([
           ['Bobbin Dinghy', 'Free. Slow and steady, oars in their locks, a lit bow lantern.'],
-          ['Wavedash Jetski', '480c key from the shop. Fast, banks hard, throws a rooster tail.'],
+          ['Donut Boat', '480c key from the shop. A pink-iced ring — fast, drifts wide, bobs like a float. Lit at night.'],
         ])}
         <p>Walk up and press <b>F</b> to board, <b>F</b> again to step off — you
         are put down on the nearest dry ground and the craft re-moors where it

@@ -30,21 +30,21 @@ const cyl = (rt, rb, h, c, seg = 8) => cylMesh(rt, rb, h, c, seg);
 
 export const CRAFT_DEFS = {
   jetski: {
-    name: 'Wavedash Jetski',
+    name: 'Donut Boat',
     item: 'craft_jetski',
     speed: 12.5,        // roughly 3x a swim, and faster than any land mount
     accel: 15,          // thrust along the hull
     drag: 0.06,         // quadratic water resistance - this is what caps speed
-    grip: 3.2,          // how fast the keel kills sideways slip (low = drifty)
+    grip: 2.2,          // a RING has no keel at all, so it drifts wide on a turn
     turn: 2.6,
-    lean: 0.5,          // how hard it banks
-    porpoise: 0.09,     // vertical bounce over the swell
+    lean: 0.34,         // it rolls rather than banks — there is no hull to lay over
+    porpoise: 0.14,     // and it bobs a lot more, because it is basically a float
     spray: 1,
     // SEAT HEIGHT is measured to the hero's feet, and the hero's body sits
     // another 0.55 above that. Both craft were built to a realistic scale next
     // to a deliberately chibi character, so the rider towered out of them.
     seatH: 0.62,
-    blurb: 'Skips across the swell and throws a rooster tail of spray.',
+    blurb: 'A pink-iced ring that skips across the swell. Sprinkles included.',
   },
   dinghy: {
     name: 'Bobbin Dinghy',
@@ -144,120 +144,129 @@ function buildHullGeometry(len, widthAt, deckAt, keelAt, vSharp, segs = 18) {
 }
 
 function buildJetski() {
+  // THE DONUT BOAT.
+  //
+  // The jetski was a swept deep-V hull sized for a realistic rider, and next to
+  // a chibi character it never stopped reading as a piece of equipment the hero
+  // was balanced on rather than a toy they were sitting IN. A ring is the right
+  // answer: it is a shape a chibi fits inside instead of on top of, it needs no
+  // bow or stern so it never looks like it is pointing the wrong way, and a
+  // torus banks and bobs beautifully because it has no sharp end to bury.
+  //
+  // Built as an actual donut — a torus for the ring, a second flattened torus
+  // for the icing sitting slightly proud of it, and sprinkles scattered only on
+  // the icing's upper half. Pink and blue, per the brief.
   const g = new THREE.Group();
-  const HULL = '#e8574a', TRIM = '#ffe27a', DARK = '#a83a30', GREY = '#2c2c2c';
+  const DOUGH = '#f2b98a', DOUGH_D = '#d99a68';
+  const ICING = '#ff8ec7', ICING_D = '#e56aa8';
+  const BLUE = '#66c8f0';
 
-  // A DEEP-V RACING HULL: widest just behind the middle, pinching to a sharp
-  // bow, with a sheer line that lifts as it runs forward.
-  const hullGeo = buildHullGeometry(
-    2.25,
-    (t) => 0.44 * Math.sin(Math.min(1, t * 1.35) * Math.PI * 0.86) + 0.06,  // beam curve
-    (t) => 0.34 + t * t * 0.22,                                            // sheer rises to the bow
-    (t) => 0.3 * (1 - t * 0.55),                                           // keel deepest at the stern
-    0.85,
-  );
-  const hull = new THREE.Mesh(hullGeo, hullMat(HULL));
-  hull.position.y = 0.3;
-  hull.castShadow = true;
-  g.add(hull);
+  const R = 1.05;        // ring radius
+  const TUBE = 0.42;     // how fat the dough is
 
-  // a darker boot stripe along the waterline, same sweep, slightly inflated
-  const bootGeo = buildHullGeometry(
-    2.27,
-    (t) => 0.45 * Math.sin(Math.min(1, t * 1.35) * Math.PI * 0.86) + 0.06,
-    () => 0.02,
-    (t) => 0.31 * (1 - t * 0.55),
-    0.85,
-  );
-  const boot = new THREE.Mesh(bootGeo, hullMat(DARK));
-  boot.position.y = 0.3;
-  g.add(boot);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(R, TUBE, 10, 22),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(DOUGH) }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.06;
+  ring.castShadow = true;
+  g.add(ring);
 
-  // the deck: a rolled top that closes the hull over
-  const deckGeo = buildHullGeometry(
-    2.0,
-    (t) => 0.36 * Math.sin(Math.min(1, t * 1.3) * Math.PI * 0.86) + 0.05,
-    (t) => 0.1 + Math.sin(t * Math.PI) * 0.1,
-    () => -0.3,
-    0,
-  );
-  const deck = new THREE.Mesh(deckGeo, hullMat(HULL));
-  deck.position.set(-0.05, 0.62, 0);
-  g.add(deck);
+  // a slightly smaller, darker torus tucked underneath: gives the dough a
+  // shaded underside without a second light
+  const under = new THREE.Mesh(
+    new THREE.TorusGeometry(R, TUBE * 0.86, 8, 20),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(DOUGH_D) }));
+  under.rotation.x = -Math.PI / 2;
+  under.position.y = -0.06;
+  g.add(under);
 
-  // racing flashes that follow the sheer
-  for (const sz of [-1, 1]) {
-    for (let i = 0; i < 3; i++) {
-      const f = new THREE.Mesh(sharedBox(0.5 - i * 0.1, 0.055, 0.03),
-        new THREE.MeshLambertMaterial({ color: new THREE.Color(TRIM) }));
-      f.position.set(-0.35 + i * 0.42, 0.42 + i * 0.045, sz * (0.4 - i * 0.05));
-      f.rotation.y = sz * -0.1;
-      f.rotation.z = 0.06;
-      g.add(f);
-    }
+  // THE ICING: a flattened torus riding on top, scaled down in Y so it reads as
+  // poured rather than as a second tube
+  const icing = new THREE.Mesh(
+    new THREE.TorusGeometry(R, TUBE * 0.95, 8, 22),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(ICING) }));
+  icing.rotation.x = -Math.PI / 2;
+  icing.position.y = 0.2;
+  icing.scale.y = 0.5;
+  g.add(icing);
+  // a drip skirt, so the icing has an edge instead of just ending
+  const drip = new THREE.Mesh(
+    new THREE.TorusGeometry(R, TUBE * 0.99, 6, 20),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(ICING_D) }));
+  drip.rotation.x = -Math.PI / 2;
+  drip.position.y = 0.12;
+  drip.scale.y = 0.32;
+  g.add(drip);
+
+  // SPRINKLES — only on the top half of the icing, tilted every which way.
+  // Seeded so the same donut looks the same every time it is summoned.
+  let sp = 4242;
+  const rnd = () => { sp = (sp * 1103515245 + 12345) & 0x7fffffff; return sp / 0x7fffffff; };
+  const SPRINKLE = ['#ffffff', '#66c8f0', '#ffe27a', '#8ad86e', '#ff6f9c'];
+  for (let i = 0; i < 34; i++) {
+    const a = rnd() * Math.PI * 2;
+    const rr = R + (rnd() - 0.5) * TUBE * 1.1;
+    const s = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.045, 0.045),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(SPRINKLE[i % SPRINKLE.length]) }));
+    s.position.set(Math.cos(a) * rr, 0.3 + rnd() * 0.03, Math.sin(a) * rr);
+    s.rotation.set(rnd() * 0.5, rnd() * Math.PI * 2, rnd() * 0.5);
+    g.add(s);
   }
 
-  // a moulded saddle rather than a slab
-  const seat = new THREE.Mesh(sharedCyl(0.2, 0.24, 0.78, 10),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color('#3a2f28') }));
-  seat.rotation.z = Math.PI / 2;
-  seat.scale.set(1, 1, 0.62);
-  seat.position.set(-0.3, 0.78, 0);
-  g.add(seat);
-  const rest = new THREE.Mesh(sharedCyl(0.14, 0.2, 0.44, 8),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color('#3a2f28') }));
-  rest.rotation.x = Math.PI / 2;
-  rest.position.set(-0.78, 0.88, 0);
-  g.add(rest);
+  // the seat well: a soft blue cushion sunk into the hole, which is what the
+  // rider actually sits in
+  const cushion = new THREE.Mesh(
+    new THREE.CylinderGeometry(R - TUBE * 0.5, R - TUBE * 0.75, 0.22, 16),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(BLUE) }));
+  cushion.position.y = -0.02;
+  g.add(cushion);
+  const cushionTop = new THREE.Mesh(
+    new THREE.CylinderGeometry(R - TUBE * 0.55, R - TUBE * 0.5, 0.06, 16),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color('#8fd8f8') }));
+  cushionTop.position.y = 0.1;
+  g.add(cushionTop);
 
-  // handlebars on a raked column
-  const col = new THREE.Mesh(sharedCyl(0.09, 0.14, 0.5, 8),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color(DARK) }));
-  col.position.set(0.42, 0.86, 0); col.rotation.z = 0.26; g.add(col);
-  const bar = new THREE.Mesh(sharedCyl(0.042, 0.042, 0.9, 8),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color(GREY) }));
-  bar.rotation.x = Math.PI / 2;
-  bar.position.set(0.3, 1.1, 0); g.add(bar);
-  for (const sz of [-0.41, 0.41]) {
-    const grip = new THREE.Mesh(sharedCyl(0.058, 0.058, 0.2, 8),
-      new THREE.MeshLambertMaterial({ color: new THREE.Color('#1c1c1c') }));
-    grip.rotation.x = Math.PI / 2;
-    grip.position.set(0.3, 1.1, sz); g.add(grip);
-    // mirrors, because a silhouette needs something breaking the line
-    const stalk = new THREE.Mesh(sharedCyl(0.02, 0.02, 0.16, 5),
-      new THREE.MeshLambertMaterial({ color: new THREE.Color(GREY) }));
-    stalk.position.set(0.3, 1.2, sz * 1.05); g.add(stalk);
-    const mir = new THREE.Mesh(sharedBox(0.04, 0.1, 0.14),
-      new THREE.MeshLambertMaterial({ color: new THREE.Color(TRIM) }));
-    mir.position.set(0.3, 1.29, sz * 1.05); g.add(mir);
+  // two stubby grab handles fore and aft, so there is a readable "front"
+  for (const sz of [1, -1]) {
+    const bar = new THREE.Mesh(
+      new THREE.TorusGeometry(0.16, 0.045, 6, 10, Math.PI),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color('#5a6470') }));
+    bar.position.set(0, 0.34, sz * (R - 0.05));
+    bar.rotation.set(Math.PI / 2, 0, 0);
+    g.add(bar);
   }
-  // a raked windscreen catching the light
-  const screen = new THREE.Mesh(sharedBox(0.06, 0.26, 0.5),
-    new THREE.MeshLambertMaterial({ color: 0xbfe8f5, transparent: true, opacity: 0.5 }));
-  screen.position.set(0.56, 1.06, 0); screen.rotation.z = 0.42; g.add(screen);
 
-  // the jet nozzle, cowled
-  const cowl = new THREE.Mesh(sharedCyl(0.17, 0.21, 0.3, 8),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color(DARK) }));
-  cowl.rotation.z = Math.PI / 2;
-  cowl.position.set(-1.02, 0.34, 0); g.add(cowl);
-  const nozzle = new THREE.Mesh(sharedCyl(0.09, 0.13, 0.2, 8),
-    new THREE.MeshLambertMaterial({ color: new THREE.Color('#6a6a6a') }));
-  nozzle.rotation.z = Math.PI / 2;
-  nozzle.position.set(-1.16, 0.32, 0); g.add(nozzle);
+  // NIGHT LIGHTS. A ring of them around the rim plus a bright bow lamp, so the
+  // donut is findable and cute on a dark sea. The materials are basic (not
+  // lambert) so they stay bright when the sun goes down, and bloom latches on.
+  const lamps = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const bulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 6, 5),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(i % 2 ? '#fff0b0' : '#8fd8f8') }));
+    bulb.position.set(Math.cos(a) * (R + TUBE * 0.55), 0.16, Math.sin(a) * (R + TUBE * 0.55));
+    g.add(bulb);
+    lamps.push(bulb);
+  }
+  const bowLamp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12, 8, 6),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff3c8') }));
+  bowLamp.position.set(0, 0.42, R + 0.1);
+  g.add(bowLamp);
+  lamps.push(bowLamp);
 
-  g.userData.exhaust = new THREE.Vector3(-1.25, 0.15, 0);
-  g.userData.bow = new THREE.Vector3(1.25, 0.12, 0);
-  // SCALE FOR A CHIBI RIDER. The whole craft was drawn at a realistic size next
-  // to a hero with a head a third as tall as their body, so the rider sat on top
-  // of it like a doll on a shoe. Scaling the assembled group keeps every
-  // proportion inside the machine intact.
-  const inner = new THREE.Group();
-  for (const c of [...g.children]) inner.add(c);
-  inner.scale.setScalar(1.34);
-  g.add(inner);
-  g.userData.exhaust.multiplyScalar(1.34);
-  g.userData.bow.multiplyScalar(1.34);
+  const light = new THREE.PointLight(0xffd9a0, 0, 9, 2);
+  light.position.set(0, 0.7, 0);
+  g.add(light);
+
+  g.userData.lamps = lamps;
+  g.userData.light = light;
+  // spray comes off the BACK of the ring, and the bow spray off the front
+  g.userData.exhaust = new THREE.Vector3(0, -0.05, -(R + TUBE));
+  g.userData.bow = new THREE.Vector3(0, -0.05, R + TUBE);
   return g;
 }
 
@@ -389,6 +398,40 @@ function buildDinghy() {
   g.userData.lamp = lamp;
   g.userData.exhaust = new THREE.Vector3(-1.75, 0.1, 0);
   g.userData.bow = new THREE.Vector3(1.75, 0.1, 0);
+  // NIGHT LIGHTS. A boat with no lamp is invisible on a dark sea, and the sea is
+  // where the map is emptiest — these are the only thing telling you a hull is
+  // out there. Basic materials so they stay bright once the sun drops, plus one
+  // real point light so the deck and the rider are lit too.
+  {
+    const lamps = [];
+    const bow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 8, 6),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff3c8') }));
+    bow.position.set(0, 0.72, 1.26);
+    g.add(bow);
+    lamps.push(bow);
+    const stern = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 6, 5),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff9a7a') }));
+    stern.position.set(0, 0.66, -1.24);
+    g.add(stern);
+    lamps.push(stern);
+    // port red / starboard green, because that is what boats do
+    for (const [sx, col] of [[-1, '#ff7a7a'], [1, '#8ad86e']]) {
+      const side = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 6, 5),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(col) }));
+      side.position.set(sx * 0.5, 0.6, 0.3);
+      g.add(side);
+      lamps.push(side);
+    }
+    const light = new THREE.PointLight(0xffd9a0, 0, 10, 2);
+    light.position.set(0, 1.0, 0.4);
+    g.add(light);
+    g.userData.lamps = lamps;
+    g.userData.light = light;
+  }
+
   return g;
 }
 
@@ -755,6 +798,29 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
   }
 
   /** Idle bob for the moored craft, so the marina isn't a car park. */
+  /**
+   * Lamps on at dusk, off at dawn, with a slow flicker so they read as flame
+   * rather than as an LED. `night` is 0..1 and comes from the same day-cycle
+   * value the village lanterns use, so every light in the world comes up
+   * together instead of each system guessing at its own sunset.
+   */
+  function tickLamps(night) {
+    const hulls = [...Object.values(state.moored).map((m) => m.mesh)];
+    if (ridden) hulls.push(ridden);
+    for (const g of hulls) {
+      const lamps = g?.userData?.lamps;
+      if (!lamps) continue;
+      const flick = 0.88 + Math.sin(performance.now() * 0.004 + g.id * 0.7) * 0.12;
+      const on = Math.max(0, Math.min(1, night)) * flick;
+      for (const b of lamps) {
+        b.material.transparent = true;
+        b.material.opacity = on;
+        b.visible = on > 0.02;
+      }
+      if (g.userData.light) g.userData.light.intensity = on * 1.6;
+    }
+  }
+
   function update(dt, time) {
     for (const m of Object.values(state.moored)) {
       if (state.active === m.id) continue;
@@ -832,7 +898,7 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
   const owned = () => Object.keys(CRAFT_DEFS).filter((k) => hooks.owns?.(CRAFT_DEFS[k].item));
 
   return {
-    state, moor, nearest, board, leave, drive, update, dispose, CRAFT_DEFS,
+    state, moor, nearest, board, leave, drive, update, tickLamps, dispose, CRAFT_DEFS,
     addStation, nearestStation, summon, owned, stations,
   };
 }

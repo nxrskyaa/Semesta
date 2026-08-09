@@ -154,7 +154,7 @@ export const ITEMS = {
 
   // watercraft keys — moored at the marina, not summoned like a mount
   craft_dinghy:  { name: 'Dinghy Oars', craftId: 'dinghy', buy: 120, rarity: 'common' },
-  craft_jetski:  { name: 'Jetski Key', craftId: 'jetski', buy: 480, rarity: 'rare' },
+  craft_jetski:  { name: 'Donut Boat Key', craftId: 'jetski', buy: 480, rarity: 'rare' },
 
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },

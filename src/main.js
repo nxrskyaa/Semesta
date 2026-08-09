@@ -2369,6 +2369,11 @@ async function init(character, saved, audio, online = false) {
       lighting.state.minutes = (lighting.state.minutes + d * Math.min(1, dt * 0.6) + 1440) % 1440;
     }
     const isNight = hr >= 19.5 || hr < 5.5;
+    // A 0..1 ramp rather than a boolean, so boat lamps fade up through dusk
+    // instead of snapping on the instant the clock crosses 19:30.
+    const nightAmt = hr >= 19.5 ? Math.min(1, (hr - 19) / 1.2)
+      : hr < 5.5 ? Math.min(1, (6.2 - hr) / 1.2) : 0;
+    watercraft.tickLamps(nightAmt);
 
     tickWorldBoss(dt);
     enemyMgr.update(dt, player.state, time, isNight);
