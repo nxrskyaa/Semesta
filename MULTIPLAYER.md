@@ -254,6 +254,50 @@ IP yang muncul harus IP VPS kamu.
 > server butuh `wss://`, dan sertifikat TLS hanya bisa diterbitkan untuk nama
 > domain, bukan untuk alamat IP.
 
+### 2.1b Kalau penyedia VPS tidak mau membuka port 443
+
+Sebagian penyedia memakai allowlist ketat dan tidak memberimu kendali atasnya.
+Gejalanya khas dan **bukan** masalah di VPS: port 80 jalan (Let's Encrypt
+berhasil, Caddy menjawab 308), tapi port 443 timeout total dari luar — TLS
+handshake tidak pernah dimulai. Di dalam VPS semuanya benar: Caddy mendengarkan
+443, UFW mengizinkan 443.
+
+Cara memastikan sebelum menyerah:
+
+```bash
+# dari luar VPS — port mana yang benar-benar tembus
+for p in 443 8443 8080 3000 8000; do
+  timeout 5 bash -c "echo > /dev/tcp/IP_VPS/$p" 2>/dev/null && echo "$p terbuka" || echo "$p tertutup"
+done
+```
+
+Kalau hanya 22 dan 80 yang terbuka, itu kebijakan penyedia, bukan salah setting.
+
+**Solusinya: Cloudflare Tunnel.** `cloudflared` menghubungi Cloudflare dari
+DALAM (outbound), lalu lalu lintas balik lewat koneksi yang sama — jadi tidak
+ada port masuk yang perlu dibuka, dan tidak ada yang bisa diblokir penyedia.
+Cloudflare yang mengurus TLS, jadi browser tetap dapat `wss://` yang dia minta.
+WebSocket didukung penuh; itu justru intinya.
+
+1. **dash.cloudflare.com** → **Add a site** → masukkan domainmu (gratis)
+2. Cloudflare memberi **dua nameserver** — pasang di registrar, menggantikan
+   yang lama
+3. Tunggu sampai Cloudflare menandai situsnya **Active** (biasanya 5–30 menit)
+4. Di VPS:
+
+```bash
+bash /opt/semesta/server/deploy/setup-tunnel.sh play.domainmu.com
+```
+
+Skrip akan mencetak sebuah URL — buka di HP, login, pilih domainnya. VPS tidak
+punya browser, dan itu memang normal.
+
+**Cek berhasil:** `curl https://play.domainmu.com/health`
+
+> Sebelum memindahkan nameserver, pastikan domain itu tidak memegang email.
+> Cek dulu: `nslookup -type=MX domainmu.com`. Kalau kosong, aman. Kalau ada,
+> pakai domain lain, atau salin dulu record MX-nya ke Cloudflare.
+
 ### 2.2 Siapkan VPS
 
 SSH ke VPS sebagai root, lalu:
