@@ -197,12 +197,23 @@ function markTexture(size = 512) {
 // MEASURED LAYOUT. Every number below was checked against the one above it,
 // because the first version put the sign at y=5.5 while the pillar reached 5.30
 // and 1.15 units of stone drove straight through the middle of the board.
+// NOTHING PASSES THROUGH THE SIGN.
+//
+// The rule is simple and it is enforced by a check at the bottom of this file:
+// the sign's vertical span must be empty of every other monument part. The last
+// version satisfied it for the pillar and then added a support neck in the same
+// edit that ran 1.35 units through the middle of the board.
+//
+// So the post STOPS and the sign sits on top of it, on a cap. There is nothing
+// above the cap except the sign and the finial.
 const MON = {
-  stepTop: 1.19,        // three 0.34 courses
-  pillarTop: 5.30,      // 4.2 tall, centred at 3.2
-  signY: 7.10,          // 2.7 tall -> spans 5.75..8.45, clearing the pillar by 0.45
+  postTop: 5.30,        // the 4.2 pillar, centred at 3.2, ends here
+  capY: 5.45,           // a flat cap closing the post
+  signBottom: 5.70,     // the board starts above the cap
   signSize: 2.7,
-  finialY: 9.10,        // above the sign top (8.45) with room to glow
+  get signY() { return this.signBottom + this.signSize / 2; },   // 7.05
+  get signTop() { return this.signBottom + this.signSize; },     // 8.40
+  get finialY() { return this.signTop + 0.75; },                 // 9.15
 };
 
 function buildMonument() {
@@ -221,10 +232,11 @@ function buildMonument() {
     band.position.y = y;
     g.add(band);
   }
-  // a short neck carrying the sign clear of the pillar's cap
-  const neck = cylMesh(0.3, 0.4, MON.signY - MON.pillarTop, PAL.structure, 8);
-  neck.position.y = (MON.pillarTop + MON.signY) / 2;
-  g.add(neck);
+  // a flat cap closing the post. It is the LAST thing below the sign — there is
+  // deliberately no shaft continuing upward past this point.
+  const cap = cylMesh(0.78, 0.68, 0.3, PAL.trim, 8);
+  cap.position.y = MON.capY;
+  g.add(cap);
 
   const tex = markTexture(512);
   // ONE frame with real thickness, and the two painted faces sit just proud of
@@ -232,6 +244,13 @@ function buildMonument() {
   const frame = boxMesh(MON.signSize + 0.4, MON.signSize + 0.4, 0.34, PAL.trim);
   frame.position.y = MON.signY;
   g.add(frame);
+  // two slim struts BEHIND the board carrying it off the cap, well outside the
+  // painted face so they can never cross the mark
+  for (const sx of [-1, 1]) {
+    const strut = boxMesh(0.14, MON.signBottom - MON.capY + 0.4, 0.14, PAL.structure);
+    strut.position.set(sx * (MON.signSize / 2 - 0.1), (MON.capY + MON.signBottom) / 2, -0.28);
+    g.add(strut);
+  }
   for (const rot of [0, Math.PI]) {
     const pane = new THREE.Mesh(
       new THREE.PlaneGeometry(MON.signSize, MON.signSize),
@@ -540,8 +559,46 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
     return false;
   }
 
+  // ---- THE CHECK ---------------------------------------------------------
+  //
+  // Twice now a part has been added that runs straight through the Rialo sign,
+  // and twice it shipped because the numbers were checked by hand against the
+  // one part I happened to be thinking about. This walks the real world-space
+  // boxes and complains, so the next person to move something finds out here
+  // instead of in a screenshot.
+  function auditSign() {
+    root.updateWorldMatrix(true, true);
+    const boxes = [];
+    root.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      o.geometry.computeBoundingBox();
+      const bb = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+      boxes.push({ o, bb, textured: !!o.material?.map });
+    });
+    // the sign is the textured pane nearest the monument's axis
+    const pane = boxes.find((b) => b.textured
+      && Math.abs(b.bb.min.x + b.bb.max.x) / 2 - cx < 1
+      && Math.abs((b.bb.min.z + b.bb.max.z) / 2 - cz) < 1);
+    if (!pane) return [];
+    const faults = [];
+    for (const b of boxes) {
+      if (b === pane || b.textured) continue;
+      // ignore the frame, which is meant to surround it
+      const isFrame = b.bb.min.y <= pane.bb.min.y && b.bb.max.y >= pane.bb.max.y
+        && (b.bb.max.x - b.bb.min.x) > (pane.bb.max.x - pane.bb.min.x);
+      if (isFrame) continue;
+      const hits = b.bb.intersectsBox(pane.bb);
+      if (hits) faults.push(b.o.name || b.o.geometry.type);
+    }
+    if (faults.length) {
+      console.warn('[semesta] RIALO SIGN IS OBSTRUCTED by:', faults.join(', '));
+    }
+    return faults;
+  }
+  const signFaults = auditSign();
+
   return {
-    root, agents, spider, banner, update, nearest, blocked, solids,
+    root, agents, spider, banner, update, nearest, blocked, solids, signFaults,
     centre: { x: cx, z: cz }, radius: island.r,
     count: agents.length,
   };

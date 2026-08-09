@@ -356,6 +356,57 @@ export class Terrain {
       sz - this.size / 2 + 0.5,
     );
 
+    // THE RIALO HUB IS BUILT, NOT FOUND.
+    //
+    // The first attempt copied the village's flattener, which skips any cell at
+    // or below the waterline — and on this island that was most of them. The
+    // generator's falloff (cos(d/R * PI/2) squared) only lifts the middle above
+    // water, so a 15-unit paved plaza was being laid over open seabed: the stone
+    // floated at one height, the ground under it was 2.25 units lower, and the
+    // hero walked on the GROUND, which put them visibly buried under the floor
+    // they appeared to be standing on.
+    //
+    // So this RAISES land rather than levelling what happens to be there. Inside
+    // FLAT everything becomes one height and is marked dry; from there out to
+    // OUT it eases down into the sea so the island still has a beach.
+    for (const I of ISLANDS) {
+      if (I.kind !== 'hub') continue;
+      const hx = Math.round(I.x * S), hz = Math.round(I.z * S);
+      if (!this.inBounds(hx, hz)) continue;
+      // one course above the waterline: dry, flat, and not on a pedestal
+      const deck = WATER_LEVEL + 2;
+      // FLAT has to cover the BANNER too, not just the plaza. Its dais stands
+      // at z=-18 and is 21 wide, so its far corner sits 23.4 units from the
+      // centre — at FLAT=18 the board's ends were still over open water.
+      const FLAT = 25;                    // plaza (15), kerb, and the banner dais
+      const OUT = FLAT + 6;               // then a beach down to the waterline
+      for (let dz = -OUT; dz <= OUT; dz++) {
+        for (let dx = -OUT; dx <= OUT; dx++) {
+          const ix = hx + dx, iz = hz + dz;
+          if (!this.inBounds(ix, iz)) continue;
+          const d = Math.hypot(dx, dz);
+          if (d > OUT) continue;
+          const i = this.idx(ix, iz);
+          if (d <= FLAT) {
+            this.height[i] = deck;
+          } else {
+            // a shelving beach out to the waterline
+            const t = (d - FLAT) / (OUT - FLAT);
+            this.height[i] = Math.max(
+              WATER_LEVEL - 1, Math.round(deck - t * (deck - (WATER_LEVEL - 1))));
+          }
+          // whatever it used to be, it is dry island now
+          if (this.height[i] > WATER_LEVEL) {
+            this.island[i] = 1;
+            this.ocean[i] = 0;
+            if (this.type[i] === 5) this.type[i] = 2;   // was water: make it sand
+          } else {
+            this.type[i] = 5;
+          }
+        }
+      }
+    }
+
     // the town centre is PAVED — warm terracotta plaza tiles instead of dirt,
     // with a wobbled edge so the paving melts organically into the grass
     // the terracotta tiling reaches the plaza kerb so the mesh never ends on grass
