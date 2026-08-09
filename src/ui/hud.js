@@ -344,6 +344,11 @@ body.touch #hud .quests::before { display: none; }
 @keyframes af-in { from { opacity: 0; transform: translateX(-50%) translateY(-14px); } }
 @keyframes af-pulse { 50% { opacity: 0.25; } }
 body.touch #hud .autoflag { top: 200px; font-size: 9px; padding: 5px 10px; }
+#hud .menupop .mtile.quit { color: #c08880; box-shadow: inset 0 0 0 1px rgba(200,90,80,0.3); }
+#hud .menupop .mtile.quit:hover { color: #ffb0a0; }
+/* the one tile that leaves the world — coloured apart so it is never a mis-tap */
+#hud .menupop .mtile.quit { color: #c08880; box-shadow: inset 0 0 0 1px rgba(200,90,80,0.3); }
+#hud .menupop .mtile.quit:hover { color: #ffb0a0; }
 #hud .menupop .mtile.auto-on { box-shadow: inset 0 0 0 2px #e8574a; color: #ffd0c0; }
 
 /* ---- toasts (bottom left) ---- */
@@ -654,6 +659,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="pass"><span class="mi">★</span>GAMEPASS<small>U</small></button>
         <button class="mtile" data-menu="gfx"><span class="mi">⚙</span>GRAPHICS<small></small></button>
         <button class="mtile" data-menu="about"><span class="mi">✦</span>ABOUT<small></small></button>
+        <button class="mtile quit" data-menu="quit"><span class="mi">⏻</span>MAIN MENU<small></small></button>
       </div>
       <button class="menubtn">☰ MENU<span class="badge">!</span></button>
     </div>

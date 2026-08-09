@@ -53,6 +53,10 @@ import { createAudio } from './audio/audio.js';
 import { showCharacterCreation } from './ui/charcreate.js';
 import { showOpening, logoUrl } from './ui/menu.js';
 import { pickLanguage, t } from './ui/lang.js';
+import { showCharacterSelect } from './ui/charselect.js';
+import {
+  activeSlot, setActiveSlot, activeKey, listSlots, loadSlot, saveSlot, deleteSlot,
+} from './systems/profiles.js';
 import { showPrologue } from './ui/prologue.js';
 import { cleanImage } from './gfx/logo.js';
 import { createHUD } from './ui/hud.js';
@@ -67,8 +71,7 @@ import { createDailies } from './systems/dailies.js';
 import { createGamePass, PASS_PRICES } from './systems/gamepass.js';
 import { createSkillTree, SKILLS as SKILL_DEFS } from './systems/skilltree.js';
 import {
-  cloudConfigured, reconcile, writeLocal, startCloudAutosave, currentUser,
-} from './net/auth.js';
+  cloudConfigured, reconcile, writeLocal, startCloudAutosave, currentUser, deleteCloudSave } from './net/auth.js';
 import { createStory } from './systems/story.js';
 import { createLoadScreen } from './ui/loadscreen.js';
 import { itemIconUrl } from './gfx/textures.js';
@@ -145,7 +148,7 @@ async function main() {
   // signed out, offline, or the project is not configured. Signing in is a way
   // to carry progress between devices, never a requirement to play — and a bad
   // night at Supabase must not be able to cost anyone their session.
-  let saved = loadSave();
+  let saved = loadSlot(activeSlot());
   if (cloudConfigured()) {
     try {
       const res = await Promise.race([
@@ -178,21 +181,53 @@ async function main() {
   // also carries your hero in) was resurrecting the exact profile that had just
   // been deleted. The menu can destroy it, so it has to be re-read at the point
   // of use rather than trusted from before.
-  saved = loadSave();
+  saved = loadSlot(activeSlot());
   audio.start(); // menu click = first gesture, safe for autoplay
   audio.setMood('menu'); // dreamy title/creation track — the world flips it to day/night
   audio.sfx('ui');
 
   let config, continued;
-  // Going online with a hero already made carries that hero in — nobody wants
-  // to rebuild their character just to see other people.
-  if ((action === 'continue' || online) && saved) {
+  // THE SELECT SCREEN. CONTINUE and PLAY ONLINE both go through it, because
+  // with three slots "continue" is no longer a single obvious thing — it is a
+  // question about which of your heroes you meant. NEW ADVENTURE skips it only
+  // when every slot is empty; otherwise a new hero still has to be told where
+  // to live, or making one would silently overwrite another.
+  const anySaved = listSlots().some((x) => !x.empty);
+  let pickedNew = action === 'new';
+
+  if (anySaved) {
+    for (;;) {
+      const pick = await showCharacterSelect();
+      if (pick.action === 'back') {
+        // straight back to the opening; simplest honest answer is a reload
+        location.reload();
+        return;
+      }
+      if (pick.action === 'delete') {
+        deleteSlot(pick.slot);
+        // the cloud copy goes with it, or signing in would bring it back
+        if (pick.slot === 0) await deleteCloudSave().catch(() => {});
+        continue;                      // repaint the picker
+      }
+      setActiveSlot(pick.slot);
+      pickedNew = pick.action === 'new';
+      break;
+    }
+  } else {
+    setActiveSlot(0);
+    pickedNew = true;
+  }
+
+  saved = loadSlot(activeSlot());
+
+  if (!pickedNew && saved) {
     config = { ...defaultCharacter(), ...saved.character };
     continued = true;
   } else {
     const res = await showCharacterCreation(null); // fresh hero
     config = res.config;
     continued = false;
+    saved = null;                      // a new hero never inherits the old save
   }
 
   // A NEW HERO GETS THE STORY. Language first, because the prologue is the
@@ -1392,6 +1427,22 @@ async function init(character, saved, audio, online = false) {
 
   function autoUnlocked() { return leveling.state.level >= AUTO_UNLOCK_LEVEL; }
 
+  /**
+   * Back to the main menu, and (if signed in) sign out on the way.
+   *
+   * SAVES FIRST, always. Leaving is a deliberate act and losing the last few
+   * minutes because of it would be unforgivable; a reload is the honest way to
+   * tear down a world this size, because half-disposing three thousand meshes
+   * by hand is exactly how you end up leaking one.
+   */
+  async function leaveToMenu() {
+    save();
+    hud.toastText('Saving and returning to the menu…');
+    try { await cloud?.flush?.(); } catch { /* offline is fine */ }
+    net?.disconnect?.();
+    setTimeout(() => location.reload(), 450);
+  }
+
   function toggleAutoBattle() {
     if (!autoBattle && !autoUnlocked()) {
       audio.sfx('deny');
@@ -2121,6 +2172,7 @@ async function init(character, saved, audio, online = false) {
     onSkill: castSkill,
     onPotion: usePotion,
     onMenu: (which) => {
+      if (which === 'quit') { leaveToMenu(); return; }
       if (which === 'auto') { toggleAutoBattle(); return; }
       if (which === 'home') { teleportHome('home'); return; }
       if (which === 'village') { teleportHome('village'); return; }
@@ -2209,7 +2261,7 @@ async function init(character, saved, audio, online = false) {
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
         at: Date.now(),
       };
-      localStorage.setItem(SAVE_KEY, JSON.stringify(lastSave));
+      saveSlot(activeSlot(), lastSave);
       cloud?.mark();
     } catch { /* storage full/blocked: ignore */ }
   }
