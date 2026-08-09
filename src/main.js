@@ -13,6 +13,7 @@ import { createWeather } from './world/weather.js';
 import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
 import { createSpider } from './world/spider.js';
+import { createRialoHub } from './world/rialohub.js';
 import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
@@ -313,6 +314,17 @@ async function init(character, saved, audio, online = false) {
   const spider = createSpider(scene, terrain, {
     centre: { x: terrain.spawn.x, z: terrain.spawn.z }, radius: 11,
   });
+
+  // THE RIALO HUB — the built island out in the ocean, and the Temple Play cast
+  // who live on it. Nothing else in the world knows about it: it is its own
+  // module, on its own island record, and if the island is missing it simply
+  // does not exist rather than throwing.
+  const hubIsland = terrain.islands.find((i) => i.kind === 'hub');
+  const rialoHub = hubIsland ? createRialoHub(scene, terrain, hubIsland) : null;
+  if (rialoHub) {
+    // the plaza is paved, so nothing should be growing through it
+    decor.clearArea(rialoHub.centre.x, rialoHub.centre.z, 17);
+  }
 
   // A tree inside a wall is one you can see and never reach, so it can never be
   // chopped — and gathering nodes are scattered BEFORE the landmarks and houses
@@ -1822,6 +1834,23 @@ async function init(character, saved, audio, online = false) {
       add('pet', 'Pet Spider', () => petSpider());
     }
 
+    // The Hub's cast talk about Rialo itself. Their lines come from the Temple
+    // sheet verbatim, so somebody who played that recognises them.
+    const hubNpc = rialoHub?.nearest(player.state.pos, 2.4);
+    if (hubNpc) {
+      add('talk', `Talk to ${hubNpc.def.name}`, () => {
+        player.state.busy = true;
+        audio.sfx('talk');
+        const lines = hubNpc.def.dialogue;
+        dialog.show({
+          name: hubNpc.def.name,
+          role: hubNpc.def.topic,
+          text: lines[hubNpc.dialogIdx++ % lines.length],
+          onClose: () => { player.state.busy = false; },
+        });
+      });
+    }
+
     // RIDING: while you're on a hull, the only thing the button does is get off
     if (watercraft.state.active) {
       const def = CRAFT_DEFS[watercraft.state.active];
@@ -2196,7 +2225,7 @@ async function init(character, saved, audio, online = false) {
     projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
-    remote, get net() { return net; }, spider,
+    remote, get net() { return net; }, spider, rialoHub,
     openAwakening, openSkillTree, classTree, summons, character, doAttack, enemyMgr, projectiles, inventory, leveling,
     get skillIds() { return skillIds; },
     summonMount, summonPet, inSafeZone,
@@ -2420,6 +2449,7 @@ async function init(character, saved, audio, online = false) {
     tickTeleport(dt);
     summons.update(dt, player.state.pos);
     spider.update(dt, player.state.pos);
+    rialoHub?.update(dt, player.state.pos, nightAmt);
     wardrobe.update(dt, time);
     // play-time milestones + badge the menu when a reward is waiting
     // wading into water dunks a land mount — it can't swim

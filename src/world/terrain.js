@@ -5,7 +5,10 @@ import * as THREE from 'three';
 import { fbm2, valueNoise2, mulberry32 } from '../util/noise.js';
 import { TILE } from '../gfx/textures.js';
 
-export const WORLD_SIZE = 160;          // cells per side
+// BIGGER. 160 cells left the archipelago cramped once the Rialo Hub needed a
+// site of its own well clear of the mainland — at 200 the sea has room for a
+// 22-unit island that is genuinely a voyage away rather than a swim.
+export const WORLD_SIZE = 200;          // cells per side
 export const BLOCK_H = 0.45;            // height unit
 export const WATER_LEVEL = 2;           // cells with h <= this are submerged
 export const WATER_Y = (WATER_LEVEL + 1) * BLOCK_H + 0.07;
@@ -40,6 +43,11 @@ const ISLANDS = [
   { name: 'Lantern Cay', kind: 'lantern', x: 0.900, z: 0.520, r: 6.0, h: 2.8, seed: 1.3 },
   { name: 'Bone Reef',   kind: 'rock',    x: 0.800, z: 0.930, r: 6.5, h: 3.2, seed: 4.6 },
   { name: 'Far Anchor',  kind: 'lantern', x: 0.520, z: 0.720, r: 5.5, h: 2.6, seed: 6.1 },
+  // THE RIALO HUB. Three times the radius of anything else and placed at the
+  // far corner of the ocean on purpose: it is meant to be a destination you
+  // sail to, not a rock you notice from the beach. `kind: 'hub'` keeps the
+  // isles decorator from planting palms and torii all over a built place.
+  { name: 'Rialo Hub',   kind: 'hub',     x: 0.845, z: 0.870, r: 22.0, h: 3.0, seed: 7.7 },
 ];
 
 export class Terrain {
