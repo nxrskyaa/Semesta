@@ -5,11 +5,15 @@
 // which is which: a squat mossy BEAST that runs in and bites, a boxy walking
 // BOT that stomps, and a static TURRET that never moves and never stops firing.
 //
-// They are timed rather than killable. A summon that can die turns every fight
-// into babysitting, and the interesting decision in this class is *when* to
-// spend the cooldown, not whether the pet survived. What they do have is a
-// leash: nothing wanders more than LEASH metres from its owner, so a beast
-// cannot drag half the map back to you.
+// They are timed AND killable. The first pass made them timed only, on the
+// theory that a summon which can die turns a fight into babysitting — but that
+// gave the Summoner a permanent wall of bodies that nothing in the game could
+// answer, and the honest name for that is not a class, it is a bug. Monsters
+// hit them now, and the cap is small, so the decision is *where* you put them
+// rather than how many you can stack.
+//
+// They also have a leash: nothing wanders more than LEASH metres from its
+// owner, so a beast cannot drag half the map back to you.
 //
 // Everything here routes through the shared mesh cache, because a Legion cast
 // puts six bodies on screen in one frame and six fresh material sets is exactly
@@ -122,10 +126,12 @@ function buildTurret() {
 const BUILD = { beast: buildBeast, bot: buildBot, turret: buildTurret };
 
 const STATS = {
-  //         hp-less: `life` is seconds. `dmg` is a multiplier on the caster's hit.
-  beast:  { life: 20, dmg: 0.55, rate: 0.9, speed: 5.6, reach: 1.5, scale: 1.0 },
-  bot:    { life: 22, dmg: 1.05, rate: 1.5, speed: 3.6, reach: 1.8, scale: 1.0 },
-  turret: { life: 18, dmg: 0.45, rate: 0.7, speed: 0,   reach: 12,  scale: 1.0 },
+  //  `life` is seconds, `hp` is how much punishment it takes, and `dmg` is a
+  //  multiplier on the caster's own hit. The turret is the most fragile because
+  //  it cannot move out of the way of anything.
+  beast:  { life: 20, hp: 40, dmg: 0.55, rate: 0.9, speed: 5.6, reach: 1.5, scale: 1.0 },
+  bot:    { life: 22, hp: 70, dmg: 1.05, rate: 1.5, speed: 3.6, reach: 1.8, scale: 1.0 },
+  turret: { life: 18, hp: 26, dmg: 0.45, rate: 0.7, speed: 0,   reach: 12,  scale: 1.0 },
 };
 
 /**
@@ -134,7 +140,9 @@ const STATS = {
  */
 export function createSummons(deps) {
   const list = [];
-  const MAX = 8;   // a hard ceiling, so Legion on top of Legion cannot melt a phone
+  // A SMALL CEILING. Eight was chosen when they could not die; with monsters
+  // able to answer them, five is a squad rather than a barricade.
+  const MAX = 5;
 
   function spawn(kind, pos, opts = {}) {
     const st = STATS[kind];
@@ -155,6 +163,7 @@ export function createSummons(deps) {
 
     const s2 = {
       kind, mesh, life: st.life * (opts.lifeMult || 1), cd: 0,
+      hp: st.hp, hpMax: st.hp, hurtT: 0,
       dmg: st.dmg * (opts.dmgMult || 1), phase: Math.random() * 6.28,
       bob: 0,
     };
@@ -168,6 +177,38 @@ export function createSummons(deps) {
     deps.particles.burst(s.mesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)), '#6ec8d8', 12, 2);
     deps.scene.remove(s.mesh);
     disposeObject(s.mesh, false);
+  }
+
+  /**
+   * A monster hit one of them. Returns true if it died, so the caller can spend
+   * its attack on something that is still standing.
+   */
+  function damage(s, amount) {
+    if (!s || s.hp <= 0) return false;
+    s.hp -= amount;
+    s.hurtT = 0.18;
+    deps.particles.burst(
+      s.mesh.position.clone().add(new THREE.Vector3(0, 0.5, 0)), '#ff8a7a', 6, 2.2);
+    if (s.hp <= 0) {
+      deps.particles.burst(
+        s.mesh.position.clone().add(new THREE.Vector3(0, 0.4, 0)), '#6ec8d8', 18, 3.4);
+      deps.audio.sfx?.('hit');
+      retire(s);
+      return true;
+    }
+    return false;
+  }
+
+  /** The nearest living summon to a point — what an enemy targets. */
+  function nearestTo(pos, r = 3) {
+    let best = null, bd = r * r;
+    for (const s of list) {
+      if (s.hp <= 0) continue;
+      const dx = s.mesh.position.x - pos.x, dz = s.mesh.position.z - pos.z;
+      const d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
   }
 
   function nearestEnemy(from, r) {
@@ -185,8 +226,13 @@ export function createSummons(deps) {
     for (let i = list.length - 1; i >= 0; i--) {
       const s = list[i];
       s.life -= dt;
-      if (s.life <= 0) { retire(s); continue; }
+      if (s.life <= 0 || s.hp <= 0) { retire(s); continue; }
       if (s.cd > 0) s.cd -= dt;
+      // a brief lift when struck, so being hit is visible without a health bar
+      if (s.hurtT > 0) {
+        s.hurtT -= dt;
+        s.mesh.scale.setScalar((s.kind === 'turret' ? 1 : 1) * (1 + s.hurtT * 0.5));
+      }
 
       const st = STATS[s.kind];
       const p = s.mesh.position;
@@ -262,5 +308,5 @@ export function createSummons(deps) {
    *  way to be topped up, which for a timed summon means more TIME. */
   function extendAll(secs) { for (const s of list) s.life += secs; }
 
-  return { spawn, update, clear, extendAll, list, count: () => list.length };
+  return { spawn, update, clear, extendAll, damage, nearestTo, list, count: () => list.length };
 }

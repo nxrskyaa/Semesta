@@ -14,6 +14,11 @@ import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
 import { createSpider } from './world/spider.js';
 import { createRialoHub } from './world/rialohub.js';
+// The one image asset outside logoasset's two branding files. The project rule
+// is that art is procedural, and it holds for everything the game GENERATES —
+// this is a supplied promotional banner hung on a board in the world, which is
+// closer to the logo than to a texture, and it was asked for by name.
+import rialoBannerUrl from '../logoasset/rialohub-banner.png';
 import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
@@ -37,6 +42,8 @@ import { createInventory } from './systems/inventory.js';
 import { createForge, forgeMultiplier } from './systems/forge.js';
 import { createSkillSystem, SKILLS, MAX_SKILL_LEVEL } from './systems/skills.js';
 import { createClassTree, LOADOUT_SIZE } from './systems/classtree.js';
+import { createStats } from './systems/stats.js';
+import { showStats } from './ui/statspanel.js';
 import { showAwakening, showSkillTree } from './ui/awaken.js';
 import { createSummons } from './systems/summons.js';
 import { skillIconUrl } from './gfx/textures.js';
@@ -355,7 +362,13 @@ async function init(character, saved, audio, online = false) {
   // module, on its own island record, and if the island is missing it simply
   // does not exist rather than throwing.
   const hubIsland = terrain.islands.find((i) => i.kind === 'hub');
-  const rialoHub = hubIsland ? createRialoHub(scene, terrain, hubIsland) : null;
+  // The banner texture is loaded async; the board is built either way and the
+  // artwork appears when it arrives, so a slow decode never blocks the world.
+  const bannerTex = new THREE.TextureLoader().load(rialoBannerUrl);
+  bannerTex.colorSpace = THREE.SRGBColorSpace;
+  const rialoHub = hubIsland
+    ? createRialoHub(scene, terrain, hubIsland, { bannerTexture: bannerTex })
+    : null;
   if (rialoHub) {
     // the plaza is paved, so nothing should be growing through it
     decor.clearArea(rialoHub.centre.x, rialoHub.centre.z, 17);
@@ -429,12 +442,31 @@ async function init(character, saved, audio, online = false) {
     for (const l of housing.lands) {
       if (l.built && (x - l.x) ** 2 + (z - l.z) ** 2 < HOUSE_SAFE_R * HOUSE_SAFE_R) return { x: l.x, z: l.z, r: HOUSE_SAFE_R };
     }
+    // THE RIALO HUB IS A HUB. It is a place you sail to in order to stand
+    // around reading a banner and talking to two people — a Lv1 hero was being
+    // swarmed the moment they stepped off the boat, which makes the whole
+    // island unvisitable for exactly the players it is there to welcome.
+    if (hubIsland) {
+      const R = hubIsland.r + 4;
+      if ((x - hubIsland.x) ** 2 + (z - hubIsland.z) ** 2 < R * R) {
+        return { x: hubIsland.x, z: hubIsland.z, r: R };
+      }
+    }
     return null;
   }
   setBoot(0.74, 'Waking the villagers…'); await frame();
 
   // --- systems & entities ---
   const leveling = createLeveling();
+
+  // THE BUILD. Three points a level across four attributes, no respec.
+  // Declared HERE, next to levelling, because applyLevelStats() folds the
+  // Vitality and Focus bonuses into the HP and stamina pools and runs long
+  // before the class tree is built.
+  const stats = createStats();
+  stats.load(saved?.stats);
+  stats.syncLevel(saved?.level || 1);   // catch up a save made before this existed
+
   const inventory = createInventory(cls.startWeapon);
   const forge = createForge(inventory);
   const quests = createQuests({ inventory, leveling });
@@ -548,7 +580,26 @@ async function init(character, saved, audio, online = false) {
       }
     },
     onPlayerHit(e, dmg) {
-      const taken = player.takeDamage(dmg);
+      // FAIR TRADE. If a summon is standing between the monster and you, it
+      // eats the hit instead. Without this the Summoner's army was scenery the
+      // enemies walked straight through, which is why the summons never died.
+      const shield = summons.nearestTo(e.mesh.position, 2.2);
+      if (shield) {
+        summons.damage(shield, dmg);
+        dmgNums.spawn(
+          shield.mesh.position.clone().add(new THREE.Vector3(0, 1.0, 0)), dmg, 'player-hit');
+        return;
+      }
+      // AN ORIGIN HAS NOTHING. No skills, no burst, no escape, no heal — that
+      // is deliberate, but the monster damage was still tuned for a class that
+      // started with three abilities. The first ten levels get a real cushion
+      // that fades out completely by the time the Grand Master awakens you, so
+      // learning to fight is survivable and the difficulty curve still exists.
+      //
+      // Lv1 takes 45% damage, Lv10 takes 100%. Nothing after that is touched.
+      const lv = leveling.state.level;
+      const grace = lv >= AWAKEN_LEVEL ? 1 : 0.45 + 0.55 * ((lv - 1) / (AWAKEN_LEVEL - 1));
+      const taken = player.takeDamage(Math.max(1, Math.round(dmg * grace)));
       if (taken > 0) {
         dmgNums.spawn(player.state.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), taken, 'player-hit');
         particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ff6b5e', 7, 2);
@@ -1106,8 +1157,9 @@ async function init(character, saved, audio, online = false) {
   // --- stats from level & class ---
   function applyLevelStats() {
     const lv = leveling.state.level;
-    player.state.maxHp = cls.baseHp + (lv - 1) * cls.hpPerLevel;
-    player.state.maxStamina = cls.baseStam + (lv - 1) * cls.stamPerLevel;
+    // VITALITY and FOCUS are flat additions on top of the class curve
+    player.state.maxHp = cls.baseHp + (lv - 1) * cls.hpPerLevel + stats.bonusHp();
+    player.state.maxStamina = cls.baseStam + (lv - 1) * cls.stamPerLevel + stats.bonusStamina();
   }
   applyLevelStats();
   player.state.hp = saved?.hp ?? player.state.maxHp;
@@ -1142,6 +1194,8 @@ async function init(character, saved, audio, online = false) {
     return rewards;
   }
   leveling.state.onLevelUp = (lv) => {
+    const pts = stats.syncLevel(lv);
+    if (pts) hud.toastText(`+${pts} stat points — open STATS (Z) to spend them.`);
     // THE ONE NUDGE. Fired once, and it points rather than pulls: the ritual
     // itself needs a walk to the Grand Master, so nobody is dragged into a
     // permanent choice by a level-up they earned in the middle of a fight.
@@ -1237,7 +1291,9 @@ async function init(character, saved, audio, online = false) {
 
   // --- damage & kills ---
   function totalMult() {
-    return leveling.dmgMult() * (1 + (player.state.dmgBonusBuff || 0));
+    // MIGHT lands here, so it applies to weapons, skills and summons alike —
+    // one multiplier, one place, no stat that quietly misses half the game.
+    return leveling.dmgMult() * (1 + (player.state.dmgBonusBuff || 0)) * stats.dmgMult();
   }
   function forgeMult() { return forgeMultiplier(inventory.equippedPlus()); }
 
@@ -2092,11 +2148,25 @@ async function init(character, saved, audio, online = false) {
     if (e.code === 'KeyV') { audio.sfx('ui'); panels.toggle('forge'); }
     if (e.code === 'KeyP') { audio.sfx('ui'); panels.toggle('pets'); }
     if (e.code === 'KeyK') { audio.sfx('ui'); openSkillTree(); }
+    // Z for the build sheet. U is already the gamepass, and C is crafting.
+    if (e.code === 'KeyZ') {
+      audio.sfx('ui');
+      showStats(stats, { onChange: () => { applyLevelStats(); save(); } });
+    }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
     // Shift also rolls. The on-screen hint and the guide both said it did;
     // right-click was the only binding that actually existed.
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') doRoll();
+    // SHIFT ROLLS — but only a bare Shift.
+    //
+    // Windows 11 remaps the PrtScn key to the Snipping Tool, which it launches
+    // by synthesising Win+Shift+S. The browser sees a real ShiftLeft keydown,
+    // so taking a screenshot rolled the character forward every single time.
+    // A modifier key is the wrong thing to bind an action to on its own; the
+    // guard is to require that no other modifier is held, and `repeat` is
+    // ignored so holding Shift does not spam rolls.
+    if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight')
+      && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) doRoll();
     if (e.code === 'KeyL') { audio.sfx('ui'); panels.toggle('life'); }
     if (e.code === 'KeyJ') { audio.sfx('ui'); panels.toggle('daily'); }
     if (e.code === 'KeyU') { audio.sfx('ui'); panels.toggle('pass'); }
@@ -2182,6 +2252,10 @@ async function init(character, saved, audio, online = false) {
     onSkill: castSkill,
     onPotion: usePotion,
     onMenu: (which) => {
+      if (which === 'stats') {
+        showStats(stats, { onChange: () => { applyLevelStats(); save(); } });
+        return;
+      }
       if (which === 'quit') { leaveToMenu(); return; }
       if (which === 'auto') { toggleAutoBattle(); return; }
       if (which === 'home') { teleportHome('home'); return; }
@@ -2265,6 +2339,7 @@ async function init(character, saved, audio, online = false) {
         dailies: dailies.serialize(),
         skilltree: skilltree.serialize(),
         classTree: classTree.serialize(),
+        stats: stats.serialize(),
         awakenNudged,
         gamepass: gamepass.serialize(),
         story: story.serialize(),
@@ -2288,7 +2363,7 @@ async function init(character, saved, audio, online = false) {
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
     remote, get net() { return net; }, spider, rialoHub,
-    openAwakening, openSkillTree, classTree, summons, character, doAttack, enemyMgr, projectiles, inventory, leveling,
+    openAwakening, openSkillTree, classTree, summons, character, stats, doAttack, enemyMgr, projectiles, inventory, leveling,
     get skillIds() { return skillIds; },
     summonMount, summonPet, inSafeZone,
   };

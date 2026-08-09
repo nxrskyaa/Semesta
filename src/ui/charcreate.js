@@ -4,12 +4,13 @@
 // AND mobile (no page scrolling — panels scroll internally).
 // Resolves with Promise<{config, continued}>.
 import * as THREE from 'three';
-import { buildCharacterMesh } from '../entities/player.js';
+import { buildCharacterMesh, applyCarryPose } from '../entities/player.js';
 import {
   CLASSES, GENDERS, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS,
   OUTFIT_STYLES, OUTFIT_COLORS, CAPE_COLORS, ACCESSORIES, defaultCharacter,
 } from '../systems/classes.js';
 import { SKILLS } from '../systems/skills.js';
+import { ITEMS } from '../systems/items.js';
 import { skillIconUrl, itemIconUrl } from '../gfx/textures.js';
 
 const CSS = `
@@ -325,7 +326,11 @@ export function showCharacterCreation(savedGame) {
       const prevRot = rig ? rig.group.rotation.y : userSpin;
       if (rig) scene.remove(rig.group);
       rig = buildCharacterMesh(config);
-      rig.setWeapon(CLASSES[config.cls].startWeapon);
+      const startW = CLASSES[config.cls].startWeapon;
+      rig.setWeapon(startW);
+      // The preview never posed the hand, so the blade hung straight down
+      // through the body. Same pose the game uses every frame.
+      applyCarryPose(rig.parts, ITEMS[startW]?.type);
       rig.group.rotation.y = prevRot;
       scene.add(rig.group);
     }

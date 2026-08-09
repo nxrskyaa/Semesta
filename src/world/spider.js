@@ -24,18 +24,26 @@ const SAY = 'Grialo, spider is here! miaw miaw';
 const NOTICE = 5.5;
 const NUZZLE = 1.5;
 
-const BUB_W = 320, BUB_H = 80;
+const BUB_W = 512, BUB_H = 96;
 
 /** Her speech bubble. Same canvas-sprite trick the remote players use. */
 function makeBubble(text) {
   const c = document.createElement('canvas');
   c.width = BUB_W; c.height = BUB_H;
   const ctx = c.getContext('2d');
-  ctx.font = '24px "Pixelify Sans", system-ui, sans-serif';
+  // MEASURE, then shrink to fit. The line is a fixed string but the webfont
+  // may or may not have loaded, so the width it actually renders at is not
+  // something to assume — it was overflowing a 320px canvas and getting clipped.
+  let size = 26;
+  ctx.font = `${size}px "Pixelify Sans", system-ui, sans-serif`;
+  while (size > 13 && ctx.measureText(text).width > BUB_W - 44) {
+    size -= 1;
+    ctx.font = `${size}px "Pixelify Sans", system-ui, sans-serif`;
+  }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const w = Math.min(BUB_W - 8, ctx.measureText(text).width + 30);
-  const h = 40, x = (BUB_W - w) / 2, y = 4;
+  const w = Math.min(BUB_W - 8, ctx.measureText(text).width + 36);
+  const h = 46, x = (BUB_W - w) / 2, y = 4;
   ctx.fillStyle = 'rgba(18,14,22,0.92)';
   ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = '#ff9ad8';
@@ -53,7 +61,7 @@ function makeBubble(text) {
   const tex = new THREE.CanvasTexture(c);
   tex.minFilter = THREE.LinearFilter;
   const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  spr.scale.set(3.0, 0.75, 1);
+  spr.scale.set(3.6, 0.68, 1);
   spr.renderOrder = 22;
   spr.position.y = 1.5;
   return spr;
@@ -228,8 +236,10 @@ export function createSpider(scene, terrain, opts = {}) {
     let moving = false;
     if (state.mode === 'greet') {
       // a small excited hop in place
+      // ONE small hop, not a vibration. 14Hz was a buzz; a cat greeting you
+      // lifts its front end once and settles.
       mesh.position.y = terrain.surfaceY(mesh.position.x, mesh.position.z)
-        + Math.abs(Math.sin(state.phase * 14)) * 0.16;
+        + Math.abs(Math.sin(state.phase * 4.5)) * 0.07;
       if (state.t <= 0) nextMode();
     } else if (interested && d > NUZZLE) {
       // trot toward you
@@ -260,7 +270,7 @@ export function createSpider(scene, terrain, opts = {}) {
     const legs = P.legs;
     if (moving) {
       // a light four-beat trot, diagonal pairs together
-      const w = state.phase * 11;
+      const w = state.phase * 7.5;
       legs[0].rotation.x = Math.sin(w) * 0.5;
       legs[3].rotation.x = Math.sin(w) * 0.5;
       legs[1].rotation.x = Math.sin(w + Math.PI) * 0.5;
@@ -276,8 +286,8 @@ export function createSpider(scene, terrain, opts = {}) {
 
     // grooming: short licks at a raised front paw
     if (state.mode === 'groom') {
-      legs[0].rotation.x = -0.9 + Math.sin(state.phase * 9) * 0.25;
-      P.headPivot.rotation.x = 0.5 + Math.sin(state.phase * 9) * 0.18;
+      legs[0].rotation.x = -0.85 + Math.sin(state.phase * 3.2) * 0.16;
+      P.headPivot.rotation.x = 0.42 + Math.sin(state.phase * 3.2) * 0.11;
     } else if (state.mode === 'stretch') {
       const w = Math.sin(Math.min(1, (1.4 - state.t) * 2) * Math.PI);
       P.headPivot.rotation.x = -0.35 * w;
@@ -303,8 +313,9 @@ export function createSpider(scene, terrain, opts = {}) {
     // ears: a fast independent twitch, one at a time, at random
     for (let i = 0; i < P.ears.length; i++) {
       const e = P.ears[i];
-      const tw = Math.sin(state.phase * 3.1 + i * 2.3);
-      e.rotation.z = (i ? -1 : 1) * (0.06 + (tw > 0.96 ? 0.35 : 0));
+      // an occasional flick, not a permanent wobble
+      const tw = Math.sin(state.phase * 1.4 + i * 2.3);
+      e.rotation.z = (i ? -1 : 1) * (0.06 + (tw > 0.985 ? 0.28 : 0));
       // pinned forward when she is paying attention to you
       e.rotation.x = interested ? -0.18 : 0;
     }
@@ -319,11 +330,12 @@ export function createSpider(scene, terrain, opts = {}) {
     for (let i = 0; i < P.tailSegs.length; i++) {
       const seg = P.tailSegs[i];
       if (interested) {
-        seg.rotation.x += ((i === 0 ? -1.15 : -0.12) - seg.rotation.x) * Math.min(1, dt * 5);
-        seg.rotation.z = Math.sin(state.phase * 9 + i) * 0.09;
+        // tail up, with a slow sway — not a buzzing quiver
+        seg.rotation.x += ((i === 0 ? -1.05 : -0.1) - seg.rotation.x) * Math.min(1, dt * 4);
+        seg.rotation.z = Math.sin(state.phase * 2.4 + i * 0.7) * 0.07;
       } else {
         seg.rotation.x += ((i === 0 ? -0.45 : 0.18) - seg.rotation.x) * Math.min(1, dt * 3);
-        seg.rotation.z = Math.sin(state.phase * 1.5 + i * 0.9) * 0.22;
+        seg.rotation.z = Math.sin(state.phase * 1.1 + i * 0.9) * 0.16;
       }
     }
 

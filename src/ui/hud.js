@@ -659,13 +659,14 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="pass"><span class="mi">★</span>GAMEPASS<small>U</small></button>
         <button class="mtile" data-menu="gfx"><span class="mi">⚙</span>GRAPHICS<small></small></button>
         <button class="mtile" data-menu="about"><span class="mi">✦</span>ABOUT<small></small></button>
+        <button class="mtile" data-menu="stats"><span class="mi">◈</span>STATS<small>Z</small></button>
         <button class="mtile quit" data-menu="quit"><span class="mi">⏻</span>MAIN MENU<small></small></button>
       </div>
       <button class="menubtn">☰ MENU<span class="badge">!</span></button>
     </div>
     <div class="hint-desktop">
       <b>LMB</b> Attack (auto-aim) · <b>RMB / Shift</b> Roll ${cls.hasShield ? '· <b>Shift</b> Block' : ''} · <b>Space</b> Jump · <b>F</b> Interact<br>
-      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>O</b> Wardrobe · <b>T</b> Home · <b>Y</b> Basecamp · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Camera
+      <b>1-3</b> Skills · <b>4</b> Tonic · <b>M</b> Mount · <b>N</b> Map · <b>O</b> Wardrobe · <b>Z</b> Stats · <b>T</b> Home · <b>Y</b> Basecamp · <b>G</b> AFK Fish · <b>B</b> Auto-Battle · <b>Q/E</b> Camera
     </div>
     <div class="toasts"></div>
     <div class="banner"></div>

@@ -41,6 +41,34 @@ function shadeHex(hex, amt) {
 // ---------------------------------------------------------------------------
 // Character mesh builder — used by the game & the character creation preview.
 // ---------------------------------------------------------------------------
+/**
+ * How a weapon is HELD when you are not swinging it.
+ *
+ * Exported because two places need it and they had drifted: the game applied a
+ * carry pose every frame, the character-creation preview never did at all — so
+ * in the preview the blade sat at the hand's default rotation, pointing
+ * straight down through the hero's body. One definition, both callers.
+ *
+ * The sword angle is a compromise found by measuring, not by eye: -2.25 cleared
+ * the torso but drove the tip 0.37 below the feet, -1.95 still buried it by
+ * 0.10. At -1.78 the blade rides back and level, clear of both.
+ */
+export function applyCarryPose(parts, weaponType) {
+  if (!parts?.handR) return;
+  if (weaponType === 'cannon') {
+    // a bazooka is SHOULDERED; the blade pose drives its muzzle into the floor
+    parts.handR.rotation.set(-0.5, 0, -0.15);
+    parts.handR.position.set(0.02, -0.16, 0);
+  } else if (weaponType === 'bow') {
+    // the bow lives in the off hand and needs no wrist roll at all
+    parts.handR.rotation.set(0, 0, 0);
+    parts.handR.position.set(0, -0.28, 0.02);
+  } else {
+    parts.handR.rotation.set(-1.78, 0, -0.34);
+    parts.handR.position.set(0.06, -0.24, 0.02);
+  }
+}
+
 export function buildCharacterMesh(config) {
   const skin = SKIN_TONES[(config.skin ?? 0) % SKIN_TONES.length];
   const hairC = HAIR_COLORS[(config.hairColor ?? 0) % HAIR_COLORS.length];
@@ -1535,18 +1563,9 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     // slightly out from the hip. This is applied only while NOT attacking, so
     // every swing animation still starts from the orientation it was tuned for.
     const carried = ITEMS[state.equipped]?.type;
-    if (carried === 'cannon') {
-      // A bazooka is SHOULDERED, not trailed at the hip. The blade carry pose
-      // rotates the hand back by -1.78, which on a 1.25-long tube drives the
-      // muzzle straight down through the ground.
-      parts.handR.rotation.set(-0.5, 0, -0.15);
-      parts.handR.position.set(0.02, -0.16, 0.0);
-    } else if (state.attackT <= 0 && state.rolling <= 0 && !state.swimming) {
-      // The angle is a compromise found by measuring, not by eye: -2.25 cleared
-      // the torso but drove the tip 0.37 below the feet, -1.95 still buried it
-      // by 0.10. At -1.78 the blade rides back and level, clear of both.
-      parts.handR.rotation.set(-1.78, 0, -0.34);
-      parts.handR.position.set(0.06, -0.24, 0.02);
+    if (carried === 'cannon'
+      || (state.attackT <= 0 && state.rolling <= 0 && !state.swimming)) {
+      applyCarryPose(parts, carried);
     } else {
       parts.handR.rotation.set(0, 0, 0);
       parts.handR.position.set(0, -0.28, 0.02);

@@ -933,20 +933,23 @@ function buildCenterShrine() {
     const c = document.createElement('canvas');
     c.width = 8; c.height = 32;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = 'rgba(190,235,250,0.30)';
+    // A SOFT BODY with gentle streaks. The old version painted 22 hard random
+    // streaks, sampled them with NearestFilter and repeated the whole thing
+    // three times down a 0.5-unit tube — at that density the result reads as
+    // shattered glass rather than as falling water.
+    ctx.fillStyle = 'rgba(205,238,252,0.55)';
     ctx.fillRect(0, 0, 8, 32);
-    // uneven bright streaks: falling water is not a uniform ribbon
-    for (let i = 0; i < 22; i++) {
+    for (let i = 0; i < 7; i++) {
       const x = Math.floor(Math.random() * 8);
       const yy = Math.floor(Math.random() * 32);
-      const h = 2 + Math.floor(Math.random() * 6);
-      ctx.fillStyle = `rgba(240,253,255,${0.35 + Math.random() * 0.5})`;
+      const h = 6 + Math.floor(Math.random() * 10);
+      ctx.fillStyle = `rgba(245,254,255,${0.2 + Math.random() * 0.2})`;
       ctx.fillRect(x, yy, 1, h);
     }
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.magFilter = THREE.NearestFilter;
-    t.repeat.set(1, 3);
+    t.minFilter = t.magFilter = THREE.LinearFilter;   // smooth, not blocky
+    t.repeat.set(1, 1);
     return t;
   })();
 
@@ -976,15 +979,18 @@ function buildCenterShrine() {
     const jet = new THREE.Mesh(
       new THREE.TubeGeometry(curve, 16, 0.055, 6, false),
       new THREE.MeshBasicMaterial({
-        map: jetTex.clone(), transparent: true, opacity: 0.85,
-        depthWrite: false, blending: THREE.AdditiveBlending,
+        map: jetTex.clone(), transparent: true, opacity: 0.72,
+        // NORMAL blending, not additive. Additive makes every overlapping jet
+        // sum toward white and glow through whatever is behind it, which is
+        // exactly the "water bursting out of the building" this looked like.
+        depthWrite: false,
       }),
     );
     jet.material.map.wrapS = jet.material.map.wrapT = THREE.RepeatWrapping;
-    jet.material.map.repeat.set(1, 3);
+    jet.material.map.repeat.set(1, 1);
     jet.material.userData = { dynamic: true };
     jet.userData.dynamic = true;
-    jet.renderOrder = 2;
+    jet.renderOrder = 1;
     g.add(jet);
     spouts.push(jet);
 
@@ -1000,9 +1006,9 @@ function buildCenterShrine() {
     ring.material.userData = { dynamic: true };
     g.add(ring);
     // a low churn puff sitting on the landing point
-    const churn = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6),
+    const churn = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6),
       new THREE.MeshBasicMaterial({
-        color: 0xf2feff, transparent: true, opacity: 0.5, depthWrite: false,
+        color: 0xdff4fb, transparent: true, opacity: 0.34, depthWrite: false,
       }));
     churn.position.set(ca * LAND_R, y + 0.16, sa * LAND_R);
     churn.scale.y = 0.5;
@@ -1014,13 +1020,15 @@ function buildCenterShrine() {
 
   // MIST over the basin — one soft additive disc, the cheapest possible way to
   // say "there is spray in the air here"
-  const mist = new THREE.Mesh(new THREE.CircleGeometry(1.45, 16),
+  // Kept INSIDE the basin (radius 1.5) and low, so it cannot poke through the
+  // plinth steps or read as spray hanging in mid-air over the paving.
+  const mist = new THREE.Mesh(new THREE.CircleGeometry(1.12, 16),
     new THREE.MeshBasicMaterial({
-      color: 0xd8f4ff, transparent: true, opacity: 0.13,
-      depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      color: 0xd8f4ff, transparent: true, opacity: 0.1,
+      depthWrite: false, side: THREE.DoubleSide,
     }));
   mist.rotation.x = -Math.PI / 2;
-  mist.position.y = y + 0.42;
+  mist.position.y = y + 0.26;
   mist.userData.dynamic = true;
   mist.material.userData = { dynamic: true };
   g.add(mist);

@@ -1234,6 +1234,12 @@ export function createPanels(hudRoot, {
   }
 
   // --- GAMEPASS: a single ladder of tiers with three reward rows -----------
+  // A representative blade per exotic family, purely so the ladder has
+  // something to draw before the reward is resolved to your class.
+  const WEAPON_TIER_ICON = {
+    epic: 'star_blade', legendary: 'dragon_edge', mythic: 'celestial_saber',
+  };
+
   function renderPass() {
     if (!gamepass) return;
     const st = gamepass.state;
@@ -1248,8 +1254,15 @@ export function createPanels(hudRoot, {
       const can = gamepass.canClaim(row, t);
       const locked = (row === 'basic' && owned === 'none')
         || (row === 'premium' && owned !== 'premium');
-      const icon = e.coins ? itemIconUrl('coin')
-        : itemIconUrl(e.item || e.cosmetic || e.mount || e.petCharm);
+      // A weaponTier reward has no item id of its own — it resolves to whatever
+      // suits your class at CLAIM time. Passing undefined in here threw inside
+      // the icon painter and took the entire panel down with it, which is why
+      // the gamepass rendered as a black rectangle.
+      const iconId = e.coins ? 'coin'
+        : (e.item || e.cosmetic || e.mount || e.petCharm
+          || (e.weaponTier ? WEAPON_TIER_ICON[e.weaponTier] : null)
+          || 'forge_stone');
+      const icon = itemIconUrl(iconId);
       return `<div class="pcell ${claimed ? 'got' : ''} ${can ? 'can' : ''} ${locked ? 'lock' : ''} ${e.grand ? 'grand' : e.big ? 'big' : ''}"
         data-row="${row}" data-tier="${t}" title="${e.label}">
         <img src="${icon}">
