@@ -23,8 +23,15 @@ import * as THREE from 'three';
 import { boxMesh, cylMesh, sphereMesh } from '../gfx/meshcache.js';
 import { disposeObject } from '../util/dispose.js';
 
-const LEASH = 16;          // how far a summon may stray from its owner
-const SEEK = 13;           // how far it will look for something to hit
+// THEY STAY WITH YOU.
+//
+// The first version let a beast run 16 units off and hunt anything within 13 —
+// which in practice meant a Summoner stood still, spammed the button, and a
+// pack of them cleared the map on their own. That is not a class, it is an
+// autoplayer. They are bodyguards now: they hold a tight formation on their
+// owner and only engage what has already come close to YOU.
+const LEASH = 5.5;         // how far a summon may stray from its owner
+const SEEK = 6.5;          // and it only looks for trouble this near to them
 
 /** A squat four-legged rock-beast. Reads as "mine" at a glance: mossy green. */
 function buildBeast() {
@@ -222,7 +229,10 @@ export function createSummons(deps) {
     return best;
   }
 
+  const state = { time: 0 };
+
   function update(dt, ownerPos) {
+    state.time += dt;
     for (let i = list.length - 1; i >= 0; i--) {
       const s = list[i];
       s.life -= dt;
@@ -239,8 +249,11 @@ export function createSummons(deps) {
       const target = nearestEnemy(p, SEEK);
 
       if (s.kind === 'turret') {
-        // never moves; tracks and fires
-        if (target) {
+        // never moves; tracks and fires — but only at things that have come to
+        // the owner, so a dropped turret cannot farm a hillside by itself
+        const nearOwner = target
+          && Math.hypot(target.mesh.position.x - ownerPos.x, target.mesh.position.z - ownerPos.z) < SEEK + 3;
+        if (target && nearOwner) {
           const a = Math.atan2(target.mesh.position.x - p.x, target.mesh.position.z - p.z);
           s.mesh.rotation.y = a;
           if (s.cd <= 0) {
@@ -261,15 +274,30 @@ export function createSummons(deps) {
         continue;
       }
 
-      // walkers: chase the target, else heel to the owner
-      let goX = ownerPos.x, goZ = ownerPos.z, chasing = false;
-      const leash = Math.hypot(p.x - ownerPos.x, p.z - ownerPos.z);
-      if (target && leash < LEASH) {
+      // FORMATION FIRST, target second. Each walker owns a slot around its
+      // owner and returns to it; it will only break off for something that is
+      // both near the owner and near itself, so a summon can never wander off
+      // and start a fight you did not pick.
+      const slot = (i / Math.max(1, list.length)) * Math.PI * 2 + state.time * 0.35;
+      const homeX = ownerPos.x + Math.cos(slot) * 2.1;
+      const homeZ = ownerPos.z + Math.sin(slot) * 2.1;
+      let goX = homeX, goZ = homeZ, chasing = false;
+      const fromOwner = target
+        ? Math.hypot(target.mesh.position.x - ownerPos.x, target.mesh.position.z - ownerPos.z)
+        : 99;
+      if (target && fromOwner < SEEK) {
         goX = target.mesh.position.x; goZ = target.mesh.position.z; chasing = true;
+      }
+      // hard leash: never further from the owner than LEASH, whatever it wants
+      if (Math.hypot(goX - ownerPos.x, goZ - ownerPos.z) > LEASH) {
+        const dx0 = goX - ownerPos.x, dz0 = goZ - ownerPos.z;
+        const l0 = Math.hypot(dx0, dz0) || 1;
+        goX = ownerPos.x + (dx0 / l0) * LEASH;
+        goZ = ownerPos.z + (dz0 / l0) * LEASH;
       }
       const dx = goX - p.x, dz = goZ - p.z;
       const d = Math.hypot(dx, dz) || 1;
-      const stopAt = chasing ? st.reach : 2.2;
+      const stopAt = chasing ? st.reach : 0.6;
       let moving = false;
       if (d > stopAt) {
         const v = st.speed * dt;

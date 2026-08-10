@@ -85,6 +85,11 @@ const CSS = `
 /* The WRAPPER owns the position, on desktop as well as touch. It used to be
    positioned only under body.touch, so on desktop the tracker flowed to the top
    left of the HUD and sat straight on top of the player plate. */
+#hud .qtrack .qway {
+  display: block; font-size: 8.5px; letter-spacing: 1px; color: #8fd8f8; margin-top: 2px;
+}
+#hud .qtrack .q { cursor: pointer; }
+#hud .qtrack .q:hover { filter: brightness(1.3); }
 #hud .qtrack {
   /* below the minimap BLOCK (map + clock bar ends at y=211 on desktop), not
      just below the map canvas — 196 left a 15px overlap */
@@ -908,11 +913,24 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   updateWeaponChip();
 
   // quest tracker: [{name, label, p, n, done}]
+  const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+
   function updateQuests(lines) {
-    const html = lines.map((l) =>
-      `<div class="q ${l.done ? 'done' : ''}"><span class="qn">${l.name}</span>
-        <span class="qp">${l.done ? '✔ Return to ' + l.giverName : `${l.label} — ${l.p}/${l.n}`}</span></div>`
-    ).join('');
+    // DISTANCE AND DIRECTION on every row. `dist` and `dir` are filled in by
+    // the caller from the objective's resolved position — without them a
+    // tracker is a list of chores with no map, which is exactly how a new
+    // player ends up holding a finished quest they cannot find the owner of.
+    const html = lines.map((l) => {
+      const arrow = l.dir != null ? ARROWS[Math.round((((l.dir % 360) + 360) % 360) / 45) % 8] : '';
+      const way = l.dist != null
+        ? `<span class="qway">${arrow} ${l.dist < 3 ? 'you are here' : `${Math.round(l.dist)}m away`}</span>`
+        : '';
+      return `<div class="q ${l.done ? 'done' : ''}" data-quest="${l.id}" title="Click to mark it on your map">
+        <span class="qn">${l.name}</span>
+        <span class="qp">${l.done ? `✔ Return to ${l.giverName}` : `${l.label} — ${l.p}/${l.n}`}</span>
+        ${way}
+      </div>`;
+    }).join('');
     if (els.quests.innerHTML !== html) els.quests.innerHTML = html;
     // the fold button only appears when there is something to fold
     qHead.classList.toggle('show', lines.length > 0);

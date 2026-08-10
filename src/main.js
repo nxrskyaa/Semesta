@@ -484,6 +484,13 @@ async function init(character, saved, audio, online = false) {
   setBoot(0.74, 'Waking the villagers…'); await frame();
 
   // --- systems & entities ---
+  // Declared HERE, at the top of init: pushQuestTracker() is a hoisted function
+  // that runs during world build, and a `let` read before its declaration
+  // throws rather than reading undefined. This is the third time that has bitten
+  // in this file, so it lives with the other early state now.
+  let questTargets = [];     // rows last handed to the tracker, for click-to-mark
+  let questTrackT = 0;       // countdown to the next distance refresh
+
   const leveling = createLeveling();
 
   // THE BUILD. Three points a level across four attributes, no respec.
@@ -624,8 +631,11 @@ async function init(character, saved, audio, online = false) {
       // learning to fight is survivable and the difficulty curve still exists.
       //
       // Lv1 takes 45% damage, Lv10 takes 100%. Nothing after that is touched.
+      // Lv1 takes 30% damage, easing to full by the awakening. The old curve
+      // started at 45% and a brand new Origin — no skills, no burst, no heal —
+      // was still being two-shot by a Boarling, which is where people quit.
       const lv = leveling.state.level;
-      const grace = lv >= AWAKEN_LEVEL ? 1 : 0.45 + 0.55 * ((lv - 1) / (AWAKEN_LEVEL - 1));
+      const grace = lv >= AWAKEN_LEVEL ? 1 : 0.30 + 0.70 * ((lv - 1) / (AWAKEN_LEVEL - 1));
       const taken = player.takeDamage(Math.max(1, Math.round(dmg * grace)));
       if (taken > 0) {
         dmgNums.spawn(player.state.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), taken, 'player-hit');
@@ -1091,7 +1101,9 @@ async function init(character, saved, audio, online = false) {
   let storyT = 0;
 
   const panels = createPanels(hudRoot, {
-    inventory, forge, character, weaponType: cls.weaponType, audio, pets, isTouch: touch,
+    inventory, forge, character, audio, pets, isTouch: touch,
+    // a FUNCTION, so the crafting list follows the class through the awakening
+    weaponType: () => CLASSES[character.cls]?.weaponType || 'sword',
     economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
     skilltree,
     onDrink: (id) => drinkBooster(id),
@@ -1561,7 +1573,11 @@ const CAM_PITCH_DEFAULT = 0.98;
   // a new player a button that plays for them is handing them a reason never to
   // learn the combat — and the combat is the game. At 30 there is nothing left
   // to learn and grinding materials is a chore worth automating.
-  const AUTO_UNLOCK_LEVEL = MAX_LEVEL;
+  // Lv10, not the level cap. Gating it at 30 meant nobody reached it — and the
+  // people who most want a hands-free grind are the ones part-way up, not the
+  // ones already finished. It lands with the awakening, which is the moment the
+  // game stops being a tutorial anyway.
+  const AUTO_UNLOCK_LEVEL = AWAKEN_LEVEL;
   let autoBattle = false;
   let autoSkillT = 0;
 
@@ -1901,10 +1917,10 @@ const CAM_PITCH_DEFAULT = 0.98;
   const giverNames = Object.fromEntries(NPC_DEFS.map((d) => [d.id, d.name]));
   quests.onChange(() => {
     refreshMarkers();
-    hud.updateQuests(quests.trackerLines().map((l) => ({ ...l, giverName: giverNames[l.giver] })));
+    pushQuestTracker();
   });
   refreshMarkers();
-  hud.updateQuests(quests.trackerLines().map((l) => ({ ...l, giverName: giverNames[l.giver] })));
+  pushQuestTracker();
 
   // --- NPC dialog / quest flow ---
   function openDialog(npc) {
@@ -2011,6 +2027,65 @@ const CAM_PITCH_DEFAULT = 0.98;
     particles.burst(
       spider.mesh.position.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ff9ad8', 14, 2.4);
     hud.toastText(line);
+  }
+
+  /**
+   * Turn a quest's `where` hint into a live world position.
+   *
+   * Deliberately the NEAREST thing of that kind rather than a fixed
+   * coordinate: "defeat 3 slimes" should point at a slime that exists now, and
+   * "open 2 chests" at one that has not been looted.
+   */
+  function resolveObjective(w) {
+    if (!w) return null;
+    const px = player.state.pos.x, pz = player.state.pos.z;
+    const nearestOf = (arr, get) => {
+      let best = null, bd = Infinity;
+      for (const it of arr || []) {
+        const p2 = get(it);
+        if (!p2) continue;
+        const d = (p2.x - px) ** 2 + (p2.z - pz) ** 2;
+        if (d < bd) { bd = d; best = p2; }
+      }
+      return best;
+    };
+    if (w.kind === 'npc' || w.kind === 'landmark') {
+      const want = w.kind === 'landmark' ? 'smith' : w.id;
+      const n = npcs.npcs.find((x) => x.def.id === want);
+      return n ? { x: n.mesh.position.x, z: n.mesh.position.z } : null;
+    }
+    if (w.kind === 'enemy') {
+      return nearestOf(enemyMgr.enemies.filter((e) => !e.dead && (!w.id || e.def.id === w.id)),
+        (e) => ({ x: e.mesh.position.x, z: e.mesh.position.z }));
+    }
+    if (w.kind === 'chest') {
+      return nearestOf(chests.chests?.filter((c) => !c.opened),
+        (c) => ({ x: c.mesh.position.x, z: c.mesh.position.z }));
+    }
+    if (w.kind === 'gather') return nearestOf(gathering.nodes, (n) => ({ x: n.x, z: n.z }));
+    if (w.kind === 'water') return nearestOf(landmarks.docks, (d) => ({ x: d.x, z: d.z }));
+    if (w.kind === 'land') {
+      return nearestOf(housing.lands.filter((l) => !l.built), (l) => ({ x: l.x, z: l.z }));
+    }
+    return null;
+  }
+
+  /** Feed the tracker rows that know WHERE the next step is. */
+  function pushQuestTracker() {
+    const px = player.state.pos.x, pz = player.state.pos.z;
+    const lines = quests.trackerLines().map((l) => {
+      const at = resolveObjective(l.where);
+      const out = { ...l, giverName: giverNames[l.giver] };
+      if (at) {
+        out.at = at;
+        out.dist = Math.hypot(at.x - px, at.z - pz);
+        // 0 = north (-z), clockwise, matching the arrow glyphs in the HUD
+        out.dir = (Math.atan2(at.x - px, -(at.z - pz)) * 180) / Math.PI;
+      }
+      return out;
+    });
+    questTargets = lines;
+    hud.updateQuests(lines);
   }
 
   function gatherInteractions() {
@@ -2317,6 +2392,19 @@ const CAM_PITCH_DEFAULT = 0.98;
       tryTouch(e.clientX, e.clientY);
     });
   }
+
+  // CLICK A QUEST TO MARK IT. The waypoint beacon already exists for map pins;
+  // pointing it at a quest objective is the difference between a list of chores
+  // and something a new player can follow.
+  hud.els.quests?.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-quest]');
+    if (!row) return;
+    const l = questTargets.find((q) => q.id === row.dataset.quest);
+    if (!l?.at) { hud.toastText('Nothing to track for that one yet.'); return; }
+    worldmap.setPin?.(l.at.x, l.at.z);
+    audio.sfx('ui');
+    hud.toastText(`Marked: ${l.done ? `report to ${l.giverName}` : l.label}`);
+  });
 
   hud.els.minimapCanvas.style.pointerEvents = 'auto';
   hud.els.minimapCanvas.style.cursor = 'pointer';
@@ -2696,6 +2784,10 @@ const CAM_PITCH_DEFAULT = 0.98;
     pets.update(dt, player.state, time);
     mounts.update(dt, player, terrain);
     fishing.update(dt, time);
+    // the tracker shows a live distance, so it has to be rebuilt as you move —
+    // 3x a second, which is far below what the eye reads as stale
+    questTrackT -= dt;
+    if (questTrackT <= 0) { questTrackT = 0.33; pushQuestTracker(); }
     tickTeleport(dt);
     summons.update(dt, player.state.pos);
     spider.update(dt, player.state.pos);

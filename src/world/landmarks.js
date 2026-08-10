@@ -1642,7 +1642,10 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   // --- Pokopia-style life for the quiet stretches (all far from the village):
   // a swimming pool, a spring waterfall, a kickabout, gossip pairs & nap nests
   const falls = buildWaterfall();
-  if (place(falls, S2 * 0.32, -S2 * 0.35, 2, 12, 4)) built.push(falls);
+  // blockR 3, not 2. The cliff runs x ±2 and the plunge pool reaches z+2.95,
+  // so a 5x5 block left the pool and the space under the falls walkable — which
+  // is how the hero ended up standing inside the waterfall.
+  if (place(falls, S2 * 0.32, -S2 * 0.35, 3, 12, 5)) built.push(falls);
   const kick = buildKickabout();
   if (place(kick, -S2 * 0.38, -S2 * 0.15, 0, 12, 3.5, 0.5)) built.push(kick);
   const CHAT_LOOKS = [

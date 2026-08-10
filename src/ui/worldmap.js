@@ -257,5 +257,8 @@ export function createWorldMap({ minimap, terrain }) {
   return {
     show, hide, toggle, isOpen: () => open,
     getPin: () => pin, clearPin: () => { pin = null; },
+    // used by the quest tracker: clicking a quest marks its objective, which is
+    // the same beacon a hand-placed map pin drives
+    setPin: (x, z) => { pin = { x, z }; },
   };
 }

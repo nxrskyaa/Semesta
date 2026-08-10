@@ -218,13 +218,34 @@ export function createQuests({ inventory, leveling }) {
     if (changed) notify();
   }
 
-  // HUD tracker lines
+  // HUD tracker lines.
+  //
+  // `where` is the whole point of this shape: it says WHAT KIND of place the
+  // next step is at, and the caller resolves that to a live world position. A
+  // quest log that tells you to defeat three slimes and nothing else is a quest
+  // log you look at once and then wander.
   function trackerLines() {
     return Object.keys(state.active).map((id) => {
       const q = QUESTS[id];
       const p = progress(id);
       const done = p >= q.objective.n;
-      return { id, name: q.name, label: q.objective.label, p, n: q.objective.n, done, giver: q.giver };
+      const o = q.objective;
+      // finished work always points back at whoever asked for it
+      const where = done
+        ? { kind: 'npc', id: q.giver }
+        : o.type === 'talk' ? { kind: 'npc', id: o.target }
+          : o.type === 'kill' ? { kind: 'enemy', id: o.target }
+            : o.type === 'kill_any' ? { kind: 'enemy' }
+              : o.type === 'fish' ? { kind: 'water' }
+                : o.type === 'chest' ? { kind: 'chest' }
+                  : o.type === 'forge' ? { kind: 'landmark', id: 'forge' }
+                    : o.type === 'gather' ? { kind: 'gather' }
+                      : o.type === 'build' ? { kind: 'land' }
+                        : o.type === 'deliver' ? { kind: 'enemy', id: o.from || null }
+                          : { kind: 'npc', id: q.giver };
+      return {
+        id, name: q.name, label: o.label, p, n: o.n, done, giver: q.giver, where,
+      };
     });
   }
 

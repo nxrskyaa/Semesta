@@ -167,124 +167,118 @@ function lampBulb(radius, color) {
 }
 
 function buildJetski() {
-  // THE DONUT BOAT, second pass.
+  // THE DONUT BOAT, third pass — and this time it is a whole donut.
   //
-  // The reference is a pool float: a fat pink-glazed ring with a bite taken out
-  // of it and sprinkles across the icing. The first version had the right idea
-  // and the wrong proportions — the dough was too thin, the icing sat as a
-  // separate slab on top instead of pouring over the outside, and it had no
-  // bite, which is the one detail that makes a donut read as a DONUT rather
-  // than as a lifebuoy.
+  // The last version cut a 35-degree wedge out of the ring to make a "bite".
+  // From the game's top-down camera that does not read as a bite; it reads as a
+  // broken ring, a letter C floating in the sea. The reference is a pool float:
+  // a complete, fat, pink-glazed torus. A bite is a detail you can only sell at
+  // close range on a shape the viewer already recognises, and this camera never
+  // gets close enough — so the shape comes first and the gimmick goes.
   //
-  // Built as: a fat dough torus, a slightly larger icing torus sitting proud of
-  // it and pulled down so it wraps the outer face, a scalloped drip skirt, and
-  // sprinkles laid ON the icing surface following its curve. The bite is a gap
-  // in all three, so you can see the dough's cut face.
+  // Construction, outermost first:
+  //   dough      a fat torus, warm tan
+  //   icing      a slightly larger torus, squashed and lowered so it pours over
+  //              the top AND down the outer face rather than sitting on it
+  //   drips      a ring of squashed spheres at the icing's lower edge, so the
+  //              glaze ends in a scalloped line instead of a hard seam
+  //   sprinkles  laid along the icing's curve, not scattered on a flat plane
   const g = new THREE.Group();
-  const DOUGH = '#f0b884', DOUGH_CUT = '#ffd9ae';
-  const ICING = '#ff5fa8', ICING_D = '#e03d8a';
+  const DOUGH = '#efb782', DOUGH_LO = '#d59a63';
+  const ICING = '#ff5fa8', ICING_LO = '#e03d8a';
   const SEAT = '#7fd4f5';
 
   const R = 1.05;          // ring radius
-  const TUBE = 0.5;        // fatter than before: a float, not a tyre
-
-  // THE BITE. A wedge of the ring is simply missing — the torus is built as an
-  // arc rather than a full circle, and the cut faces are capped.
-  const BITE = 0.62;                       // radians of donut that is gone
-  const ARC = Math.PI * 2 - BITE;
+  const TUBE = 0.52;       // fat: this is a float, not a tyre
 
   const dough = new THREE.Mesh(
-    new THREE.TorusGeometry(R, TUBE, 12, 26, ARC),
+    new THREE.TorusGeometry(R, TUBE, 12, 28),
     new THREE.MeshLambertMaterial({ color: new THREE.Color(DOUGH) }));
   dough.rotation.x = -Math.PI / 2;
-  dough.rotation.z = BITE / 2;             // centre the bite on +Z
-  dough.position.y = 0.05;
+  dough.position.y = 0.04;
   dough.castShadow = true;
   g.add(dough);
 
-  // the two cut faces, so the bite is not a hollow tube
-  for (const sgn of [-1, 1]) {
-    const a = BITE / 2 * sgn;
-    const cap = new THREE.Mesh(
-      new THREE.CircleGeometry(TUBE, 12),
-      new THREE.MeshLambertMaterial({ color: new THREE.Color(DOUGH_CUT), side: THREE.DoubleSide }));
-    cap.position.set(Math.sin(a) * R, 0.05, Math.cos(a) * R);
-    cap.rotation.y = a + Math.PI / 2;
-    g.add(cap);
-  }
+  // a darker torus tucked just under it: gives the underside shading without
+  // needing a second light
+  const under = new THREE.Mesh(
+    new THREE.TorusGeometry(R, TUBE * 0.92, 8, 22),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(DOUGH_LO) }));
+  under.rotation.x = -Math.PI / 2;
+  under.position.y = -0.09;
+  g.add(under);
 
-  // THE ICING: a slightly larger torus pulled down so it pours over the outer
-  // face rather than sitting on top like a lid.
+  // THE ICING. Squashed in Y and set high, so it caps the top of the tube and
+  // spills a little way down the outside.
   const icing = new THREE.Mesh(
-    new THREE.TorusGeometry(R, TUBE * 0.94, 10, 26, ARC),
+    new THREE.TorusGeometry(R, TUBE * 0.99, 10, 28),
     new THREE.MeshLambertMaterial({ color: new THREE.Color(ICING) }));
   icing.rotation.x = -Math.PI / 2;
-  icing.rotation.z = BITE / 2;
-  icing.position.y = 0.22;
-  icing.scale.y = 0.62;
+  icing.position.y = 0.2;
+  icing.scale.y = 0.66;
   g.add(icing);
 
-  // a scalloped drip skirt — the wavy lower edge of poured glaze
-  for (let i = 0; i < 22; i++) {
-    const a = BITE / 2 + (i / 22) * ARC;
-    const drip = sphereMesh(0.13 + (i % 3) * 0.035, ICING_D);
+  // the scalloped drip edge
+  for (let i = 0; i < 26; i++) {
+    const a = (i / 26) * Math.PI * 2;
+    const drip = sphereMesh(0.115 + (i % 3) * 0.03, ICING_LO);
     drip.position.set(
-      Math.sin(a) * (R + TUBE * 0.62), 0.05 + ((i % 2) ? 0.04 : -0.03), Math.cos(a) * (R + TUBE * 0.62));
-    drip.scale.set(1, 0.8, 1);
+      Math.cos(a) * (R + TUBE * 0.72), 0.07 + ((i % 2) ? 0.05 : -0.02), Math.sin(a) * (R + TUBE * 0.72));
+    drip.scale.set(1, 0.75, 1);
     g.add(drip);
   }
 
-  // SPRINKLES, laid along the icing's curve rather than scattered flat. Seeded,
-  // so the same donut looks the same every time it is summoned.
+  // SPRINKLES on the icing, following its curve. Seeded so the same donut looks
+  // the same every time it is summoned.
   let sp = 4242;
   const rnd = () => { sp = (sp * 1103515245 + 12345) & 0x7fffffff; return sp / 0x7fffffff; };
   const SPRINKLE = ['#ffffff', '#5fc8f5', '#ffe27a', '#8ad86e', '#ff8fc4', '#c78fff'];
-  for (let i = 0; i < 46; i++) {
-    const a = BITE / 2 + 0.1 + rnd() * (ARC - 0.2);
-    const across = (rnd() - 0.5) * TUBE * 1.35;      // where across the ring
+  for (let i = 0; i < 54; i++) {
+    const a = rnd() * Math.PI * 2;
+    const across = (rnd() - 0.5) * TUBE * 1.4;
     const rr = R + across;
-    const lift = 0.3 - Math.abs(across / TUBE) * 0.1;
+    const lift = 0.31 - Math.abs(across / TUBE) * 0.11;
     const s = new THREE.Mesh(
-      new THREE.BoxGeometry(0.115, 0.05, 0.05),
+      new THREE.BoxGeometry(0.12, 0.05, 0.05),
       new THREE.MeshLambertMaterial({ color: new THREE.Color(SPRINKLE[i % SPRINKLE.length]) }));
-    s.position.set(Math.sin(a) * rr, lift, Math.cos(a) * rr);
-    s.rotation.set(rnd() * 0.4, a + (rnd() - 0.5) * 1.6, rnd() * 0.4);
+    s.position.set(Math.cos(a) * rr, lift, Math.sin(a) * rr);
+    s.rotation.set(rnd() * 0.4, -a + (rnd() - 0.5) * 1.6, rnd() * 0.4);
     g.add(s);
   }
 
-  // the seat well: a soft blue cushion sunk into the hole
+  // the seat well: a blue cushion sunk into the hole
   const cushion = new THREE.Mesh(
-    new THREE.CylinderGeometry(R - TUBE * 0.45, R - TUBE * 0.7, 0.24, 16),
+    new THREE.CylinderGeometry(R - TUBE * 0.5, R - TUBE * 0.75, 0.24, 16),
     new THREE.MeshLambertMaterial({ color: new THREE.Color(SEAT) }));
-  cushion.position.y = -0.04;
+  cushion.position.y = -0.05;
   g.add(cushion);
   const cushionTop = new THREE.Mesh(
-    new THREE.CylinderGeometry(R - TUBE * 0.5, R - TUBE * 0.45, 0.07, 16),
+    new THREE.CylinderGeometry(R - TUBE * 0.55, R - TUBE * 0.5, 0.07, 16),
     new THREE.MeshLambertMaterial({ color: new THREE.Color('#a8e6ff') }));
-  cushionTop.position.y = 0.09;
+  cushionTop.position.y = 0.08;
   g.add(cushionTop);
 
-  // two grab handles, so there is a readable front and back
+  // two grab handles fore and aft, so the float has a readable heading
   for (const sz of [1, -1]) {
     const bar = new THREE.Mesh(
       new THREE.TorusGeometry(0.17, 0.05, 6, 10, Math.PI),
       new THREE.MeshLambertMaterial({ color: new THREE.Color('#5a6470') }));
-    bar.position.set(0, 0.34, sz * (R - 0.12));
+    bar.position.set(0, 0.33, sz * (R - 0.1));
     bar.rotation.set(Math.PI / 2, 0, 0);
     g.add(bar);
   }
 
-  // NIGHT LIGHTS. A ring of bulbs on the rim plus a brighter bow lamp.
+  // NIGHT LIGHTS: a ring of bulbs on the rim plus a brighter bow lamp.
   const lamps = [];
   for (let i = 0; i < 8; i++) {
-    const a = BITE / 2 + 0.2 + (i / 8) * (ARC - 0.4);
+    const a = (i / 8) * Math.PI * 2;
     const bulb = lampBulb(0.085, i % 2 ? '#fff0b0' : '#8fd8f8');
-    bulb.position.set(Math.sin(a) * (R + TUBE * 0.5), 0.34, Math.cos(a) * (R + TUBE * 0.5));
+    bulb.position.set(Math.cos(a) * (R + TUBE * 0.45), 0.33, Math.sin(a) * (R + TUBE * 0.45));
     g.add(bulb);
     lamps.push(bulb);
   }
   const bowLamp = lampBulb(0.13, '#fff3c8');
-  bowLamp.position.set(0, 0.46, -(R + TUBE * 0.4));
+  bowLamp.position.set(0, 0.45, -(R + TUBE * 0.35));
   g.add(bowLamp);
   lamps.push(bowLamp);
 
@@ -295,7 +289,6 @@ function buildJetski() {
   g.userData.lamps = lamps;
   g.userData.light = light;
   g.userData.dynamic = true;          // the baker must not freeze the lamps
-  // spray comes off the BACK of the ring, and bow spray off the front
   g.userData.exhaust = new THREE.Vector3(0, -0.05, -(R + TUBE));
   g.userData.bow = new THREE.Vector3(0, -0.05, R + TUBE);
   return g;

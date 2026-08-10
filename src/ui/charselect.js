@@ -21,6 +21,14 @@ const TXT = {
   play: { en: 'PLAY', id: 'MAIN' },
   del: { en: 'DELETE', id: 'HAPUS' },
   sure: { en: 'DELETE FOREVER?', id: 'HAPUS SELAMANYA?' },
+  confTitle: { en: 'DELETE THIS HERO?', id: 'HAPUS PAHLAWAN INI?' },
+  confBody: {
+    en: 'This cannot be undone. The character, their level, everything they own and their cloud backup are all removed.',
+    id: 'Ini tidak bisa dibatalkan. Karakter, levelnya, semua miliknya, dan cadangan cloud-nya ikut terhapus.',
+  },
+  confType: { en: 'Type the hero\'s name to confirm:', id: 'Ketik nama pahlawannya untuk konfirmasi:' },
+  confKeep: { en: 'KEEP THEM', id: 'BATAL' },
+  confGo: { en: 'DELETE', id: 'HAPUS' },
   back: { en: 'BACK', id: 'KEMBALI' },
   lastPlayed: { en: 'last played', id: 'terakhir dimainkan' },
   never: { en: 'never played', id: 'belum pernah dimainkan' },
@@ -89,6 +97,47 @@ const CSS = `
 #charsel .ghost {
   color: #9fb08c; background: transparent; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
 }
+/* THE DELETE CONFIRMATION.
+   The old version just relabelled the DELETE button in place, which on a phone
+   is a second tap in the same 40 pixels — an impatient double-tap wiped a
+   character. This is a separate surface, the safe choice is the big one, and
+   the destructive one does not enable until the hero's name has been typed. */
+#charsel .conf {
+  position: fixed; inset: 0; z-index: 2; display: grid; place-items: center;
+  background: rgba(4,6,5,0.86); padding: 18px;
+}
+#charsel .conf .box {
+  width: min(420px, 94vw); padding: 22px 20px;
+  background: linear-gradient(180deg, rgba(38,26,26,0.98), rgba(20,14,14,0.98));
+  box-shadow: inset 0 0 0 2px #e8574a, inset 0 0 0 4px #0a0e0b;
+  text-align: center;
+}
+#charsel .conf h3 {
+  font-family: var(--font-display, sans-serif); font-size: 14px; letter-spacing: 2px;
+  color: #ffb0a0; margin: 0 0 10px;
+}
+#charsel .conf p { font-size: 10.5px; color: #d8c4c0; line-height: 1.8; margin: 0 0 14px; }
+#charsel .conf .who {
+  font-family: var(--font-display, sans-serif); font-size: 15px; color: #ffe9b0; margin-bottom: 12px;
+}
+#charsel .conf label { display: block; font-size: 9.5px; color: #c0a8a4; margin-bottom: 6px; }
+#charsel .conf input {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px;
+  padding: 9px 10px; margin-bottom: 14px; color: #eaf2df; text-align: center;
+  background: rgba(8,10,8,0.9); border: 0; outline: 0;
+  box-shadow: inset 0 0 0 1px rgba(232,87,74,0.5);
+}
+#charsel .conf .acts { display: flex; flex-direction: column; gap: 8px; }
+#charsel .conf .keep {
+  padding: 13px; font-size: 11px; letter-spacing: 2px;
+  color: #10160f; background: #8ad86e; box-shadow: 0 3px 0 #4f8a3f;
+}
+#charsel .conf .go {
+  padding: 11px; font-size: 10px; letter-spacing: 2px;
+  color: #e8574a; background: transparent; box-shadow: inset 0 0 0 1px rgba(232,87,74,0.55);
+}
+#charsel .conf .go:disabled { opacity: 0.3; cursor: default; }
+#charsel .conf .go:not(:disabled):hover { color: #10160f; background: #e8574a; }
 @media (max-width: 640px) {
   #charsel .slots { grid-template-columns: 1fr; }
   #charsel .slot { min-height: 0; }
@@ -161,24 +210,52 @@ export function showCharacterSelect() {
       if (act === 'back') { finish({ action: 'back' }); return; }
       if (act === 'play') { finish({ action: 'play', slot: i }); return; }
       if (act === 'new') { finish({ action: 'new', slot: i }); return; }
-      if (act === 'del') {
-        // two steps, like every other irreversible button in this game
-        if (b.dataset.armed !== '1') {
-          b.dataset.armed = '1';
-          b.classList.add('armed');
-          b.textContent = t(TXT.sure);
-          setTimeout(() => {
-            if (!b.isConnected) return;
-            b.dataset.armed = '';
-            b.classList.remove('armed');
-            b.textContent = t(TXT.del);
-          }, 4000);
-          return;
-        }
-        // the caller owns deletion so the cloud copy can go with it
-        finish({ action: 'delete', slot: i });
-      }
+      if (act === 'del') { askDelete(i); }
     });
+
+    /**
+     * Ask properly. A relabelled button is not a confirmation for something
+     * that destroys hours of play — this is its own surface, the safe answer is
+     * the big green one, and DELETE stays disabled until the player has typed
+     * the hero's name. Typing it is the point: it is impossible to do by
+     * accident and it forces you to look at who you are about to erase.
+     */
+    function askDelete(i) {
+      const hero = listSlots()[i];
+      if (!hero || hero.empty) return;
+
+      const conf = document.createElement('div');
+      conf.className = 'conf';
+      conf.innerHTML = `
+        <div class="box">
+          <h3>${t(TXT.confTitle)}</h3>
+          <div class="who"></div>
+          <p>${t(TXT.confBody)}</p>
+          <label>${t(TXT.confType)}</label>
+          <input autocomplete="off" spellcheck="false">
+          <div class="acts">
+            <button class="keep">${t(TXT.confKeep)}</button>
+            <button class="go" disabled>${t(TXT.confGo)}</button>
+          </div>
+        </div>`;
+      el.appendChild(conf);
+      // textContent: a hero name is player-typed
+      conf.querySelector('.who').textContent = `${hero.name} · Lv${hero.level}`;
+
+      const input = conf.querySelector('input');
+      const go = conf.querySelector('.go');
+      const match = () => input.value.trim().toLowerCase() === String(hero.name).trim().toLowerCase();
+      input.addEventListener('input', () => { go.disabled = !match(); });
+      input.focus();
+
+      conf.querySelector('.keep').addEventListener('click', () => conf.remove());
+      conf.addEventListener('click', (e) => { if (e.target === conf) conf.remove(); });
+      go.addEventListener('click', () => {
+        if (!match()) return;
+        conf.remove();
+        finish({ action: 'delete', slot: i });
+      });
+    }
 
     paint();
   });

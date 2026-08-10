@@ -286,7 +286,10 @@ export function createPanels(hudRoot, {
   }
 
   function renderCrafting() {
-    const recipes = recipesFor(weaponType);
+    // Resolved EVERY time the panel is drawn. `weaponType` may be a live getter
+    // supplied by main.js; awakening changes it, and a value captured once
+    // would keep offering the class you no longer are.
+    const recipes = recipesFor(typeof weaponType === 'function' ? weaponType() : weaponType);
     let rows = '';
     recipes.forEach((r) => {
       const d = ITEMS[r.out];
