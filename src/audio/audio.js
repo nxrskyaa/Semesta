@@ -475,6 +475,35 @@ export function createAudio() {
     forge_fail: () => { tone('sawtooth', 300, 90, 0.4, 0.16); },
     ui:         () => tone('square', 800, 800, 0.03, 0.05),
     deny:       () => tone('square', 220, 160, 0.12, 0.1),
+
+    // --- THE WORKBENCH KIT ---------------------------------------------------
+    // Cooking and forging are processes now, so they need sounds that can repeat
+    // for a couple of seconds without turning into a drill. Everything here is
+    // short, soft-edged and slightly different each time it plays: a bubble that
+    // is always the same bubble stops reading as boiling and starts reading as a
+    // notification.
+    /** One bubble surfacing. Pitch wanders so a stream of them sounds like a pot. */
+    cook_bubble: () => {
+      const f = 300 + Math.random() * 260;
+      tone('sine', f, f * 2.1, 0.09, 0.055);
+    },
+    /** A spoon going round: a soft wet swish, no noise buzz. */
+    cook_stir: () => noise(0.22, 0.05, 'bandpass', 420, 900),
+    /** An ingredient going in. */
+    cook_drop: () => { tone('sine', 520, 190, 0.11, 0.09); noise(0.09, 0.06, 'lowpass', 700, 260); },
+    /** The lid comes off and dinner is ready. */
+    cook_done: () => {
+      noise(0.34, 0.07, 'bandpass', 900, 2400);                 // the steam release
+      [659, 784, 988].forEach((f, i) =>
+        tone('triangle', f, f, 0.16, 0.12, ctx ? ctx.currentTime + 0.06 + i * 0.09 : null));
+    },
+    /** Bellows: air into the coals. */
+    forge_bellows: () => noise(0.42, 0.09, 'lowpass', 260, 720),
+    /** Metal into water. The hiss is the whole sound. */
+    forge_quench: () => {
+      noise(0.5, 0.18, 'highpass', 2600, 900);
+      tone('sine', 220, 70, 0.2, 0.07);
+    },
     bash:       () => { tone('square', 150, 60, 0.16, 0.24); noise(0.14, 0.2, 'lowpass', 800, 200); },
     whirl:      () => noise(0.4, 0.2, 'bandpass', 600, 2200),
     warcry:     () => { tone('sawtooth', 180, 320, 0.3, 0.18); tone('sawtooth', 120, 240, 0.34, 0.14); },

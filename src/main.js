@@ -497,6 +497,10 @@ async function init(character, saved, audio, online = false) {
   // in this file, so it lives with the other early state now.
   let questTargets = [];     // rows last handed to the tracker, for click-to-mark
   let questTrackT = 0;       // countdown to the next distance refresh
+  // the running cook/forge job, so the loop can throw steam or sparks off the
+  // hero while the workbench scene plays. Declared up here with the rest of the
+  // early state for the same reason questTargets is.
+  let workFx = null;
 
   const leveling = createLeveling();
 
@@ -735,24 +739,38 @@ async function init(character, saved, audio, online = false) {
   };
   const cooking = {
     recipes: () => COOK_RECIPES,
-    cook(out) {
+    /**
+     * Start a pot. Takes the ingredients NOW and rolls the portions NOW — the
+     * cooking scene needs to know how many came out so it can say so — but hands
+     * back a `finish()` the caller calls when the lid actually comes off.
+     *
+     * Splitting it is what lets the animation be the transaction rather than a
+     * replay of one already settled: your herbs leave the bag as they drop into
+     * the broth, and dinner lands when it is cooked.
+     */
+    begin(out) {
       const r = COOK_RECIPES.find((x) => x.out === out);
-      if (!r) return;
+      if (!r) return null;
       for (const [id, n] of Object.entries(r.cost)) {
-        if (inventory.count(id) < n) { audio.sfx('deny'); return; }
+        if (inventory.count(id) < n) return null;
       }
       for (const [id, n] of Object.entries(r.cost)) inventory.remove(id, n);
       // COOKING SKILL. Big Pot is the one that changes the loop: the same
       // ingredients sometimes make two portions, which is what turns cooking
       // from a chore into something worth levelling.
       const portions = Math.random() < skilltree.bonus('cooking', 'doubleCook') ? 2 : 1;
-      inventory.add(out, portions);
-      audio.sfx('craft');
-      particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffb055', 8, 2);
-      hud.toast(out, portions);
-      if (portions > 1) hud.toastText('The pot stretched to two.');
-      skilltree.gain('cooking', portions > 1 ? 'uncommon' : 'common');
-      dailies?.event('cook'); gamepass?.event('cook');
+      return {
+        cost: r.cost,
+        portions,
+        finish() {
+          inventory.add(out, portions);
+          particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#ffb055', 8, 2);
+          hud.toast(out, portions);
+          if (portions > 1) hud.toastText('The pot stretched to two.');
+          skilltree.gain('cooking', portions > 1 ? 'uncommon' : 'common');
+          dailies?.event('cook'); gamepass?.event('cook');
+        },
+      };
     },
   };
   // THE ESTATE. There is no land to buy any more: one homestead on Lanternhome,
@@ -1130,6 +1148,29 @@ async function init(character, saved, audio, online = false) {
     weaponType: () => CLASSES[character.cls]?.weaponType || 'sword',
     economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
     skilltree,
+    // THE WORK HAPPENS IN THE WORLD TOO. The scene in the modal is the close-up;
+    // these put the hero into a stirring or hammering pose behind it and throw
+    // the matching FX off them, so closing the panel afterwards does not feel
+    // like walking out of a cutscene into an unrelated world.
+    onWorkStart: (kind) => {
+      player.state.busy = true;
+      player.setWorkPose?.(true, kind);
+      workFx = { kind, t: 0 };
+      audio.sfx('ui');
+    },
+    onWorkEnd: (kind, out) => {
+      player.state.busy = false;
+      player.setWorkPose?.(false);
+      workFx = null;
+      const at = player.state.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
+      if (kind === 'cook') {
+        particles.fountain(at, '#ffd8a0', 14);
+      } else {
+        particles.burst(at, '#ffd23e', 16, 3);
+        particles.shockwave?.(player.state.pos.clone().add(new THREE.Vector3(0, 0.1, 0)), '#ffb055', 2.2, 0.4);
+        addShake(0.18);
+      }
+    },
     onDrink: (id) => drinkBooster(id),
     // how long a booster has left, so the bag can say ACTIVE 42m
     onBoostActive: (id) => {
@@ -2885,6 +2926,27 @@ const CAM_PITCH_DEFAULT = 0.98;
           tr.color, 2, 1.1, tr.rise, 0.5);
       }
     }
+    // WHILE THE HERO IS WORKING. Steam off a pot rises slowly and drifts; sparks
+    // off an anvil are fast, bright and land. Same emitter, deliberately opposite
+    // settings, because that contrast is most of what tells the two apart from
+    // across the plaza.
+    if (workFx) {
+      workFx.t += dt;
+      const at = player.state.pos.clone().add(new THREE.Vector3(0, 0.95, 0));
+      if (workFx.kind === 'cook') {
+        if (Math.random() < dt * 9) particles.burst(at, '#e8e2d2', 1, 0.35, 1.5, 1.6);
+        if (Math.random() < dt * 2.2) particles.burst(at, '#ffb055', 1, 0.6, 0.8, 1.0);
+      } else {
+        // one bright shower on each hammer beat rather than a constant drizzle
+        const beat = Math.floor(workFx.t / 0.5);
+        if (beat !== workFx.lastBeat) {
+          workFx.lastBeat = beat;
+          particles.burst(at, '#ffd23e', 7, 3.4, 0.4, 0.5);
+        }
+        if (Math.random() < dt * 3) particles.burst(at, '#ff8a3a', 1, 1.2, 0.5, 0.7);
+      }
+    }
+
     updateCamera(dt);
 
     // resting: campfires and your own homes heal quickly

@@ -1238,6 +1238,25 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   // it and plants the hero there on arrival.
   function shoreTarget() { return terrain.nearestShore(state.pos.x, state.pos.z); }
 
+  /**
+   * WORKING: stirring a pot, or swinging a hammer.
+   *
+   * Separate from `setCraftPose` on purpose — that one is about sitting on a
+   * boat, and sharing a flag between "riding" and "cooking" is how you end up
+   * with a hero who rows the campfire.
+   */
+  function setWorkPose(on, kind = 'cook') {
+    state.workPose = !!on;
+    state.workKind = kind;
+    state.workT = 0;
+    if (!on) {
+      parts.armL.rotation.set(0, 0, 0); parts.armR.rotation.set(0, 0, 0);
+      parts.legL.rotation.set(0, 0, 0); parts.legR.rotation.set(0, 0, 0);
+      parts.head.rotation.set(0, 0, 0);
+      vis.rotation.set(0, 0, 0);
+    }
+  }
+
   /** Sit the hero on a watercraft: knees up, hands out on the bars. */
   function setCraftPose(on, kind = 'jetski') {
     state.craftPose = !!on;
@@ -1525,6 +1544,42 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       const kick = Math.sin(w * Math.PI * 5) * 0.5;
       parts.legL.rotation.x = kick; parts.legR.rotation.x = kick * 0.85;
       parts.head.rotation.x = -0.5;
+    } else if (state.workPose) {
+      // STIRRING vs HAMMERING. Both are one arm doing the work and the other
+      // steadying, but the RHYTHM is the whole difference: a spoon goes round at
+      // a constant speed, a hammer falls fast and lifts slow. Getting that
+      // asymmetry right is what makes the swing read as weight.
+      state.workT += dt;
+      const t = state.workT;
+      if (state.workKind === 'cook') {
+        const a = t * 3.4;                                  // one lazy circle
+        vis.rotation.x = 0.24;                              // leaning over the pot
+        vis.position.y = visBase - 0.06;
+        parts.legL.rotation.x = 0.2; parts.legR.rotation.x = -0.12;
+        parts.armR.rotation.x = -1.35 + Math.sin(a) * 0.24;
+        parts.armR.rotation.z = -0.34 + Math.cos(a) * 0.3;  // the circle itself
+        parts.armL.rotation.x = -0.5;
+        parts.armL.rotation.z = 0.62;                       // steadying the rim
+        parts.head.rotation.x = 0.34;                       // watching the broth
+        parts.head.rotation.z = Math.sin(a * 0.5) * 0.05;
+      } else {
+        // 0.5s beat, matching the strikes the scene and the FX are on
+        const k = (t % 0.5) / 0.5;
+        const swing = k < 0.28
+          ? -2.3 + (k / 0.28) * 2.75                        // down, fast
+          : 0.45 - (() => { const u = (k - 0.28) / 0.72; return u * u * (3 - 2 * u); })() * 2.75;
+        const impact = k < 0.06 ? 0 : k < 0.14 ? (0.14 - k) * 3.4 : 0;
+        vis.rotation.x = 0.2 + impact;                      // the dip on contact
+        vis.position.y = visBase - 0.04;
+        parts.legL.rotation.x = 0.26; parts.legR.rotation.x = -0.2;
+        parts.legL.rotation.z = 0.16; parts.legR.rotation.z = -0.16;
+        parts.armR.rotation.x = swing;
+        parts.armR.rotation.z = -0.2;
+        parts.armL.rotation.x = -1.05;                      // holding the tongs
+        parts.armL.rotation.z = 0.4;
+        parts.head.rotation.x = 0.42;
+      }
+      if (parts.capeMesh) parts.capeMesh.rotation.x = 0.5 + Math.sin(t * 3) * 0.08;
     } else if (state.craftPose && state.craftKind === 'dinghy') {
       // ROWING. A rowboat is not a jetski: you sit upright facing the stern with
       // your legs out in front, and you pull. Reusing the knees-up jetski crouch
@@ -1962,6 +2017,7 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   return {
     state, parts, update, tryAttack, tryRoll, tryJump, takeDamage, respawn,
     addBuff, consumeCritBuff, buffVal, setMountState, applyAppearance, setCraftPose,
+    setWorkPose,
     // watercraft.js steers with the same camera-relative vector the legs use
     moveVecFor: (input, camYaw) => moveVec(input, camYaw),
     playSwing, playSpin, playBowDraw, playStaffCast, playCast, setNightGlow,

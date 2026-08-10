@@ -55,9 +55,18 @@ export function canCraft(recipe, inventory) {
   return true;
 }
 
-export function craft(recipe, inventory) {
+/**
+ * Spend the materials and produce the item.
+ *
+ * `withhold` takes the materials but does NOT hand over the result — the caller
+ * adds it themselves later. That is what lets the forge scene be the actual
+ * transaction: the ore leaves your bag as the billet goes into the coals, and
+ * the weapon appears on the last hammer blow, rather than the whole thing being
+ * settled before the animation has drawn a frame.
+ */
+export function craft(recipe, inventory, { withhold = false } = {}) {
   if (!canCraft(recipe, inventory)) return false;
   for (const [id, n] of Object.entries(recipe.cost)) inventory.remove(id, n);
-  inventory.add(recipe.out, 1);
+  if (!withhold) inventory.add(recipe.out, 1);
   return true;
 }

@@ -317,14 +317,25 @@ export const CATEGORIES = [
         <b>forge stones</b>. Three hits each, then they respawn on a timer.</p>
         <p>The <b>Craft</b> panel is filtered to your class, so you only ever see
         recipes you can actually use. The <b>Forge</b> takes a weapon from +1 to
-        +9 using forge stones; higher levels can fail and cost the stones.</p>`),
+        +9 using forge stones; higher levels can fail and cost the stones.</p>
+        <p>Crafting is a <b>process you watch</b>, not a button that swaps items:
+        the billet goes into the coals, you take three hammer blows to it with
+        real sparks coming off the anvil, and the piece is quenched before it is
+        yours. Your materials leave the bag when the billet goes in and the
+        weapon lands on the last blow. <b>Hold anywhere to hurry it along.</b></p>`),
 
       S('farm', 'Farming & Cooking', `
         <p>Eight plots sit outside the plaza under the <b>FARM</b> sign. Two are
         free, the rest are bought. Plant a seed, wait through three growth stages,
         harvest the crop.</p>
         <p>Crops sell for more than seeds cost, and cooked food sells for more than
-        raw crops — cook at any campfire or at the village hearth.</p>`),
+        raw crops — cook at any campfire or at the village hearth.</p>
+        <p>Cooking is a <b>scene, not a click</b>. The fire is lit, each
+        ingredient falls into the pot in turn and stains the broth toward the
+        colour of the finished dish, it simmers while a spoon goes round, and the
+        steam comes off it before you get anything. If the <b>Big Pot</b> life
+        skill pays out, the card at the end tells you the pot stretched to two.
+        <b>Hold anywhere to hurry it along.</b></p>`),
 
       S('fish', 'Fishing', `
         <p>Stand on a shore and press <b>F</b>. Cast, wait for the <b>!</b>, then

@@ -8,6 +8,7 @@ import { buildCharacterMesh } from '../entities/player.js';
 import { buildCosmetic } from '../systems/cosmetics.js';
 import { CLASSES } from '../systems/classes.js';
 import { recipesFor, canCraft, craft } from '../systems/crafting.js';
+import { createCraftShow } from './craftshow.js';
 import { forgeCost, forgeChance, MAX_PLUS } from '../systems/forge.js';
 import { PET_DEFS } from '../systems/pets.js';
 import { MOUNT_DEFS } from '../systems/mounts.js';
@@ -127,8 +128,12 @@ export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
   economy, cooking, estate, gacha, wardrobe, dailies, gamepass, gfxPanelFactory,
-  onDrink, onBoostActive, skilltree,
+  onDrink, onBoostActive, skilltree, onWorkStart, onWorkEnd,
 }) {
+  // THE WORKBENCH SHOW. Cooking and crafting both run through it, so it lives
+  // here rather than in main.js — both buttons are already in this file, and a
+  // module that owns a modal should own the modal.
+  const craftShow = createCraftShow(audio);
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -309,12 +314,26 @@ export function createPanels(hudRoot, {
     panels.cra.innerHTML = `<h3>CRAFTING <small>[C] close</small></h3>${rows}`;
     panels.cra.querySelectorAll('[data-craft]').forEach((b) => {
       b.addEventListener('click', () => {
+        if (craftShow.busy) return;
         const r = recipes.find((x) => x.out === b.dataset.craft);
-        if (r && craft(r, inventory)) {
-          audio.sfx('craft');
-          onCraft(r);
-          renderCrafting();
-        }
+        if (!r || !canCraft(r, inventory)) { audio.sfx('deny'); return; }
+        // THE MATERIALS GO FIRST. `craft()` takes them out of the bag now, and
+        // the weapon only lands when the last hammer blow does — so the scene is
+        // the transaction rather than a replay of one that already happened.
+        if (!craft(r, inventory, { withhold: true })) { audio.sfx('deny'); return; }
+        onWorkStart?.('forge');
+        craftShow.run({
+          kind: 'forge',
+          out: r.out,
+          cost: r.cost,
+          note: ITEMS[r.out]?.weapon ? 'equip it from the bag' : 'added to your bag',
+          onDone: () => {
+            inventory.add(r.out, 1);
+            onWorkEnd?.('forge', r.out);
+            onCraft(r);
+            renderCrafting();
+          },
+        });
       });
     });
   }
@@ -490,7 +509,27 @@ export function createPanels(hudRoot, {
     }
     panels.cook.innerHTML = `<h3>CAMPFIRE COOKING <small>[Esc] close</small></h3>${html}`;
     panels.cook.querySelectorAll('[data-cook]').forEach((b) => {
-      b.addEventListener('click', () => { cooking.cook(b.dataset.cook); renderCook(); });
+      b.addEventListener('click', () => {
+        if (craftShow.busy) return;
+        const out = b.dataset.cook;
+        // `begin` spends the ingredients and works out how many portions the
+        // pot made; nothing is added to the bag until the lid comes off.
+        const started = cooking.begin(out);
+        if (!started) { audio.sfx('deny'); return; }
+        onWorkStart?.('cook');
+        craftShow.run({
+          kind: 'cook',
+          out,
+          cost: started.cost,
+          portions: started.portions,
+          note: `restores ${ITEMS[out].heal} HP`,
+          onDone: () => {
+            started.finish();
+            onWorkEnd?.('cook', out);
+            renderCook();
+          },
+        });
+      });
     });
   }
 
