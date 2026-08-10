@@ -1847,6 +1847,13 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   if (online && serverConfigured()) {
     remote.bindSelf(player.state.group);
+
+    // THE POPULATION COUNT. `state.players` holds everybody else the server
+    // knows about — join and leave are broadcast to the whole world, not just
+    // to people nearby — so this is the true total rather than who is in view.
+    function refreshOnline() {
+      hud.setOnline?.((net?.state.players.size || 0) + 1, !!net?.state.connected);
+    }
     chat = createChat(hudRoot, (text) => net?.chat(text), {
       isBusy: () => panels.anyOpen() || dialog.isOpen() || hud.isMenuPopOpen?.(),
     });
@@ -1855,8 +1862,15 @@ const CAM_PITCH_DEFAULT = 0.98;
       onConnect: (d) => {
         hud.toastText(`Connected — ${(d.players?.length || 0) + 1} in Anavela.`);
         audio.sfx('ui');
+        refreshOnline();
       },
-      onDisconnect: () => { remote.clear(); hud.toastText('Lost the connection — retrying…'); },
+      onJoin: (p2) => { refreshOnline(); hud.toastText(`${p2.name} joined.`); },
+      onLeave: () => refreshOnline(),
+      onDisconnect: () => {
+        remote.clear();
+        hud.setOnline?.(1, false);
+        hud.toastText('Lost the connection — retrying…');
+      },
       onReconnecting: (secs) => hud.toastText(`Reconnecting in ${secs}s…`),
       onReject: (why) => hud.toastText(why),
       onChat: (m) => {

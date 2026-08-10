@@ -1909,7 +1909,12 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       state.diveDur = DIVE_TIME;
       state.stamina = Math.max(0, state.stamina - DIVE_COST);
       const d = moveVec(lastInput, lastCamYaw) || { x: Math.sin(state.facing), z: Math.cos(state.facing) };
-      state.rollDir = { x: d.x, y: d.z };
+      // MUTATE, never replace. `rollDir` is a THREE.Vector2 created once at
+      // line ~1163; assigning a plain {x,y} over it silently destroyed the
+      // .set() method, and the very next land roll threw "rollDir.set is not a
+      // function" and did nothing. One dive and rolling was broken for the rest
+      // of the session — which is exactly the "can't roll after swimming" bug.
+      state.rollDir.set(d.x, d.z);
       particles?.burst(state.pos.clone().setY(WATER_Y), '#cdf2ff', 14, 2.8, 4, 0.5);
       particles?.ring?.(state.pos.clone().setY(WATER_Y + 0.02), '#eaffff', 1.5, 0.4);
       onDive?.();

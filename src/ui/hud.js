@@ -85,6 +85,32 @@ const CSS = `
 /* The WRAPPER owns the position, on desktop as well as touch. It used to be
    positioned only under body.touch, so on desktop the tracker flowed to the top
    left of the HUD and sat straight on top of the player plate. */
+/* ONLINE COUNT. Only ever shown in a shared world, and it sits with the clock
+   under the minimap because "how many people are here" is the same kind of
+   ambient fact as "what time is it". A toast on connect was the only thing
+   saying it before, and a toast is gone in four seconds. */
+#hud .online {
+  /* under the minimap BLOCK, which ends at y=211 — 164 put it straight over
+     the clock bar */
+  position: absolute; top: 215px; right: 10px; display: none;
+  align-items: center; gap: 6px; padding: 4px 9px;
+  font-size: 9.5px; letter-spacing: 1px; color: #cfe8ff;
+  background: rgba(12,18,24,0.86);
+  box-shadow: inset 0 0 0 1px rgba(120,180,255,0.32);
+  z-index: 5;
+}
+#hud .online.show { display: flex; }
+#hud .online .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #8ad86e;
+  box-shadow: 0 0 6px rgba(138,216,110,0.8);
+}
+#hud .online.off .dot { background: #e8574a; box-shadow: 0 0 6px rgba(232,87,74,0.8); }
+#hud .online b { color: #ffffff; font-weight: normal; }
+body.touch #hud .online { top: 163px; right: 6px; font-size: 8.5px; padding: 3px 7px; }
+/* and the tracker steps down out of its way — ONLY in a shared world, so a solo
+   HUD keeps the tighter stack it already had */
+body.online #hud .qtrack { top: 243px; }
+body.online.touch #hud .qtrack { top: 187px; }
 #hud .qtrack .qway {
   display: block; font-size: 8.5px; letter-spacing: 1px; color: #8fd8f8; margin-top: 2px;
 }
@@ -636,6 +662,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     <div class="prompt"></div>
     <div class="prompt2"></div>
     <div class="onboard"></div>
+    <div class="online"><span class="dot"></span><b>1</b> online</div>
     <div class="weapon-chip"></div>
     <div class="actionbar">
       <div class="xpline"><span class="xplvl"></span><div class="xpbar"><div></div></div></div>
@@ -1089,6 +1116,25 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   /** Repaint the class chip. Awakening changes what you ARE, and the plate was
    *  still reading ORIGIN afterwards — the one label whose whole job is to say
    *  what you are. */
+  /**
+   * Show the shared-world population. `n` is the total including you; pass
+   * null to hide the chip entirely, which is what a solo world does — a
+   * "1 online" badge in a single-player game is just noise.
+   */
+  const onlineEl = root.querySelector('.online');
+  function setOnline(n, connected = true) {
+    if (n == null) {
+      onlineEl.classList.remove('show');
+      document.body.classList.remove('online');
+      return;
+    }
+    onlineEl.classList.add('show');
+    document.body.classList.add('online');
+    onlineEl.classList.toggle('off', !connected);
+    onlineEl.querySelector('b').textContent = String(n);
+    onlineEl.lastChild.textContent = connected ? ' online' : ' offline';
+  }
+
   function setClassName(name) {
     const el = root.querySelector('.pname .cls');
     if (el) el.textContent = String(name || '').toUpperCase();
@@ -1110,7 +1156,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   }
 
   return {
-    setSkills, setClassName,
+    setSkills, setClassName, setOnline,
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
     refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge,
