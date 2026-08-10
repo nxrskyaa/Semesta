@@ -85,7 +85,7 @@ export const CHAPTERS = [
       '"We were never keeping the dark out," she said once, at the gate, in the voice she used when you had asked something obvious. "We were keeping the place worth coming back to."',
       'You were annoyed with her that evening. You would like her to know that you understood it eventually.',
     ],
-    hint: 'Anavela is yours to keep. Build something that lasts.',
+    hint: 'Lanternhome is still standing. Go and raise a roof on it.',
     when: (c) => c.level >= 12 && c.visitedIsland,
     reward: { cosmetic: 'hat_crown', label: 'Keeper\'s Crown', big: true },
   },
@@ -93,7 +93,7 @@ export const CHAPTERS = [
     id: 'the-home',
     title: 'VII · Somewhere To Come Back To',
     lines: [
-      'A house with a light in the window is the entire argument of the order, in one object.',
+      'A house with a light in the window is the entire argument of the order, in one object. You built yours on a waystation, which is not an accident.',
       'People stop by without a reason, which is the thing nobody in Anavela has done in eleven years.',
       'You never got past the gate as a child. You have now walked every road on the register, and the lamps behind you are all burning.',
       'Forty-one names, and none of them went out for nothing.',

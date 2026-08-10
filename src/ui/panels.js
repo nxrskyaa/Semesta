@@ -494,60 +494,76 @@ export function createPanels(hudRoot, {
     });
   }
 
+  /**
+   * THE HOMESTEAD PANEL.
+   *
+   * One plot and one ladder, so the panel is a ladder too: the tier you are on,
+   * the tier you are working toward with its exact shopping list, and the tier
+   * after that greyed out so you can see where the money is going. There is no
+   * land to buy and no design to choose — the only question is whether you have
+   * the materials yet.
+   */
   function renderEstate() {
     if (!estate) return;
-    const land = estate.currentLand();
     const coins = inventory.state.coins;
-    const steps = (active) => `<div class="steps">
-      <span class="${active >= 1 ? (active > 1 ? 'done' : 'now') : ''}">1 · Buy land</span>
-      <span class="${active >= 2 ? (active > 2 ? 'done' : 'now') : ''}">2 · Gather wood & ore</span>
-      <span class="${active >= 3 ? 'now' : ''}">3 · Build</span></div>`;
-    let html = '';
-    if (!land) {
-      html = `<div class="help-body" style="font-size:11px">
-        <b style="color:var(--gold)">How to build a house — 3 steps:</b><br>
-        <b>1.</b> Find a <span class="tip">Land parcel</span> in the wilds — a wooden sign with a big
-        <span style="color:#f0c455">"LAND FOR SALE"</span> label. It's marked <span style="color:#f0c455">◎</span> on the map
-        (${isTouch ? 'tap the minimap' : 'press N'}). Walk onto it.<br>
-        <b>2.</b> Gather building materials: chop <span class="tip">birch trees</span> for Hardwood and mine
-        <span class="tip">ore boulders</span> for Iron Ore (press F on them, 3 hits each).<br>
-        <b>3.</b> Stand on your land and press ${isTouch ? 'the ★ button' : '<b>F</b>'} — this menu opens to buy the
-        land (250c) and pick a house design. Homes heal you & keep monsters away!
-      </div>`;
-    } else if (!land.owned) {
-      const afford = coins >= estate.landPrice;
-      html = `${steps(1)}<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Step 1 — claim this plot. Earn coins by selling fish, crops & materials at Pip's shop.</div>
-        <div class="rec-row"><div class="nm">Land Parcel #${land.idx + 1}
-          <small>A scenic clearing, ready for a home of your own.</small></div>
-          <div class="cost"><span class="${afford ? 'ok' : 'lack'}">${estate.landPrice}c</span></div>
-          <button class="act" data-buyland ${afford ? '' : 'disabled'}>BUY LAND (${estate.landPrice}c)</button></div>`;
-    } else if (!land.built) {
-      html = `${steps(3)}<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>
-        <h4 class="sect">PICK A DESIGN — chop birch trees for Hardwood, mine boulders for Iron Ore</h4>`;
-      for (const [id, d] of Object.entries(estate.designs)) {
-        let cost = '';
-        let ok = coins >= d.coins;
-        for (const [mid, n] of Object.entries(d.cost)) {
-          const have = inventory.count(mid);
-          if (have < n) ok = false;
-          cost += `<span class="${have >= n ? 'ok' : 'lack'}"><img src="${itemIconUrl(mid)}">${have}/${n}</span>`;
-        }
-        if (d.coins) cost += `<span class="${coins >= d.coins ? 'ok' : 'lack'}">${d.coins}c</span>`;
-        html += `<div class="rec-row"><div class="dot" style="background:${d.roof}"></div>
-          <div class="nm">${d.name}<small>${d.desc}</small></div>
-          <div class="cost">${cost}</div>
-          <button class="act" data-build="${id}" ${ok ? '' : 'disabled'}>BUILD</button></div>`;
-      }
-    } else {
-      html = `<div style="font-size:11px;color:var(--text)">Welcome home! Your ${estate.designs[land.built].name} heals you while you're nearby, and monsters keep their distance.</div>`;
+    const tiers = estate.tiers;
+    const tier = estate.tier();
+    const next = estate.next();
+    const onSite = estate.onSite();
+    const isle = estate.isleName();
+
+    const ladder = tiers.map((d) => {
+      const state = d.tier <= tier ? 'done' : d.tier === tier + 1 ? 'now' : '';
+      return `<span class="${state}">${d.tier} · ${d.name}</span>`;
+    }).join('');
+
+    let html = `<div class="steps">${ladder}</div>
+      <div class="coinbar"><img src="${itemIconUrl('coin')}"> ${coins} coins</div>`;
+
+    if (tier > 0) {
+      const cur = tiers[tier - 1];
+      html += `<div class="rec-row"><div class="dot" style="background:${cur.roof}"></div>
+        <div class="nm">${cur.name} <small>Standing on ${isle}. It heals you nearby and monsters keep their distance.</small></div></div>`;
     }
-    panels.estate.innerHTML = `<h3>YOUR ESTATE <small>[Esc] close</small></h3>${html}`;
-    panels.estate.querySelector('[data-buyland]')?.addEventListener('click', () => {
-      estate.buyLand(); renderEstate();
-    });
-    panels.estate.querySelectorAll('[data-build]').forEach((b) => {
-      b.addEventListener('click', () => { estate.build(b.dataset.build); renderEstate(); });
+
+    if (!next) {
+      html += `<div style="font-size:11px;color:var(--text);margin-top:8px">
+        The beacon is lit. There is nothing left to build here — which, for a Lanternkeeper, is the whole job done.</div>`;
+    } else {
+      const missing = estate.missing();
+      let cost = '';
+      for (const [mid, n] of Object.entries(next.cost)) {
+        const have = inventory.count(mid);
+        cost += `<span class="${have >= n ? 'ok' : 'lack'}"><img src="${itemIconUrl(mid)}">${have}/${n}</span>`;
+      }
+      if (next.coins) cost += `<span class="${coins >= next.coins ? 'ok' : 'lack'}">${next.coins}c</span>`;
+      const ready = missing.length === 0;
+      const label = tier === 0 ? 'BUILD' : 'UPGRADE';
+      html += `<h4 class="sect">${tier === 0 ? 'RAISE YOUR HOUSE' : 'NEXT UPGRADE'}</h4>
+        <div class="rec-row"><div class="dot" style="background:${next.roof}"></div>
+          <div class="nm">${next.name}<small>${next.desc}</small></div>
+          <div class="cost">${cost}</div>
+          <button class="act" data-build ${ready && onSite ? '' : 'disabled'}>${label}</button></div>`;
+      if (!onSite) {
+        html += `<div style="font-size:10px;color:var(--gold);margin-top:6px">
+          You have to be standing on the plot. ${isle} is the island marked <span style="color:#a8e06a">⌂</span> on the world map
+          (${isTouch ? 'tap the minimap' : 'press N'}) — sail there with a boat, or swim.</div>`;
+      } else if (!ready) {
+        html += `<div style="font-size:10px;color:var(--muted);margin-top:6px">
+          Still short. Chop <span class="tip">birch trees</span> for Hardwood and mine <span class="tip">ore boulders</span>
+          for Iron Ore (${isTouch ? 'the ★ button' : '<b>F</b>'}, 3 hits each); sell fish and crops at Pip's for coins.</div>`;
+      }
+      if (tiers[tier + 1]) {
+        const later = tiers[tier + 1];
+        html += `<h4 class="sect">AFTER THAT</h4>
+          <div class="rec-row" style="opacity:0.5"><div class="dot" style="background:${later.roof}"></div>
+            <div class="nm">${later.name}<small>${later.desc}</small></div></div>`;
+      }
+    }
+
+    panels.estate.innerHTML = `<h3>YOUR HOMESTEAD <small>[Esc] close</small></h3>${html}`;
+    panels.estate.querySelector('[data-build]')?.addEventListener('click', () => {
+      estate.build(); renderEstate();
     });
   }
 

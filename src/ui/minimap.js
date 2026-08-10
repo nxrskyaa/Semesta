@@ -96,8 +96,8 @@ export function createMinimap(canvas, terrain, decor) {
           ctx.fillStyle = '#5e3c10';
           ctx.fillRect(-1, 1, 3, 4); // little door
           ctx.restore();
-        } else { // for-sale plot — hollow amber diamond
-          ctx.strokeStyle = l.owned ? '#a8e06a' : '#c8b060';
+        } else { // your unbuilt homestead — hollow green diamond
+          ctx.strokeStyle = '#a8e06a';
           ctx.lineWidth = 1.4;
           ctx.beginPath();
           ctx.moveTo(lx, lz - 3.5); ctx.lineTo(lx + 3.5, lz); ctx.lineTo(lx, lz + 3.5); ctx.lineTo(lx - 3.5, lz);

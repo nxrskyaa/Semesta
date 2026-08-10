@@ -75,9 +75,9 @@ export const QUESTS = {
   },
   home_sweet_home: {
     giver: 'scout', name: 'A Place to Call Home', requires: ['treasure_hunt'],
-    offer: 'Ready to settle down? Here is how: 1) find a LAND FOR SALE sign out in the wilds (◎ on your map, press N) and stand on it. 2) chop birch trees for Hardwood and mine ore boulders for Iron Ore. 3) stand on your land and press interact — buy it (250 coins) and pick a house design. Do it and I will chip in!',
-    done: 'Look at that — your very own home! It heals you and keeps the monsters out. Here, for the housewarming.',
-    objective: { type: 'build', n: 1, label: 'Buy land & build a house' },
+    offer: 'There is an island off the south-east coast the old order used as a waystation. Nobody has claimed it since. It is called Lanternhome and it is yours — the foundation is already laid. Chop birch for Hardwood, mine boulders for Iron Ore, then get out there and raise the walls. I will chip in for the housewarming.',
+    done: 'A roof of your own on Lanternhome. Keep at it — that cabin has two more storeys in it yet.',
+    objective: { type: 'build', n: 1, label: 'Build your house on Lanternhome' },
     reward: { xp: 120, items: [{ id: 'forge_stone', count: 3 }, { id: 'tonic', count: 3 }] },
   },
   egg_rider: {

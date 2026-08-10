@@ -38,11 +38,24 @@ const RIM_BAND = 26;
 const ISLANDS = [
   { name: 'Palmspit',    kind: 'palm',    x: 0.760, z: 0.620, r: 9.5, h: 3.4, seed: 0.4 },
   { name: 'Coral Rest',  kind: 'palm',    x: 0.585, z: 0.860, r: 8.0, h: 2.8, seed: 2.1 },
-  { name: 'Torii Rock',  kind: 'shrine',  x: 0.930, z: 0.760, r: 7.0, h: 4.4, seed: 3.9 },
+  // Moved north-west off (0.930, 0.760): when the Rialo Hub grew to r=22 with a
+  // beach out to 31, this sat 27.8 units from its centre — INSIDE the hub's own
+  // raised land. A torii and a scatter of palms were being planted on the hub's
+  // shoreline, which is most of why the plaza looked littered.
+  { name: 'Torii Rock',  kind: 'shrine',  x: 0.930, z: 0.640, r: 7.0, h: 4.4, seed: 3.9 },
   { name: 'Wreck Bar',   kind: 'wreck',   x: 0.660, z: 0.760, r: 6.5, h: 2.4, seed: 5.2 },
   { name: 'Lantern Cay', kind: 'lantern', x: 0.900, z: 0.520, r: 6.0, h: 2.8, seed: 1.3 },
-  { name: 'Bone Reef',   kind: 'rock',    x: 0.800, z: 0.930, r: 6.5, h: 3.2, seed: 4.6 },
+  // Same problem, worse: this was 14.9 units from the hub centre, so its whole
+  // silhouette stood on the hub island. Measured 34 of its props inside the
+  // plaza's 18-unit ring.
+  { name: 'Bone Reef',   kind: 'rock',    x: 0.545, z: 0.935, r: 6.5, h: 3.2, seed: 4.6 },
   { name: 'Far Anchor',  kind: 'lantern', x: 0.520, z: 0.720, r: 5.5, h: 2.6, seed: 6.1 },
+  // LANTERNHOME — the one island you can build on, and the only place in the
+  // world a house may stand. It is the nearest island to the mainland on
+  // purpose: a home you can never reach is not a home, and the first tier is
+  // meant to be raised long before you can afford a jetski. Nothing else is
+  // planted here, because the point is that the island is yours.
+  { name: 'Lanternhome', kind: 'home',    x: 0.640, z: 0.660, r: 8.5, h: 3.6, seed: 8.3 },
   // THE RIALO HUB. Three times the radius of anything else and placed at the
   // far corner of the ocean on purpose: it is meant to be a destination you
   // sail to, not a rock you notice from the beach. `kind: 'hub'` keeps the
@@ -369,6 +382,43 @@ export class Terrain {
     // So this RAISES land rather than levelling what happens to be there. Inside
     // FLAT everything becomes one height and is marked dry; from there out to
     // OUT it eases down into the sea so the island still has a beach.
+    // LANTERNHOME gets the same treatment for the same reason, in miniature.
+    // A house is rigid flat geometry too, and this one has a stone yard wall
+    // reaching 3.5 units out from the middle — measured on the raw island, the
+    // ground fell 0.89 across that footprint, which is enough to leave the
+    // uphill wall buried and the downhill one standing on air. So the middle of
+    // the island is levelled to one course and eased back into its own beach.
+    // Everything outside HOME_FLAT is still the generator's island.
+    for (const I of ISLANDS) {
+      if (I.kind !== 'home') continue;
+      const hx = Math.round(I.x * S), hz = Math.round(I.z * S);
+      if (!this.inBounds(hx, hz)) continue;
+      const peak = this.height[this.idx(hx, hz)];
+      const HOME_FLAT = 7;                // house, yard wall and the lamps
+      const HOME_OUT = 12;                // eased back into the island's own shape
+      for (let dz = -HOME_OUT; dz <= HOME_OUT; dz++) {
+        for (let dx = -HOME_OUT; dx <= HOME_OUT; dx++) {
+          const ix = hx + dx, iz = hz + dz;
+          if (!this.inBounds(ix, iz)) continue;
+          const d = Math.hypot(dx, dz);
+          if (d > HOME_OUT) continue;
+          const i = this.idx(ix, iz);
+          if (d <= HOME_FLAT) {
+            this.height[i] = peak;
+          } else {
+            const t = (d - HOME_FLAT) / (HOME_OUT - HOME_FLAT);
+            const ease = t * t * (3 - 2 * t);
+            this.height[i] = Math.round(this.height[i] * ease + peak * (1 - ease));
+          }
+          if (this.height[i] > WATER_LEVEL) {
+            this.island[i] = 1;
+            this.ocean[i] = 0;
+            if (this.type[i] === 5) this.type[i] = 2;
+          }
+        }
+      }
+    }
+
     for (const I of ISLANDS) {
       if (I.kind !== 'hub') continue;
       const hx = Math.round(I.x * S), hz = Math.round(I.z * S);

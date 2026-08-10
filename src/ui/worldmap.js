@@ -128,14 +128,16 @@ export function createWorldMap({ minimap, terrain }) {
         ctx.fillStyle = '#0a0f0a'; ctx.fillText('YOUR HOME', x + 1, y + 13);
         ctx.fillStyle = '#ffe9a8'; ctx.fillText('YOUR HOME', x, y + 12);
       } else {
+        // the one buildable plot in the world — it is always yours, so it is
+        // never advertised for sale
         ctx.font = 'bold 16px monospace';
-        ctx.fillStyle = '#0a0f0a'; ctx.fillText('◎', x + 1, y + 1);
-        ctx.fillStyle = l.owned ? '#c8dc6a' : '#c8b494';
-        ctx.fillText('◎', x, y);
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('⌂', x + 1, y + 1);
+        ctx.fillStyle = '#a8e06a';
+        ctx.fillText('⌂', x, y);
         ctx.font = 'bold 8px monospace';
-        ctx.fillStyle = '#0a0f0a'; ctx.fillText(l.owned ? 'YOUR LAND' : 'FOR SALE', x + 1, y + 12);
-        ctx.fillStyle = l.owned ? '#c8dc6a' : '#d8c8a8';
-        ctx.fillText(l.owned ? 'YOUR LAND' : 'FOR SALE', x, y + 11);
+        ctx.fillStyle = '#0a0f0a'; ctx.fillText('HOMESTEAD', x + 1, y + 12);
+        ctx.fillStyle = '#c8e8a8';
+        ctx.fillText('HOMESTEAD', x, y + 11);
       }
       ctx.font = 'bold 15px monospace';
     }

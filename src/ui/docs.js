@@ -270,17 +270,30 @@ export const CATEGORIES = [
         are put down on the nearest dry ground and the craft re-moors where it
         stopped. Nose into a beach and it bleeds off speed rather than sticking.</p>`),
 
-      S('house', 'Housing', `
-        <p>Four land parcels around the map sell for <b>250c</b> each. Once a
-        parcel is yours, build one of three designs on it out of hardwood, iron ore
-        and coins.</p>
+      S('house', 'Your Homestead', `
+        <p>There is exactly one place in the world you may build, and it is
+        already yours: <b>Lanternhome</b>, the small island off the south-east
+        coast, marked <span style="color:#a8e06a">⌂</span> on the world map. The
+        Lanternkeepers used it as a waystation; the foundation is still there,
+        with a builder's post and a stack of timber nobody came back for.</p>
+        <p>You do not buy land and you do not choose a design. The house is a
+        <b>ladder of three tiers</b>, and you climb it one rung at a time — so
+        every hero sees all three, in order, and the money always has somewhere
+        to go.</p>
         ${kv([
-          ['Cabin', 'Cheapest. One storey, green roof.'],
-          ['Cottage', 'Mid. Chimney and a proper porch.'],
-          ['Villa', 'Largest. Two storeys and gold trim.'],
+          ['1 · Driftwood Cabin', '12 hardwood, 4 iron ore. One storey, green roof, a lamp by the door.'],
+          ['2 · Anavela Cottage', '28 hardwood, 12 iron ore, 200c. Chimney, window boxes, picket fence, two path lamps, stepping stones down to the water.'],
+          ['3 · Lanternkeeper\'s Villa', '45 hardwood, 22 iron ore, 600c. Two storeys, a balcony over the door, a stone wall with a gate, a well — and a beacon on the ridge that burns all night.'],
         ])}
-        <p>Your house is a safe zone and heals you. <b>Teleport Home (T)</b> puts
-        you at the door from anywhere.</p>`),
+        ${call('do', 'Getting there and getting it built', [
+          'Take the <b>Bobbin Dinghy</b> from the marina, or just swim — Lanternhome is the nearest island to the mainland and the crossing is short.',
+          'Chop <b>birch trees</b> for hardwood and mine <b>ore boulders</b> for iron ore. Three hits each, and they respawn elsewhere.',
+          'Stand on the foundation and press <b>F</b>. The panel shows exactly what you are still short of.',
+          'Once the cabin is up, <b>Teleport Home (T)</b> lands you beside the door from anywhere on the map — the 20-second cooldown is shared with Basecamp (Y).',
+        ])}
+        <p>A finished house is a <b>safe zone</b>: monsters are pushed out of it,
+        nothing spawns inside, and standing near it heals you quickly — the same
+        as a rest camp, except this one is on an island nobody else visits.</p>`),
     ],
   },
 

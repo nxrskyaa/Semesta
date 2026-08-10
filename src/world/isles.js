@@ -426,7 +426,25 @@ export function createIsles(scene, terrain, decorBlocked) {
   const launches = [];
   for (const isl of terrain.islands) {
     const big = isl.r >= 7;
-    if (isl.kind === 'palm') {
+    // Two islands are BUILT rather than found, and neither wants a decorator
+    // sprinkling coral and sunbathers over it: the Rialo Hub lays its own plaza
+    // in rialohub.js, and Lanternhome belongs to the player. They still get a
+    // pier below — an island you cannot land on is a rock.
+    const built = isl.kind === 'hub' || isl.kind === 'home';
+    if (built) {
+      // a thin fringe of palms round the rim only, well clear of the middle
+      if (isl.kind === 'home') {
+        for (let i = 0; i < Math.round(5 * DETAIL); i++) {
+          const a = rng() * Math.PI * 2;
+          const r = isl.r * (0.74 + rng() * 0.16);
+          const x = isl.x + Math.cos(a) * r, z = isl.z + Math.sin(a) * r;
+          if (!dry(x, z)) continue;
+          const o = buildPalm(rng);
+          o.position.set(x, surf(x, z) - 0.05, z);
+          group.add(o);
+        }
+      }
+    } else if (isl.kind === 'palm') {
       scatter(isl, Math.max(3, Math.round((big ? 9 : 6) * DETAIL)), () => buildPalm(rng), 0.55);
       scatter(isl, Math.round(4 * DETAIL), () => buildCoral(rng));
     } else if (isl.kind === 'shrine') {
@@ -461,9 +479,10 @@ export function createIsles(scene, terrain, decorBlocked) {
     // RESIDENTS: every island gets someone doing something, so arriving
     // somewhere never feels like arriving at an empty postcard. The bigger the
     // island the more it can hold.
-    const cast = big
-      ? [buildCocoStall, buildSunbather, buildDigger, buildBeachBall]
-      : [buildSunbather, buildDigger];
+    const cast = built ? []
+      : big
+        ? [buildCocoStall, buildSunbather, buildDigger, buildBeachBall]
+        : [buildSunbather, buildDigger];
     for (const make of cast) {
       let placed = false;
       for (let tries = 0; tries < 30 && !placed; tries++) {

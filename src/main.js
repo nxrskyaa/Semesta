@@ -52,7 +52,7 @@ import { createPets, PET_DEFS } from './systems/pets.js';
 import { createMounts, MOUNT_DEFS } from './systems/mounts.js';
 import { createFishing } from './systems/fishing.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
-import { createHousing, LAND_PRICE, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
+import { createHousing, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
 import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
 import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS } from './systems/items.js';
 import { createWardrobe, cosmeticsBySlot } from './systems/cosmetics.js';
@@ -358,9 +358,12 @@ async function init(character, saved, audio, online = false) {
   const farming = createFarming(scene, terrain, decor.blocked, particles);
   // the field is worked soil — no boulder or bush may be left standing in it
   for (const pl of farming.plots) decor.clearArea(pl.x, pl.z, 1.6);
-  const housing = createHousing(scene, terrain, decor.blocked, particles, landmarks.foots);
-  // keep land parcels free of clipping scenery too (covers houses loaded from save)
-  for (const l of housing.lands) decor.clearArea(l.x, l.z, 3.8);
+  // THE HOMESTEAD. One plot, on the one island that allows building — the
+  // scattered mainland parcels are gone. It is placed off `terrain.islands`,
+  // which exists before any of the decorators run, so nothing else has to know.
+  const housing = createHousing(scene, terrain, decor.blocked, particles, terrain.islands);
+  // keep the plot free of clipping scenery too (covers houses loaded from save)
+  for (const l of housing.lands) decor.clearArea(l.x, l.z, 4.6);
 
   // SPIDER, the basecamp cat. Not a villager and not wildlife — she is the one
   // creature that answers being touched instead of being fought or farmed.
@@ -408,7 +411,7 @@ async function init(character, saved, audio, online = false) {
   const culled = gathering.cullInside([
     ...landmarks.foots,
     ...camps.camps.map((c) => ({ x: c.x, z: c.z, r: 4.2 })),
-    ...housing.lands.map((l) => ({ x: l.x, z: l.z, r: 3.8 })),
+    ...housing.lands.map((l) => ({ x: l.x, z: l.z, r: 4.6 })),
     { x: terrain.spawn.x, z: terrain.spawn.z, r: 12.5 },
   ]);
   if (culled) console.info(`[semesta] removed ${culled} gathering nodes buried in structures`);
@@ -466,8 +469,12 @@ async function init(character, saved, audio, online = false) {
     for (const c of camps.camps) {
       if ((x - c.x) ** 2 + (z - c.z) ** 2 < CAMP_SAFE_R * CAMP_SAFE_R) return { x: c.x, z: c.z, r: CAMP_SAFE_R };
     }
-    for (const l of housing.lands) {
-      if (l.built && (x - l.x) ** 2 + (z - l.z) ** 2 < HOUSE_SAFE_R * HOUSE_SAFE_R) return { x: l.x, z: l.z, r: HOUSE_SAFE_R };
+    // your own island: the homestead is a sanctuary once it is standing
+    {
+      const h = housing.home;
+      if (h && h.tier > 0 && (x - h.x) ** 2 + (z - h.z) ** 2 < HOUSE_SAFE_R * HOUSE_SAFE_R) {
+        return { x: h.x, z: h.z, r: HOUSE_SAFE_R };
+      }
     }
     // THE RIALO HUB IS A HUB. It is a place you sail to in order to stand
     // around reading a banner and talking to two people — a Lv1 hero was being
@@ -748,36 +755,53 @@ async function init(character, saved, audio, online = false) {
       dailies?.event('cook'); gamepass?.event('cook');
     },
   };
+  // THE ESTATE. There is no land to buy any more: one homestead on Lanternhome,
+  // and three tiers of the same house on top of it. The panel asks these
+  // questions; housing.js owns the world objects and never touches the bag.
   const estate = {
-    landPrice: LAND_PRICE,
-    designs: housing.HOUSE_DESIGNS,
-    currentLand: () => housing.nearest(player.state.pos, 4),
-    buyLand() {
-      const land = this.currentLand();
-      if (!land || land.owned || !inventory.spendCoins(LAND_PRICE)) { audio.sfx('deny'); return; }
-      housing.buyLand(land);
-      audio.sfx('quest_done');
-      hud.banner('LAND PURCHASED!');
-    },
-    build(designId) {
-      const land = this.currentLand();
-      const d = housing.HOUSE_DESIGNS[designId];
-      if (!land || !land.owned || land.built || !d) return;
+    tiers: housing.HOUSE_TIERS,
+    home: () => housing.home,
+    tier: () => housing.tier(),
+    next: () => housing.nextTier(),
+    isleName: () => housing.home?.isleName || 'Lanternhome',
+    /** Are we standing on the plot? The panel refuses to build from anywhere else. */
+    onSite: () => !!housing.nearest(player.state.pos, 6),
+    /** What is still missing for the next rung — drives the panel's red text. */
+    missing() {
+      const d = housing.nextTier();
+      if (!d) return null;
+      const out = [];
       for (const [id, n] of Object.entries(d.cost)) {
-        if (inventory.count(id) < n) { audio.sfx('deny'); return; }
+        const have = inventory.count(id);
+        if (have < n) out.push({ id, have, need: n });
       }
-      if (d.coins && inventory.state.coins < d.coins) { audio.sfx('deny'); return; }
+      if (d.coins && inventory.state.coins < d.coins) {
+        out.push({ id: 'coin', have: inventory.state.coins, need: d.coins });
+      }
+      return out;
+    },
+    build() {
+      const d = housing.nextTier();
+      if (!d) return;
+      if (!this.onSite()) {
+        audio.sfx('deny');
+        hud.toastText(`Sail to ${this.isleName()} and stand on the plot to build.`);
+        return;
+      }
+      if (this.missing().length) { audio.sfx('deny'); return; }
       for (const [id, n] of Object.entries(d.cost)) inventory.remove(id, n);
       if (d.coins) inventory.spendCoins(d.coins);
-      housing.build(land, designId);
-      decor.clearArea?.(land.x, land.z, 3.2); // no trees clipping the house
+      const built = housing.build();
+      if (!built) return;
+      const h = housing.home;
+      decor.clearArea?.(h.x, h.z, 4.6);   // no palm clipping the roof
       quests.event('build');
       // the house is a solid building — nudge the player out to the door side so
       // they aren't trapped inside the freshly-blocked footprint
-      moveToClearSpot(land.x, land.z, 3.0);
+      moveToClearSpot(h.x, h.z, 3.4);
       audio.sfx('quest_done');
       addShake(0.3);
-      hud.banner(`${d.name.toUpperCase()} BUILT!`);
+      hud.banner(`${built.name.toUpperCase()}!`);
     },
   };
 
@@ -844,7 +868,7 @@ async function init(character, saved, audio, online = false) {
     dismountIfRiding();
     // asking for town always means town; asking for home falls back to town if
     // there is no house yet, which is the only sensible thing to do
-    const home = tele.dest === 'home' ? housing.lands.find((l) => l.built) : null;
+    const home = tele.dest === 'home' && housing.hasHome() ? housing.home : null;
     particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), '#8ae0d8', 18, 2.5);
     if (home) {
       // land beside the door — never inside the blocked footprint
@@ -2078,8 +2102,11 @@ const CAM_PITCH_DEFAULT = 0.98;
     }
     if (w.kind === 'gather') return nearestOf(gathering.nodes, (n) => ({ x: n.x, z: n.z }));
     if (w.kind === 'water') return nearestOf(landmarks.docks, (d) => ({ x: d.x, z: d.z }));
+    // there is exactly one buildable plot in the world, so "go build" always
+    // points at the same island — which is the whole point of moving it there
     if (w.kind === 'land') {
-      return nearestOf(housing.lands.filter((l) => !l.built), (l) => ({ x: l.x, z: l.z }));
+      const h = housing.home;
+      return h ? { x: h.x, z: h.z } : null;
     }
     return null;
   }
@@ -2233,10 +2260,15 @@ const CAM_PITCH_DEFAULT = 0.98;
       dailies.event('chest'); gamepass.event('chest');
     });
 
-    const land = housing.nearest(player.state.pos, 3.5);
-    if (land && !land.built) {
-      add('estate', land.owned ? 'Build your house' : `Land for sale (${LAND_PRICE}c)`,
-        () => { audio.sfx('ui'); panels.toggle('estate'); });
+    // the homestead: the prompt names the actual next step, so standing on your
+    // own plot never says something vague like "Estate"
+    const homePlot = housing.nearest(player.state.pos, 4.5);
+    if (homePlot) {
+      const nx = housing.nextTier();
+      if (nx) {
+        add('estate', homePlot.tier === 0 ? `Build the ${nx.name}` : `Upgrade to ${nx.name}`,
+          () => { audio.sfx('ui'); panels.toggle('estate'); });
+      }
     }
 
     const node = gathering.nearest(player.state.pos, 2.2);
@@ -2832,7 +2864,7 @@ const CAM_PITCH_DEFAULT = 0.98;
         kills: lore.kills,
         swam: lore.swam,
         visitedIsland: lore.visitedIsland,
-        hasHome: housing.lands.some((l) => l.built),
+        hasHome: housing.hasHome(),
       });
     }
     // bloom leans in at night so the lanterns and fires carry the scene, and
@@ -2861,10 +2893,10 @@ const CAM_PITCH_DEFAULT = 0.98;
       const fire = camps.nearestFire(player.state.pos, CAMP_HEAL_R);
       if (fire) resting = true;
       if (!resting) {
-        for (const l of housing.lands) {
-          if (l.built && (l.x - player.state.pos.x) ** 2 + (l.z - player.state.pos.z) ** 2 < HOUSE_HEAL_R * HOUSE_HEAL_R) {
-            resting = true; break;
-          }
+        const h = housing.home;
+        if (h && h.tier > 0
+          && (h.x - player.state.pos.x) ** 2 + (h.z - player.state.pos.z) ** 2 < HOUSE_HEAL_R * HOUSE_HEAL_R) {
+          resting = true;
         }
       }
       if (resting) {
