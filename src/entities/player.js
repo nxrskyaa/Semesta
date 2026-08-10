@@ -1089,7 +1089,66 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   trail.position.y = 0.55;
   group.add(trail);
 
+  // THE HERO'S OWN LIGHT.
+  //
+  // At night the character is a small dark silhouette on dark grass — the world
+  // has lanterns and fireflies, but none of them are attached to YOU, so the one
+  // thing you need to see most is the one thing nothing lights. This is a soft
+  // warm pool at the feet plus a very gentle fill on the body: enough to read
+  // your own outfit and which way you are facing, not enough to flatten the
+  // night or make the lanterns pointless.
+  //
+  // The pool is an additive disc rather than a real light because a second
+  // shadow-casting light per player would cost more than the whole effect is
+  // worth, and `polygonOffset` keeps it from z-fighting into a hard painted
+  // circle on the ground.
+  const stepGlowTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const ctx = c.getContext('2d');
+    const gr = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,226,170,0.85)');
+    gr.addColorStop(0.45, 'rgba(255,205,140,0.32)');
+    gr.addColorStop(1, 'rgba(255,190,120,0)');
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c);
+    t.minFilter = THREE.LinearFilter;
+    return t;
+  })();
+  const stepGlow = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.2, 3.2),
+    new THREE.MeshBasicMaterial({
+      map: stepGlowTex, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+    }));
+  stepGlow.rotation.x = -Math.PI / 2;
+  stepGlow.position.y = 0.04;
+  stepGlow.userData.dynamic = true;
+  stepGlow.material.userData = { dynamic: true };
+  group.add(stepGlow);
+
+  const heroLamp = new THREE.PointLight(0xffd9a0, 0, 6.5, 2);
+  // exempt from the light budget: this is the one light that must be wherever
+  // the player is, and culling it is the same as not having it
+  heroLamp.userData.alwaysLit = true;
+  heroLamp.position.set(0, 0.55, 0);
+  group.add(heroLamp);
+
+
   let visBase = 0.55; // waist height; raised while mounted
+
+  /** Drive the hero's night light. `night` is the same 0..1 dusk ramp the
+   *  village lanterns and the boat lamps use, so everything comes up together. */
+  function setNightGlow(night) {
+    const n = Math.max(0, Math.min(1, night));
+    // a slow breath, so it reads as a carried lantern rather than a spotlight
+    const breathe = 0.92 + Math.sin(performance.now() * 0.0016) * 0.08;
+    stepGlow.material.opacity = n * 0.55 * breathe;
+    stepGlow.visible = n > 0.02;
+    heroLamp.intensity = n * 1.15 * breathe;
+  }
 
   const state = {
     group,
@@ -1900,6 +1959,6 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     addBuff, consumeCritBuff, buffVal, setMountState, applyAppearance, setCraftPose,
     // watercraft.js steers with the same camera-relative vector the legs use
     moveVecFor: (input, camYaw) => moveVec(input, camYaw),
-    playSwing, playSpin, playBowDraw, playStaffCast, playCast,
+    playSwing, playSpin, playBowDraw, playStaffCast, playCast, setNightGlow,
   };
 }

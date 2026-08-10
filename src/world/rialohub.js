@@ -20,6 +20,7 @@ import { boxMesh, cylMesh, sphereMesh } from '../gfx/meshcache.js';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { paintRialoMark } from './landmarks.js';
 import { createSpider } from './spider.js';
+import { bakeStatic } from '../gfx/bake.js';
 
 const TAU = Math.PI * 2;
 
@@ -607,6 +608,21 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
     return faults;
   }
   const signFaults = auditSign();
+
+  // BAKE THE STONEWORK.
+  //
+  // The plaza floor alone is a hundred separate wedge meshes and the colonnade
+  // is another dozen posts — every one a draw call, and none of them ever move.
+  // Anything that IS posed (the finial, the lamps, the banner's bulbs, the cast,
+  // the cat) is marked dynamic first, so the merge skips it and its subtree.
+  monument.userData.finial.userData.dynamic = true;
+  for (const p of posts) p.userData.lamp.userData.dynamic = true;
+  if (banner) for (const b of banner.userData.bulbs) b.userData.dynamic = true;
+  for (const a of agents) a.mesh.userData.dynamic = true;
+  const bakeBefore = (() => { let n = 0; root.traverse((o) => { if (o.isMesh) n++; }); return n; })();
+  bakeStatic(root);
+  const bakeAfter = (() => { let n = 0; root.traverse((o) => { if (o.isMesh) n++; }); return n; })();
+  console.info(`[semesta] Rialo Hub baked: ${bakeBefore} -> ${bakeAfter} meshes`);
 
   return {
     root, agents, spider, banner, update, nearest, blocked, solids, signFaults,

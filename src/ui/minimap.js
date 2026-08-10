@@ -134,11 +134,21 @@ export function createMinimap(canvas, terrain, decor) {
       ctx.strokeStyle = '#5e3c10';
       ctx.stroke();
     }
-    // panah player
+    // THE PLAYER ARROW.
+    //
+    // It pointed exactly backwards. World +z draws DOWNWARD on this canvas, the
+    // arrow's tip is authored at (0,-1) — canvas UP — and `rotate(-facing)`
+    // never turns that around: at facing 0 (walking toward +z, i.e. down the
+    // map) the arrow pointed up. Checked all four cardinals; every one was 180
+    // degrees out.
+    //
+    // Canvas rotate(t) maps (0,-1) to (sin t, -cos t). The heading direction is
+    // (sin f, cos f) and canvas y IS world z here, so we need -cos t = cos f,
+    // which is t = PI - f.
     const cx = (px - sx) * k, cz = (pz - sz) * k;
     ctx.save();
     ctx.translate(cx, cz);
-    ctx.rotate(-facing);
+    ctx.rotate(Math.PI - facing);
     ctx.fillStyle = '#f0f0e0';
     ctx.beginPath();
     ctx.moveTo(0, -6); ctx.lineTo(4.5, 5); ctx.lineTo(0, 2.5); ctx.lineTo(-4.5, 5);

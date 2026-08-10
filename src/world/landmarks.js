@@ -619,10 +619,13 @@ function buildWaterfall() {
   g.add(lower); sheets.push({ t: bodyB, sp: 2.6 });
   // a bright fast core over both, scrolling quicker — this is the "rush"
   const coreT = waterTex(14, true);
+  // NORMAL BLENDING. Additive was the whole problem here: it sums toward white
+  // and never darkens, so at night — with bloom on top of it — this one plane
+  // became a glowing white rectangle bigger and brighter than the cliff it was
+  // supposed to be running down. Water is not a light source.
   const core = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 2.7),
     new THREE.MeshBasicMaterial({
-      map: coreT, transparent: true, opacity: 0.75, depthWrite: false, depthTest: true,
-      blending: THREE.AdditiveBlending,
+      map: coreT, transparent: true, opacity: 0.5, depthWrite: false, depthTest: true,
     }));
   core.position.set(0, 1.85, 0.4);
   g.add(core); sheets.push({ t: coreT, sp: 4.4 });
@@ -630,8 +633,7 @@ function buildWaterfall() {
   const mistT = waterTex(5, true);
   const mist = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.9),
     new THREE.MeshBasicMaterial({
-      map: mistT, transparent: true, opacity: 0.16, depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      map: mistT, transparent: true, opacity: 0.12, depthWrite: false,
     }));
   mist.position.set(0, 1.7, 0.55);
   g.add(mist); sheets.push({ t: mistT, sp: -0.8 });
@@ -677,18 +679,22 @@ function buildWaterfall() {
     rings.push({ m: r, t: i * 0.45 });
   }
 
-  // --- the outflow: a stream running away downhill, so the water goes SOMEWHERE
-  const streamT = waterTex(6, false);
-  streamT.repeat.set(1, 3);
-  const stream = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 4.2),
-    new THREE.MeshBasicMaterial({ map: streamT, transparent: true, opacity: 0.72, depthWrite: false }));
-  stream.rotation.x = -Math.PI / 2;
-  stream.position.set(0, 0.13, 4.2);
-  g.add(stream);
-  sheets.push({ t: streamT, sp: 0.9 });
-  for (let i = 0; i < 8; i++) {
+  // NO LONG OUTFLOW SHEET.
+  //
+  // There used to be a 4.2-unit flat plane running away from the pool at a
+  // fixed height. `place()` seats a landmark on the HIGHEST ground under its
+  // footprint, and the stream reached well past that footprint onto ground that
+  // rolls — so it hung in mid-air at one end and sank into the hill at the
+  // other. That is the big pale sheet lying at an angle in the screenshots.
+  //
+  // The pool is the terminus now. A short spill lip on the rim says the water
+  // leaves without claiming any ground the landmark does not own.
+  const lip = new THREE.Mesh(sharedBox(0.9, 0.12, 0.5), rockDark);
+  lip.position.set(0, 0.14, 2.05);
+  g.add(lip);
+  for (let i = 0; i < 6; i++) {
     const st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16 + Math.random() * 0.1, 0), rockDark);
-    st.position.set((i % 2 ? 0.62 : -0.62) + (Math.random() - 0.5) * 0.2, 0.1, 2.4 + i * 0.5);
+    st.position.set((i % 2 ? 0.66 : -0.66) + (Math.random() - 0.5) * 0.2, 0.11, 1.5 + i * 0.22);
     g.add(st);
   }
 

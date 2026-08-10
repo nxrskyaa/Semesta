@@ -2458,13 +2458,28 @@ const CAM_PITCH_DEFAULT = 0.98;
   // the nearest `maxLights` to the player, re-sorted a few times a second. Full
   // night atmosphere wherever you actually are, bounded cost everywhere else.
   setBoot(0.84, 'Hanging the lanterns…'); await frame();
-  const lightPool = [];
-  scene.traverse((o) => { if (o.isPointLight) lightPool.push({ l: o, base: o.intensity }); });
+  // COLLECTED LAZILY, on the first tick.
+  //
+  // It used to be gathered right here at build time, which missed everything
+  // created afterwards — the hero's own lamp and both boat lamps were never in
+  // the pool at all, so they sat outside the cap and pushed the visible count
+  // to eleven against a budget of eight. By the first frame of the game loop
+  // every light in the world exists.
+  let lightPool = null;
   let lightSortT = 0;
   function tickLights(dt) {
     lightSortT -= dt;
     if (lightSortT > 0) return;
     lightSortT = 0.25;                       // 4x a second is plenty
+    if (!lightPool) {
+      lightPool = [];
+      scene.traverse((o) => {
+        // The hero's lamp is never culled — it is the one light whose whole job
+        // is to be wherever you are.
+        if (o.isPointLight && !o.userData.alwaysLit) lightPool.push({ l: o, base: o.intensity });
+      });
+      console.info(`[semesta] light budget: ${qual.maxLights} of ${lightPool.length} cullable`);
+    }
     if (lightPool.length <= qual.maxLights) {
       for (const e of lightPool) e.l.visible = true;
       return;
@@ -2475,18 +2490,33 @@ const CAM_PITCH_DEFAULT = 0.98;
       e.l.getWorldPosition(w);
       e.d = (w.x - px) ** 2 + (w.z - pz) ** 2;
     }
-    lightPool.sort((a, b) => a.d - b.d);
-    // A light turned down to zero should not eat a budget slot. decor.js keeps
-    // a pool of unassigned lantern lights parked at the origin at intensity 0,
-    // and standing near spawn let six of them crowd out lamps that were
-    // actually burning.
-    let used = 0;
-    for (let i = 0; i < lightPool.length; i++) {
-      const e = lightPool[i];
-      if (e.l.intensity <= 0.02) { e.l.visible = true; continue; }   // free, costs nothing
-      e.l.visible = used < qual.maxLights;
-      if (e.l.visible) used++;
-    }
+    // SORT BY "IS IT ACTUALLY BURNING", THEN BY DISTANCE.
+    //
+    // decor.js parks a pool of unassigned lantern lights at intensity 0, and
+    // sorting on distance alone handed six of the eight slots to lights that
+    // emit nothing — so at night the lanterns you were standing next to were
+    // the ones culled. A dark light sorts to the back; the budget goes to the
+    // ones doing work. The COUNT is still fixed, which is the part that keeps
+    // the shaders from recompiling.
+    for (const e of lightPool) e.off = e.l.intensity <= 0.02 ? 1 : 0;
+    lightPool.sort((a, b) => (a.off - b.off) || (a.d - b.d));
+
+    // A CONSTANT NUMBER OF VISIBLE LIGHTS. This is the whole point.
+    //
+    // The previous version did `if (intensity <= 0.02) visible = true` with a
+    // comment claiming a dark light is free. It is not: three.js builds its
+    // shader light loop from every VISIBLE light regardless of intensity, so
+    // all of them were compiled in — and, far worse, as lanterns crossed that
+    // 0.02 threshold at dusk and dawn the count changed, and a changed light
+    // count recompiles EVERY material in the scene. That is the stutter people
+    // were getting on machines with power to spare: not fill rate, shader
+    // recompilation, several times a minute.
+    //
+    // So the count never moves. Exactly `budget` lights are visible at all
+    // times — the nearest ones — and everything else is off. Programs compile
+    // once and are never invalidated.
+    const budget = Math.min(qual.maxLights, lightPool.length);
+    for (let i = 0; i < lightPool.length; i++) lightPool[i].l.visible = i < budget;
   }
 
   // --- PREWARM: pay the one-off costs now, while the picture is still up, so
@@ -2621,6 +2651,8 @@ const CAM_PITCH_DEFAULT = 0.98;
     const nightAmt = hr >= 19.5 ? Math.min(1, (hr - 19) / 1.2)
       : hr < 5.5 ? Math.min(1, (6.2 - hr) / 1.2) : 0;
     watercraft.tickLamps(nightAmt);
+    // the hero carries their own light, from the same dusk ramp
+    player.setNightGlow?.(nightAmt);
 
     tickWorldBoss(dt);
     enemyMgr.update(dt, player.state, time, isNight);
