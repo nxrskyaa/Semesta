@@ -208,77 +208,123 @@ function buildJetski() {
   under.position.y = -0.09;
   g.add(under);
 
-  // THE ICING. Squashed in Y and set high, so it caps the top of the tube and
-  // spills a little way down the outside.
+  // THE ICING — and this is where the last pass went wrong, which only showed
+  // up once the thing was actually rendered and looked at from the game's own
+  // top-down angle.
+  //
+  // The glaze was a torus of the same tube radius squashed to 0.66 and set at
+  // y=0.2, which put its crown at 0.54 — TWO CENTIMETRES BELOW the dough's, at
+  // 0.56. So from directly above you saw the tan dough across the whole top of
+  // the ring and a thin pink band only where the dough curved away underneath.
+  // A donut whose glaze is hidden behind the dough is a bread ring.
+  //
+  // It now sits at 0.30 with a fractionally fatter tube, crowning at 0.62 and
+  // overhanging the dough at BOTH the inner and outer edge, so the top face is
+  // pink and the tan reads as the ring of bare dough round the rim that it is.
+  const ICE_TUBE = TUBE * 1.02;
+  const ICE_Y = 0.30, ICE_SQUASH = 0.60;
   const icing = new THREE.Mesh(
-    new THREE.TorusGeometry(R, TUBE * 0.99, 10, 28),
+    new THREE.TorusGeometry(R, ICE_TUBE, 10, 30),
     new THREE.MeshLambertMaterial({ color: new THREE.Color(ICING) }));
   icing.rotation.x = -Math.PI / 2;
-  icing.position.y = 0.2;
-  icing.scale.y = 0.66;
+  icing.position.y = ICE_Y;
+  // SQUASH THE TUBE, NOT THE RING. `scale.y` was the obvious guess and it is
+  // wrong: three.js composes as translate * rotate * scale, so the scale runs in
+  // the mesh's own space BEFORE the -90° X rotation. A TorusGeometry lies in its
+  // local XY plane, so local Y is one of the RING's in-plane axes — scaling it
+  // squashed the glaze into an OVAL, narrower front-to-back than the dough
+  // underneath it. Rendered from directly above that showed as a pink stripe
+  // across the middle of a tan ring, with bare dough at both ends.
+  // The tube's vertical axis after the rotation is local Z.
+  icing.scale.z = ICE_SQUASH;
   g.add(icing);
 
-  // the scalloped drip edge
+  /** The height of the glaze at a distance `across` from the ring's centreline. */
+  const icingTopAt = (across) =>
+    ICE_Y + ICE_SQUASH * Math.sqrt(Math.max(0, ICE_TUBE * ICE_TUBE - across * across));
+
+  // the scalloped drip edge, hung on the icing's outer hem
   for (let i = 0; i < 26; i++) {
     const a = (i / 26) * Math.PI * 2;
     const drip = sphereMesh(0.115 + (i % 3) * 0.03, ICING_LO);
-    drip.position.set(
-      Math.cos(a) * (R + TUBE * 0.72), 0.07 + ((i % 2) ? 0.05 : -0.02), Math.sin(a) * (R + TUBE * 0.72));
+    const rr = R + ICE_TUBE * 0.80;
+    drip.position.set(Math.cos(a) * rr, 0.18 + ((i % 2) ? 0.05 : -0.03), Math.sin(a) * rr);
     drip.scale.set(1, 0.75, 1);
     g.add(drip);
   }
 
-  // SPRINKLES on the icing, following its curve. Seeded so the same donut looks
-  // the same every time it is summoned.
+  // SPRINKLES, sitting ON the glaze rather than hovering at one flat height —
+  // `icingTopAt` is the same curve the torus is built from, so every one of them
+  // touches the surface it is supposed to be stuck to. They were also too small
+  // to survive the render at the distance this boat is normally seen from, so
+  // they are chunkier now: a sprinkle you cannot see is not a sprinkle.
   let sp = 4242;
   const rnd = () => { sp = (sp * 1103515245 + 12345) & 0x7fffffff; return sp / 0x7fffffff; };
   const SPRINKLE = ['#ffffff', '#5fc8f5', '#ffe27a', '#8ad86e', '#ff8fc4', '#c78fff'];
-  for (let i = 0; i < 54; i++) {
+  for (let i = 0; i < 62; i++) {
     const a = rnd() * Math.PI * 2;
-    const across = (rnd() - 0.5) * TUBE * 1.4;
+    const across = (rnd() - 0.5) * ICE_TUBE * 1.5;
     const rr = R + across;
-    const lift = 0.31 - Math.abs(across / TUBE) * 0.11;
     const s = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.05, 0.05),
+      new THREE.BoxGeometry(0.2, 0.075, 0.075),
       new THREE.MeshLambertMaterial({ color: new THREE.Color(SPRINKLE[i % SPRINKLE.length]) }));
-    s.position.set(Math.cos(a) * rr, lift, Math.sin(a) * rr);
+    s.position.set(Math.cos(a) * rr, icingTopAt(across) - 0.02, Math.sin(a) * rr);
     s.rotation.set(rnd() * 0.4, -a + (rnd() - 0.5) * 1.6, rnd() * 0.4);
     g.add(s);
   }
 
-  // the seat well: a blue cushion sunk into the hole
+  // THE SEAT WELL. The hole is the single feature that says "donut", and the old
+  // cushion was 0.79 across against a hole of 0.53 — wider than the hole it sat
+  // in, so it wedged under the dough and filled the middle solid. From above the
+  // boat read as a target, not a ring. It is smaller and lower now: a pad sunk
+  // half a unit below the crown, with a clear gap of shadow round it.
+  // It leaves a real gap: at 0.94 of the hole the seat still filled the middle
+  // solid from above, because a three-centimetre ring of shadow is nothing at
+  // this camera height. At 0.72 there is a visible dark collar between the glaze
+  // and the pad, and THAT is what reads as a hole.
+  const HOLE = R - TUBE;                    // 0.53
   const cushion = new THREE.Mesh(
-    new THREE.CylinderGeometry(R - TUBE * 0.5, R - TUBE * 0.75, 0.24, 16),
+    new THREE.CylinderGeometry(HOLE * 0.72, HOLE * 0.56, 0.2, 16),
     new THREE.MeshLambertMaterial({ color: new THREE.Color(SEAT) }));
-  cushion.position.y = -0.05;
+  cushion.position.y = -0.12;
   g.add(cushion);
   const cushionTop = new THREE.Mesh(
-    new THREE.CylinderGeometry(R - TUBE * 0.55, R - TUBE * 0.5, 0.07, 16),
+    new THREE.CylinderGeometry(HOLE * 0.68, HOLE * 0.72, 0.06, 16),
     new THREE.MeshLambertMaterial({ color: new THREE.Color('#a8e6ff') }));
-  cushionTop.position.y = 0.08;
+  cushionTop.position.y = -0.01;
   g.add(cushionTop);
 
-  // two grab handles fore and aft, so the float has a readable heading
+  // Two grab handles fore and aft, so the float has a readable heading. Raising
+  // the glaze raised the whole top of the boat with it — at the old y=0.33 both
+  // of these, and every lamp, were now sunk INSIDE the icing. Anything that
+  // wants to be seen has to clear the crown at 0.62.
   for (const sz of [1, -1]) {
     const bar = new THREE.Mesh(
       new THREE.TorusGeometry(0.17, 0.05, 6, 10, Math.PI),
       new THREE.MeshLambertMaterial({ color: new THREE.Color('#5a6470') }));
-    bar.position.set(0, 0.33, sz * (R - 0.1));
+    bar.position.set(0, 0.68, sz * (R - 0.1));
     bar.rotation.set(Math.PI / 2, 0, 0);
     g.add(bar);
   }
 
-  // NIGHT LIGHTS: a ring of bulbs on the rim plus a brighter bow lamp.
+  // NIGHT LIGHTS: a ring of bulbs round the OUTSIDE of the rim, below the drip
+  // hem, plus a brighter lamp standing proud at the bow.
   const lamps = [];
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
     const bulb = lampBulb(0.085, i % 2 ? '#fff0b0' : '#8fd8f8');
-    bulb.position.set(Math.cos(a) * (R + TUBE * 0.45), 0.33, Math.sin(a) * (R + TUBE * 0.45));
+    const rr = R + TUBE * 1.08;
+    bulb.position.set(Math.cos(a) * rr, 0.2, Math.sin(a) * rr);
     g.add(bulb);
     lamps.push(bulb);
   }
+  const bowPost = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.045, 0.34, 6),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color('#5a6470') }));
+  bowPost.position.set(0, 0.66, -(R + TUBE * 0.55));
+  g.add(bowPost);
   const bowLamp = lampBulb(0.13, '#fff3c8');
-  bowLamp.position.set(0, 0.45, -(R + TUBE * 0.35));
+  bowLamp.position.set(0, 0.9, -(R + TUBE * 0.55));
   g.add(bowLamp);
   lamps.push(bowLamp);
 
