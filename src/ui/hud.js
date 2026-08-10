@@ -680,7 +680,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="forge"><span class="mi">⚒</span>FORGE<small>V</small></button>
         <button class="mtile" data-menu="pets"><span class="mi">🐾</span>PETS<small>P</small></button>
         <button class="mtile" data-menu="ward"><span class="mi">🧢</span>WARDROBE<small>O</small></button>
-        <button class="mtile" data-menu="skills"><span class="mi">✦</span>SKILLS<small>K</small></button>
+        <button class="mtile" data-menu="tree"><span class="mi">✦</span>SKILL TREE<small>K</small></button>
+        <button class="mtile" data-menu="skills"><span class="mi">◆</span>SKILL LEVELS<small></small></button>
         <button class="mtile" data-menu="map"><span class="mi">🗺</span>MAP<small>N</small></button>
         <button class="mtile" data-menu="home"><span class="mi">⌂</span>GO HOME<small>T</small></button>
         <button class="mtile" data-menu="village"><span class="mi">⛺</span>BASECAMP<small>Y</small></button>

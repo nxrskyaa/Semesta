@@ -501,6 +501,12 @@ async function init(character, saved, audio, online = false) {
   // hero while the workbench scene plays. Declared up here with the rest of the
   // early state for the same reason questTargets is.
   let workFx = null;
+  // THE CLASS TREE AND THE LOADOUT, hoisted for the fifth time this file has
+  // been bitten by the same thing. `skillsApi` is built long before the tree is
+  // and reads both from a getter; optional chaining does NOT save you from a
+  // temporal dead zone, and neither does `typeof` on a `let` — both throw.
+  let classTree = null;
+  let skillIds = [];
 
   const leveling = createLeveling();
 
@@ -677,9 +683,29 @@ async function init(character, saved, audio, online = false) {
   // --- skill leveling: 1 point per character level, spent in the K panel ---
   let skillPoints = saved?.skillPoints ?? 0;
   const skillsApi = {
-    skillIds: cls.skills,
+    // A LIVE GETTER, and it reads what you have LEARNED.
+    //
+    // This was `cls.skills` — the class definition's starting list, captured
+    // once, here, before the world had even been built. After the class rework
+    // that is wrong twice over: an Origin's list is empty, so the panel drew a
+    // header and nothing else; and an awakened hero's list was a snapshot of
+    // what the class ships with, which ignores everything they went on to learn
+    // in the tree. Either way the points had nowhere to go, and a player could
+    // sit on eighteen of them with no way to spend a single one.
+    //
+    // Levelling applies to any skill you KNOW, not only the three currently on
+    // the bar — swapping your loadout should never hide a skill you paid for.
+    get skillIds() {
+      const learned = Object.keys(classTree?.state?.learned || {}).filter((id) => SKILLS[id]);
+      if (learned.length) return learned;
+      // pre-awakening, or an old save with no tree data: fall back to the bar
+      return skillIds.filter((id) => SKILLS[id]);
+    },
     SKILLS, MAX_SKILL_LEVEL,
     iconUrl: skillIconUrl,
+    // the levelling panel links straight through to the tree, so the two are
+    // reachable from each other instead of being two unrelated screens
+    openTree: () => openSkillTree(),
     skillSys: null, // filled right after createSkillSystem below
     getPoints: () => skillPoints,
     spendPoint: (id) => {
@@ -1787,9 +1813,9 @@ const CAM_PITCH_DEFAULT = 0.98;
   // `let` read ahead of its declaration throws instead of reading undefined.
   let touchUI = null;
 
-  const classTree = createClassTree();
+  classTree = createClassTree();
   classTree.load(saved?.classTree);
-  let skillIds = classTree.activeSkills();
+  skillIds = classTree.activeSkills();
 
   function refreshLoadout() {
     skillIds = classTree.activeSkills();
@@ -2505,6 +2531,7 @@ const CAM_PITCH_DEFAULT = 0.98;
         showStats(stats, { onChange: () => { applyLevelStats(); save(); } });
         return;
       }
+      if (which === 'tree') { audio.sfx('ui'); openSkillTree(); return; }
       if (which === 'quit') { leaveToMenu(); return; }
       if (which === 'auto') { toggleAutoBattle(); return; }
       if (which === 'home') { teleportHome('home'); return; }

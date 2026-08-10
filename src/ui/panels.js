@@ -1042,9 +1042,28 @@ export function createPanels(hudRoot, {
 
   function renderSkills() {
     if (!skillsApi) return;
-    const { skillIds, skillSys, getPoints } = skillsApi;
+    const { skillSys, getPoints } = skillsApi;
+    const skillIds = skillsApi.skillIds;      // a live getter, NOT destructured
     const pts = getPoints();
     let rows = `<div class="sp-banner">SKILL POINTS: <b>${pts}</b> <small>— earn one every character level</small></div>`;
+
+    // AN EMPTY LIST HAS TO SAY WHY. This panel used to draw the points banner
+    // and then nothing at all, which is indistinguishable from a broken screen —
+    // and for anybody who had not opened the tree yet, that was every time.
+    if (!skillIds.length) {
+      rows += `<div class="help-body" style="font-size:11px;line-height:1.8">
+        <b style="color:var(--gold)">You have not learned any skills yet.</b><br><br>
+        Skills are not handed out — you learn them in your <b>class skill tree</b>,
+        and this panel is where you make the ones you know stronger.<br><br>
+        <b>1.</b> Reach <b>Lv10</b> and find <span class="tip">Grand Master Vell</span>,
+        the owl on the shrine avenue, to awaken into a class.<br>
+        <b>2.</b> Open the tree with <b>K</b> and spend tree points to LEARN skills,
+        then slot any three onto your bar. Slotting is free and reversible.<br>
+        <b>3.</b> Come back here to spend your <b>${pts} skill point${pts === 1 ? '' : 's'}</b>
+        levelling those skills to Lv5 — each level is +22% power and −6% cooldown.
+      </div>`;
+    }
+
     for (const id of skillIds) {
       const def = skillsApi.SKILLS[id];
       const lvl = skillSys.levelOf(id);
@@ -1064,7 +1083,11 @@ export function createPanels(hudRoot, {
         <button class="act" data-skillup="${id}" ${(maxed || pts <= 0) ? 'disabled' : ''}>${maxed ? 'MAX' : 'UPGRADE'}</button>
       </div>`;
     }
-    panels.skills.innerHTML = `<h3>SKILLS <small>[K] close</small></h3>
+    // The header used to read "SKILLS [K] close", but K opens the class TREE —
+    // a different panel. Two screens behind one name and one hotkey is most of
+    // why this one looked broken rather than empty.
+    panels.skills.innerHTML = `<h3>SKILL LEVELS <small>[Esc] close</small></h3>
+      <button class="act" data-opentree style="width:100%;margin-bottom:10px">✦ OPEN THE SKILL TREE — LEARN &amp; SLOT [K]</button>
       <style>
         .sp-banner { font-size: 11px; color: var(--text); margin-bottom: 10px; padding: 7px 10px;
           background: rgba(216,184,102,0.08); border: 1px solid var(--gold-dim); letter-spacing: 1px; }
@@ -1073,6 +1096,10 @@ export function createPanels(hudRoot, {
         .pips { margin-left: 6px; font-size: 9px; letter-spacing: 2px; }
         .pip { color: #3a4436; } .pip.on { color: var(--gold); text-shadow: 0 0 5px var(--gold-glow); }
       </style>${rows}`;
+    panels.skills.querySelector('[data-opentree]')?.addEventListener('click', () => {
+      closeAll();
+      skillsApi.openTree?.();
+    });
     panels.skills.querySelectorAll('[data-skillup]').forEach((b) => {
       b.addEventListener('click', () => {
         if (skillsApi.spendPoint(b.dataset.skillup)) {
