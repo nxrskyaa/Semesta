@@ -918,6 +918,10 @@ export const CHARM_COLORS = {
   charm_glimmer: '#a8d8f0',
   charm_nox: '#6a4a8a',
   charm_seraphi: '#f0d8a0',
+  charm_emberling: '#f06a3a',
+  charm_tideling: '#5ac8d8',
+  charm_zephyr: '#c8d8f8',
+  charm_verdant: '#6ad88a',
 };
 
 export const MOUNT_ICON_COLORS = {

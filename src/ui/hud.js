@@ -202,11 +202,11 @@ body.online.touch #hud .qtrack { top: 187px; }
 }
 @keyframes c-spark { to { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; } }
 
-#hud .mtile .lbadge {
+#hud .mtile .lbadge, #hud .mtile .xbadge {
   display: none; position: absolute; top: 3px; right: 3px;
   width: 7px; height: 7px; background: #ffd23e; box-shadow: 0 0 6px #ffd23e;
 }
-#hud .mtile .lbadge.on { display: block; }
+#hud .mtile .lbadge.on, #hud .mtile .xbadge.on { display: block; }
 
 #hud .story .nx {
   font-size: 8px; letter-spacing: 2px; color: #7a6330; margin-bottom: 12px;
@@ -687,6 +687,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="village"><span class="mi">⛺</span>BASECAMP<small>Y</small></button>
         <button class="mtile autobtn" data-menu="auto"><span class="mi">⚔</span>AUTO-BATTLE<small>B</small></button>
         <button class="mtile" data-menu="help"><span class="mi">?</span>GUIDE<small>H</small></button>
+        <button class="mtile" data-menu="index"><span class="mi">📕</span>THE INDEX<small>X</small><i class="xbadge"></i></button>
         <button class="mtile" data-menu="life"><span class="mi">🎣</span>LIFE SKILLS<small>L</small><i class="lbadge"></i></button>
         <button class="mtile" data-menu="daily"><span class="mi">🎁</span>DAILY<small>J</small></button>
         <button class="mtile" data-menu="pass"><span class="mi">★</span>GAMEPASS<small>U</small></button>
@@ -859,6 +860,12 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   /** A dot on the LIFE SKILLS tile whenever a point is waiting to be spent. */
   function setLifeBadge(n) {
     const b = root.querySelector('.mtile[data-menu="life"] .lbadge');
+    if (b) b.classList.toggle('on', n > 0);
+  }
+
+  /** A dot on THE INDEX tile whenever a completed category can be cashed in. */
+  function setIndexBadge(n) {
+    const b = root.querySelector('.mtile[data-menu="index"] .xbadge');
     if (b) b.classList.toggle('on', n > 0);
   }
 
@@ -1160,6 +1167,6 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     setSkills, setClassName, setOnline,
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
-    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge,
+    refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge, setIndexBadge,
   };
 }

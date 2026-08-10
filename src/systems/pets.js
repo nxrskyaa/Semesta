@@ -73,6 +73,30 @@ export const PET_DEFS = {
     desc: 'MYTHIC — a palm-sized golden dragon whose sneezes smell of stardust.',
     perk: { key: 'xp', value: 0.30, label: '+30% XP' },
   },
+  // The top of the shelf used to be ONE legendary pair and ONE mythic. A tier
+  // that can only ever hand you the same companion stops being a surprise the
+  // second time you reach it, so both tiers now have real spread — and each of
+  // these takes a perk no other pet at its rarity carries.
+  emberling: {
+    name: 'Emberling', charm: 'charm_emberling', color: '#f06a3a', gachaOnly: true, rarity: 'legendary',
+    desc: 'GACHA EXCLUSIVE — a molten salamander that leaves faint scorch marks on nice rugs.',
+    perk: { key: 'crit', value: 0.10, label: '+10% crit chance' },
+  },
+  tideling: {
+    name: 'Tideling', charm: 'charm_tideling', color: '#5ac8d8', gachaOnly: true, rarity: 'legendary',
+    desc: 'GACHA EXCLUSIVE — a drifting moon-jelly. Weightless, unbothered, faintly humming.',
+    perk: { key: 'stamRegen', value: 0.5, label: '+50% stamina regen' },
+  },
+  zephyr: {
+    name: 'Zephyr', charm: 'charm_zephyr', color: '#c8d8f8', gachaOnly: true, rarity: 'mythic',
+    desc: 'MYTHIC — a storm-swift with a tail of moving air. It arrives slightly before you do.',
+    perk: { key: 'speed', value: 0.22, label: '+22% move speed' },
+  },
+  verdant: {
+    name: 'Verdant', charm: 'charm_verdant', color: '#6ad88a', gachaOnly: true, rarity: 'mythic',
+    desc: 'MYTHIC — a forest spirit shaped like a fawn made of new growth. Older than the village.',
+    perk: { key: 'regen', value: 3.5, label: '+3.5 HP/s regen' },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -379,6 +403,151 @@ const BUILDERS = {
     g.add(tail, flame, glow);
     return g;
   },
+
+  // --- the wider top shelf. Each one is given a silhouette no other pet has,
+  // because "which legendary is that?" should be answerable across a field.
+  emberling() {
+    const { g, head } = basePet('#e0562a', '#ffb07a', 'emberling',
+      { eyeW: 3, eyeH: 4, gap: 4, eyeY: 1, mouth: 'smile', cheeks: 'rgba(255,180,120,0.7)' });
+    // a salamander: low crest down the spine, cracked-magma back, hot tail
+    for (let i = 0; i < 4; i++) {
+      const fin = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.11 - i * 0.015, 3),
+        new THREE.MeshBasicMaterial({ color: 0xffb055 }));
+      fin.position.set(0, 0.34, 0.08 - i * 0.09);
+      fin.rotation.x = -0.2;
+      g.add(fin);
+    }
+    // magma cracks: three bright bars across the back
+    for (let i = 0; i < 3; i++) {
+      const crack = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.012, 0.03),
+        new THREE.MeshBasicMaterial({ color: 0xffd06a }));
+      crack.position.set(0, 0.325, 0.06 - i * 0.1);
+      g.add(crack);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.3, 5), lam('#c4441e'));
+    tail.position.set(0, 0.2, -0.28); tail.rotation.x = 1.4;
+    const tip = new THREE.Mesh(new THREE.OctahedronGeometry(0.06),
+      new THREE.MeshBasicMaterial({ color: 0xffa03a }));
+    tip.position.set(0, 0.22, -0.44);
+    const glow = new THREE.PointLight(0xff8a3a, 1.0, 3.2, 2);
+    glow.position.set(0, 0.28, -0.3);
+    g.add(tail, tip, glow);
+    head.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.08), lam('#ffb07a')))
+      .position.set(0, -0.07, 0.17);
+    return g;
+  },
+
+  tideling() {
+    // A jelly is not a quadruped, so this one does NOT use basePet — the whole
+    // point is that it has no legs and floats.
+    const g = new THREE.Group();
+    const jelly = new THREE.MeshLambertMaterial({
+      color: new THREE.Color('#5ac8d8'), transparent: true, opacity: 0.72,
+    });
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), jelly);
+    bell.position.y = 0.5;
+    bell.scale.y = 0.9;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.02, 6, 16),
+      new THREE.MeshBasicMaterial({ color: 0xa8f0ff }));
+    rim.position.y = 0.43; rim.rotation.x = Math.PI / 2;
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.18),
+      new THREE.MeshBasicMaterial({
+        map: petFace('tideling', { eyeW: 3, eyeH: 5, gap: 5, eyeY: 0, mouth: 'smile' }),
+        transparent: true,
+      }));
+    face.position.set(0, 0.46, 0.2);
+    g.add(bell, rim, face);
+    // trailing tentacles, each a little different length so they read as loose
+    const tentacles = [];
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const len = 0.2 + (i % 3) * 0.07;
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.006, len, 4), jelly);
+      t.position.set(Math.cos(a) * 0.13, 0.44 - len / 2, Math.sin(a) * 0.13);
+      g.add(t);
+      tentacles.push(t);
+    }
+    const glow = new THREE.PointLight(0x6ad8f0, 0.9, 3.4, 2);
+    glow.position.y = 0.48;
+    g.add(glow);
+    g.userData = { head: bell, body: bell, tentacles, floats: true };
+    return g;
+  },
+
+  zephyr() {
+    const { g, head } = basePet('#dae6fb', '#ffffff', 'zephyr',
+      { eyeW: 3, eyeH: 4, gap: 5, eyeY: 0, mouth: 'smile' });
+    // a swift: swept-back wings, a forked tail and a beak, all pale
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.CircleGeometry(0.2, 3),
+        new THREE.MeshLambertMaterial({
+          color: 0xeaf2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.9,
+        }));
+      wing.position.set(sx * 0.2, 0.3, -0.04);
+      wing.rotation.set(0.2, sx * 0.9, sx * -0.5);
+      wing.scale.set(1, 0.7, 1);
+      g.add(wing);
+      const fork = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.22, 3), lam('#c2d6f2'));
+      fork.position.set(sx * 0.06, 0.2, -0.3);
+      fork.rotation.set(1.5, 0, sx * 0.3);
+      g.add(fork);
+    }
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.12, 4), lam('#f2c86a'));
+    beak.position.set(0, -0.03, 0.2); beak.rotation.x = Math.PI / 2;
+    head.add(beak);
+    // three rings of moving air trailing it
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1 + i * 0.03, 0.008, 4, 12),
+        new THREE.MeshBasicMaterial({ color: 0xd8ecff, transparent: true, opacity: 0.5 - i * 0.12 }));
+      ring.position.set(0, 0.26, -0.24 - i * 0.1);
+      ring.rotation.x = Math.PI / 2;
+      g.add(ring);
+    }
+    const glow = new THREE.PointLight(0xbcd8ff, 0.8, 3.0, 2);
+    glow.position.y = 0.42;
+    g.add(glow);
+    return g;
+  },
+
+  verdant() {
+    const { g, head } = basePet('#4f8a52', '#a8d8a0', 'verdant',
+      { eyeW: 3, eyeH: 5, gap: 4, eyeY: 1, mouth: 'smile' });
+    // a fawn made of new growth: branching antlers with leaves, moss flank,
+    // and small blossoms that catch the light
+    for (const sx of [-1, 1]) {
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.26, 5), lam('#8a6a44'));
+      beam.position.set(sx * 0.1, 0.66, -0.02);
+      beam.rotation.z = -sx * 0.34;
+      g.add(beam);
+      for (let i = 0; i < 3; i++) {
+        const tine = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.12, 4), lam('#8a6a44'));
+        tine.position.set(sx * (0.15 + i * 0.03), 0.7 + i * 0.07, -0.02);
+        tine.rotation.z = -sx * 0.9;
+        g.add(tine);
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), lam('#7ad86a'));
+        leaf.position.set(sx * (0.19 + i * 0.03), 0.76 + i * 0.07, -0.02);
+        leaf.scale.set(1, 0.6, 1.3);
+        g.add(leaf);
+      }
+      const bloom = new THREE.Mesh(new THREE.OctahedronGeometry(0.035),
+        new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
+      bloom.position.set(sx * 0.13, 0.62, 0.02);
+      g.add(bloom);
+    }
+    // moss along the back
+    for (let i = 0; i < 4; i++) {
+      const moss = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), lam('#6ab85a'));
+      moss.position.set((i % 2 ? 0.06 : -0.06), 0.33, 0.1 - i * 0.08);
+      moss.scale.y = 0.6;
+      g.add(moss);
+    }
+    const glow = new THREE.PointLight(0x9ae88a, 0.85, 3.2, 2);
+    glow.position.y = 0.6;
+    g.add(glow);
+    head.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.08), lam('#a8d8a0')))
+      .position.set(0, -0.07, 0.17);
+    return g;
+  },
 };
 
 // Exported so OTHER players' pets can be built too — a companion only its owner
@@ -388,8 +557,27 @@ export const PET_BUILDERS = BUILDERS;
 // ---------------------------------------------------------------------------
 // pet runtime — follows the player with a springy trot
 // ---------------------------------------------------------------------------
+// FETCHING. Every pet does this, not one special breed of them.
+//
+// The complaint that started it was fair: a pet was a mesh that trotted behind
+// you and a number in a tooltip. Nothing it did was ever visible. Now the one
+// thing they ALL do is the thing you actually want a companion for — they run
+// out to whatever a monster dropped, pick it up, and bring it back.
+//
+// It has to read as fetching rather than as a wider pickup radius, so the pet
+// genuinely leaves your side, the drop genuinely travels to the pet, and the
+// pet genuinely comes back before you get the item.
+const FETCH_R = 13;          // how far a pet will range for a drop
+const FETCH_GRAB = 0.75;     // close enough to have it in its mouth
+const FETCH_SPEED = 8.5;     // faster than the heel trot: it is excited
+
 export function createPets(scene, terrain, particles) {
-  const state = { active: null, mesh: null, anim: 0 };
+  const state = {
+    active: null, mesh: null, anim: 0,
+    fetch: null,          // the drop being fetched
+    carrying: null,       // { id, count } in its mouth, on the way back
+    cooldown: 0,
+  };
 
   function summon(petId, playerPos) {
     dismiss();
@@ -403,6 +591,10 @@ export function createPets(scene, terrain, particles) {
   }
 
   function dismiss() {
+    // a dismissed pet must not hold a claim on a drop it will never reach
+    if (state.fetch) state.fetch.claimed = false;
+    state.fetch = null;
+    state.carrying = null;
     if (state.mesh) {
       particles.burst(state.mesh.position.clone().add(new THREE.Vector3(0, 0.3, 0)), '#ffffff', 8, 1.5);
       scene.remove(state.mesh);
@@ -411,13 +603,72 @@ export function createPets(scene, terrain, particles) {
     state.mesh = null;
   }
 
-  function update(dt, playerState, time) {
+  /**
+   * @param loot optional { nearestFree, collect } from pickups.js. Without it a
+   *   pet just heels, which is what happens on the character-preview canvas.
+   * @param onFetched called with (id, count) when the pet delivers.
+   */
+  function update(dt, playerState, time, loot = null, onFetched = null) {
     if (!state.mesh) return;
     state.anim += dt;
     const p = state.mesh.position;
     const pp = playerState.pos;
+    state.cooldown = Math.max(0, state.cooldown - dt);
 
-    // heel position: behind and beside the player
+    // ---- FETCH. Runs before the heel logic, because a pet on a job is not
+    // heeling. A pet that is carrying something is on its way back to you.
+    if (loot && !playerState.dead) {
+      // pick a job
+      if (!state.fetch && !state.carrying && state.cooldown <= 0) {
+        const it = loot.nearestFree(pp.x, pp.z, FETCH_R);
+        if (it) { it.claimed = true; state.fetch = it; }
+      }
+      // the claimed drop may have been walked over by the player first
+      if (state.fetch && !loot.items.includes(state.fetch)) state.fetch = null;
+
+      if (state.fetch) {
+        const t = state.fetch.spr.position;
+        const gx = t.x - p.x, gz = t.z - p.z;
+        const gd = Math.hypot(gx, gz) || 1;
+        if (gd > FETCH_GRAB) {
+          p.x += (gx / gd) * FETCH_SPEED * dt;
+          p.z += (gz / gd) * FETCH_SPEED * dt;
+          state.mesh.rotation.y = Math.atan2(gx, gz);
+          p.y = terrain.surfaceY(p.x, p.z) + Math.abs(Math.sin(state.anim * 13)) * 0.11;
+          return;
+        }
+        // got it: the drop goes into its mouth and it turns for home
+        state.carrying = { id: state.fetch.id, count: state.fetch.count };
+        loot.collect(state.fetch, null);      // off the ground, NOT into the bag yet
+        state.fetch = null;
+        particles.burst(p.clone().add(new THREE.Vector3(0, 0.35, 0)),
+          PET_DEFS[state.active].color, 5, 1.6);
+      }
+    }
+
+    // DELIVERY. Carrying something means running back to the player rather than
+    // to the heel spot, and handing it over on arrival.
+    if (state.carrying) {
+      const hx = pp.x - p.x, hz = pp.z - p.z;
+      const hd = Math.hypot(hx, hz) || 1;
+      if (hd > 1.1) {
+        p.x += (hx / hd) * FETCH_SPEED * dt;
+        p.z += (hz / hd) * FETCH_SPEED * dt;
+        state.mesh.rotation.y = Math.atan2(hx, hz);
+        p.y = terrain.surfaceY(p.x, p.z) + Math.abs(Math.sin(state.anim * 13)) * 0.11;
+        // a little sparkle trailing the thing in its mouth
+        if (Math.random() < dt * 8) {
+          particles.burst(p.clone().add(new THREE.Vector3(0, 0.45, 0)), '#ffe9a8', 1, 0.6);
+        }
+        return;
+      }
+      onFetched?.(state.carrying.id, state.carrying.count);
+      particles.fountain(p.clone().add(new THREE.Vector3(0, 0.4, 0)), '#ffe9a8', 8);
+      state.carrying = null;
+      state.cooldown = 0.25;          // a beat before it goes again
+    }
+
+    // ---- HEEL. Only reached when the pet has no job on: behind and beside you.
     const f = playerState.facing;
     const tx = pp.x - Math.sin(f) * 0.9 - Math.cos(f) * 0.35;
     const tz = pp.z - Math.cos(f) * 0.9 + Math.sin(f) * 0.35;

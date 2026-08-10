@@ -9,6 +9,7 @@ import { buildCosmetic } from '../systems/cosmetics.js';
 import { CLASSES } from '../systems/classes.js';
 import { recipesFor, canCraft, craft } from '../systems/crafting.js';
 import { createCraftShow } from './craftshow.js';
+import { createIndexPanel } from './indexpanel.js';
 import { forgeCost, forgeChance, MAX_PLUS } from '../systems/forge.js';
 import { PET_DEFS } from '../systems/pets.js';
 import { MOUNT_DEFS } from '../systems/mounts.js';
@@ -128,7 +129,7 @@ export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
   economy, cooking, estate, gacha, wardrobe, dailies, gamepass, gfxPanelFactory,
-  onDrink, onBoostActive, skilltree, onWorkStart, onWorkEnd,
+  onDrink, onBoostActive, skilltree, onWorkStart, onWorkEnd, index,
 }) {
   // THE WORKBENCH SHOW. Cooking and crafting both run through it, so it lives
   // here rather than in main.js — both buttons are already in this file, and a
@@ -155,6 +156,7 @@ export function createPanels(hudRoot, {
     pass: document.createElement('div'),
     gfx: document.createElement('div'),
     life: document.createElement('div'),
+    index: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
     p.className = 'panel';
@@ -1541,11 +1543,14 @@ export function createPanels(hudRoot, {
     });
   }
 
+  const indexPanel = index ? createIndexPanel(panels.index, index, audio) : null;
+
   const RENDER = {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
     gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp, about: renderAbout,
     daily: renderDaily, pass: renderPass, gfx: renderGfx, life: renderLife,
+    index: () => indexPanel?.render(),
   };
 
   function toggle(which) {

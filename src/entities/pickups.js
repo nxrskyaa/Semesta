@@ -61,5 +61,30 @@ export function createPickups(scene, terrain) {
     }
   }
 
-  return { spawn, update };
+  /**
+   * The nearest drop a pet could go and fetch, ignoring anything already
+   * claimed by one. Returns the live item so the caller can watch it move.
+   */
+  function nearestFree(x, z, radius) {
+    let best = null, bd = radius * radius;
+    for (const it of items) {
+      if (it.claimed) continue;
+      const d = (it.spr.position.x - x) ** 2 + (it.spr.position.z - z) ** 2;
+      if (d < bd) { bd = d; best = it; }
+    }
+    return best;
+  }
+
+  /** Hand a fetched drop to the player and take it off the ground. */
+  function collect(it, onPickup) {
+    const i = items.indexOf(it);
+    if (i < 0) return false;
+    onPickup?.(it.id, it.count);
+    scene.remove(it.spr);
+    it.spr.material.dispose();
+    items.splice(i, 1);
+    return true;
+  }
+
+  return { items, spawn, update, nearestFree, collect };
 }

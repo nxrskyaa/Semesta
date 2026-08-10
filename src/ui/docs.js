@@ -93,6 +93,7 @@ export const CATEGORIES = [
           ['Daily', '<b>J</b>'],
           ['Character stats', '<b>Z</b> — three points a level, no respec'],
           ['Life skills', '<b>L</b> — fishing, farming and cooking'],
+          ['The Index', '<b>X</b> — the collection log'],
           ['Teleport home', '<b>T</b> — 1.6s channel, 20s cooldown'],
           ['Teleport to basecamp', '<b>Y</b> — same channel, shared cooldown'],
           ['Mount', '<b>M</b>'],
@@ -428,6 +429,24 @@ export const CATEGORIES = [
         times. It always names the next thing worth doing. If you ever open the
         game and do not know what to do, that line is the answer.</p>`),
 
+      S('index', 'The Index', `
+        <p><b>X</b>, or ☰ → THE INDEX. A collection log of every unique thing in
+        Anavela — <b>145 entries</b> across seven categories: fish, pets, mounts,
+        monsters, world bosses, weapons and wardrobe.</p>
+        <p>This is what the game is for once your level stops being the thing
+        that moves. Every system here makes something unique and, until now,
+        nothing counted any of it — you could land the Anavela Leviathan and the
+        game would never mention it again.</p>
+        ${call('do', 'HOW IT FILLS', [
+          'Anything you <b>hold</b> logs itself — a fish the moment it lands, a cosmetic the moment it is pulled, a charm the moment it drops.',
+          'A monster or a world boss logs when you <b>kill</b> it. Walking past one does not count.',
+          'Nothing is hidden. An entry you have not found still shows its rarity colour, a blacked-out silhouette of the real art, and a hint — <i>"Out at sea, after dark"</i> — because that is a quest nobody had to write.',
+          'Finish a whole category and it pays out: coins and a stack of materials, up to 5,000c for the full armoury.',
+        ])}
+        <p class="note">An old save is not blank. The Index reads what is already
+        in your bag the first time you load it, so a hero who has been playing for
+        weeks opens it with their fish, pets and weapons already logged.</p>`),
+
       S('daily', 'Daily, Play-time & GamePass', `
         <p>Three retention systems, all opened with <b>J</b>:</p>
         ${ul([
@@ -458,10 +477,14 @@ export const CATEGORIES = [
         ])}`),
 
       S('pets', 'Pets, Mounts & Wardrobe', `
-        <p><b>13 pets</b> follow you and carry a passive perk — speed, damage,
-        regeneration, attack speed, XP, armour, crit, stamina, pickup magnet or
-        fishing luck. Ten drop from chests, bosses and quests; three are capsule
-        exclusives.</p>
+        <p><b>17 pets.</b> Every one of them <b>fetches</b>: when a monster drops
+        something, your pet runs it down, picks it up and brings it back to you —
+        you never have to walk over a corpse to collect. The passive perk on top
+        (speed, damage, regeneration, attack speed, XP, armour, crit, stamina,
+        magnet or fishing luck) is what makes them different from each other.</p>
+        <p>Ten drop from chests, bosses and quests. <b>Seven are capsule
+        exclusives</b>, including four at the top of the shelf: Emberling and
+        Tideling at legendary, Zephyr and Verdant at mythic.</p>
         <p><b>8 mounts</b>, each with its own speed and jump multiplier. Sprig is
         free from the start. Press <b>M</b> to summon.</p>
         <p><b>28 cosmetics</b> in the wardrobe (<b>O</b>): hats, back pieces and

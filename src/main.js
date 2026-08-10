@@ -53,6 +53,7 @@ import { createMounts, MOUNT_DEFS } from './systems/mounts.js';
 import { createFishing } from './systems/fishing.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
 import { createHousing, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
+import { createIndex } from './systems/index.js';
 import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
 import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS } from './systems/items.js';
 import { createWardrobe, cosmeticsBySlot } from './systems/cosmetics.js';
@@ -934,21 +935,75 @@ async function init(character, saved, audio, online = false) {
     ['common', 40], ['uncommon', 26], ['rare', 16.5],
     ['epic', 10], ['legendary', 5.5], ['mythic', 2],
   ];
+  // THE PRIZE POOLS.
+  //
+  // The whole SEASON ONE: LANTERNS set — seventeen pieces, every one of them
+  // already defined in items.js and already given a real mesh in cosmetics.js —
+  // was missing from here, which meant not one of them could be obtained by any
+  // means. Built, paid for in code, and unreachable. They are in now, sorted by
+  // their own declared rarity.
+  //
+  // The top two tiers were also thin in a way you feel: one legendary pet, one
+  // mythic pet, and a single choice of each accessory slot. A mythic pull that
+  // can only ever be one of six things stops being a surprise the second time.
   const GACHA_POOLS = {
     common: [
       { bundle: 'forge_stone', count: 3 }, { bundle: 'tonic', count: 2 },
       { bundle: 'seed_berry', count: 3 }, { bundle: 'iron_ore', count: 2 },
       'hat_straw', 'hat_leaf', 'back_pack',
+      'hat_bucket', 'back_scroll',
     ],
     uncommon: [
       { bundle: 'forge_stone', count: 6 }, { bundle: 'hardwood', count: 5 },
       'hat_bandana', 'hat_miner', 'hat_chef', 'back_sprout', 'back_shell', 'trail_leaf',
+      'hat_flower', 'back_reef', 'trail_bubble',
     ],
-    rare: ['hat_wizard', 'hat_catears', 'hat_pirate', 'back_bubble', 'back_balloon', 'trail_petal', 'trail_frost', { petCharm: true }],
-    epic: ['hat_viking', 'hat_pumpkin', 'back_butterfly', 'back_koi', 'trail_ember', 'mount_trotter', 'mount_clucky', 'mount_shellsworth', 'mount_pebble', { gweapon: 'epic' }],
-    legendary: ['charm_glimmer', 'charm_nox', 'hat_crown', 'hat_kitsune', 'back_phoenix', 'trail_star', 'mount_nimbus', 'mount_blossom', { gweapon: 'legendary' }],
-    mythic: ['charm_seraphi', 'mount_aurora', 'hat_halo', 'back_prism', 'trail_rainbow', { gweapon: 'mythic' }],
+    rare: [
+      'hat_wizard', 'hat_catears', 'hat_pirate', 'back_bubble', 'back_balloon',
+      'trail_petal', 'trail_frost', { petCharm: true },
+      'hat_fox', 'hat_starcap', 'back_cloakfeather', 'trail_ink',
+    ],
+    epic: [
+      'hat_viking', 'hat_pumpkin', 'back_butterfly', 'back_koi', 'trail_ember',
+      'mount_trotter', 'mount_clucky', 'mount_shellsworth', 'mount_pebble',
+      'hat_lantern', 'hat_horns', 'back_lanterns', 'trail_lantern',
+      { gweapon: 'epic' },
+    ],
+    legendary: [
+      'charm_glimmer', 'charm_nox', 'charm_emberling', 'charm_tideling',
+      'hat_crown', 'hat_kitsune', 'back_phoenix', 'trail_star',
+      'hat_antlers', 'back_frost',
+      'mount_nimbus', 'mount_blossom', { gweapon: 'legendary' },
+    ],
+    mythic: [
+      'charm_seraphi', 'charm_zephyr', 'charm_verdant',
+      'mount_aurora', 'hat_halo', 'back_prism', 'trail_rainbow',
+      'hat_moon', 'trail_aurora',
+      { gweapon: 'mythic' },
+    ],
   };
+  /**
+   * The exotic weapon of `tier` that suits whoever you are RIGHT NOW.
+   *
+   * Two bugs lived in the two places that used to do this by hand. The lookup
+   * read `cls.weaponType` — the class captured at world build, which is Origin
+   * for everybody, so it always resolved to a sword. And `GACHA_WEAPONS` only
+   * has sword/bow/staff/dagger, so an axe Warrior or a Summoner resolved to
+   * `undefined`: the PRIZES catalogue crashed on `ITEMS[undefined].name`, and
+   * the roll silently `continue`d past it — meaning two of the seven classes
+   * could never pull an exclusive weapon at all, in any tier, ever.
+   *
+   * The gamepass already had the right answer and kept it to itself. One helper
+   * now, used by all three callers.
+   */
+  function exoticFor(tier) {
+    const fam = GACHA_WEAPONS[tier];
+    if (!fam) return null;
+    const wt = CLASSES[character.cls]?.weaponType || 'sword';
+    const key = fam[wt] ? wt : wt === 'axe' ? 'sword' : wt === 'cannon' ? 'staff' : 'sword';
+    return fam[key] || null;
+  }
+
   const gacha = {
     price: 100,
     pity: saved?.gachaPity ?? 0, // rolls since the last epic-or-better
@@ -966,7 +1021,8 @@ async function init(character, saved, audio, online = false) {
             return { iconId: 'charm_moku', name: 'Pet Charm (random)', kind: 'PET', note: 'a pet you don\'t own yet' };
           }
           if (typeof entry === 'object' && entry.gweapon) {
-            const wid = GACHA_WEAPONS[entry.gweapon][cls.weaponType];
+            const wid = exoticFor(entry.gweapon);
+            if (!wid) return { iconId: 'forge_stone', name: 'Exclusive Weapon', kind: 'WEAPON' };
             return { iconId: wid, name: ITEMS[wid].name, kind: 'WEAPON', owned: inventory.state.weapons.has(wid) };
           }
           const d = ITEMS[entry];
@@ -1023,7 +1079,7 @@ async function init(character, saved, audio, online = false) {
         }
         if (typeof entry === 'object' && entry.gweapon) {
           // an exclusive weapon matching your class's weapon type
-          const wid = GACHA_WEAPONS[entry.gweapon][cls.weaponType];
+          const wid = exoticFor(entry.gweapon);
           if (!wid || inventory.state.weapons.has(wid)) continue;
           inventory.add(wid, 1);
           if (rarity === 'legendary' || rarity === 'mythic') addShake(0.3);
@@ -1106,6 +1162,26 @@ async function init(character, saved, audio, online = false) {
   });
   dailies.load(saved?.dailies);
 
+  // --- THE INDEX: the collection log, and the thing a capped hero plays for ---
+  const index = createIndex({
+    grant(r) {
+      if (r.coins) inventory.addCoins(r.coins);
+      if (r.item) inventory.add(r.item, r.count || 1);
+      hud.banner(r.label.toUpperCase());
+      audio.sfx('reveal_legendary');
+      particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ffd23e', 30);
+      addShake(0.26);
+    },
+    // First sighting only. It is a toast rather than a banner on purpose: this
+    // fires on every new monster you meet, and a full-screen card for a Slime
+    // would be exhausting inside five minutes.
+    onDiscover: (cat, entry, p) => {
+      hud.toastText(`${cat.glyph} INDEX — ${entry.name} logged (${p.have}/${p.total} ${cat.name.toLowerCase()})`);
+      audio.sfx('pickup');
+    },
+  });
+  index.load(saved?.index);
+
   // --- LIFE SKILLS: fishing, farming and cooking each level on their own ---
   const skilltree = createSkillTree({
     onLevel: (skill, lv) => {
@@ -1132,10 +1208,8 @@ async function init(character, saved, audio, online = false) {
       // cannon have no exotic family of their own yet, so they borrow the
       // closest silhouette rather than granting nothing at all.
       if (r.weaponTier) {
-        const fam = GACHA_WEAPONS[r.weaponTier];
-        const wt = CLASSES[character.cls]?.weaponType || 'sword';
-        const key = fam[wt] ? wt : (wt === 'axe' ? 'sword' : wt === 'cannon' ? 'staff' : 'sword');
-        if (fam[key]) inventory.add(fam[key], 1);
+        const wid = exoticFor(r.weaponTier);
+        if (wid) inventory.add(wid, 1);
       }
       audio.sfx(r.grand ? 'reveal_mythic' : r.big ? 'reveal_epic' : 'pickup');
       if (r.big || r.grand) {
@@ -1173,7 +1247,7 @@ async function init(character, saved, audio, online = false) {
     // a FUNCTION, so the crafting list follows the class through the awakening
     weaponType: () => CLASSES[character.cls]?.weaponType || 'sword',
     economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
-    skilltree,
+    skilltree, index,
     // THE WORK HAPPENS IN THE WORLD TOO. The scene in the modal is the close-up;
     // these put the hero into a stirring or hammering pose behind it and throw
     // the matching FX off them, so closing the panel afterwards does not feel
@@ -1361,7 +1435,39 @@ async function init(character, saved, audio, online = false) {
     if (inventory.state.equipped !== player.state.equipped) {
       player.state.equipWeapon(inventory.state.equipped);
     }
+    logBagToIndex();
   });
+
+  /**
+   * THE BAG IS THE SOURCE OF TRUTH for everything you can hold.
+   *
+   * Sprinkling `index.see(...)` through every grant site — fishing, chests,
+   * gacha, quests, the gamepass, dailies, level rewards, the shop — would mean
+   * eight places to forget. Reading the bag on every change catches all of them
+   * at once, including a reward path somebody adds next year. `see()` is a no-op
+   * once a thing is logged, so this is cheap.
+   */
+  function logBagToIndex() {
+    if (!index) return;
+    // `state.materials` is a MAP, and it is not called `items` — reading
+    // `Object.keys(state.items)` gave an empty list forever, so nothing a player
+    // owned was ever logged and the whole Index sat at zero while the bag filled
+    // up. Caught by pulling five cosmetics and watching the counter stay at 0/45.
+    for (const id of inventory.state.materials.keys()) {
+      if (inventory.count(id) <= 0) continue;
+      const d = ITEMS[id];
+      if (!d) continue;
+      if (d.fish) index.see('fish', id);
+      if (d.cosmetic) index.see('cosmetics', id);
+      // charms and whistles are the ITEM; the index logs the creature it summons
+      const pet = Object.entries(PET_DEFS).find(([, p]) => p.charm === id);
+      if (pet) index.see('pets', pet[0]);
+      const mnt = Object.entries(MOUNT_DEFS).find(([, m]) => m.item === id);
+      if (mnt) index.see('mounts', mnt[0]);
+    }
+    // weapons live in their own set, not as stacked items
+    for (const id of inventory.state.weapons || []) index.see('weapons', id);
+  }
   player.state.equipWeapon(inventory.state.equipped);
 
   // --- input ---
@@ -1475,6 +1581,11 @@ const CAM_PITCH_DEFAULT = 0.98;
   function forgeMult() { return forgeMultiplier(inventory.equippedPlus()); }
 
   function onKill(e, drops) {
+    // INDEX: killing it is what logs it. Seeing one across a field is not
+    // "collecting" it, and a log that filled itself from the spawner would be
+    // complete before you had fought anything.
+    if (e.isWorldBoss) index?.see('bosses', e.bossKind || e.type);
+    else index?.see('monsters', e.type || e.def?.id);
     const xp = Math.round(e.xp * xpMult());
     leveling.addXp(xp);
     dmgNums.spawn(e.mesh.position.clone().add(new THREE.Vector3(0, 1.3, 0)), `+${xp} XP`, 'xp');
@@ -1800,6 +1911,12 @@ const CAM_PITCH_DEFAULT = 0.98;
   });
   skillsApi.skillSys = skillSys;
   skillSys.load(saved?.skills);
+
+  // Backfill the Index from whatever is already in the bag. A hero who has been
+  // playing since before the Index existed should open it and find their fish,
+  // their pets and their whole weapon line already logged — an empty log on a
+  // Lv30 character would read as broken, and it would be.
+  logBagToIndex();
 
   // THE LOADOUT, not the class's fixed list.
   //
@@ -2415,6 +2532,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       audio.sfx('ui');
       showStats(stats, { onChange: () => { applyLevelStats(); save(); } });
     }
+    if (e.code === 'KeyX') { audio.sfx('ui'); panels.toggle('index'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
     if (e.code === 'KeyO') { audio.sfx('ui'); panels.toggle('ward'); }
     // Shift also rolls. The on-screen hint and the guide both said it did;
@@ -2532,6 +2650,7 @@ const CAM_PITCH_DEFAULT = 0.98;
         return;
       }
       if (which === 'tree') { audio.sfx('ui'); openSkillTree(); return; }
+      if (which === 'index') { audio.sfx('ui'); panels.toggle('index'); return; }
       if (which === 'quit') { leaveToMenu(); return; }
       if (which === 'auto') { toggleAutoBattle(); return; }
       if (which === 'home') { teleportHome('home'); return; }
@@ -2620,6 +2739,7 @@ const CAM_PITCH_DEFAULT = 0.98;
         wardrobe: wardrobe.serialize(),
         gachaPity: gacha.pity,
         dailies: dailies.serialize(),
+        index: index.serialize(),
         skilltree: skilltree.serialize(),
         classTree: classTree.serialize(),
         stats: stats.serialize(),
@@ -2638,11 +2758,11 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
-    dailies, gamepass, story, skilltree, landmarks, watercraft, isles, hud, wind,
+    dailies, gamepass, story, skilltree, index, landmarks, watercraft, isles, hud, wind,
     net, remote, chat, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     composer, usePost,
     player, enemyMgr, inventory, leveling, terrain, cam, camera, skillSys, forge,
-    projectiles, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
+    projectiles, pickups, character, quests, pets, mounts, chests, weather, fishing, npcs, lighting,
     camps, gathering, farming, housing, economy, cooking, estate, gacha, worldmap,
     wardrobe, wardrobeApi, teleportHome, tele, panels, isles, watercraft, wildlife,
     remote, get net() { return net; }, spider, rialoHub,
@@ -2895,7 +3015,14 @@ const CAM_PITCH_DEFAULT = 0.98;
     landmarks.update(dt, time, player.state.pos,
       Math.max(0, Math.min(1, (lighting.state.minutes / 60 - 6) / 12)), wind);
     farming.update(dt);
-    pets.update(dt, player.state, time);
+    // THE PET FETCHES. It runs the drop down, carries it back and hands it over —
+    // the same `onPickup` path a drop you walked over takes, so quests, dailies
+    // and the toast all fire exactly as they would have.
+    pets.update(dt, player.state, time, pickups, (id, count) => {
+      inventory.add(id, count);
+      hud.toast(id, count);
+      audio.sfx('pickup');
+    });
     mounts.update(dt, player, terrain);
     fishing.update(dt, time);
     // the tracker shows a live distance, so it has to be rebuilt as you move —
@@ -2945,6 +3072,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     dailies.tick(dt);
     hud.setMenuBadge?.(dailies.pending() + gamepass.pending() + skilltree.pending());
     hud.setLifeBadge?.(skilltree.pending());
+    hud.setIndexBadge?.(index.pending());
     // cosmetic movement trail (wardrobe slot 3)
     if (player.state.isMoving && !player.state.dead) {
       const tr = wardrobe.trailColor(time);

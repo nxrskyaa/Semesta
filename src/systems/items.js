@@ -82,6 +82,10 @@ export const ITEMS = {
   charm_glimmer: { name: 'Glimmer Charm', petCharm: 'glimmer', rarity: 'legendary' },
   charm_nox:     { name: 'Nox Charm', petCharm: 'nox', rarity: 'legendary' },
   charm_seraphi: { name: 'Seraphi Charm', petCharm: 'seraphi', rarity: 'mythic' },
+  charm_emberling: { name: 'Emberling Charm', petCharm: 'emberling', rarity: 'legendary' },
+  charm_tideling: { name: 'Tideling Charm', petCharm: 'tideling', rarity: 'legendary' },
+  charm_zephyr:  { name: 'Zephyr Charm', petCharm: 'zephyr', rarity: 'mythic' },
+  charm_verdant: { name: 'Verdant Charm', petCharm: 'verdant', rarity: 'mythic' },
 
   // ---- WARDROBE COSMETICS (gacha & level rewards) ----
   // hats
