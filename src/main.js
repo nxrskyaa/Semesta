@@ -460,6 +460,47 @@ async function init(character, saved, audio, online = false) {
     console.info(`[semesta] Rialo Hub: ${solidCells} cells marked solid`);
   }
 
+  // CHIPCHIP GOES TO THE DOCK. npcs.js is built before the landmarks, so it
+  // cannot know where the fishing docks ended up; it seats her at a lakeside
+  // guess and this walks her over to the real thing. She sits just off the
+  // decking so she never blocks the fishing spot itself.
+  {
+    const chip = npcs.npcs.find((n) => n.def.id === 'chipchip');
+    const dock = landmarks.docks?.[0];
+    if (chip && dock) {
+      // Spiral out from the DOCK itself for the nearest dry, walkable, unblocked
+      // cell. Handing a rough guess to landNear put her ten units up the beach,
+      // which is not "by the fishing spot", it is "somewhere near the lake".
+      let best = null;
+      for (let r = 1.6; r <= 5 && !best; r += 0.4) {
+        for (let k = 0; k < 16 && !best; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          const x = dock.x + Math.cos(a) * r, z = dock.z + Math.sin(a) * r;
+          const [ix, iz] = terrain.cellOf(x, z);
+          if (decor.blocked.has(`${ix},${iz}`)) continue;
+          const y = terrain.surfaceY(x, z);
+          if (y <= 0.65 || !terrain.walkable(x, z, y)) continue;   // must be dry land
+          best = { x, z, y };
+        }
+      }
+      if (best) {
+        chip.mesh.position.set(best.x, best.y, best.z);
+        chip.home = { x: best.x, z: best.z };
+        // HER SCHEDULE HAS TO MOVE TOO. Setting only the position put her at the
+        // dock for about four seconds and then the activity system walked her
+        // back to the offset in SCHEDULES — measured 19 units away. Stations
+        // accept an absolute point, which is exactly what this is.
+        chip.stations = [{ abs: { x: best.x, z: best.z }, act: 'sit' }];
+        chip.stationIdx = 0;
+        chip.mode = 'do';
+        chip.mesh.rotation.y = Math.atan2(dock.x - best.x, dock.z - best.z); // face the water
+        decor.clearArea(best.x, best.z, 1.8);
+        const [cx2, cz2] = terrain.cellOf(best.x, best.z);
+        decor.blocked.add(`${cx2},${cz2}`);          // she is solid, like any villager
+      }
+    }
+  }
+
   // A tree inside a wall is one you can see and never reach, so it can never be
   // chopped — and gathering nodes are scattered BEFORE the landmarks and houses
   // are placed, so some of them end up under whatever got built there. Sweep

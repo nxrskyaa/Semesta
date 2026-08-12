@@ -131,6 +131,21 @@ export const NPC_DEFS = [
     ],
   },
   {
+    // CHIPCHIP sits by the lake dock rather than in the plaza — she is the one
+    // villager who belongs to the fishing spot, and finding her out there is
+    // more of a moment than finding her in the crowd.
+    id: 'chipchip', name: 'ChipChip', species: 'chipchip', role: 'Easter Cutie',
+    ambient: true, atDock: true,
+    fur: '#f2a8c0', furLight: '#ffd6e4', outfit: '#f7b8cd',
+    dialog: [
+      'Hihi! I am ChipChip. I live in this egg. It is very comfortable, do not worry about it.',
+      'This is Bun-Bun and this is Peep. They are extremely good at fishing. They just watch, mostly.',
+      'If you catch something big, bring it here first! I want to see it before you sell it.',
+      'The water is calmest right at dawn. That is when the shy ones come up.',
+      'Careful past the treeline. I would come with you but, um, the egg is quite heavy.',
+    ],
+  },
+  {
     id: 'barong', name: 'Barong', species: 'barong', role: 'Village Guardian', ambient: true,
     fur: '#c8302a', furLight: '#f0d24a', outfit: '#1a1a22',
     dialog: [
@@ -174,8 +189,264 @@ function villagerFace(species) {
   return faceCache.get(species);
 }
 
+/**
+ * ChipChip's face, painted rather than borrowed from the critter generator.
+ *
+ * The sheet's whole read is the EYES — they are enormous, glossy, near-black
+ * with a bright rim, and the left one carries a heart-shaped glint. The shared
+ * `makeCritterFaceTexture` draws small dot eyes, which on her looked like a
+ * different character wearing her hair.
+ */
+let chipFaceTex = null;
+function chipchipFace() {
+  if (chipFaceTex) return chipFaceTex;
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 24;
+  const x = c.getContext('2d');
+  x.imageSmoothingEnabled = false;
+  const px = (a, b, w, h, col) => { x.fillStyle = col; x.fillRect(a, b, w, h); };
+
+  // blush, under the eyes and wide — it is very visible on the sheet
+  px(3, 13, 6, 3, 'rgba(247,150,175,0.55)');
+  px(23, 13, 6, 3, 'rgba(247,150,175,0.55)');
+
+  // the two big eyes. Left (viewer's left) is the one with the heart.
+  const eye = (ex, heart) => {
+    px(ex, 6, 8, 11, '#2a2028');                 // dark mass
+    px(ex + 1, 5, 6, 1, '#2a2028');              // rounded top
+    px(ex + 1, 17, 6, 1, '#2a2028');             // rounded bottom
+    px(ex + 1, 7, 6, 4, '#4a3c48');              // upper iris sheen
+    // lower catchlight, on both
+    px(ex + 1, 13, 3, 3, '#f6eef4');
+    if (heart) {
+      // a small pixel heart, the sheet's signature glint
+      px(ex + 2, 7, 2, 2, '#ffffff');
+      px(ex + 5, 7, 2, 2, '#ffffff');
+      px(ex + 2, 9, 5, 2, '#ffffff');
+      px(ex + 3, 11, 3, 1, '#ffffff');
+    } else {
+      px(ex + 4, 7, 3, 3, '#ffffff');
+    }
+    // lash line
+    px(ex - 1, 4, 10, 1, '#3a2a34');
+  };
+  eye(4, true);
+  eye(20, false);
+
+  // a small closed smile
+  px(14, 18, 4, 1, '#c4707e');
+  px(13, 17, 1, 1, '#c4707e');
+  px(18, 17, 1, 1, '#c4707e');
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  chipFaceTex = tex;
+  return tex;
+}
+
 // Barong — a Balinese guardian lion. Ornate red/gold/white mask with bulging
 // eyes, a fanged grin, a crown, and a layered mane. A proud cultural landmark.
+/**
+ * CHIPCHIP — the Easter Cutie, built from the supplied character sheet.
+ *
+ * She is not a critter villager and she does not use the shared body, because
+ * almost nothing about her matches it: she has no visible torso at all. The
+ * silhouette is a chibi girl sitting INSIDE a cracked pastel egg bowl, and
+ * every element below is on the sheet rather than invented —
+ *
+ *   long layered pink hair with ONE ahoge standing up off the crown
+ *   an overgrown fringe that covers her right eye
+ *   huge glossy dark eyes, a heart glint in the left one
+ *   the egg: scalloped crack rim, then bands of green dots / mint stripe /
+ *     yellow dots / magenta, exactly in that order top to bottom
+ *   a white bunny plushie held at her right, ears up, eyes closed happy
+ *   a small yellow chick at her left
+ *   a carrot tucked into the egg on the right
+ *   two round pale booties poking out under the shell
+ *
+ * The whole thing is deliberately built at NPC scale (~1.05 tall) so she reads
+ * as a person you walk up to, not as a prop.
+ */
+function buildChipChip() {
+  const g = new THREE.Group();
+  // sheet palette
+  const HAIR = lam('#f2a8c0'), HAIR_LO = lam('#dd86a6'), HAIR_HI = lam('#ffc8da');
+  const SKIN = lam('#ffe0d0');
+  const SHELL = lam('#f7b8cd'), SHELL_LO = lam('#e094b2'), SHELL_HI = lam('#ffd6e4');
+  const WHITE = lam('#fbf7f4'), MINT = lam('#a8e0d8');
+
+  // ---- the egg bowl she is sitting in --------------------------------------
+  const EGG_R = 0.42, EGG_H = 0.5;
+  const egg = new THREE.Mesh(
+    new THREE.CylinderGeometry(EGG_R, EGG_R * 0.74, EGG_H, 14, 1, true), SHELL);
+  egg.position.y = 0.27;
+  egg.castShadow = true;
+  g.add(egg);
+  // the rounded underside, so it is a bowl rather than a tube
+  const eggBase = new THREE.Mesh(new THREE.SphereGeometry(EGG_R * 0.76, 14, 7, 0, Math.PI * 2, Math.PI * 0.5), SHELL_LO);
+  eggBase.position.y = 0.03;
+  g.add(eggBase);
+
+  // BANDS, top to bottom exactly as the sheet has them
+  const band = (y, h, mat, r = EGG_R + 0.006) => {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r - 0.02, h, 14, 1, true), mat);
+    b.position.y = y;
+    g.add(b);
+    return b;
+  };
+  band(0.40, 0.055, MINT);                                   // mint stripe
+  band(0.26, 0.075, lam('#e86aa8'));                         // magenta band
+  // dotted courses — green above the mint, yellow below it
+  const dots = (y, colour, n = 10, r = EGG_R + 0.012) => {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const d = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 5), lam(colour));
+      d.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      d.scale.set(1, 1, 0.45);
+      d.lookAt(0, y, 0);
+      g.add(d);
+    }
+  };
+  dots(0.47, '#9fd982');                                     // green dots
+  dots(0.335, '#f5dd6a');                                    // yellow dots
+
+  // the CRACKED rim: alternating tall/short teeth all the way round
+  const RIM_Y = 0.52;
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const tall = i % 2 === 0;
+    const t = new THREE.Mesh(sharedBox(0.13, tall ? 0.09 : 0.05, 0.07), SHELL_HI);
+    t.position.set(Math.cos(a) * EGG_R, RIM_Y + (tall ? 0.03 : 0.01), Math.sin(a) * EGG_R);
+    t.rotation.y = -a;
+    g.add(t);
+  }
+
+  // ---- two round booties poking out under the shell ------------------------
+  for (const sx of [-1, 1]) {
+    const boot = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), lam('#f9c9d4'));
+    boot.position.set(sx * 0.17, 0.07, 0.2);
+    boot.scale.set(1, 0.78, 1.25);
+    g.add(boot);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 8), WHITE);
+    cuff.position.set(sx * 0.17, 0.15, 0.18);
+    g.add(cuff);
+  }
+
+  // ---- head ----------------------------------------------------------------
+  const head = new THREE.Mesh(sharedBox(0.44, 0.4, 0.4), SKIN);
+  head.position.y = 0.86;
+  head.castShadow = true;
+  g.add(head);
+
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.3),
+    new THREE.MeshBasicMaterial({ map: chipchipFace(), transparent: true }));
+  face.position.set(0, -0.01, 0.21);
+  head.add(face);
+
+  // HAIR. A back mass, a fringe that sits low over the right eye, two long
+  // side falls, and the single ahoge.
+  const backHair = new THREE.Mesh(sharedBox(0.5, 0.46, 0.24), HAIR);
+  backHair.position.set(0, 0.87, -0.14);
+  g.add(backHair);
+  const crown = new THREE.Mesh(sharedBox(0.47, 0.14, 0.42), HAIR);
+  crown.position.set(0, 1.05, -0.01);
+  g.add(crown);
+  // fringe: three slabs, the right one lower so it covers that eye
+  const fringeL = new THREE.Mesh(sharedBox(0.17, 0.16, 0.06), HAIR_HI);
+  fringeL.position.set(-0.13, 0.99, 0.2);
+  const fringeM = new THREE.Mesh(sharedBox(0.14, 0.12, 0.06), HAIR);
+  fringeM.position.set(0.01, 1.0, 0.2);
+  const fringeR = new THREE.Mesh(sharedBox(0.16, 0.22, 0.06), HAIR_HI);
+  fringeR.position.set(0.15, 0.95, 0.2);                     // covers the right eye
+  g.add(fringeL, fringeM, fringeR);
+  // long side falls down past the shoulders, into the egg
+  for (const sx of [-1, 1]) {
+    const fall = new THREE.Mesh(sharedBox(0.13, 0.44, 0.2), sx < 0 ? HAIR : HAIR_LO);
+    fall.position.set(sx * 0.25, 0.78, -0.03);
+    g.add(fall);
+    const tip = new THREE.Mesh(sharedBox(0.11, 0.16, 0.17), HAIR_LO);
+    tip.position.set(sx * 0.26, 0.55, -0.03);
+    g.add(tip);
+  }
+  // THE AHOGE — one strand off the crown, and it is the thing that makes the
+  // silhouette hers. Given its own pivot so it can bob.
+  const ahoge = new THREE.Group();
+  const a1 = new THREE.Mesh(sharedBox(0.035, 0.13, 0.035), HAIR_HI);
+  a1.position.y = 0.065;
+  const a2 = new THREE.Mesh(sharedBox(0.03, 0.09, 0.03), HAIR_HI);
+  a2.position.set(0.035, 0.16, 0);
+  a2.rotation.z = -0.7;
+  ahoge.add(a1, a2);
+  ahoge.position.set(-0.03, 1.12, -0.02);
+  g.add(ahoge);
+
+  // ---- the plushies she is holding ----------------------------------------
+  // white bunny, at her right (screen left is -x, so this is +x on the sheet)
+  const bunny = new THREE.Group();
+  const bHead = new THREE.Mesh(sharedBox(0.22, 0.2, 0.2), WHITE);
+  bunny.add(bHead);
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.Mesh(sharedBox(0.06, 0.19, 0.05), WHITE);
+    ear.position.set(sx * 0.06, 0.18, -0.01);
+    ear.rotation.z = sx * 0.12;
+    const inner = new THREE.Mesh(sharedBox(0.03, 0.13, 0.02), lam('#f7b0c4'));
+    inner.position.set(sx * 0.06, 0.18, 0.025);
+    inner.rotation.z = sx * 0.12;
+    bunny.add(ear, inner);
+    const cheek = new THREE.Mesh(sharedBox(0.045, 0.03, 0.02), lam('#f9b8c8'));
+    cheek.position.set(sx * 0.075, -0.03, 0.1);
+    bunny.add(cheek);
+    // the closed happy eye: a small dark arc, drawn as two blocks
+    const eye = new THREE.Mesh(sharedBox(0.045, 0.014, 0.02), lam('#3a2a30'));
+    eye.position.set(sx * 0.045, 0.02, 0.1);
+    bunny.add(eye);
+    const eyeUp = new THREE.Mesh(sharedBox(0.02, 0.014, 0.02), lam('#3a2a30'));
+    eyeUp.position.set(sx * 0.068, 0.032, 0.1);
+    bunny.add(eyeUp);
+  }
+  bunny.position.set(0.25, 0.62, 0.2);
+  bunny.rotation.y = -0.3;
+  g.add(bunny);
+
+  // yellow chick, at her left
+  const chick = new THREE.Group();
+  const cBody = new THREE.Mesh(sharedBox(0.15, 0.14, 0.14), lam('#f9d84e'));
+  chick.add(cBody);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.05, 4), lam('#f08a3a'));
+  beak.position.set(0, -0.01, 0.08); beak.rotation.x = Math.PI / 2;
+  chick.add(beak);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(sharedBox(0.022, 0.03, 0.02), lam('#3a2a30'));
+    eye.position.set(sx * 0.035, 0.03, 0.075);
+    chick.add(eye);
+  }
+  const tuft = new THREE.Mesh(sharedBox(0.02, 0.05, 0.02), lam('#f9d84e'));
+  tuft.position.y = 0.095;
+  chick.add(tuft);
+  chick.position.set(-0.13, 0.6, 0.24);
+  chick.rotation.y = 0.35;
+  g.add(chick);
+
+  // the carrot tucked into the shell on the right
+  const carrot = new THREE.Group();
+  const root = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.22, 7), lam('#f08a3a'));
+  root.rotation.x = Math.PI;
+  carrot.add(root);
+  for (let i = 0; i < 3; i++) {
+    const leaf = new THREE.Mesh(sharedBox(0.035, 0.11, 0.02), lam('#6ac05a'));
+    leaf.position.set((i - 1) * 0.035, 0.15, 0);
+    leaf.rotation.z = (i - 1) * 0.35;
+    carrot.add(leaf);
+  }
+  carrot.position.set(0.4, 0.46, 0.14);
+  carrot.rotation.z = -0.2;
+  g.add(carrot);
+
+  g.userData = { head, ahoge, bunny, chick, isChipChip: true };
+  return g;
+}
+
 function buildBarong(def) {
   const g = new THREE.Group();
   const red = lam('#c8302a'), gold = lam('#f0c840'), white = lam('#f4f0e4'), black = lam('#1a1a22');
@@ -247,6 +518,7 @@ function buildBarong(def) {
 }
 
 function buildVillagerMesh(def) {
+  if (def.species === 'chipchip') return buildChipChip();
   if (def.species === 'barong') return buildBarong(def);
   const g = new THREE.Group();
   const fur = lam(def.fur);
@@ -1597,6 +1869,9 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
     barong: [ // stands guard at the village entrance, does not wander
       { ox: 0, oz: -9.5, act: 'idle' },
     ],
+    chipchip: [ // sits at the dock all day. She is in an egg; she is not walking.
+      { ox: -14, oz: 16, act: 'sit' },
+    ],
   };
 
   // quest-givers + shopkeepers stay in the village; ambient villagers are
@@ -1609,6 +1884,10 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
     [15, 19],              // lulu — near the far water
     [-18, -13],            // bimo — north-west perimeter patrol
     [11, 7],               // nyanya — a flowery clearing near the village
+    // chipchip — a lakeside starting guess. main.js moves her onto the nearest
+    // fishing dock once the landmarks exist, because npcs.js is built first and
+    // has no idea where the docks ended up.
+    [-14, 16],
     [0, -9.5],             // barong — village entrance (guardian)
     [22, -16],             // kobo — far north
     [-20, 20],             // pesca — far south-east
@@ -1722,6 +2001,29 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
 
       // reset transient pose
       n.mesh.position.y = terrain.surfaceY(p.x, p.z);
+
+      // NOT EVERY VILLAGER HAS LIMBS. ChipChip is a girl sitting in an egg —
+      // no arms, no legs, and nothing below the shell to animate. The walk and
+      // greet poses below write straight into u.armR / u.legL, which on her are
+      // undefined and threw on every single frame. She gets her own small idle
+      // instead: the ahoge bobs, she looks at you, and the plushies breathe.
+      if (u.isChipChip) {
+        const t = n.anim;
+        if (u.ahoge) {
+          u.ahoge.rotation.z = Math.sin(t * 2.1) * 0.22;
+          u.ahoge.rotation.x = Math.cos(t * 1.4) * 0.1;
+        }
+        if (u.head) {
+          u.head.position.y = 0.86 + Math.sin(t * 1.9) * 0.012;
+          // she turns to watch you when you are close, otherwise faces the water
+          if (dP < 5) n.mesh.rotation.y = Math.atan2(playerPos.x - p.x, playerPos.z - p.z);
+        }
+        if (u.bunny) u.bunny.position.y = 0.62 + Math.sin(t * 1.6) * 0.014;
+        if (u.chick) {
+          u.chick.position.y = 0.6 + Math.abs(Math.sin(t * 2.6)) * 0.03;   // little hops
+        }
+        continue;
+      }
 
       if (dP < 2.6) {
         // greet the player: face them & wave
