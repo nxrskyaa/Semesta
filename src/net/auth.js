@@ -236,9 +236,30 @@ export async function signInWithGoogle() {
   return googleRedirect();
 }
 
+/**
+ * Sign out, and ALWAYS end up signed out on this device.
+ *
+ * The bare `await c.auth.signOut()` had a second failure mode with the same
+ * symptom as a dead button: if the call rejects — offline, a flaky network, an
+ * already-expired token — the caller's `await` rejects with it, so the redraw
+ * after it never runs and the strip goes on saying "Signed in as ...". The
+ * player presses it again, nothing happens again.
+ *
+ * Signing out is a thing you are entitled to do without asking a server's
+ * permission. The global call is attempted first so other devices are revoked
+ * too, and whatever happens the LOCAL session is cleared, because that is the
+ * one the player is actually looking at.
+ */
 export async function signOut() {
   const c = await getClient();
-  await c?.auth.signOut();
+  if (!c) return true;
+  try {
+    await c.auth.signOut();
+  } catch (e) {
+    console.warn('[semesta] sign-out call failed, clearing locally:', e?.message);
+  }
+  try { await c.auth.signOut({ scope: 'local' }); } catch { /* already gone */ }
+  return true;
 }
 
 /** Fires whenever the session changes, so the menu can redraw itself. */

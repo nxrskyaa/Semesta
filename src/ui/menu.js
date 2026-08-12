@@ -545,7 +545,19 @@ export function showOpening(saved, syncAccount) {
         }
       }
     }
-    acct.addEventListener('click', async (e) => {
+    // DELEGATED ON `menu`, NOT ON `.acct` — and that is not a style choice.
+    //
+    // `rebuildMenuButtons` sets `menu.innerHTML`, which DESTROYS the `.acct`
+    // div and builds a new one. Binding the handler to that div meant the
+    // listener died with it: the variable was reassigned to the new element,
+    // the listener was not, and SIGN OUT and DELETE PROFILE became painted
+    // rectangles that did nothing. It was only reachable after a delete until
+    // the sign-in flow started rebuilding too, at which point the strip was
+    // dead from the moment the menu appeared for anyone already signed in.
+    //
+    // `menu` survives its own innerHTML, which is exactly why the NEW /
+    // CONTINUE handler below has always worked. Same trick, same reason.
+    menu.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-a]');
       if (!b) return;
       const a = b.dataset.a;
@@ -554,8 +566,11 @@ export function showOpening(saved, syncAccount) {
         const r = await signInWithGoogle();
         if (!r.ok) { acct.innerHTML = `<span class="note">${r.error}</span>`; setTimeout(renderAccount, 2600); }
       } else if (a === 'out') {
-        await signOut();
-        renderAccount();
+        // say something immediately: a button that goes quiet for a second
+        // while a network call runs is indistinguishable from a broken one
+        b.textContent = 'SIGNING OUT…';
+        b.disabled = true;
+        try { await signOut(); } finally { renderAccount(); }
       } else if (a === 'wipe') {
         // TWO steps, on purpose. This is the one action in the menu that cannot
         // be undone, so a mis-tap must not be enough to do it — the button has
@@ -597,7 +612,10 @@ export function showOpening(saved, syncAccount) {
     let syncing = false;
     async function afterSignIn() {
       renderAccount();
-      if (!syncAccount || syncing) return;
+      // onAuthChange fires for SIGNING OUT too, and there is nothing to fetch
+      // then — without this the menu cheerfully announced "Fetching your
+      // characters…" to somebody who had just left.
+      if (!syncAccount || syncing || !(await currentUser())) return;
       syncing = true;
       const note = document.createElement('div');
       note.className = 'continfo';
