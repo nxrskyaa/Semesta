@@ -543,6 +543,24 @@ export const CATEGORIES = [
     name: 'HELP',
     sections: [
       S('faq', 'FAQ & Troubleshooting', `
+        <h4>Which browser should I use?</h4>
+        <p>This is a real 3D game running inside a web page — it compiles
+        shaders, uploads textures and draws a few thousand objects a frame, and
+        the browser you use genuinely changes how well that goes.</p>
+        ${kv([
+          ['Best', '<b>Chrome</b> or <b>Edge</b> on desktop. Same engine, best WebGL driver support, most stable frame pacing.'],
+          ['Good', '<b>Firefox</b>. Slightly slower shader compilation, so the first minute can hitch more; fine after that.'],
+          ['Phones', 'Chrome on Android, Safari on iPhone. Bloom is switched off on touch whatever the preset says — it costs more than it gives on a phone.'],
+          ['Avoid', 'In-app browsers (opening a link inside Instagram, X, Discord). They often run without hardware acceleration, which turns a smooth game into a slideshow.'],
+        ])}
+        ${call('do', 'IF IT IS STUTTERING', [
+          'Turn on hardware acceleration — in Chrome and Edge it is Settings → System → "Use graphics acceleration when available". A laptop with it off renders 3D on the CPU.',
+          'Close other tabs. A video or a video call in another tab is competing for the same GPU.',
+          'On a laptop, plug it in. Battery-saver profiles cap the GPU hard, and this is the single most common cause of "it was smooth yesterday".',
+          'Drop the preset to <b>LOW</b> and reload — <b>WORLD DETAIL</b> only applies on a fresh world, so changing it without reloading does nothing.',
+          'If the first thirty seconds are rough and then it settles, that is shader compilation and it is normal. It does not happen again on that machine.',
+        ])}
+
         <h4>It runs badly / the camera stutters.</h4>
         <p>Open <b>GRAPHICS</b> — it is pinned to the right of this menu, and it is
         also in the in-game <b>☰</b> menu. Drop the preset to <b>LOW</b>. Render

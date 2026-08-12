@@ -50,6 +50,26 @@ export const ITEMS = {
   fish_ghostcarp: { name: 'Ghost Carp', fish: true, rare: true, rarity: 'legendary', water: 'lake', only: 'night', sell: 165 },
   fish_leviathan: { name: 'Anavela Leviathan', fish: true, rare: true, rarity: 'mythic', water: 'sea', sell: 480 },
 
+  // --- THE WIDER SHOAL ---------------------------------------------------
+  // Fourteen species meant the Index's fish page filled up in an afternoon and
+  // most casts drew the same three. These spread the catch across both waters,
+  // both times of day and the winter biome, so where and when you fish is a
+  // real decision. Nothing else needs registering: the catch table filters
+  // ITEMS by `water`/`only`, and the Index derives its page from the same
+  // table, so a species added here appears in both automatically.
+  fish_bluegill:   { name: 'Bluegill', fish: true, rarity: 'common', water: 'lake', sell: 5 },
+  fish_anchovy:    { name: 'Anchovy', fish: true, rarity: 'common', water: 'sea', sell: 5 },
+  fish_eel:        { name: 'Reed Eel', fish: true, rarity: 'uncommon', water: 'lake', only: 'night', sell: 15 },
+  fish_pike:       { name: 'Green Pike', fish: true, rarity: 'uncommon', water: 'lake', sell: 13 },
+  fish_pufferfish: { name: 'Puffer', fish: true, rarity: 'uncommon', water: 'sea', sell: 14 },
+  fish_glasscarp:  { name: 'Glass Carp', fish: true, rarity: 'rare', water: 'any', sell: 27 },
+  fish_rayfin:     { name: 'Velvet Ray', fish: true, rarity: 'rare', water: 'sea', sell: 30 },
+  fish_stonejaw:   { name: 'Stonejaw', fish: true, rarity: 'rare', water: 'lake', only: 'snow', sell: 32 },
+  fish_moonscale:  { name: 'Moonscale', fish: true, rare: true, rarity: 'epic', water: 'any', only: 'night', sell: 66 },
+  fish_emberfin:   { name: 'Emberfin', fish: true, rare: true, rarity: 'epic', water: 'sea', sell: 72 },
+  fish_aurorafish: { name: 'Aurorafish', fish: true, rare: true, rarity: 'legendary', water: 'lake', only: 'snow', sell: 175 },
+  fish_kraken:     { name: 'Lesser Kraken', fish: true, rare: true, rarity: 'mythic', water: 'sea', only: 'night', sell: 520 },
+
   // gathering
   iron_ore: { name: 'Iron Ore', sell: 10 },
 

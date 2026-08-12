@@ -167,6 +167,11 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     player.state.busy = true;
     player.state.facing = Math.atan2(spot.x - player.state.pos.x, spot.z - player.state.pos.z);
     player.playCast();
+    // THE SWORD GOES AWAY. The rod is parented to the same hand the weapon
+    // lives in, so without this the hero fished with a rod AND a greatsword in
+    // one fist, and every rod tug swung the blade around with it.
+    player.setWeaponVisible?.(false);
+    player.setFishPose?.(true);
     // rod into the hand
     player.parts.handR.add(rod);
     rod.visible = true;
@@ -286,6 +291,8 @@ export function createFishing({ scene, terrain, player, particles, audio, hooks 
     shadow.visible = false;
     rod.rotation.x = ROD_REST;
     if (rod.parent) rod.parent.remove(rod);
+    player.setFishPose?.(false);
+    player.setWeaponVisible?.(true);
     player.state.busy = false;
   }
 

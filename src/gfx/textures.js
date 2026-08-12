@@ -890,6 +890,21 @@ const FISH_LOOKS = {
   fish_sunfish:    ['#b06a10', '#ffd23e', 'fin'],
   fish_ghostcarp:  ['#5a6a78', '#dfeaf2', 'spot'],
   fish_leviathan:  ['#2a1a3a', '#9a6ad0', 'fin'],
+  // --- the wider shoal. Adding a species here and in ITEMS is all it takes:
+  // the catch table filters ITEMS by water and condition, and the Index derives
+  // its fish page from the same place, so nothing has to be registered twice.
+  fish_bluegill:   ['#3f6a5a', '#8ac0a0', 'spot'],
+  fish_pike:       ['#4a5a2a', '#93a85e', 'fin'],
+  fish_eel:        ['#3a3a2a', '#7a7a52', 'fin'],
+  fish_anchovy:    ['#7a8490', '#c8d4dc'],
+  fish_pufferfish: ['#8a7a2a', '#e0cf72', 'spot'],
+  fish_rayfin:     ['#4a3a5a', '#a08ac0', 'fin'],
+  fish_moonscale:  ['#3a4a6a', '#c8d8f8', 'spot'],
+  fish_emberfin:   ['#a83a1a', '#ff9a4a', 'fin'],
+  fish_glasscarp:  ['#6a8a90', '#dff0f4'],
+  fish_stonejaw:   ['#4a4a44', '#8e8e84', 'fin'],
+  fish_aurorafish: ['#2a5a5a', '#7ff0d0', 'spot'],
+  fish_kraken:     ['#1a1a2e', '#5a4aa0', 'fin'],
 };
 for (const [id, [dark, light, extra]] of Object.entries(FISH_LOOKS)) {
   const map = FISH_BODY.slice();

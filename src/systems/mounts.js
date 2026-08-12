@@ -383,6 +383,10 @@ const BUILDERS = {
   },
 };
 
+// Exported for the same reason PET_BUILDERS is: other players ride these too,
+// and a mount only its owner can see is not a mount in a shared world.
+export const MOUNT_BUILDERS = BUILDERS;
+
 export function createMounts(particles) {
   const state = { active: null, mesh: null, anim: 0 };
 

@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { buildCharacterMesh } from '../entities/player.js';
 import { PET_BUILDERS } from '../systems/pets.js';
+import { MOUNT_BUILDERS, MOUNT_DEFS } from '../systems/mounts.js';
 import { disposeObject } from '../util/dispose.js';
 
 const NAME_W = 256, NAME_H = 64;
@@ -140,10 +141,13 @@ export function createRemotePlayers(scene, terrain) {
     group.position.set(p.x || 0, p.y || 0, p.z || 0);
     scene.add(group);
     const b = {
-      group, rig: built, parts: built.parts, plate,
+      group, rig: built, parts: built.parts, vis: built.vis, plate,
       walkPhase: Math.random() * 6.28, lastX: p.x || 0, lastZ: p.z || 0, speed: 0,
-      // combat + gear
-      atk: 0, wasAtk: false, gearV: -1, pet: null, petId: null, petPhase: 0,
+      // combat + gear. Ids rather than a version counter — see applyGear.
+      atk: 0, wasAtk: false,
+      weaponId: undefined, pet: null, petId: null, petPhase: 0,
+      mount: null, mountId: null, mountPhase: 0, seatH: 0,
+      fishing: false,
       bubble: null, bubbleT: 0,
     };
     bodies.set(p.id, b);
@@ -154,18 +158,29 @@ export function createRemotePlayers(scene, terrain) {
    *  Both are looked up in OUR item/pet tables, so an id we do not know simply
    *  draws nothing — a remote client cannot make us build something strange. */
   function applyGear(b, p) {
-    if (b.gearV === (p.gearV || 0) && b.petId === (p.pet || null)) return;
-    b.gearV = p.gearV || 0;
+    // COMPARE THE ACTUAL IDS, not a version counter.
+    //
+    // The gate used to be `b.gearV === (p.gearV || 0)`, and nothing on the wire
+    // ever sets gearV — so it was 0 === 0 forever and the whole function bailed
+    // on the second call. Whatever weapon somebody happened to be holding when
+    // you first saw them is what you kept seeing, for the rest of the session.
+    // That is most of "I cannot tell what my friend is carrying".
+    const wantWeapon = p.weapon || null;
+    const wantPet = p.pet || null;
+    const wantMount = p.mount || null;
+    if (b.weaponId === wantWeapon && b.petId === wantPet && b.mountId === wantMount) return;
 
-    if (p.weapon && b.rig?.setWeapon) {
-      try { b.rig.setWeapon(p.weapon); } catch { /* unknown id: keep bare hands */ }
+    if (b.weaponId !== wantWeapon) {
+      b.weaponId = wantWeapon;
+      if (b.rig?.setWeapon) {
+        try { b.rig.setWeapon(wantWeapon); } catch { /* unknown id: keep bare hands */ }
+      }
     }
 
-    const want = p.pet || null;
-    if (want !== b.petId) {
+    if (wantPet !== b.petId) {
       if (b.pet) { scene.remove(b.pet); disposeObject(b.pet, false); b.pet = null; }
-      b.petId = want;
-      const make = want && PET_BUILDERS[want];
+      b.petId = wantPet;
+      const make = wantPet && PET_BUILDERS[wantPet];
       if (make) {
         try {
           b.pet = make();
@@ -175,6 +190,26 @@ export function createRemotePlayers(scene, terrain) {
           b.pet.position.copy(b.group.position);
           scene.add(b.pet);
         } catch { b.pet = null; }
+      }
+    }
+
+    // THE MOUNT WAS NEVER HANDLED AT ALL. It was on the wire, the protocol
+    // carried it in both directions, and this function simply did not read it —
+    // so everyone rode invisible animals and appeared to be gliding.
+    if (wantMount !== b.mountId) {
+      if (b.mount) { b.group.remove(b.mount); disposeObject(b.mount, false); b.mount = null; }
+      b.mountId = wantMount;
+      const def = wantMount && MOUNT_DEFS[wantMount];
+      const build = def && MOUNT_BUILDERS[wantMount];
+      if (build) {
+        try {
+          b.mount = build();
+          b.mount.position.y = 0;
+          b.group.add(b.mount);
+          b.seatH = def.seatH || 0.6;      // lifts the rider onto its back
+        } catch { b.mount = null; }
+      } else {
+        b.seatH = 0;
       }
     }
   }
@@ -289,9 +324,45 @@ export function createRemotePlayers(scene, terrain) {
       if (isAtk && !b.wasAtk) b.atk = 0.42;
       b.wasAtk = isAtk;
       if (b.atk > 0) b.atk = Math.max(0, b.atk - dt);
+      b.fishing = !!p.b && !isAtk;      // `b` on the wire is "busy": fishing or talking
+
+      // RIDING. The mount is parented to the body group, so it follows position
+      // and facing for free; the rider just has to sit ON it rather than inside
+      // it, and their legs have to stop walking in mid-air.
+      const riding = !!b.mount;
+      if (b.vis) {
+        const lift = riding ? (b.seatH || 0.6) : 0;
+        b.vis.position.y += (lift - b.vis.position.y) * Math.min(1, dt * 8);
+      }
+      if (b.mount) {
+        // gallop, driven by how fast the body is actually moving
+        b.mountPhase = (b.mountPhase || 0) + dt * (3 + b.speed * 1.6);
+        b.mount.position.y = Math.abs(Math.sin(b.mountPhase)) * 0.06;
+        const legs = b.mount.userData?.legs;
+        if (legs) {
+          const sw = Math.sin(b.mountPhase * 2);
+          legs.forEach((l, i) => { l.rotation.x = sw * (i % 2 ? -0.5 : 0.5); });
+        }
+      }
 
       const parts = b.parts;
-      if (parts) {
+      if (parts && b.fishing) {
+        // FISHING, so other people can see what you are doing rather than
+        // watching you stand perfectly still at the water's edge.
+        parts.armR.rotation.x = -1.15;
+        parts.armR.rotation.z = -0.2;
+        parts.armL.rotation.x = -1.0;
+        parts.armL.rotation.z = 0.36;
+        parts.legL.rotation.x = 0.1; parts.legR.rotation.x = -0.08;
+        if (parts.body) parts.body.rotation.y *= 0.8;
+      } else if (parts && riding) {
+        // seated: knees up, hands forward on the reins
+        parts.legL.rotation.x = 1.3; parts.legR.rotation.x = 1.3;
+        parts.legL.rotation.z = 0.2; parts.legR.rotation.z = -0.2;
+        if (b.atk <= 0) {
+          parts.armL.rotation.x = -1.1; parts.armR.rotation.x = -1.1;
+        }
+      } else if (parts) {
         if (b.atk > 0) {
           // wind up, then whip through: t runs 0 -> 1 across the swing
           const t = 1 - b.atk / 0.42;

@@ -974,6 +974,17 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         if (body?.material?.emissive && e.hurtFlash <= 0) body.material.emissive.set('#000000');
       }
 
+      // NOBODY SWINGS AT SOMEONE WHO CANNOT SWING BACK.
+      //
+      // Disengaging on `e.state === 'aggro'` was not enough on its own: it fixes
+      // whoever is currently chasing you, but it depends on the state machine
+      // never reaching an attack by any other route, and a monster that took a
+      // hit re-aggros through `damage()` regardless. Fishing has no defence —
+      // you cannot roll, block or move — so the guard belongs on the ATTACK, at
+      // the point where damage would actually be dealt. Ranged species were the
+      // loudest offenders because they never had to close the distance first.
+      e.peaceful = !!(playerState.busy || playerSafe);
+
       // --- AI per behavior ---
       if (e.state === 'wander') {
         e.wanderT -= dt;
@@ -1064,7 +1075,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       moveEnemy(e, (dx / l) * e.def.speed, (dz / l) * e.def.speed, dt);
     }
     e.mesh.rotation.y = Math.atan2(dx, dz);
-    if (distP < e.def.attackRange && e.attackCd <= 0) {
+    if (distP < e.def.attackRange && e.attackCd <= 0 && !e.peaceful) {
       e.attackCd = e.def.attackCd;
       hooks.onPlayerHit(e, e.dmg);
     }
@@ -1081,7 +1092,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     if (distP < e.def.keepDist - 1) moveEnemy(e, (-dx / l) * e.def.speed, (-dz / l) * e.def.speed, dt);
     else if (distP > e.def.keepDist + 2) moveEnemy(e, (dx / l) * e.def.speed, (dz / l) * e.def.speed, dt);
     e.mesh.rotation.y = Math.atan2(dx, dz);
-    if (distP < e.def.attackRange && e.attackCd <= 0) {
+    if (distP < e.def.attackRange && e.attackCd <= 0 && !e.peaceful) {
       e.attackCd = e.def.attackCd;
       const from = p.clone().add(new THREE.Vector3(0, e.type === 'wisp' ? 0.5 : 0.6, 0));
       const target = playerPos.clone().add(new THREE.Vector3(0, 0.6, 0));
@@ -1106,7 +1117,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       // mid-charge
       e.chargeT -= dt;
       moveEnemy(e, e.chargeDir.x * 7.5, e.chargeDir.y * 7.5, dt);
-      if (!e.chargeHit && distP < 1.1) {
+      if (!e.chargeHit && distP < 1.1 && !e.peaceful) {
         e.chargeHit = true;
         hooks.onPlayerHit(e, Math.round(e.dmg * 1.4));
       }
@@ -1130,10 +1141,10 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     const dx = playerPos.x - p.x, dz = playerPos.z - p.z;
     const l = Math.hypot(dx, dz) || 1;
     e.mesh.rotation.y = Math.atan2(dx, dz);
-    if (distP > 2.2 && distP < 7 && e.attackCd <= 0) {
+    if (distP > 2.2 && distP < 7 && e.attackCd <= 0 && !e.peaceful) {
       e.attackCd = e.def.attackCd + 1.6;
       e.windupT = 0.55;
-    } else if (distP < e.def.attackRange && e.attackCd <= 0) {
+    } else if (distP < e.def.attackRange && e.attackCd <= 0 && !e.peaceful) {
       e.attackCd = e.def.attackCd;
       hooks.onPlayerHit(e, e.dmg);
     } else if (distP >= e.def.attackRange * 0.85) {

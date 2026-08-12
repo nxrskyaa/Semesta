@@ -1899,7 +1899,9 @@ const CAM_PITCH_DEFAULT = 0.98;
   // game stops being a tutorial anyway.
   const AUTO_UNLOCK_LEVEL = AWAKEN_LEVEL;
   let autoBattle = false;
-  let autoSkillT = 0;
+  // the locked target. Re-picking the nearest enemy every frame made it
+  // oscillate between two equidistant monsters and commit to neither.
+  let autoTarget = null;
 
   function autoUnlocked() { return leveling.state.level >= AUTO_UNLOCK_LEVEL; }
 
@@ -1938,37 +1940,79 @@ const CAM_PITCH_DEFAULT = 0.98;
     }
     audio.sfx('ui');
   }
+  /**
+   * AUTO-BATTLE, rewritten.
+   *
+   * The old one had four faults and they compounded into "my Assassin runs
+   * around teleporting and never kills anything":
+   *
+   *  1. IT NEVER GOT CLOSE ENOUGH. It stopped walking at `range + 0.2` and then
+   *     swung at anything within `range + 1.5` — so it attacked from OUTSIDE the
+   *     distance `resolveMeleeHit` actually accepts (`d <= range`, no slack).
+   *     Every swing missed, the monster kept hitting back, and a melee hero
+   *     stood there dying to something it was visibly attacking.
+   *  2. IT WALKED AT THE WRONG SPEED. `cls.speed` is the class captured at world
+   *     build — Origin, for everybody — so an awakened class chased at the
+   *     starting speed and ignored mounts, pets and Agility entirely. A monster
+   *     that walks away is then genuinely uncatchable.
+   *  3. IT RE-PICKED THE NEAREST ENEMY EVERY FRAME. Two monsters at similar
+   *     distances made it oscillate between them and commit to neither.
+   *  4. IT AUTO-CAST SKILLS. That is where the teleporting came from — the
+   *     Assassin's blink firing on a 2.2s rotation mid-fight, throwing it across
+   *     the field away from the thing it was killing. Auto-battle is for
+   *     grinding materials, not for playing the class; skills are yours.
+   */
   function autoBattleTick(dt) {
     if (!autoBattle || player.state.dead || player.state.busy || panels.anyOpen() || dialog.isOpen() || fishing.state.afk) return;
-    const e = nearestEnemy(26); // roam a bit to find prey
+
+    // ---- TARGET LOCK. Keep the current one until it dies or runs too far.
+    if (autoTarget && (autoTarget.dead
+      || Math.hypot(autoTarget.mesh.position.x - player.state.pos.x,
+        autoTarget.mesh.position.z - player.state.pos.z) > 30)) {
+      autoTarget = null;
+    }
+    if (!autoTarget) autoTarget = nearestEnemy(26);
+    const e = autoTarget;
     if (!e) return;
+
     const dx = e.mesh.position.x - player.state.pos.x, dz = e.mesh.position.z - player.state.pos.z;
     const dist = Math.hypot(dx, dz) || 1;
     player.state.facing = Math.atan2(dx, dz);
+
     const def = inventory.equippedDef();
-    // ENGAGEMENT DISTANCE, not maximum range. A bow reaches 15 units, so
-    // `range - 2` meant an auto-battling archer stood exactly where it spawned
-    // and plinked at the horizon — it looked broken, and it was: the target
-    // walked out of the cone constantly and nothing ever closed the gap. Ranged
-    // classes now walk to a distance where they can actually keep a target.
     const ranged = def.type === 'bow' || def.type === 'staff' || def.type === 'cannon';
-    const reach = ranged ? Math.min((def.range || 12) - 2, 7.5) : (def.range || 2) + 0.2;
-    // walk into range for melee / kite distance for ranged
-    if (dist > reach) {
-      const sp = cls.speed * 0.85 * dt;
+    const range = def.range || 2;
+
+    // WHERE TO STAND, per weapon. Melee closes to well inside its own reach so
+    // that a target drifting during the swing's wind-up is still there when the
+    // hit resolves; ranged holds a distance it can actually keep a target at.
+    const standAt = ranged ? Math.min(range - 2, 7.5) : range * 0.55;
+    // and only swing once genuinely inside the reach the hit test uses
+    const swingAt = ranged ? range - 0.5 : range * 0.85;
+
+    if (dist > standAt) {
+      // the hero's REAL speed, the same one walking uses
+      const sp = (CLASSES[character.cls]?.speed || cls.speed)
+        * (1 + player.buffVal('speed')) * (player.state.mount?.speedMult || 1)
+        * stats.moveMult() * 0.95 * dt;
       const nx = player.state.pos.x + (dx / dist) * sp, nz = player.state.pos.z + (dz / dist) * sp;
       if (terrain.walkable(nx, nz, player.state.pos.y)) {
         player.state.pos.x = nx; player.state.pos.z = nz;
         player.state.pos.y += (terrain.surfaceY(nx, nz) - player.state.pos.y) * Math.min(1, dt * 14);
+        player.state.isMoving = true;
+      } else {
+        // blocked head-on: slide along the obstacle instead of grinding into it
+        const side = Math.atan2(dx, dz) + Math.PI / 2;
+        const sx = player.state.pos.x + Math.sin(side) * sp;
+        const sz = player.state.pos.z + Math.cos(side) * sp;
+        if (terrain.walkable(sx, sz, player.state.pos.y)) {
+          player.state.pos.x = sx; player.state.pos.z = sz;
+        }
       }
     }
-    if (dist <= (def.range || 2) + 1.5) doAttack();
-    // rotate through ready skills
-    autoSkillT -= dt;
-    if (autoSkillT <= 0) {
-      autoSkillT = 2.2;
-      for (const sid of skillIds) { if (sid && skillSys.ready(sid) && player.state.stamina > 20) { castSkill(sid); break; } }
-    }
+
+    if (dist <= swingAt) doAttack();
+
     // survival: sip a tonic when badly hurt
     if (player.state.hp < player.state.maxHp * 0.3 && inventory.count('tonic') > 0) usePotion();
   }

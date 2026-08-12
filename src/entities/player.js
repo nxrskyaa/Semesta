@@ -803,6 +803,21 @@ export function buildCharacterMesh(config) {
     group, vis,
     parts: { head, body, legL, legR, armL, armR, handR, handL, shieldMesh, hairParts, capeMesh },
     setWeapon,
+    /**
+     * Show or hide whatever is in the hands, without unequipping it.
+     *
+     * Fishing parents a rod to the SAME hand the weapon lives in, so the sword
+     * stayed there and swung along with every rod tug — the hero was fishing
+     * with a rod and a greatsword in one fist. This just hides the meshes; the
+     * equipped item, its stats and the HUD chip are all untouched.
+     */
+    setWeaponVisible: (on) => {
+      if (weaponGroup) weaponGroup.visible = on;
+      for (const h of [handL, handR]) {
+        for (const c of h.children) if (c.userData.isWeapon) c.visible = on;
+      }
+      if (shieldMesh) shieldMesh.visible = on && shieldMesh.userData.wanted !== false;
+    },
     getBowArrow: () => bowArrow,
     getStaffOrb: () => staffOrb,
     getWeaponSparks: () => weaponGroup?.userData.sparks || null,
@@ -1245,6 +1260,24 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
    * boat, and sharing a flag between "riding" and "cooking" is how you end up
    * with a hero who rows the campfire.
    */
+  /**
+   * FISHING: a settled, two-handed stance rather than the default carry pose.
+   *
+   * Without this the hero stood in the idle weapon-carry pose with a rod bolted
+   * to one hand, which is why the whole thing read as "holding a stick" instead
+   * of fishing. Both hands come forward onto the rod, the body settles, and the
+   * legs plant slightly apart.
+   */
+  function setFishPose(on) {
+    state.fishPose = !!on;
+    if (!on) {
+      parts.armL.rotation.set(0, 0, 0); parts.armR.rotation.set(0, 0, 0);
+      parts.legL.rotation.set(0, 0, 0); parts.legR.rotation.set(0, 0, 0);
+      parts.head.rotation.set(0, 0, 0);
+      vis.rotation.set(0, 0, 0);
+    }
+  }
+
   function setWorkPose(on, kind = 'cook') {
     state.workPose = !!on;
     state.workKind = kind;
@@ -1544,6 +1577,23 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       const kick = Math.sin(w * Math.PI * 5) * 0.5;
       parts.legL.rotation.x = kick; parts.legR.rotation.x = kick * 0.85;
       parts.head.rotation.x = -0.5;
+    } else if (state.fishPose) {
+      // both hands on the rod, weight settled, a slow breathing sway. The rod
+      // itself is animated by fishing.js; this is only the body under it.
+      const t = state.idleT;
+      vis.rotation.x = 0.06;
+      vis.position.y = visBase;
+      parts.legL.rotation.x = 0.1; parts.legR.rotation.x = -0.08;
+      parts.legL.rotation.z = 0.1; parts.legR.rotation.z = -0.1;
+      if (state.attackT <= 0) {
+        parts.armR.rotation.x = -1.15 + Math.sin(t * 1.2) * 0.03;
+        parts.armR.rotation.z = -0.2;
+        parts.armL.rotation.x = -1.0 + Math.sin(t * 1.2) * 0.03;
+        parts.armL.rotation.z = 0.36;                  // reaching across to the rod
+      }
+      parts.head.rotation.x = 0.16;                    // watching the float
+      parts.head.rotation.z = 0;
+      if (parts.capeMesh) parts.capeMesh.rotation.x = 0.28 + Math.sin(t * 1.1) * 0.05;
     } else if (state.workPose) {
       // STIRRING vs HAMMERING. Both are one arm doing the work and the other
       // steadying, but the RHYTHM is the whole difference: a spoon goes round at
@@ -2017,7 +2067,8 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   return {
     state, parts, update, tryAttack, tryRoll, tryJump, takeDamage, respawn,
     addBuff, consumeCritBuff, buffVal, setMountState, applyAppearance, setCraftPose,
-    setWorkPose,
+    setWorkPose, setFishPose,
+    setWeaponVisible: (on) => rig.setWeaponVisible?.(on),
     // watercraft.js steers with the same camera-relative vector the legs use
     moveVecFor: (input, camYaw) => moveVec(input, camYaw),
     playSwing, playSpin, playBowDraw, playStaffCast, playCast, setNightGlow,
