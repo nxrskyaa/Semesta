@@ -129,7 +129,7 @@ export function createPanels(hudRoot, {
   inventory, forge, character, weaponType, audio, pets, isTouch,
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
   economy, cooking, estate, gacha, wardrobe, dailies, gamepass, gfxPanelFactory,
-  onDrink, onBoostActive, skilltree, onWorkStart, onWorkEnd, index,
+  onDrink, onBoostActive, skilltree, onWorkStart, onWorkEnd, index, friendsApi,
 }) {
   // THE WORKBENCH SHOW. Cooking and crafting both run through it, so it lives
   // here rather than in main.js — both buttons are already in this file, and a
@@ -157,6 +157,7 @@ export function createPanels(hudRoot, {
     gfx: document.createElement('div'),
     life: document.createElement('div'),
     index: document.createElement('div'),
+    friends: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
     p.className = 'panel';
@@ -1550,12 +1551,60 @@ export function createPanels(hudRoot, {
 
   const indexPanel = index ? createIndexPanel(panels.index, index, audio) : null;
 
+  /**
+   * FRIENDS. Deliberately honest about what it is: a list on this device,
+   * showing who is in the world with you right now. It says so at the bottom
+   * rather than implying a request was sent somewhere.
+   */
+  function renderFriends() {
+    if (!friendsApi) return;
+    const rows = friendsApi.rows();
+    const online = rows.filter((r) => r.online).length;
+    let html = `<div class="sp-banner">FRIENDS: <b>${rows.length}</b>
+      <small>— ${online} online right now</small></div>`;
+
+    if (!rows.length) {
+      html += `<div class="help-body" style="font-size:11px;line-height:1.8">
+        <b style="color:var(--gold)">You have not added anyone yet.</b><br><br>
+        In a shared world (<b>🌐 PLAY ONLINE</b> from the title screen),
+        <b>click any other player</b> to open their card and add them.<br><br>
+        Once someone is on your list you will see a green dot here whenever they
+        are in the world with you, so you know when it is worth going online.
+      </div>`;
+    } else {
+      for (const f of rows) {
+        html += `<div class="pet-row" style="border-color:${f.online ? '#8ad86e55' : '#2c352c'}">
+          <div class="dot" style="background:${f.online ? '#8ad86e' : '#2a3226'};
+            box-shadow:${f.online ? '0 0 8px #8ad86e' : 'none'}"></div>
+          <div class="nm">${f.name}
+            <small>Lv ${f.lv} · ${f.online ? '<b style="color:#8ad86e">IN THE WORLD NOW</b>' : 'not online'}</small>
+          </div>
+          <button class="act" data-unfriend="${f.id}">REMOVE</button>
+        </div>`;
+      }
+    }
+
+    html += `<div style="font-size:9.5px;color:var(--muted);margin-top:10px;line-height:1.7">
+      This list is stored on this device. Adding someone does not notify them —
+      a two-way request needs the server, and that is not shipped yet.</div>`;
+
+    panels.friends.innerHTML = `<h3>FRIENDS <small>[Esc] close</small></h3>${html}`;
+    panels.friends.querySelectorAll('[data-unfriend]').forEach((b) => {
+      b.addEventListener('click', () => {
+        friendsApi.remove(b.dataset.unfriend);
+        audio.sfx('ui');
+        renderFriends();
+      });
+    });
+  }
+
   const RENDER = {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
     gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp, about: renderAbout,
     daily: renderDaily, pass: renderPass, gfx: renderGfx, life: renderLife,
     index: () => indexPanel?.render(),
+    friends: renderFriends,
   };
 
   function toggle(which) {

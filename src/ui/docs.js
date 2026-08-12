@@ -285,6 +285,17 @@ export const CATEGORIES = [
         <p><b>MAIN MENU</b> in the ☰ menu saves, disconnects and returns you to the
         title, where you can sign out or switch heroes.</p>`),
 
+      S('friends', 'Friends', `
+        <p>In a shared world, <b>click any other player</b> to open their card —
+        their name, their level, and a button to add them. Your list lives in
+        ☰ → <b>FRIENDS</b>, sorted so whoever is in the world with you right now
+        is at the top with a green dot.</p>
+        ${call('do', 'WHAT IT DOES AND DOES NOT DO', [
+          'It remembers people you met, so next session you can see at a glance whether it is worth going online.',
+          'A friend who comes back with a new connection is re-linked by name, and their level updates when you see them.',
+          '<b>It does not notify them.</b> The list is stored on your device; a two-way request needs the server and that part is not shipped yet.',
+        ])}`),
+
       S('rialohub', 'The Rialo Hub', `
         <p>Far out in the ocean, past the archipelago and roughly a hundred units
         from the village, there is an island somebody <i>built</i>: a ring plaza,

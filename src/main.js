@@ -54,6 +54,7 @@ import { createFishing } from './systems/fishing.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
 import { createHousing, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
 import { createIndex } from './systems/index.js';
+import { createFriends } from './systems/friends.js';
 import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
 import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS } from './systems/items.js';
 import { createWardrobe, cosmeticsBySlot } from './systems/cosmetics.js';
@@ -1300,6 +1301,10 @@ async function init(character, saved, audio, online = false) {
   });
   loadPart('index', () => index.load(saved?.index));
 
+  // --- FRIENDS: people you met in a shared world and chose to remember ---
+  const friends = createFriends({ onChange: () => panels?.refresh?.() });
+  loadPart('friends', () => friends.load(saved?.friends));
+
   // --- LIFE SKILLS: fishing, farming and cooking each level on their own ---
   const skilltree = createSkillTree({
     onLevel: (skill, lv) => {
@@ -1366,6 +1371,12 @@ async function init(character, saved, audio, online = false) {
     weaponType: () => CLASSES[character.cls]?.weaponType || 'sword',
     economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
     skilltree, index,
+    // the panel asks for rows; main owns the live player list it needs
+    friendsApi: {
+      rows: () => friends.rows(net?.state.players),
+      remove: (id) => { friends.remove(id); save(); },
+      count: () => friends.count(),
+    },
     // THE WORK HAPPENS IN THE WORLD TOO. The scene in the modal is the close-up;
     // these put the hero into a stirring or hammering pose behind it and throw
     // the matching FX off them, so closing the panel afterwards does not feel
@@ -2781,9 +2792,59 @@ const CAM_PITCH_DEFAULT = 0.98;
       petSpider();
       return true;
     };
+    // CLICK A PLAYER. Same raycast, but against the remote bodies — walking up
+    // to someone and clicking them is the natural way to ask who they are, and
+    // it is the only place in a shared world where another person is a THING
+    // you can point at rather than a name in a chat log.
+    const tryPlayer = (cx, cy) => {
+      if (!net || panels.anyOpen() || dialog.isOpen()) return false;
+      if (!remote.bodies?.size) return false;
+      ndc.x = (cx / window.innerWidth) * 2 - 1;
+      ndc.y = -(cy / window.innerHeight) * 2 + 1;
+      ray.setFromCamera(ndc, camera);
+      for (const [id, b] of remote.bodies) {
+        if (!b.group) continue;
+        if (!ray.intersectObject(b.group, true).length) continue;
+        const p = net.state.players.get(id);
+        showPlayerCard({ id, name: p?.name || 'Wanderer', lv: p?.lv || 1 });
+        return true;
+      }
+      return false;
+    };
+
     renderer.domElement.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
+      if (tryPlayer(e.clientX, e.clientY)) return;
       tryTouch(e.clientX, e.clientY);
+    });
+  }
+
+  /** The little card that opens when you click somebody. */
+  function showPlayerCard(p) {
+    const already = friends.isFriend(p);
+    dialog.show({
+      name: p.name,
+      role: `Level ${p.lv}`,
+      text: already
+        ? `${p.name} is on your friends list. You will see when they are in the world with you.`
+        : `You have met ${p.name}. Add them to your friends list to see when they are around?`,
+      extra: {
+        label: already ? '✕ REMOVE FRIEND' : '★ ADD FRIEND',
+        onClick: () => {
+          if (already) {
+            friends.remove(p.id);
+            audio.sfx('ui');
+            hud.toastText(`${p.name} removed from your friends.`);
+          } else if (friends.add(p)) {
+            audio.sfx('quest_done');
+            hud.toastText(`${p.name} added to your friends.`);
+          } else {
+            audio.sfx('deny');
+          }
+          save();
+        },
+      },
+      onClose: () => {},
     });
   }
 
@@ -2903,6 +2964,7 @@ const CAM_PITCH_DEFAULT = 0.98;
         gachaPity: gacha.pity,
         dailies: dailies.serialize(),
         index: index.serialize(),
+        friends: friends.serialize(),
         skilltree: skilltree.serialize(),
         classTree: classTree.serialize(),
         stats: stats.serialize(),
