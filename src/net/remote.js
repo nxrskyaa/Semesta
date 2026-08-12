@@ -331,8 +331,17 @@ export function createRemotePlayers(scene, terrain) {
       // it, and their legs have to stop walking in mid-air.
       const riding = !!b.mount;
       if (b.vis) {
-        const lift = riding ? (b.seatH || 0.6) : 0;
-        b.vis.position.y += (lift - b.vis.position.y) * Math.min(1, dt * 8);
+        // OFFSET FROM THE RIG'S OWN BASE, never toward zero.
+        //
+        // `buildCharacterMesh` already sits `vis` at ~0.55 so the body stands on
+        // the ground rather than in it. Easing this straight toward 0 for
+        // everyone not on a mount sank every remote player half a unit into the
+        // terrain, and all anyone could see of their friends was a head. The
+        // base is captured once, on the first frame, and the mount lift is
+        // added ON TOP of it.
+        if (b.visBase === undefined) b.visBase = b.vis.position.y;
+        const want = b.visBase + (riding ? (b.seatH || 0.6) : 0);
+        b.vis.position.y += (want - b.vis.position.y) * Math.min(1, dt * 8);
       }
       if (b.mount) {
         // gallop, driven by how fast the body is actually moving

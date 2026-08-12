@@ -277,20 +277,36 @@ function buildChipChip() {
   const WHITE = lam('#fbf7f4'), MINT = lam('#a8e0d8');
 
   // ---- the egg bowl she is sitting in --------------------------------------
+  // SOLID, NOT A TUBE. The shell was built from open-ended cylinders, which
+  // three.js renders single-sided by default: from anything but head-on the
+  // camera looked straight through the back wall and out the other side, so she
+  // read as a half-drawn character with holes in her. Closed geometry (and a
+  // real inner surface below) is the fix — DoubleSide would paint both faces
+  // but still leave a paper-thin shell with no thickness to it.
   const EGG_R = 0.42, EGG_H = 0.5;
   const egg = new THREE.Mesh(
-    new THREE.CylinderGeometry(EGG_R, EGG_R * 0.74, EGG_H, 14, 1, true), SHELL);
+    new THREE.CylinderGeometry(EGG_R, EGG_R * 0.74, EGG_H, 16), SHELL);
   egg.position.y = 0.27;
   egg.castShadow = true;
+  egg.receiveShadow = true;
   g.add(egg);
+  // the hollow she is sitting in: a slightly smaller darker cup inset at the
+  // top, so the rim reads as having thickness rather than as a cut edge
+  const inner = new THREE.Mesh(
+    new THREE.CylinderGeometry(EGG_R - 0.05, EGG_R * 0.7, EGG_H * 0.8, 16), SHELL_LO);
+  inner.position.y = 0.32;
+  g.add(inner);
   // the rounded underside, so it is a bowl rather than a tube
-  const eggBase = new THREE.Mesh(new THREE.SphereGeometry(EGG_R * 0.76, 14, 7, 0, Math.PI * 2, Math.PI * 0.5), SHELL_LO);
-  eggBase.position.y = 0.03;
+  const eggBase = new THREE.Mesh(new THREE.SphereGeometry(EGG_R * 0.78, 16, 10), SHELL);
+  eggBase.position.y = 0.1;
+  eggBase.scale.y = 0.8;
+  eggBase.castShadow = true;
   g.add(eggBase);
 
-  // BANDS, top to bottom exactly as the sheet has them
-  const band = (y, h, mat, r = EGG_R + 0.006) => {
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r - 0.02, h, 14, 1, true), mat);
+  // BANDS, top to bottom exactly as the sheet has them. Closed rings, for the
+  // same reason the shell is closed — an open cylinder is invisible from behind.
+  const band = (y, h, mat, r = EGG_R + 0.008) => {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r - 0.015, h, 16), mat);
     b.position.y = y;
     g.add(b);
     return b;
@@ -2008,19 +2024,59 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
       // undefined and threw on every single frame. She gets her own small idle
       // instead: the ahoge bobs, she looks at you, and the plushies breathe.
       if (u.isChipChip) {
+        // SHE IS DOING THINGS. She cannot walk — she is in an egg — so her life
+        // has to come from a loop of small deliberate actions rather than from
+        // moving around. A weighted cycle: mostly rocking, sometimes cuddling
+        // the bunny, sometimes bouncing the chick, occasionally a big stretch.
+        // Nothing runs on one shared sine, so it never pulses as one object.
         const t = n.anim;
+        n.chipT = (n.chipT ?? 0) - dt;
+        if (n.chipT <= 0) {
+          // pick the next thing to do. Rocking is the common case, the way
+          // sitting quietly is the common case for a person on a jetty.
+          const roll = Math.random();
+          n.chipAct = roll < 0.5 ? 'rock' : roll < 0.75 ? 'cuddle' : roll < 0.92 ? 'bounce' : 'stretch';
+          n.chipT = n.chipAct === 'stretch' ? 1.6 : 2.5 + Math.random() * 3;
+          n.chipT0 = n.chipT;
+        }
+        const act = n.chipAct || 'rock';
+        const phase = 1 - n.chipT / (n.chipT0 || 1);       // 0..1 through the action
+
+        // the whole egg rocks gently side to side, always
+        n.mesh.rotation.z = Math.sin(t * 1.3) * 0.045;
+        n.mesh.position.y = terrain.surfaceY(p.x, p.z) + Math.abs(Math.sin(t * 1.3)) * 0.012;
+
+        // the ahoge is her tell: it leads every movement by a beat
         if (u.ahoge) {
-          u.ahoge.rotation.z = Math.sin(t * 2.1) * 0.22;
+          u.ahoge.rotation.z = Math.sin(t * 2.1) * 0.22 + (act === 'stretch' ? Math.sin(phase * Math.PI) * 0.5 : 0);
           u.ahoge.rotation.x = Math.cos(t * 1.4) * 0.1;
         }
         if (u.head) {
-          u.head.position.y = 0.86 + Math.sin(t * 1.9) * 0.012;
-          // she turns to watch you when you are close, otherwise faces the water
-          if (dP < 5) n.mesh.rotation.y = Math.atan2(playerPos.x - p.x, playerPos.z - p.z);
+          u.head.position.y = 0.86 + Math.sin(t * 1.9) * 0.014
+            + (act === 'stretch' ? Math.sin(phase * Math.PI) * 0.06 : 0);
+          u.head.rotation.z = act === 'cuddle' ? 0.22 : Math.sin(t * 0.7) * 0.05;
+          u.head.rotation.x = act === 'bounce' ? -0.12 : 0.02;
         }
-        if (u.bunny) u.bunny.position.y = 0.62 + Math.sin(t * 1.6) * 0.014;
+        // she looks at you when you are near, and watches the water otherwise
+        if (dP < 5.5) {
+          const want = Math.atan2(playerPos.x - p.x, playerPos.z - p.z);
+          let d2 = want - n.mesh.rotation.y;
+          while (d2 > Math.PI) d2 -= Math.PI * 2;
+          while (d2 < -Math.PI) d2 += Math.PI * 2;
+          n.mesh.rotation.y += d2 * Math.min(1, dt * 3);     // turns, never snaps
+        }
+        if (u.bunny) {
+          // cuddled in tight, or riding the rock
+          const hug = act === 'cuddle' ? Math.sin(phase * Math.PI) : 0;
+          u.bunny.position.y = 0.62 + Math.sin(t * 1.6) * 0.015 + hug * 0.05;
+          u.bunny.position.x = 0.25 - hug * 0.07;
+          u.bunny.rotation.z = hug * 0.3;
+        }
         if (u.chick) {
-          u.chick.position.y = 0.6 + Math.abs(Math.sin(t * 2.6)) * 0.03;   // little hops
+          // it hops on its own rhythm, and hops HIGHER when she is bouncing it
+          const lift = act === 'bounce' ? 0.09 : 0.03;
+          u.chick.position.y = 0.6 + Math.abs(Math.sin(t * (act === 'bounce' ? 5.5 : 2.6))) * lift;
+          u.chick.rotation.y = 0.35 + Math.sin(t * 1.1) * 0.25;
         }
         continue;
       }

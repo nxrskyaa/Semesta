@@ -1997,6 +1997,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       return;
     }
     autoBattle = !autoBattle;
+    autoTarget = null;              // a fresh start picks a fresh target
     dismountIfRiding();
     hud.setAuto?.(autoBattle);
     if (autoBattle) {
@@ -2032,7 +2033,30 @@ const CAM_PITCH_DEFAULT = 0.98;
    *     grinding materials, not for playing the class; skills are yours.
    */
   function autoBattleTick(dt) {
-    if (!autoBattle || player.state.dead || player.state.busy || panels.anyOpen() || dialog.isOpen() || fishing.state.afk) return;
+    if (!autoBattle) return;
+
+    // DYING STOPS IT. It used to keep running while you lay dead: the tick
+    // returned early on `dead`, but the flag stayed on, so the moment you
+    // respawned in the village the hero turned round and marched back out to
+    // whatever had just killed them. Auto-battle is a thing you switch on, and
+    // dying is the game telling you it did not work.
+    if (player.state.dead) {
+      if (autoBattle) {
+        autoBattle = false;
+        autoTarget = null;
+        hud.setAuto?.(false);
+        hud.toastText('Auto-Battle stopped — you were killed.');
+      }
+      return;
+    }
+
+    // A PANEL IS NOT A PAUSE. Opening the bag or the skill tree used to stop
+    // auto-battle dead while the monsters carried on hitting you — you came
+    // back to a corpse for the crime of checking your inventory. The world does
+    // not pause here (it cannot; it is shared), so the hero keeps defending
+    // themselves. Fishing and conversations still stand it down, because those
+    // are things you chose to be defenceless for.
+    if (player.state.busy || dialog.isOpen() || fishing.state.afk) return;
 
     // ---- TARGET LOCK. Keep the current one until it dies or runs too far.
     if (autoTarget && (autoTarget.dead
@@ -3340,8 +3364,20 @@ const CAM_PITCH_DEFAULT = 0.98;
         lore.visitedIsland = true;
       }
     }
+    // A STORY BEAT NEVER LANDS MID-FIGHT.
+    //
+    // The card is a full-screen overlay that blocks the joystick and waits to be
+    // dismissed. Firing it the instant a condition happened to be met meant it
+    // arrived while you were being hit, took the controls, and read as an
+    // interruption rather than a reward. It waits for a quiet moment now: no
+    // enemy hunting you inside 14 units, and three seconds since anything hurt
+    // you. The condition stays met — the telling just holds.
     storyT -= dt;
-    if (storyT <= 0) {
+    const fighting = player.state.sinceHurt < 3
+      || enemyMgr.enemies.some((e) => !e.dead && e.state === 'aggro'
+        && (e.mesh.position.x - player.state.pos.x) ** 2
+         + (e.mesh.position.z - player.state.pos.z) ** 2 < 196);
+    if (storyT <= 0 && !fighting && !panels.anyOpen() && !dialog.isOpen()) {
       storyT = 1;
       story.check({
         level: leveling.state.level,

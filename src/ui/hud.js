@@ -212,6 +212,10 @@ body.online.touch #hud .qtrack { top: 187px; }
   font-size: 8px; letter-spacing: 2px; color: #7a6330; margin-bottom: 12px;
   padding-top: 10px; border-top: 1px solid rgba(138,111,54,0.35);
 }
+#hud .story .more {
+  font-size: 8.5px; letter-spacing: 1px; color: #8a7a52; font-style: italic;
+  margin: 6px 0 10px;
+}
 #hud .story button {
   width: 100%; font-family: var(--font-display, inherit); font-size: 9px; letter-spacing: 3px;
   cursor: pointer; padding: 8px 4px; border: 0; color: #f4ecd4;
@@ -809,13 +813,22 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     // are reading it is worse than no story at all. It now stays until the
     // player closes it, and every chapter is kept in the journal (☰ > GUIDE)
     // so anything missed can be read again.
+    // SHORTER ON SCREEN, WHOLE IN THE JOURNAL.
+    //
+    // Four paragraphs of prose stopping the game dead was too much to be handed
+    // mid-session, however good the writing is — people skip a wall of text and
+    // then feel they missed something. The card shows the OPENING line and what
+    // to do next; the full chapter is always in ☰ → GUIDE, and the card says so.
     storyLog.push(ch);
     const rw = ch.reward ? `<div class="rw">◆ ${ch.reward.label.toUpperCase()}</div>` : '';
+    const rest = ch.lines.length > 1
+      ? `<div class="more">+${ch.lines.length - 1} more — read the full chapter in ☰ GUIDE</div>` : '';
     storyEl.querySelector('.card').innerHTML = `
       <div class="ch">ANAVELA · ${ch.title.split(' · ')[0]}</div>
       <h2>${ch.title.split(' · ')[1] || ch.title}</h2>
       <div class="rule"></div>
-      ${ch.lines.map((l) => `<p>${l}</p>`).join('')}
+      <p>${ch.lines[0]}</p>
+      ${rest}
       ${rw}
       ${ch.hint ? `<div class="nx">NEXT · ${ch.hint}</div>` : ''}
       <button>CONTINUE</button>`;
