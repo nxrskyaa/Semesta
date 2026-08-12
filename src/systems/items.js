@@ -238,6 +238,16 @@ export const ITEMS = {
   chitin_claws:  { name: 'Chitin Claws',  weapon: true, type: 'dagger', tier: 2, dmg: 10, speed: 3.2, range: 1.9, arc: 1.7, hits: 2, blade: ['#5c4630', '#96703f'], scale: 0.78 },
   shadow_fangs:  { name: 'Shadow Fangs',  weapon: true, type: 'dagger', tier: 3, dmg: 15, speed: 3.3, range: 2.0, arc: 1.8, hits: 2, blade: ['#3a3a4a', '#8a7ad0'], scale: 0.85 },
 
+  // FIST (Fighter): the shortest reach in the game, three hits per attack, and
+  // a wide arc because a combination is thrown at whatever is in front of you
+  // rather than aimed at one target. Per-hit damage is low on purpose — the
+  // class's damage comes from landing three of them, three times a second, from
+  // a distance where everything else is already hitting you back.
+  hand_wraps:    { name: 'Hand Wraps',     weapon: true, type: 'fist', tier: 0, dmg: 4,  speed: 3.4, range: 1.6, arc: 2.0, hits: 3, blade: ['#c8b89a', '#efe4cc'], scale: 0.6 },
+  rattan_guards: { name: 'Rattan Guards',  weapon: true, type: 'fist', tier: 1, dmg: 6,  speed: 3.5, range: 1.7, arc: 2.0, hits: 3, blade: ['#9a7440', '#d8b070'], scale: 0.64 },
+  iron_knuckles: { name: 'Iron Knuckles',  weapon: true, type: 'fist', tier: 2, dmg: 9,  speed: 3.5, range: 1.7, arc: 2.1, hits: 3, blade: ['#6a6e74', '#b8c0c8'], scale: 0.68 },
+  tiger_claws:   { name: 'Harimau Claws',  weapon: true, type: 'fist', tier: 3, dmg: 13, speed: 3.6, range: 1.8, arc: 2.2, hits: 3, blade: ['#8a3a1a', '#f0a850'], scale: 0.74 },
+
   // ---- GACHA-EXCLUSIVE WEAPONS ----
   // three tiers per weapon type; `glow` gives them an aura light + orbiting
   // sparks on the blade. Which one you pull matches your class's weapon type.

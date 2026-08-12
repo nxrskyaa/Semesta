@@ -243,6 +243,7 @@ export const CATEGORIES = [
           ['Priest', 'Staff · heals, sanctuaries and pillars of light'],
           ['Assassin', 'Twin blades · huge melee area, stuns, and vanishing'],
           ['Summoner', 'Bazooka · the only basic attack with a blast radius. Calls beasts, walking robots, turrets and rocket barrages'],
+          ['Fighter', 'Wrapped hands · no weapon and no distance. The shortest reach and the fastest hands: every attack is a three-beat combination (jab, cross, knee) and the knee hits hardest'],
         ])}
         <h4>THE SKILL TREE</h4>
         <p>Each class has its own tree of seven skills across three tiers, opening
@@ -313,6 +314,9 @@ export const CATEGORIES = [
         ])}`),
 
       S('inv', 'Inventory, Hotbar & Levelling', `
+        <p><b>Click any item in the bag</b> to see what it is for — what it
+        heals, what it sells for, whether it wants cooking — and to use or drop
+        it. Dropping one is immediate; dropping a whole stack asks once.</p>
         <p>Open the bag with <b>I</b>. Anything consumable can go on the hotbar.
         XP comes from kills, quests, gathering, fishing, cooking and forging — the
         game does not have a single "correct" way to level.</p>
@@ -342,6 +346,10 @@ export const CATEGORIES = [
         harvest the crop.</p>
         <p>Crops sell for more than seeds cost, and cooked food sells for more than
         raw crops — cook at any campfire or at the village hearth.</p>
+        <p><b>Every fish in the game has a dish.</b> The herb cost and what it
+        heals scale with how hard the fish was to catch, from a Grilled Bluegill
+        up to a Legendary Lesser Kraken — so a rare catch is worth cooking rather
+        than selling raw.</p>
         <p>Cooking is a <b>scene, not a click</b>. The fire is lit, each
         ingredient falls into the pot in turn and stains the broth toward the
         colour of the finished dish, it simmers while a spoon goes round, and the

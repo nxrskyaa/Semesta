@@ -28,6 +28,11 @@ export const RECIPES = [
   { out: 'brass_mortar',   cost: { iron_ore: 5, forge_stone: 3 },                desc: 'Lobs a shell over anything in the way.' },
   { out: 'tesla_launcher', cost: { wisp_essence: 5, iron_ore: 6 },               desc: 'The charge coil hums before it fires.' },
   { out: 'siege_engine',   cost: { golem_core: 1, iron_ore: 8, forge_stone: 6 }, desc: 'Not really a weapon. A siege, held.' },
+  // FIST — Fighter. Without these the class opened the crafting panel to a
+  // health tonic, exactly as the axe and cannon lines did before they existed.
+  { out: 'rattan_guards',  cost: { hardwood: 4, chitin_shell: 3 },              desc: 'Split cane, bound tight. Cheap, and it hurts.' },
+  { out: 'iron_knuckles',  cost: { iron_ore: 6, small_bone: 4 },                desc: 'A plate across the knuckles. No longer a wrap.' },
+  { out: 'tiger_claws',    cost: { boar_tusk: 5, iron_ore: 5, wisp_essence: 3 }, desc: 'Four tusks per hand. Named for what it leaves.' },
   // consumables — all classes
   { out: 'tonic',          cost: { green_herb: 2, slime_gel: 1 },                desc: 'Restores 40 HP.' },
 ];

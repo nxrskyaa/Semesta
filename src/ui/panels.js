@@ -53,6 +53,22 @@ const CSS = `
 }
 .inv-cell img { width: 72%; height: 72%; image-rendering: pixelated; }
 .inv-cell .cnt { position: absolute; bottom: 0; right: 2px; font-size: 10px; text-shadow: 1px 1px 0 #000; color: #e8e8d8; }
+.inv-cell[data-pick] { cursor: pointer; }
+.inv-cell[data-pick]:hover { border-color: #5a6a50; }
+.inv-cell.picked { border-color: var(--gold, #d8b866); background: #1e2618; }
+.inv-detail {
+  display: flex; align-items: center; gap: 10px; padding: 8px;
+  margin: 8px 0; background: rgba(216,184,102,0.07); border: 1px solid var(--gold-dim, #6a5a34);
+}
+.inv-detail img.ic { width: 34px; height: 34px; image-rendering: pixelated; }
+.inv-detail .nm { flex: 1; font-size: 11px; color: #ffe8c8; min-width: 0; }
+.inv-detail .nm .cnt { color: var(--gold, #d8b866); }
+.inv-detail .nm small { display: block; font-size: 9px; color: #9aa890; margin-top: 3px; line-height: 1.6; }
+.inv-detail .acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.inv-detail .act { font-size: 9px; padding: 5px 8px; }
+.inv-detail .act.drop { background: #3a2620; color: #e0b0a0; }
+.inv-detail .act.drop.armed { background: #a8392c; color: #fff; }
+.inv-hint { font-size: 9.5px; color: var(--muted, #8d9a80); letter-spacing: 0.5px; margin: 8px 0; }
 .wep-row, .rec-row, .pet-row {
   display: flex; align-items: center; gap: 9px; padding: 7px;
   border: 2px solid #2c352c; background: #141a12; margin-bottom: 6px;
@@ -234,13 +250,51 @@ export function createPanels(hudRoot, {
 
   function renderInventory() {
     const mats = [...inventory.state.materials.entries()];
+    // the selected stack survives a re-render, unless it ran out
+    if (invPick && !inventory.count(invPick)) invPick = null;
+
     let grid = '';
     const cells = Math.max(18, Math.ceil(mats.length / 6) * 6);
     for (let i = 0; i < cells; i++) {
       const m = mats[i];
       grid += m
-        ? `<div class="inv-cell" title="${ITEMS[m[0]].name}"><img src="${itemIconUrl(m[0])}"><span class="cnt">${m[1]}</span></div>`
+        ? `<div class="inv-cell${m[0] === invPick ? ' picked' : ''}" data-pick="${m[0]}"
+             title="${ITEMS[m[0]].name}"><img src="${itemIconUrl(m[0])}"><span class="cnt">${m[1]}</span></div>`
         : '<div class="inv-cell"></div>';
+    }
+
+    // THE CELLS USED TO BE INERT. An icon, a number and a tooltip — you could
+    // not read what something was for, use it from there, or get rid of it, so
+    // a bag full of Slime Gel just sat there forever. Clicking a stack now
+    // selects it and opens the one row that says what it is and what you can
+    // do with it.
+    let detail = '';
+    if (invPick) {
+      const d = ITEMS[invPick] || {};
+      const n = inventory.count(invPick);
+      const bits = [];
+      if (d.heal) bits.push(`Restores ${d.heal} HP`);
+      if (d.buff) bits.push(`2x ${d.buff.toUpperCase()} for ${d.mins} min`);
+      if (d.sell) bits.push(`Sells for ${d.sell}c each at Pip's`);
+      if (d.fish) bits.push('Cook it at any campfire');
+      if (d.petCharm) bits.push('Summon it from the Companions panel');
+      if (d.mountId) bits.push('Ride it with M');
+      if (d.cosmetic) bits.push('Wear it in the Wardrobe [O]');
+      if (!bits.length) bits.push('A crafting material.');
+      const canUse = d.consumable && !d.buff;
+      detail = `<div class="inv-detail">
+        <img class="ic" src="${itemIconUrl(invPick)}">
+        <div class="nm">${d.name || invPick} <span class="cnt">x${n}</span>
+          <small>${bits.join(' · ')}</small></div>
+        <div class="acts">
+          ${canUse ? `<button class="act" data-eat="${invPick}">USE</button>` : ''}
+          ${d.buff ? `<button class="act" data-drink="${invPick}">DRINK</button>` : ''}
+          <button class="act drop" data-drop1="${invPick}">DROP 1</button>
+          ${n > 1 ? `<button class="act drop" data-dropall="${invPick}">DROP ALL</button>` : ''}
+        </div>
+      </div>`;
+    } else {
+      detail = '<div class="inv-hint">Click any item to see what it does — and to use or drop it.</div>';
     }
     // cooked food you can eat straight from the bag
     let foods = '';
@@ -274,7 +328,47 @@ export function createPanels(hudRoot, {
         <button class="eq" data-eq="${id}" ${eq ? 'disabled' : ''}>${eq ? 'EQUIPPED' : 'EQUIP'}</button></div>`;
     }
     const coinBar = `<div class="coinbar"><img src="${itemIconUrl('coin')}"> ${inventory.state.coins} coins</div>`;
-    panels.inv.innerHTML = `<h3>BAG <small>[Tab] close</small></h3>${coinBar}<div class="inv-grid">${grid}</div>${boosts}${foods}${weps}`;
+    panels.inv.innerHTML = `<h3>BAG <small>[Tab] close</small></h3>${coinBar}
+      <div class="inv-grid">${grid}</div>${detail}${boosts}${foods}${weps}`;
+
+    panels.inv.querySelectorAll('[data-pick]').forEach((c) => {
+      c.addEventListener('click', () => {
+        invPick = invPick === c.dataset.pick ? null : c.dataset.pick;
+        audio.sfx('ui');
+        renderInventory();
+      });
+    });
+    // DROPPING IS DELIBERATE BUT NOT PRECIOUS. A single item goes without
+    // ceremony; emptying a whole stack asks once, because "DROP ALL" next to
+    // "DROP 1" is exactly the pair of buttons somebody mis-taps on a phone.
+    panels.inv.querySelectorAll('[data-drop1]').forEach((b) => {
+      b.addEventListener('click', () => {
+        inventory.remove(b.dataset.drop1, 1);
+        audio.sfx('ui');
+        renderInventory();
+      });
+    });
+    panels.inv.querySelectorAll('[data-dropall]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const id = b.dataset.dropall;
+        if (b.dataset.armed !== '1') {
+          b.dataset.armed = '1';
+          b.textContent = `DROP ALL ${inventory.count(id)}?`;
+          b.classList.add('armed');
+          setTimeout(() => {
+            if (!b.isConnected) return;
+            b.dataset.armed = '0';
+            b.textContent = 'DROP ALL';
+            b.classList.remove('armed');
+          }, 3500);
+          return;
+        }
+        inventory.remove(id, inventory.count(id));
+        invPick = null;
+        audio.sfx('deny');
+        renderInventory();
+      });
+    });
     panels.inv.querySelectorAll('[data-eq]').forEach((b) => {
       b.addEventListener('click', () => {
         inventory.equip(b.dataset.eq);
@@ -913,6 +1007,7 @@ export function createPanels(hudRoot, {
   // their prize could not be worn. Nobody opens this panel to change their hair;
   // they open it because they got something. Reported as "item gacha gabisa
   // dipakai" — the WEAR buttons were there the whole time, one tab across.
+  let invPick = null;        // the stack selected in the bag grid
   let wardTab = 'cosmetics'; // cosmetics | style (appearance)
   function renderWardAppearance() {
     const cfg = wardrobe.appearance.config;

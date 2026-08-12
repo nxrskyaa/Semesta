@@ -122,6 +122,25 @@ export const CLASSES = {
     color: '#6ec8d8',
     stats: { power: 4, speed: 2, range: 4, defense: 2 },
   },
+  fighter: {
+    name: 'Fighter',
+    tagline: 'No weapon, no distance',
+    desc: 'Wrapped hands and nothing else. The shortest reach in the game and the fastest hands — a Fighter has to be INSIDE the fight, and gets rewarded for staying there.',
+    // The whole class is built around having no weapon: `fist` is a real weapon
+    // type with its own reach, its own swing and its own crafting line, so a
+    // Fighter is never handed a sword by a reward table that forgot they exist.
+    weaponType: 'fist',
+    startWeapon: 'hand_wraps',
+    baseHp: 58, baseStam: 125,
+    hpPerLevel: 12, stamPerLevel: 9,
+    dmgMult: 0.92,              // per hit — but they land far more of them
+    speed: 4.7,                 // the fastest class on foot, and it has to be
+    hasShield: false,
+    advanced: true,
+    skills: ['flurry', 'risingknee', 'ironbody'],
+    color: '#e8b45a',
+    stats: { power: 4, speed: 5, range: 1, defense: 3 },
+  },
 };
 
 /** The six the Grand Master actually offers. Origin is not one of them. */

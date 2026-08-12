@@ -1157,6 +1157,24 @@ function paintWeaponIcon(ctx, wdef) {
     ctx.fillRect(12, 3, 1, 1);
     ctx.fillStyle = dark;
     ctx.fillRect(10, 3, 1, 2); ctx.fillRect(14, 3, 1, 2); ctx.fillRect(12, 1, 1, 1); ctx.fillRect(12, 5, 1, 1);
+  } else if (wdef.type === 'fist') {
+    // a wrapped hand, seen from the knuckle side: the padded mass, three
+    // bands wound across it, and a wrist tail trailing off the bottom
+    ctx.fillStyle = light;
+    ctx.fillRect(4, 4, 8, 7);
+    ctx.fillStyle = dark;
+    for (let i = 0; i < 3; i++) ctx.fillRect(3, 5 + i * 2, 10, 1);   // the bands
+    ctx.fillStyle = light;
+    ctx.fillRect(5, 11, 6, 3);                                       // wrist
+    ctx.fillStyle = dark;
+    ctx.fillRect(6, 14, 3, 1); ctx.fillRect(8, 15, 2, 1);            // the tail
+    // knuckle plate on the upgraded ones
+    if ((wdef.tier || 0) >= 2) {
+      ctx.fillStyle = '#e8c060';
+      ctx.fillRect(4, 3, 8, 2);
+      ctx.fillStyle = '#fff0b0';
+      ctx.fillRect(5, 3, 1, 1); ctx.fillRect(8, 3, 1, 1); ctx.fillRect(11, 3, 1, 1);
+    }
   } else if (wdef.type === 'dagger') {
     for (let i = 0; i < 6; i++) {
       ctx.fillStyle = light;

@@ -837,11 +837,46 @@ async function init(character, saved, audio, online = false) {
   };
 
   // --- economy / cooking / estate APIs for the panels ---
-  const COOK_RECIPES = [
-    { out: 'grilled_minnow', cost: { fish_minnow: 1 } },
-    { out: 'perch_dinner', cost: { fish_perch: 1, green_herb: 1 } },
-    { out: 'koi_feast', cost: { fish_koi: 1, green_herb: 2 } },
-  ];
+  // COOKING, DERIVED FROM THE FISH.
+  //
+  // There used to be exactly three recipes against fourteen species, and now
+  // twenty-six — so most of what you caught could never be cooked and the pot
+  // was a decoration. Every fish now has a dish, generated from its own rarity:
+  // the fish is the ingredient, the herb cost and the heal scale with how hard
+  // it was to catch, and a new species added to ITEMS becomes cookable with no
+  // second registration.
+  const COOK_TIERS = {
+    common: { herbs: 0, heal: 18, sell: 12, prefix: 'Grilled' },
+    uncommon: { herbs: 1, heal: 30, sell: 26, prefix: 'Seasoned' },
+    rare: { herbs: 1, heal: 48, sell: 55, prefix: 'Skewered' },
+    epic: { herbs: 2, heal: 75, sell: 120, prefix: 'Feast of' },
+    legendary: { herbs: 2, heal: 120, sell: 280, prefix: 'Grand' },
+    mythic: { herbs: 3, heal: 200, sell: 760, prefix: 'Legendary' },
+  };
+  // the three hand-written dishes keep their nicer names and their own tuning;
+  // everything else is generated
+  const HAND_WRITTEN = {
+    fish_minnow: 'grilled_minnow', fish_perch: 'perch_dinner', fish_koi: 'koi_feast',
+  };
+  const COOK_RECIPES = [];
+  for (const [fid, fd] of Object.entries(ITEMS)) {
+    if (!fd.fish) continue;
+    const t = COOK_TIERS[fd.rarity] || COOK_TIERS.common;
+    const outId = HAND_WRITTEN[fid] || `dish_${fid.replace(/^fish_/, '')}`;
+    // register the dish itself, so the bag, the shop and the Index all know it.
+    // `consumable` is the flag the bag's EAT path reads — `food` would look
+    // right and do nothing.
+    if (!ITEMS[outId]) {
+      ITEMS[outId] = {
+        name: `${t.prefix} ${fd.name}`,
+        consumable: true, heal: t.heal, sell: t.sell, rarity: fd.rarity,
+        cookedFrom: fid,
+      };
+    }
+    const cost = { [fid]: 1 };
+    if (t.herbs) cost.green_herb = t.herbs;
+    COOK_RECIPES.push({ out: outId, cost });
+  }
   const economy = {
     eat(id) {
       const food = inventory.useConsumable(id);
@@ -1119,7 +1154,13 @@ async function init(character, saved, audio, online = false) {
     const fam = GACHA_WEAPONS[tier];
     if (!fam) return null;
     const wt = CLASSES[character.cls]?.weaponType || 'sword';
-    const key = fam[wt] ? wt : wt === 'axe' ? 'sword' : wt === 'cannon' ? 'staff' : 'sword';
+    // axe/cannon/fist have no exotic family of their own yet, so each borrows
+    // the closest silhouette rather than granting nothing at all
+    const key = fam[wt] ? wt
+      : wt === 'axe' ? 'sword'
+        : wt === 'cannon' ? 'staff'
+          : wt === 'fist' ? 'dagger'      // both are short, fast and paired
+            : 'sword';
     return fam[key] || null;
   }
 
@@ -1861,6 +1902,23 @@ const CAM_PITCH_DEFAULT = 0.98;
           },
         });
       }, dur * 0.45);
+    } else if (def.type === 'fist') {
+      // THREE BEATS, matching the three the animation plays: jab, cross, knee.
+      // The timings are the animation's, not evenly spaced — the jab lands
+      // early and light, the cross has the pause of a turning hip in front of
+      // it, and the knee arrives last and hits hardest.
+      audio.sfx('swing');
+      const beat = (mult, shake) => () => {
+        if (p.dead) return;
+        autoFace();
+        glowFx?.();
+        const hits = resolveMeleeHit(p, def, enemyMgr.enemies, 1);
+        for (const h of hits) dealHit(h.enemy, mult);
+        if (hits.length && shake) { audio.sfx('bash'); addShake(shake); }
+      };
+      setTimeout(beat(0.85, 0), dur * 0.16);       // jab
+      setTimeout(beat(1.0, 0), dur * 0.44);        // cross
+      setTimeout(beat(1.35, 0.16), dur * 0.78);    // knee — the payoff
     } else if (def.type === 'dagger') {
       audio.sfx('swing');
       const stab = () => {

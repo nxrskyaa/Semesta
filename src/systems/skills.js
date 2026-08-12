@@ -18,6 +18,26 @@ export const SKILLS = {
     desc: '+35% damage for 7s and rattles nearby enemies.',
     icon: { shape: 'shout', color: '#e8574a' },
   },
+  // --- Fighter ---
+  // All three are built round the same idea: a Fighter has no reach and no
+  // ranged option, so every ability either closes a gap, punishes standing in
+  // one place, or buys the seconds it takes to survive being there.
+  flurry: {
+    name: 'Flurry', cd: 6, cost: 20,
+    desc: 'Six punches in under a second, 90% each, on everything in front of you.',
+    icon: { shape: 'burst', color: '#e8b45a' },
+  },
+  risingknee: {
+    name: 'Rising Knee', cd: 8, cost: 22,
+    desc: 'Dash to the nearest enemy and launch it: 260% damage and a hard knock-up.',
+    icon: { shape: 'bolt', color: '#f0a850' },
+  },
+  ironbody: {
+    name: 'Iron Body', cd: 18, cost: 24,
+    desc: 'Brace for 6s: incoming damage halved, and you cannot be knocked back.',
+    icon: { shape: 'shield', color: '#c8a05a' },
+  },
+
   // --- Archer ---
   powershot: {
     name: 'Power Shot', cd: 6, cost: 18,
@@ -337,6 +357,74 @@ export function createSkillSystem(deps) {
       deps.shake?.(0.25);
       for (const e of enemiesWithin(4.5)) e.stunT = Math.max(e.stunT || 0, 0.6);
     },
+    // --- Fighter ---
+    flurry() {
+      const p = deps.player.state;
+      deps.audio.sfx('swing');
+      deps.player.playSwing(1.1);
+      // six punches on their own timers. Staggering them is the whole point:
+      // one lump of damage would be a Bash, and a flurry has to be heard as
+      // separate impacts.
+      for (let i = 0; i < 6; i++) {
+        setTimeout(() => {
+          if (p.dead) return;
+          const at = p.pos.clone().add(new THREE.Vector3(
+            Math.sin(p.facing) * 1.1, 0.7, Math.cos(p.facing) * 1.1));
+          deps.particles.burst(at, '#ffd88a', 4, 2.4, 2, 0.4);
+          const hit = enemiesWithin(1.9, at);
+          for (const e of hit) hitEnemy(e, 0.9);
+          if (hit.length) { deps.audio.sfx('hit'); deps.shake?.(0.06); }
+        }, i * 95);
+      }
+      deps.particles.runeCircle?.(p.pos, '#e8b45a', 2.2, 0.5);
+    },
+    risingknee() {
+      const p = deps.player.state;
+      // CLOSE THE GAP FIRST. A melee-only class needs a way to reach something,
+      // and a knee that only works when you are already touching the target is
+      // a knee nobody presses.
+      const target = deps.aimPoint?.();
+      if (target) {
+        const dx = target.x - p.pos.x, dz = target.z - p.pos.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const step = Math.min(d - 1.1, 6);
+        if (step > 0) {
+          const nx = p.pos.x + (dx / d) * step, nz = p.pos.z + (dz / d) * step;
+          if (deps.terrain.walkable(nx, nz, p.pos.y)) {
+            p.pos.x = nx; p.pos.z = nz;
+            p.pos.y = deps.terrain.surfaceY(nx, nz);
+          }
+        }
+        p.facing = Math.atan2(dx, dz);
+      }
+      const at = p.pos.clone().add(new THREE.Vector3(
+        Math.sin(p.facing) * 1.0, 0.8, Math.cos(p.facing) * 1.0));
+      deps.audio.sfx('bash');
+      deps.shake?.(0.4);
+      deps.particles.burst(at, '#f0a850', 18, 3.6, 5, 0.6);
+      deps.particles.shockwave(p.pos, '#f0a850', 2.8, 0.4);
+      for (const e of enemiesWithin(2.2, at)) {
+        hitEnemy(e, 2.6, { stun: 0.7 });
+        // launched, not pushed: the knock goes UP as well as away
+        const dx = e.mesh.position.x - p.pos.x, dz = e.mesh.position.z - p.pos.z;
+        const l = Math.hypot(dx, dz) || 1;
+        e.knock.set((dx / l) * 7, (dz / l) * 7);
+      }
+      deps.player.playSwing(1.3);
+    },
+    ironbody() {
+      const p = deps.player.state;
+      deps.player.addBuff({
+        id: 'ironbody', t: 6 * durMult(),
+        armor: 0.5 + 0.03 * (castLvl - 1),
+        noKnock: true,
+      });
+      deps.audio.sfx('warcry');
+      deps.particles.shockwave(p.pos, '#c8a05a', 3.2, 0.5);
+      deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#e8d0a0', 18);
+      deps.particles.runeCircle?.(p.pos, '#c8a05a', 2.6, 0.9);
+    },
+
     powershot() {
       const p = deps.player.state;
       aimAtCursor();

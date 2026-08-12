@@ -676,6 +676,63 @@ export function buildCharacterMesh(config) {
       g.position.set(0, -0.1, 0);
       g.userData.anim = { ring: coil };
       handR.add(g);
+    } else if (def.type === 'fist') {
+      // WRAPPED HANDS. Both of them — this is the only weapon in the game that
+      // exists twice, because a Fighter with one glove is a Fighter who lost a
+      // glove. The wrap is built as real overlapping bands rather than one
+      // block: cloth wound round a hand is the readable silhouette, and at this
+      // size a single box just looks like a mitten.
+      const clothMat = lam(lightC);
+      const bandMat = lam(darkC);
+      const mk = (isOff) => {
+        const h = new THREE.Group();
+        h.userData.isWeapon = true;
+        // the padded knuckle mass
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.17 * s, 0.15 * s, 0.19 * s), clothMat);
+        pad.position.set(0, 0.02, 0.03);
+        h.add(pad);
+        // three bands wound across the back of the hand, each offset a little
+        for (let i = 0; i < 3; i++) {
+          const band = new THREE.Mesh(new THREE.BoxGeometry(0.185 * s, 0.032 * s, 0.2 * s), bandMat);
+          band.position.set(0, 0.06 - i * 0.05, 0.03);
+          band.rotation.z = (i - 1) * 0.12;          // wound, not stacked
+          h.add(band);
+        }
+        // the tail of the wrap running back over the wrist
+        const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.13 * s, 0.13 * s, 0.11 * s), clothMat);
+        wrist.position.set(0, -0.02, -0.09);
+        h.add(wrist);
+        const tail = new THREE.Mesh(new THREE.BoxGeometry(0.04 * s, 0.03 * s, 0.16 * s), bandMat);
+        tail.position.set(isOff ? -0.07 : 0.07, -0.04, -0.14);
+        tail.rotation.x = 0.3;
+        h.add(tail);
+        // tier 2+: a hard plate across the knuckles, which is what turns a wrap
+        // into a weapon you would not want to be hit by
+        if (tier >= 2) {
+          const plate = new THREE.Mesh(new THREE.BoxGeometry(0.15 * s, 0.06 * s, 0.05 * s), goldMat);
+          plate.position.set(0, 0.03, 0.13);
+          h.add(plate);
+          for (const sx of [-1, 0, 1]) {
+            const stud = new THREE.Mesh(new THREE.BoxGeometry(0.035 * s, 0.035 * s, 0.03 * s), goldMat);
+            stud.position.set(sx * 0.05 * s, 0.03, 0.155);
+            h.add(stud);
+          }
+        }
+        if (def.glow) {
+          // gacha fists: the knuckles themselves burn
+          const ember = new THREE.Mesh(new THREE.BoxGeometry(0.16 * s, 0.05 * s, 0.04 * s),
+            new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow) }));
+          ember.position.set(0, 0.03, 0.15);
+          h.add(ember);
+        }
+        return h;
+      };
+      const right = mk(false);
+      g.add(right);
+      handR.add(g);
+      const left = mk(true);
+      handL.add(left);
+      g.userData.offhand = left;
     } else if (def.type === 'dagger') {
       const mk = (isOff) => {
         const d = new THREE.Group();
@@ -1856,6 +1913,64 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
         vis.position.y = visBase - 0.03 * k;
         parts.head.rotation.x = -0.16 * k;
       }
+    } else if (kind === 'fist') {
+      // A COMBINATION, not a swing. Three beats — jab, cross, knee — because a
+      // Fighter's whole identity is landing several things in the time another
+      // class lands one, and a single punch repeated three times reads as a
+      // stuck animation rather than as a flurry.
+      //
+      // The silat/muay thai grammar this borrows from: the guard never fully
+      // drops (the off hand stays up between beats), the hips lead the cross,
+      // and the knee comes off a small hop rather than from a standing leg
+      // lift. Punches snap out fast and return slower, which is the opposite
+      // of the sword's follow-through and is most of why it feels like a
+      // different weapon rather than a faster one.
+      const snap = (w) => 1 - (1 - w) * (1 - w) * (1 - w);   // very fast out
+      const GUARD_R = -1.15, GUARD_L = -1.25;                // hands up, always
+      if (t < 0.3) {
+        // BEAT 1 — the jab, off the lead (left) hand. Short, straight, quick.
+        const w = t / 0.3;
+        const out = w < 0.45 ? snap(w / 0.45) : 1 - (w - 0.45) / 0.55;
+        parts.armL.rotation.x = GUARD_L - 0.75 * out;
+        parts.armL.rotation.z = 0.28 - 0.28 * out;
+        parts.armR.rotation.x = GUARD_R;
+        parts.armR.rotation.z = -0.3;
+        vis.rotation.y = 0.16 * out;
+        vis.position.z = 0.1 * out;
+        parts.head.rotation.x = 0.04;
+        if (out > 0.6 && trailMat.opacity <= 0.01) flashTrail();
+      } else if (t < 0.62) {
+        // BEAT 2 — the cross, rear hand, hips turning through it. This is the
+        // one with weight in it, so the whole body rotates rather than the arm.
+        const w = (t - 0.3) / 0.32;
+        const out = w < 0.42 ? snap(w / 0.42) : 1 - (w - 0.42) / 0.58;
+        parts.armR.rotation.x = GUARD_R - 0.95 * out;
+        parts.armR.rotation.z = -0.3 + 0.3 * out;
+        parts.armL.rotation.x = GUARD_L;
+        parts.armL.rotation.z = 0.28;
+        vis.rotation.y = 0.16 - 0.62 * out;          // hips lead
+        vis.position.z = 0.1 + 0.18 * out;
+        parts.legR.rotation.x = -0.2 * out;          // rear heel turns over
+        parts.head.rotation.x = 0.06 * out;
+        if (out > 0.5 && trailMat.opacity <= 0.3) flashTrail();
+      } else {
+        // BEAT 3 — the knee, off a hop, both hands pulling down as if there is
+        // a collar in them. The hop is what stops it reading as a kick.
+        const w = (t - 0.62) / 0.38;
+        const up = Math.sin(Math.min(1, w / 0.55) * Math.PI);
+        vis.position.y = visBase + 0.16 * up;
+        vis.rotation.y = -0.46 * (1 - w);
+        vis.rotation.x = 0.22 * up;
+        vis.position.z = 0.28 * up;
+        parts.legR.rotation.x = -1.9 * up;           // the knee itself
+        parts.legL.rotation.x = 0.25 * up;           // the post leg extends
+        parts.armR.rotation.x = GUARD_R + 0.5 * up;  // pulling down
+        parts.armL.rotation.x = GUARD_L + 0.5 * up;
+        parts.armR.rotation.z = -0.3 + 0.15 * up;
+        parts.armL.rotation.z = 0.28 - 0.15 * up;
+        parts.head.rotation.x = 0.18 * up;
+        if (up > 0.7 && trailMat.opacity <= 0.3) flashTrail();
+      }
     } else if (kind === 'dagger') {
       // fluid cross-slash: crouch -> diagonal right slash -> diagonal left
       // slash -> flourish. Body leans and darts with every cut.
@@ -2041,7 +2156,10 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
 
   function takeDamage(amount) {
     if (state.rolling > 0 || state.dead) return 0;
-    let dmg = amount * (1 - Math.min(0.6, buffVal('armor')));
+    // Iron Body pushes the ceiling up: a Fighter has no shield and no range, so
+    // the one thing they get is a window where standing still is survivable.
+    const armorCap = state.buffs.some((b) => b.noKnock) ? 0.75 : 0.6;
+    let dmg = amount * (1 - Math.min(armorCap, buffVal('armor')));
     if (state.shielding && state.stamina > 0) {
       dmg = dmg * (1 - SHIELD_BLOCK);
       state.stamina = Math.max(0, state.stamina - amount * 1.2);

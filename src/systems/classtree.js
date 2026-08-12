@@ -83,6 +83,20 @@ export const CLASS_TREES = {
     { id: 'siegemode', tier: 2, cost: 3 },
     { id: 'legion', tier: 2, cost: 3 },
   ],
+  // FIGHTER. Two openers that close distance, a brace that lets you stay
+  // inside, and a top tier that turns being surrounded into the good outcome.
+  // `leapslam`, `cleave` and `rage` already exist and read as unarmed just as
+  // well as they read as armed — inventing two more skills nobody would have
+  // tuned would have been worse than reusing three that are already good.
+  fighter: [
+    { id: 'flurry', tier: 0, cost: 1 },
+    { id: 'risingknee', tier: 0, cost: 1 },
+    { id: 'ironbody', tier: 1, cost: 2 },
+    { id: 'leapslam', tier: 1, cost: 2 },
+    { id: 'cleave', tier: 1, cost: 2 },
+    { id: 'rage', tier: 2, cost: 3 },
+    { id: 'whirlwind', tier: 2, cost: 3 },
+  ],
 };
 
 /** How many skills can be slotted at once. Three, matching the three buttons. */
