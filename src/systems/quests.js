@@ -252,10 +252,26 @@ export function createQuests({ inventory, leveling }) {
   function serialize() {
     return { active: { ...state.active }, completed: [...state.completed] };
   }
+  /**
+   * Restore, dropping anything that is not a real quest.
+   *
+   * A save can outlive the quest that made it — a renamed id, a quest removed
+   * between builds, a half-written blob. Accepting those ids verbatim put keys
+   * in `state.active` that `QUESTS[id]` does not answer, and the crash surfaced
+   * much later and somewhere else entirely (`activeFor` reading `.giver` of
+   * undefined, during the world build, which froze the loading bar). Validating
+   * here means a stale quest costs you that quest and nothing more.
+   */
   function load(data) {
-    if (!data) return;
-    state.active = data.active || {};
-    state.completed = new Set(data.completed || []);
+    if (!data || typeof data !== 'object') return;
+    state.active = {};
+    const active = data.active && typeof data.active === 'object' ? data.active : {};
+    for (const [id, v] of Object.entries(active)) {
+      if (QUESTS[id]) state.active[id] = v;
+      else console.warn(`[semesta] dropping unknown quest from save: ${id}`);
+    }
+    state.completed = new Set(
+      (Array.isArray(data.completed) ? data.completed : []).filter((id) => QUESTS[id]));
     notify();
   }
 

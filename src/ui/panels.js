@@ -907,7 +907,12 @@ export function createPanels(hudRoot, {
     ['back', 'BACK — packs & wings'],
     ['trail', 'TRAILS — sparkle in your footsteps'],
   ];
-  let wardTab = 'style'; // style (appearance) | cosmetics
+  // COSMETICS FIRST. The wardrobe used to open on APPEARANCE, so a player who
+  // had just pulled a hat opened it, saw skin tone and hair style, and concluded
+  // their prize could not be worn. Nobody opens this panel to change their hair;
+  // they open it because they got something. Reported as "item gacha gabisa
+  // dipakai" — the WEAR buttons were there the whole time, one tab across.
+  let wardTab = 'cosmetics'; // cosmetics | style (appearance)
   function renderWardAppearance() {
     const cfg = wardrobe.appearance.config;
     const seg = (label, key, list, keyName) => {
@@ -1004,8 +1009,8 @@ export function createPanels(hudRoot, {
       </style>
       ${wardrobe.appearance ? '<div class="w-preview-slot"></div><div class="w-preview-hint">◂ LIVE PREVIEW ▸</div>' : ''}
       ${wardrobe.appearance ? `<div class="w-tabs">
-        <button data-wtab="style" class="${wardTab === 'style' ? 'on' : ''}">☺ APPEARANCE</button>
         <button data-wtab="cosmetics" class="${wardTab === 'cosmetics' ? 'on' : ''}">🧢 COSMETICS</button>
+        <button data-wtab="style" class="${wardTab === 'style' ? 'on' : ''}">☺ APPEARANCE</button>
       </div>` : ''}
       ${body}`;
     const slot = panels.ward.querySelector('.w-preview-slot');

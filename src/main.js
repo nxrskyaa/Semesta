@@ -269,7 +269,62 @@ async function main() {
   loadScreen = createLoadScreen({ logoSrc: cleanLogo });
   document.body.appendChild(loadScreen.el);
   await frame();
-  await init(config, continued ? saved : null, audio, online);
+  // A FROZEN PROGRESS BAR IS NOT AN ERROR MESSAGE.
+  //
+  // `init()` was awaited bare, so anything that threw during the world build
+  // rejected the promise and left the loading screen sitting on whatever
+  // percentage it had reached — most often 74%, the last mark before a long
+  // uninstrumented stretch. The player saw a number that never moved, no error,
+  // and no way out but clearing site data, which they have no reason to guess.
+  try {
+    await init(config, continued ? saved : null, audio, online);
+  } catch (err) {
+    console.error('[semesta] world build failed:', err);
+    showBootFailure(err, !!continued);
+  }
+}
+
+/**
+ * The world could not be built. Say so, name the fault, and offer the two
+ * things that actually help: try again, or start clean.
+ *
+ * "Start clean" is deliberately explicit about what it deletes — a button that
+ * silently wipes a character is worse than the freeze it is fixing.
+ */
+function showBootFailure(err, hadSave) {
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;inset:0;z-index:999;display:flex;align-items:center;
+    justify-content:center;background:rgba(6,8,6,0.94);font-family:var(--font-body,monospace);
+    color:#e2dfc8;padding:24px;text-align:center;`;
+  el.innerHTML = `<div style="max-width:520px">
+    <div style="font-family:var(--font-display,monospace);font-size:15px;letter-spacing:4px;
+      color:#e8a35d;margin-bottom:14px">THE WORLD DID NOT FINISH BUILDING</div>
+    <p style="font-size:12px;line-height:1.8;color:#b9c4ad">
+      Something went wrong part way through the load. Your save is still on this
+      device — this is very often fixed by simply trying again.</p>
+    <pre style="font-size:10px;text-align:left;white-space:pre-wrap;color:#8d9a80;
+      background:#12160f;padding:10px;max-height:120px;overflow:auto;margin:12px 0">${
+  String(err && (err.stack || err.message) || err).slice(0, 600)}</pre>
+    <button id="bf-retry" style="font:inherit;font-size:12px;letter-spacing:2px;padding:10px 18px;
+      margin:4px;cursor:pointer;background:#d8b866;color:#12160f;border:0">↻ TRY AGAIN</button>
+    ${hadSave ? `<button id="bf-fresh" style="font:inherit;font-size:11px;letter-spacing:1px;
+      padding:10px 16px;margin:4px;cursor:pointer;background:#2a231b;color:#c8b494;
+      border:1px solid #5a4a34">START A FRESH WORLD (keeps your character)</button>` : ''}
+  </div>`;
+  document.body.appendChild(el);
+  el.querySelector('#bf-retry').addEventListener('click', () => location.reload());
+  el.querySelector('#bf-fresh')?.addEventListener('click', () => {
+    // drop only the volatile world state, never the character or their items
+    try {
+      const raw = localStorage.getItem(activeKey());
+      if (raw) {
+        const blob = JSON.parse(raw);
+        delete blob.pos; delete blob.quests; delete blob.farm; delete blob.houses;
+        localStorage.setItem(activeKey(), JSON.stringify(blob));
+      }
+    } catch { /* if even that fails, the reload below still gets them to the menu */ }
+    location.reload();
+  });
 }
 
 async function init(character, saved, audio, online = false) {
@@ -508,6 +563,9 @@ async function init(character, saved, audio, online = false) {
   // temporal dead zone, and neither does `typeof` on a `let` — both throw.
   let classTree = null;
   let skillIds = [];
+  // subsystems whose saved state could not be restored, reported once the world
+  // is up rather than swallowed
+  const bootWarnings = [];
 
   const leveling = createLeveling();
 
@@ -537,14 +595,31 @@ async function init(character, saved, audio, online = false) {
   const mounts = createMounts(particles);
   const touch = isTouchDevice();
 
-  // load save
+  // LOAD SAVE — one bad blob must never take the boot down.
+  //
+  // Every `X.load()` here used to run bare, in the un-instrumented stretch
+  // between the 74% and 84% marks. So if any of them threw — an item id from a
+  // different build, a half-written blob, a cloud copy from another version —
+  // the whole `init()` promise rejected, the progress bar froze at 74%, and the
+  // player sat looking at a number forever with nothing in the console they
+  // would ever see. That is the worst failure mode this game has, and it is one
+  // try/catch away from being a line of text instead.
+  //
+  // Each subsystem now loads in isolation. A corrupt quest log costs you your
+  // quest log, not your character.
+  function loadPart(label, fn) {
+    try { fn(); } catch (e) {
+      console.warn(`[semesta] could not restore ${label}:`, e);
+      bootWarnings.push(label);
+    }
+  }
   if (saved) {
     leveling.state.level = saved.level || 1;
     leveling.state.xp = saved.xp || 0;
-    inventory.load(saved.inventory);
-    quests.load(saved.quests);
-    farming.load(saved.farm);
-    housing.load(saved.houses);
+    loadPart('inventory', () => inventory.load(saved.inventory));
+    loadPart('quests', () => quests.load(saved.quests));
+    loadPart('farm', () => farming.load(saved.farm));
+    loadPart('house', () => housing.load(saved.houses));
     if (saved.pos) {
       player.state.pos.set(saved.pos[0], saved.pos[1], saved.pos[2]);
     }
@@ -565,6 +640,8 @@ async function init(character, saved, audio, online = false) {
     inventory.add('seed_wheat', 2);
     inventory.addCoins(15);
   }
+
+  setBoot(0.78, 'Unpacking your bag…'); await frame();
 
   const enemyMgr = createEnemyManager(terrain, decor.blocked, scene, particles, projectiles, {
     /**
@@ -1160,7 +1237,7 @@ async function init(character, saved, audio, online = false) {
     onToast: (t) => hud.toastText(t),
     onBanner: (t) => hud.banner(t),
   });
-  dailies.load(saved?.dailies);
+  loadPart('dailies', () => dailies.load(saved?.dailies));
 
   // --- THE INDEX: the collection log, and the thing a capped hero plays for ---
   const index = createIndex({
@@ -1180,7 +1257,7 @@ async function init(character, saved, audio, online = false) {
       audio.sfx('pickup');
     },
   });
-  index.load(saved?.index);
+  loadPart('index', () => index.load(saved?.index));
 
   // --- LIFE SKILLS: fishing, farming and cooking each level on their own ---
   const skilltree = createSkillTree({
@@ -1909,8 +1986,9 @@ const CAM_PITCH_DEFAULT = 0.98;
     weaponDef: () => inventory.equippedDef(),
     forgeMult, summons,
   });
+  setBoot(0.80, 'Remembering what you learned…'); await frame();
   skillsApi.skillSys = skillSys;
-  skillSys.load(saved?.skills);
+  loadPart('skills', () => skillSys.load(saved?.skills));
 
   // Backfill the Index from whatever is already in the bag. A hero who has been
   // playing since before the Index existed should open it and find their fish,
@@ -1931,7 +2009,7 @@ const CAM_PITCH_DEFAULT = 0.98;
   let touchUI = null;
 
   classTree = createClassTree();
-  classTree.load(saved?.classTree);
+  loadPart('skill tree', () => classTree.load(saved?.classTree));
   skillIds = classTree.activeSkills();
 
   function refreshLoadout() {
@@ -2853,6 +2931,12 @@ const CAM_PITCH_DEFAULT = 0.98;
   try { renderer.compile(scene, camera); } catch { /* older three: skip */ }
   renderer.render(scene, camera);
   if (usePost()) composer.render();   // compiles the bloom passes too
+  // Anything that failed to restore is said out loud rather than swallowed —
+  // a player whose quest log silently emptied deserves to know why.
+  if (bootWarnings.length) {
+    setTimeout(() => hud.toastText(
+      `Some saved data could not be restored: ${bootWarnings.join(', ')}. Everything else loaded.`), 2500);
+  }
   setBoot(0.97, 'Tuning the orchestra…'); await frame();
   {
     const hrNow = lighting.state.minutes / 60;

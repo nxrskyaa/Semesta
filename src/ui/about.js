@@ -1,6 +1,7 @@
 // Shared "About" content — used by both the main-menu modal and the in-game
 // panel so the credits & Rialo badge stay identical everywhere.
 import { paintRialoMark } from '../world/landmarks.js';
+import { makeQrCanvas } from '../gfx/qr.js';
 
 export const TEAM = [
   { name: 'Nxrskyaa', role: 'GAME DEVELOPER', x: 'https://x.com/nxrskyaa' },
@@ -25,21 +26,60 @@ export function aboutInner(logoSrc) {
       <div class="ct">— THE TEAM —</div>
       ${members}
     </div>
+    <div class="playqr">
+      <canvas class="qr-about"></canvas>
+      <div class="qrtext">
+        <b>PLAY IT NOW</b>
+        <small>Point a phone camera at this square — it opens the game, no install.</small>
+        <a class="qrlink" href="${GAME_URL}" target="_blank" rel="noopener">${GAME_URL.replace(/^https?:\/\//, '')}</a>
+      </div>
+    </div>
     <div class="rialo-badge">
       <canvas class="rlogo-about" width="44" height="44"></canvas>
       <span>BUILD FOR RIALO</span>
     </div>`;
 }
 
-// paint the little Rialo mark into any freshly-inserted `.rlogo-about` canvases
+/** Where the built game lives. The QR in About points here. */
+export const GAME_URL = 'https://semesta-gray.vercel.app/';
+
+// paint the little Rialo mark into any freshly-inserted `.rlogo-about` canvases,
+// and the play-here QR beside it
 export function paintAboutRialo(root) {
   root.querySelectorAll('.rlogo-about').forEach((cv) => {
     paintRialoMark(cv.getContext('2d'), cv.width);
+  });
+  root.querySelectorAll('.qr-about').forEach((cv) => {
+    try {
+      const q = makeQrCanvas(GAME_URL, { scale: 4, dark: '#141a12', light: '#f4f1e4' });
+      cv.width = q.width; cv.height = q.height;
+      cv.getContext('2d').drawImage(q, 0, 0);
+    } catch (e) {
+      // a missing QR must never take the About panel down with it
+      console.warn('[semesta] QR render failed:', e);
+      cv.closest('.playqr')?.classList.add('noqr');
+    }
   });
 }
 
 // shared CSS for the Rialo badge row (both surfaces already style .crew etc.)
 export const ABOUT_BADGE_CSS = `
+  .playqr { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 12px;
+    background: rgba(216,184,102,0.07); border: 1px solid rgba(216,184,102,0.3); text-align: left; }
+  .playqr canvas { width: 108px; height: 108px; flex: 0 0 108px; image-rendering: pixelated;
+    background: #f4f1e4; padding: 0; }
+  .playqr.noqr canvas { display: none; }
+  .playqr .qrtext b { display: block; font-family: var(--font-display, monospace);
+    font-size: 11px; letter-spacing: 3px; color: var(--gold, #d8b866); margin-bottom: 5px; }
+  .playqr .qrtext small { display: block; font-size: 10px; line-height: 1.7; color: #b9c4ad; }
+  .playqr .qrlink { display: inline-block; margin-top: 7px; font-size: 10px; letter-spacing: 1px;
+    color: #8fd8f8; text-decoration: none; word-break: break-all; }
+  .playqr .qrlink:hover { text-decoration: underline; }
+  @media (max-width: 520px) {
+    .playqr { flex-direction: column; text-align: center; }
+    .playqr .qrtext small { text-align: center; }
+  }
+
   .rialo-badge { display: flex; align-items: center; justify-content: center; gap: 10px;
     margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(216,184,102,0.25);
     font-family: var(--font-display, monospace); font-size: 11px; letter-spacing: 3px; color: #e8e3d5; }
