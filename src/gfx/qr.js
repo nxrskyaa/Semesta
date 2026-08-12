@@ -27,7 +27,17 @@ const LOG = new Uint8Array(256);
 })();
 const mul = (a, b) => (a === 0 || b === 0 ? 0 : EXP[LOG[a] + LOG[b]]);
 
-/** Reed-Solomon generator polynomial of `degree`. */
+/**
+ * Reed-Solomon generator polynomial of `degree`, LEADING COEFFICIENT FIRST.
+ *
+ * The loop below builds it the other way up — poly[0] ends as the constant
+ * term — and `rsEncode` reads gen[0] as the leading 1. So the two disagreed by
+ * a reversal, every parity byte came out wrong, and a scanner computing the
+ * syndromes of the finished block found 25 of 26 non-zero and threw the symbol
+ * away. Checked against the published QR test vector: the degree-10 generator
+ * must be 01 d8 c2 9f 6f c7 5e 5f 71 9d c1, and it was arriving as exactly that
+ * backwards.
+ */
 function rsPoly(degree) {
   let poly = [1];
   for (let i = 0; i < degree; i++) {
@@ -38,7 +48,7 @@ function rsPoly(degree) {
     }
     poly = next;
   }
-  return poly;
+  return poly.reverse();
 }
 
 /** The EC codewords for one data block. */
@@ -262,15 +272,38 @@ export function qrMatrix(text) {
     const g = m.map((row, r) => Array.from(row, (v, c) =>
       (isReserved(r, c) ? v : (MASKS[maskId](r, c) ? v ^ 1 : v))));
     // write this mask's format bits before scoring, so the score is honest
+    // FORMAT INFORMATION — and this whole block was TRANSPOSED.
+    //
+    // Every cell was written with its row and column the wrong way round, so
+    // the fifteen format bits landed in the mirror image of where they belong.
+    // The format is the first thing a scanner reads: it carries the error level
+    // and, critically, WHICH MASK was applied. Get it wrong and the scanner
+    // cannot un-mask the data, so it does not read a corrupt payload — it does
+    // not recognise the symbol as a QR code at all. Which is exactly what was
+    // reported: not misread, not detected.
+    //
+    // It survived my own round-trip test because the decoder I wrote to check
+    // it read the bits back out of the same transposed cells and agreed with
+    // itself. Writing both halves of a test is how a shared mistake cancels.
+    //
+    // The correct placement, in [row][col]:
+    //   copy 1  bits 0-5 -> (i, 8) | bit 6 -> (7, 8) | bit 7 -> (8, 8)
+    //           bit 8 -> (8, 7)    | bits 9-14 -> (8, 14 - i)
+    //   copy 2  bits 0-7 -> (8, size-1-i)  | bits 8-14 -> (size-15+i, 8)
     const fmt = formatBits(maskId);
     for (let i = 0; i < 15; i++) {
       const bit = (fmt >> i) & 1;
-      if (i < 6) { g[8][i] = bit; g[size - 1 - i][8] = bit; }
-      else if (i < 8) { g[8][i + 1] = bit; g[size - 1 - i][8] = bit; }
-      else if (i === 8) { g[7][8] = bit; g[8][size - 8] = bit; }
-      else { g[14 - i][8] = bit; g[8][size - 15 + i] = bit; }
+      // copy 1, around the top-left finder
+      if (i < 6) g[i][8] = bit;
+      else if (i === 6) g[7][8] = bit;
+      else if (i === 7) g[8][8] = bit;
+      else if (i === 8) g[8][7] = bit;
+      else g[8][14 - i] = bit;
+      // copy 2, split between the top-right and bottom-left finders
+      if (i < 8) g[8][size - 1 - i] = bit;
+      else g[size - 15 + i][8] = bit;
     }
-    g[size - 8][8] = 1;
+    g[size - 8][8] = 1;                       // the dark module, always set
     const score = penalty(g);
     if (!best || score < best.score) best = { score, grid: g };
   }
