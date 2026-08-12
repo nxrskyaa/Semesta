@@ -527,10 +527,21 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
 
   let ridden = null;     // the mesh currently under the player
 
+  // KEEP CLEAR OF THE BOUNDARY. The rim wall is suppressed over the sea so the
+  // ocean does not read as a bathtub, which is right to look at and means there
+  // is nothing out there to stop a boat — the water simply runs to the last cell
+  // of the grid and then the world ends. Two cells of margin turn the edge into
+  // an ordinary grounding, which the hull already handles, instead of a place
+  // you can be ejected into.
+  const EDGE_MARGIN = 2;
+
   /** True where a hull has enough water under it to float and be driven. */
   function floats(x, z) {
     const [ix, iz] = terrain.cellOf(x, z);
-    return terrain.inBounds(ix, iz) && terrain.swimmable(x, z)
+    const S = terrain.size;
+    if (ix < EDGE_MARGIN || iz < EDGE_MARGIN
+      || ix >= S - EDGE_MARGIN || iz >= S - EDGE_MARGIN) return false;
+    return terrain.swimmable(x, z)
       && WATER_Y - terrain.surfaceY(x, z) > HULL_DRAFT;
   }
 
@@ -640,12 +651,25 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
     state.active = null;
     player.state.craft = null;
     player.setCraftPose?.(false);
-    if (!stranded) {
-      player.state.pos.set(shore.x, terrain.surfaceY(shore.x, shore.z), shore.z);
-    } else {
-      // already been moved somewhere deliberate — just drop them on the ground
-      player.state.pos.y = terrain.surfaceY(player.state.pos.x, player.state.pos.z);
-    }
+    // WHERE THE RIDER ENDS UP HAS TO BE A REAL PLACE.
+    //
+    // `stranded` used to mean "they were moved somewhere deliberate, just drop
+    // them on the ground" — which is true for a teleport or a respawn and
+    // catastrophically false at the edge of the map. Outside the terrain grid
+    // `heightCell` returns MAX_H, the world wall, so someone ejected out there
+    // was planted on top of an invisible cliff with solid rock on every side:
+    // no movement, no dismount, nothing on screen but the inside of geometry,
+    // and teleport the only way out. That is exactly what happened when a boat
+    // ran into the boundary.
+    //
+    // So the destination is CHECKED rather than trusted, whatever moved them.
+    const [dix, diz] = terrain.cellOf(player.state.pos.x, player.state.pos.z);
+    const landed = !stranded || !terrain.inBounds(dix, diz)
+      || terrain.swimmable(player.state.pos.x, player.state.pos.z)
+      ? shore                                    // put them on real, dry ground
+      : null;
+    if (landed) player.state.pos.set(landed.x, terrain.surfaceY(landed.x, landed.z), landed.z);
+    else player.state.pos.y = terrain.surfaceY(player.state.pos.x, player.state.pos.z);
     player.state.grounded = true;
     particles?.burst(new THREE.Vector3(px, WATER_Y, pz), '#dff6ff', 10, 2.4, 4, 0.45);
     hooks.onLeave?.(CRAFT_DEFS[id]);

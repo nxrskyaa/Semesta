@@ -954,8 +954,17 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if ((playerState.busy || playerSafe) && e.state === 'aggro') {
         e.state = 'wander';
         e.wanderT = 2 + Math.random() * 2;
-        // wander AWAY from the sanctuary instead of hugging its wall
-        if (playerSafe) e.dir = Math.atan2(p.x - playerSafe.x, p.z - playerSafe.z);
+        // Wander AWAY from whatever made them lose interest, rather than hugging
+        // its wall. The point to walk away from is the SANCTUARY when there is
+        // one and the player otherwise — `playerSafe` is an object for a zone
+        // but a bare `true` for an unreachable swimmer, and reading `.x` off the
+        // boolean produced NaN, which went straight into `e.dir`, through sin()
+        // into moveEnemy, and left the monster at a NaN position it could never
+        // return from: invisible, un-killable and updated forever. Swimming past
+        // a pack quietly destroyed all of it.
+        const away = playerSafe && typeof playerSafe === 'object' ? playerSafe : playerPos;
+        e.dir = Math.atan2(p.x - away.x, p.z - away.z);
+        if (!Number.isFinite(e.dir)) e.dir = Math.random() * Math.PI * 2;
         e.np.sprite.visible = e.hp < e.hpMax;
       }
 
@@ -1181,5 +1190,50 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     if (!e.def.floats) p.y += (ny - p.y) * Math.min(1, dt * 10);
   }
 
-  return { enemies, update, damage, spawnOne, spawnWorldBoss };
+  /**
+   * BUILD ONE OF EVERYTHING, ONCE, WHILE THE LOADING SCREEN IS STILL UP.
+   *
+   * The load screen already compiles what is IN the scene when the world
+   * finishes building — which is the terrain, the village and the trees, and
+   * none of the things that actually arrive later. A monster is the first new
+   * material the renderer has seen since boot, so the frame it first walks into
+   * view pays for a shader compile and a pile of GPU uploads, and that is the
+   * hitch people feel a minute into playing. Same for the world bosses, which
+   * show up once every three minutes to a guaranteed stutter.
+   *
+   * So: build one of every species now, let the caller compile and render them,
+   * then throw the meshes away. The GEOMETRY survives in the shared cache and
+   * the compiled programs survive in the renderer, which is the entire point —
+   * the second Slime costs nothing, and after this the first one does not
+   * either. Nameplates go back to the pool, so the first spawn allocates
+   * nothing at all.
+   *
+   * @returns a function that removes the decoys again.
+   */
+  function prewarm(at) {
+    const made = [];
+    const kinds = [...Object.keys(ENEMY_TYPES), ...Object.keys(WORLD_BOSSES)];
+    for (const type of kinds) {
+      let mesh;
+      try { mesh = (BUILDERS[type] || BUILDERS[WORLD_BOSSES[type]?.base])?.(); } catch { mesh = null; }
+      if (!mesh) continue;
+      // in front of the camera but under the world, so it is inside the frustum
+      // (which is what makes the renderer bother with it) and cannot be seen
+      mesh.position.set(at.x, at.y - 400, at.z);
+      const np = makeNameplate(ENEMY_TYPES[type]?.name || type, 1, false);
+      mesh.add(np.sprite);
+      scene.add(mesh);
+      made.push({ mesh, np });
+    }
+    return () => {
+      for (const { mesh, np } of made) {
+        scene.remove(mesh);
+        if (!recycleNameplate(np)) np?.sprite?.material?.map?.dispose();
+        disposeObject(mesh);
+      }
+      made.length = 0;
+    };
+  }
+
+  return { enemies, update, damage, spawnOne, spawnWorldBoss, prewarm };
 }

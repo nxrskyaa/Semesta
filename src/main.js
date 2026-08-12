@@ -80,7 +80,8 @@ import { createDailies } from './systems/dailies.js';
 import { createGamePass, PASS_PRICES } from './systems/gamepass.js';
 import { createSkillTree, SKILLS as SKILL_DEFS } from './systems/skilltree.js';
 import {
-  cloudConfigured, reconcile, writeLocal, startCloudAutosave, currentUser, deleteCloudSave } from './net/auth.js';
+  cloudConfigured, syncSlotsFromCloud, writeLocal, startCloudAutosave, currentUser,
+  deleteCloudSave, deleteCloudSlot } from './net/auth.js';
 import { createStory } from './systems/story.js';
 import { createLoadScreen } from './ui/loadscreen.js';
 import { itemIconUrl } from './gfx/textures.js';
@@ -164,21 +165,28 @@ async function main() {
   // us which slot they mean.
   let saved = loadSlot(activeSlot());
 
-  /** Reconcile the CHOSEN slot against the cloud. Never called for a new hero:
-   *  an empty slot the player asked to fill must stay theirs to fill. */
-  async function syncChosenSlot() {
+  /**
+   * Bring the signed-in account's heroes onto this device.
+   *
+   * THIS HAS TO HAPPEN BEFORE THE MENU IS DRAWN. It used to run only after
+   * CONTINUE was pressed, and CONTINUE is drawn from localStorage — so on a
+   * phone that had never run the game there was no button to press and the
+   * cloud save could not be reached at all. The player's only way in was NEW
+   * ADVENTURE, and that fresh hero was then uploaded over the one on their PC.
+   */
+  async function syncAccount() {
     if (!cloudConfigured()) return;
     try {
-      const res = await Promise.race([
-        reconcile(askWhichSave),
+      await Promise.race([
+        syncSlotsFromCloud(askWhichSave),
         // never let a slow network hold the menu hostage
-        new Promise((r) => setTimeout(() => r(null), 4000)),
+        new Promise((r) => setTimeout(r, 6000)),
       ]);
-      if (res?.save) {
-        saved = res.save;
-        if (res.from === 'cloud') writeLocal(res.save);
-      }
+      saved = loadSlot(activeSlot());
     } catch (e) { console.warn('[semesta] cloud sync skipped:', e.message); }
+    // handed back so the menu can redraw CONTINUE around a hero that has just
+    // arrived from another device
+    return saved;
   }
   const audio = createAudio();
 
@@ -187,8 +195,15 @@ async function main() {
   // load screen share one decode.
   const cleanLogo = await cleanImage(logoUrl);
 
+  // If a session is already live (returning player, or the redirect just landed)
+  // the heroes are fetched before the menu paints, so CONTINUE is offered for a
+  // hero made on another device.
+  await syncAccount();
+
   // opening: loading splash -> main menu (New / Continue / About)
-  const { action } = await showOpening(saved);
+  // `syncAccount` is handed over too: signing in AT the menu has to bring the
+  // heroes down right then, without a reload.
+  const { action } = await showOpening(saved, syncAccount);
   // SOLO IS THE DEFAULT. Only the PLAY ONLINE door connects to the server —
   // having one configured must not drag a player who picked CONTINUE into a
   // world with strangers in it.
@@ -223,8 +238,11 @@ async function main() {
       }
       if (pick.action === 'delete') {
         deleteSlot(pick.slot);
-        // the cloud copy goes with it, or signing in would bring it back
-        if (pick.slot === 0) await deleteCloudSave().catch(() => {});
+        // The cloud copy goes with it, or the next sync brings it straight back.
+        // Slot-aware on purpose: this used to call deleteCloudSave() for slot 0,
+        // which was right when the row held one save and became "delete all
+        // three heroes" once it held a bundle.
+        await deleteCloudSlot(pick.slot).catch(() => {});
         continue;                      // repaint the picker
       }
       setActiveSlot(pick.slot);
@@ -236,9 +254,9 @@ async function main() {
     pickedNew = true;
   }
 
+  // The account was already synced before the menu painted, so the slot on disk
+  // is the right one by now.
   saved = loadSlot(activeSlot());
-  // Continuing a hero is the only case where the cloud has anything to say.
-  if (!pickedNew) await syncChosenSlot();
 
   if (!pickedNew && saved) {
     config = { ...defaultCharacter(), ...saved.character };
@@ -536,11 +554,13 @@ async function init(character, saved, audio, online = false) {
   }
   // LAUNCH POSTS: one at the marina and one at every island pier. Walk up and
   // call your boat in rather than swimming back across the map to fetch it.
+  //
+  // THE SEA ONLY. The lake docks used to get a post as well, on the theory that
+  // it made the dinghy useful on fresh water. It does not: a lake is its radius
+  // plus five, so calling a boat in puts you a second and a half from the far
+  // bank, and the entire experience of it is running aground. A launch post is
+  // a promise of somewhere to go, and a lake has nowhere. Boats live at sea.
   for (const st of isles.launches || []) watercraft.addStation(st);
-  for (const d of landmarks.docks || []) {
-    // the lake docks get one too, so the dinghy is useful on fresh water
-    watercraft.addStation({ x: d.x, z: d.z, dir: Math.atan2(-d.x, -d.z), name: 'Lake dock' });
-  }
 
   // --- safe zones: the village, rest camps and your homes repel monsters ---
   const VILLAGE_SAFE_R = 13;
@@ -709,7 +729,8 @@ async function init(character, saved, audio, online = false) {
       particles.burst(at.clone().add(new THREE.Vector3(0, 0.8, 0)), move.color, 26, 4, 6, 0.7);
       particles.shockwave?.(at.clone().setY(at.y + 0.05), move.color, r * 1.15, 0.5);
       const d = Math.hypot(player.state.pos.x - at.x, player.state.pos.z - at.z);
-      const inside = d < r;
+      // a boss area is still an attack: it does not land on someone fishing
+      const inside = d < r && !defenceless();
 
       switch (move.move) {
         case 'split': {
@@ -751,6 +772,19 @@ async function init(character, saved, audio, online = false) {
       }
     },
     onPlayerHit(e, dmg) {
+      // NOBODY DIES WITH A FISHING ROD IN THEIR HANDS.
+      //
+      // The guard used to sit on each attacker, at the moment it decided to
+      // swing. That covers a monster standing in front of you and misses the
+      // one that already fired: an arrow checks `peaceful` when it LEAVES the
+      // bow and then flies for a second, so casting a line the instant before
+      // it lands took the full hit. Ranged species were the ones killing people
+      // because they never had to close the distance first.
+      //
+      // The receiving end is the only place that can be complete. Every route —
+      // melee, an arrow in flight, a charge impact, a boss area — arrives here,
+      // so one test covers all of them and any route added later.
+      if (defenceless()) return;
       // FAIR TRADE. If a summon is standing between the monster and you, it
       // eats the hit instead. Without this the Summoner's army was scenery the
       // enemies walked straight through, which is why the summons never died.
@@ -1006,6 +1040,45 @@ async function init(character, saved, audio, online = false) {
 
   // relocate the player to the nearest walkable, unblocked cell outside a
   // building footprint (prefers the +z "door" side)
+  /**
+   * States in which the hero genuinely cannot fight back — rod in hand, mid
+   * conversation, hands in a cooking pot. Not the same as "a panel is open":
+   * checking your bag is not a promise to stand still, and monsters carry on
+   * hitting you for it on purpose.
+   */
+  function defenceless() {
+    return !!player.state.busy || !!fishing.state.afk || dialog.isOpen();
+  }
+
+  /**
+   * THE LAST LINE AGAINST BEING STRANDED.
+   *
+   * Outside the terrain grid every height query answers MAX_H — the world wall
+   * — so a hero who ends up out there is standing inside solid rock with no
+   * ground, no way to walk back and nothing on screen but the inside of the
+   * geometry. A boat driven into the boundary did it; anything that moves the
+   * player by coordinates could do it again.
+   *
+   * Rather than chase each cause, the loop simply refuses to let the state
+   * exist: one cheap bounds test a frame, and anyone outside is put back on the
+   * nearest real shore. It costs two comparisons and closes the whole class.
+   */
+  function rescueIfOutOfWorld() {
+    const p = player.state.pos;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) {
+      p.set(terrain.spawn.x, terrain.surfaceY(terrain.spawn.x, terrain.spawn.z), terrain.spawn.z);
+      return;
+    }
+    const [ix, iz] = terrain.cellOf(p.x, p.z);
+    if (terrain.inBounds(ix, iz)) return;
+    if (watercraft.state.active) watercraft.leave(player, true);
+    const shore = terrain.nearestShore(p.x, p.z);
+    p.set(shore.x, terrain.surfaceY(shore.x, shore.z), shore.z);
+    player.state.vy = 0;
+    player.state.grounded = true;
+    hud.toastText('The tide carried you back to shore.');
+  }
+
   function moveToClearSpot(cx, cz, startR) {
     const clear = (x, z) => {
       const [ix, iz] = terrain.cellOf(x, z);
@@ -3096,18 +3169,56 @@ const CAM_PITCH_DEFAULT = 0.98;
   // every light in the world exists.
   let lightPool = null;
   let lightSortT = 0;
+  let knownLights = -1;
+
+  /**
+   * RE-COLLECT, because the world keeps making lights.
+   *
+   * The pool used to be gathered exactly once — first at world-build time,
+   * which missed the hero's lamp and the boat lamps, then on the first tick of
+   * the game loop, which fixed those and still missed everything created
+   * AFTERWARDS. And plenty is: a gacha weapon carries its own glow light, so do
+   * Seraphi and the bamboo beacons, a summon brings one, a boat has two.
+   *
+   * A light outside the pool is never culled, so every one of them permanently
+   * raised the visible count by one — and three.js rebuilds the light loop into
+   * EVERY material in the scene when that count moves. Measured here, live: one
+   * change to the visible light count compiled sixteen new shader programs.
+   * That is a whole-scene shader rebuild in the middle of play, and it is the
+   * stutter — equipping a legendary weapon or summoning a pet was enough to
+   * trigger it, which is why it felt random.
+   *
+   * Rescanning costs one traverse a second against four thousand objects, which
+   * is nothing next to what it prevents.
+   */
+  function collectLights() {
+    lightPool = [];
+    let total = 0;
+    scene.traverse((o) => {
+      if (!o.isPointLight) return;
+      total++;
+      // The hero's lamp is never culled — it is the one light whose whole job
+      // is to be wherever you are.
+      if (!o.userData.alwaysLit) lightPool.push({ l: o, base: o.intensity });
+    });
+    knownLights = total;
+  }
+
   function tickLights(dt) {
     lightSortT -= dt;
     if (lightSortT > 0) return;
     lightSortT = 0.25;                       // 4x a second is plenty
-    if (!lightPool) {
-      lightPool = [];
-      scene.traverse((o) => {
-        // The hero's lamp is never culled — it is the one light whose whole job
-        // is to be wherever you are.
-        if (o.isPointLight && !o.userData.alwaysLit) lightPool.push({ l: o, base: o.intensity });
-      });
+    // Rescanned on the same beat as the sort, not on a slower one: the window
+    // between a light being created and being brought under the budget is a
+    // window in which the visible count is wrong, and a wrong count is a
+    // whole-scene shader rebuild. A traverse of four thousand objects four
+    // times a second is far cheaper than one of those.
+    const before = knownLights;
+    collectLights();
+    if (before < 0) {
       console.info(`[semesta] light budget: ${qual.maxLights} of ${lightPool.length} cullable`);
+    } else if (before !== knownLights) {
+      console.info(`[semesta] point lights ${before} -> ${knownLights}, re-culling`);
     }
     if (lightPool.length <= qual.maxLights) {
       for (const e of lightPool) e.l.visible = true;
@@ -3154,12 +3265,41 @@ const CAM_PITCH_DEFAULT = 0.98;
   for (const id of Object.keys(ITEMS)) {
     try { itemIconUrl(id); } catch { /* an item without an icon painter is fine */ }
   }
+  // WAKE ONE OF EVERYTHING THAT ARRIVES LATER.
+  //
+  // `renderer.compile` only knows about what is in the scene, and when the
+  // world finishes building that is terrain, village and trees — not a single
+  // monster, weapon effect or spell. So the compile below used to cover the
+  // quiet parts of the game and none of the loud ones, and the first monster
+  // you met, the first skill you cast and the first world boss each paid for a
+  // shader compile on the frame they appeared. That is what the stutter a
+  // minute into play actually was.
+  //
+  // Everything that will ever appear is therefore built here, compiled, and
+  // thrown away again: shared geometry and compiled programs survive, the
+  // meshes do not.
+  setBoot(0.90, 'Waking the wilds…'); await frame();
+  const undoPrewarm = enemyMgr.prewarm?.(player.state.pos) || (() => {});
+  // and the effects: additive blending, sprite sheets and the rune sigils are
+  // all separate programs the terrain never touches
+  const fxAt = player.state.pos.clone().setY(player.state.pos.y - 400);
+  try {
+    particles.burst(fxAt, '#ffd23e', 8, 2);
+    particles.ring?.(fxAt, '#7fd0ff', 2, 0.4);
+    particles.shockwave?.(fxAt, '#ff8a3a', 3, 0.5);
+    particles.flash?.(fxAt, '#ffffff', 2, 0.3);
+    particles.runeCircle?.(fxAt, '#a86aff', 2.5, 0.6);
+    particles.fountain?.(fxAt, '#7fd06a', 8, 2);
+  } catch { /* an effect that will not fire dry is not worth failing boot for */ }
+
   setBoot(0.93, 'Compiling shaders…'); await frame();
   // three.js walks the whole scene graph and compiles every material's program,
   // which is the single biggest source of first-seconds stutter
   try { renderer.compile(scene, camera); } catch { /* older three: skip */ }
   renderer.render(scene, camera);
   if (usePost()) composer.render();   // compiles the bloom passes too
+  undoPrewarm();
+  particles.update?.(2.5);            // let the decoy effects expire and recycle
   // Anything that failed to restore is said out loud rather than swallowed —
   // a player whose quest log silently emptied deserves to know why.
   if (bootWarnings.length) {
@@ -3261,6 +3401,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       watercraft.drive(dt, player, player.moveVecFor(input, cam.yaw), time);
     }
     watercraft.update(dt, time);
+    rescueIfOutOfWorld();
     autoBattleTick(dt);
 
     // moving cancels an in-progress fishing session

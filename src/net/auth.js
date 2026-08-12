@@ -261,7 +261,7 @@ export async function onAuthChange(fn) {
 // second character deleted the first.
 //
 // Cloud sync only ever touches the slot you are actually playing.
-import { activeKey } from '../systems/profiles.js';
+import { activeKey, activeSlot, loadSlot, saveSlot, MAX_SLOTS } from '../systems/profiles.js';
 
 export const readLocal = () => {
   try { return JSON.parse(localStorage.getItem(activeKey()) || 'null'); } catch { return null; }
@@ -270,37 +270,225 @@ export const writeLocal = (save) => {
   try { localStorage.setItem(activeKey(), JSON.stringify(save)); } catch {}
 };
 
-/** Pull this account's save. Returns null when there is none or no session. */
-export async function loadCloud() {
+// ---------------------------------------------------------------------------
+// THE ACCOUNT CARRIES EVERY SLOT, NOT ONE SAVE.
+//
+// This used to store a single save per user, which quietly failed the one thing
+// signing in is FOR. Two separate faults, and together they did not just fail to
+// sync — they destroyed the older hero:
+//
+//   1. The cloud was only ever consulted after CONTINUE was pressed, and
+//      CONTINUE is drawn from localStorage. A phone that has never run the game
+//      has no local save, so no CONTINUE button is drawn, so the cloud save can
+//      never be asked for. Signing in on a new device did nothing at all.
+//
+//   2. With no way in but NEW ADVENTURE, the fresh hero made there was uploaded
+//      a minute later — over the row holding the hero from the other device.
+//
+// So: the row holds a BUNDLE of all three slots, every write MERGES against
+// what is already up there newest-wins per slot, and a device never deletes a
+// slot it simply doesn't know about. Signing in on a new device brings your
+// heroes down; signing in on a device that already has one takes it up.
+// ---------------------------------------------------------------------------
+
+const BUNDLE_V = 4;
+
+/** Old rows held one save object. Read both shapes; only ever write the new. */
+export function normalise(payload) {
+  const slots = new Array(MAX_SLOTS).fill(null);
+  if (!payload || typeof payload !== 'object') return slots;
+  if (payload.v === BUNDLE_V && payload.slots && typeof payload.slots === 'object') {
+    for (let i = 0; i < MAX_SLOTS; i++) slots[i] = payload.slots[i] || payload.slots[String(i)] || null;
+    return slots;
+  }
+  // a v3 single save: it was always whatever lived in slot 0
+  if (payload.character || payload.level) slots[0] = payload;
+  return slots;
+}
+
+const stamp = (s) => Number(s?.at || 0);
+
+/**
+ * What should happen to one slot, given both copies. Pure, exported, and the
+ * ONLY place the rule lives — both the download and the upload ask it, so they
+ * cannot drift apart and start fighting each other over the same hero.
+ *
+ * Returns 'take' (cloud wins), 'keep' (local wins), 'same', or 'ask'.
+ */
+export function decideSlot(mine, theirs, closeMs = 5 * 60 * 1000) {
+  if (!theirs) return mine ? 'keep' : 'same';
+  if (!mine) return 'take';
+  const a = stamp(mine); const b = stamp(theirs);
+  // the same save that has been round-tripped: timestamps land within a beat
+  if (Math.abs(a - b) < 1500) return 'same';
+  if (Math.abs(a - b) > closeMs) return b > a ? 'take' : 'keep';
+  return 'ask';
+}
+
+const sameHero = (a, b) => !!a && !!b
+  && (a.character?.name || '') === (b.character?.name || '')
+  && (a.character?.cls || '') === (b.character?.cls || '');
+
+/**
+ * Work out what a download should do to this device, without touching it.
+ *
+ * Pure and exported so the rule can be tested directly — this code can destroy
+ * somebody's character, so "it looked right" is not good enough.
+ *
+ * TWO DIFFERENT HEROES ARE NOT TWO VERSIONS OF ONE HERO. A timestamp only ever
+ * answers "which is newer", which is the right question for one character saved
+ * twice and completely the wrong one for two different characters that happen
+ * to share a slot number. Someone who plays as a guest for ten minutes and THEN
+ * signs in has a brand new Lv2 in slot 0 that is genuinely newer than the Lv30
+ * in the cloud — newest-wins would throw the Lv30 away, and that is exactly the
+ * shape of loss people never forgive.
+ *
+ * They are not in competition, so nothing has to lose: the incoming hero is
+ * moved to a free slot and both survive. Only when all three are full is there
+ * a real choice to make, and then the player is the one who makes it.
+ *
+ * @returns { writes: [{slot, save}], asks: [{slot}] }
+ */
+export function planSync(mineIn, theirsIn) {
+  const mine = mineIn.slice();
+  const theirs = theirsIn.slice();
+  const writes = [];
+  const asks = [];
+
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    if (!theirs[i] || !mine[i] || sameHero(mine[i], theirs[i])) continue;
+    // free in BOTH places, or we would land on another hero still to come down
+    const free = mine.findIndex((s, j) => !s && !theirs[j]);
+    if (free < 0) continue;                    // no room: fall through and ask
+    writes.push({ slot: free, save: theirs[i] });
+    mine[free] = theirs[i];
+    theirs[i] = null;                          // rehomed; leave the local one be
+  }
+
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    const v = decideSlot(mine[i], theirs[i]);
+    if (v === 'take') writes.push({ slot: i, save: theirs[i] });
+    else if (v === 'ask') asks.push({ slot: i });
+  }
+  return { writes, asks };
+}
+
+/** Every slot on this device, as a plain array. */
+function localSlots() {
+  const out = new Array(MAX_SLOTS).fill(null);
+  for (let i = 0; i < MAX_SLOTS; i++) out[i] = loadSlot(i);
+  return out;
+}
+
+/** Pull this account's slots. `null` means "could not ask", which is NOT the
+ *  same as "the account is empty" — the caller must not treat it as empty and
+ *  overwrite anything on the strength of it. */
+export async function pullCloudSlots() {
   const c = await getClient();
   if (!c) return null;
   const u = await currentUser();
   if (!u) return null;
   const { data, error } = await c.from('saves')
-    .select('payload, updated_at').eq('user_id', u.id).maybeSingle();
+    .select('payload').eq('user_id', u.id).maybeSingle();
   if (error) { console.warn('[semesta] cloud load failed:', error.message); return null; }
-  if (!data) return null;
-  return { save: data.payload, at: Date.parse(data.updated_at) || 0 };
+  return normalise(data?.payload);
 }
 
-/** Push the save up. Silently no-ops when signed out — the local copy is the
- *  one that matters, and a failed upload must never interrupt play. */
-export async function saveCloud(save) {
+/**
+ * Push every local slot up, merged against what is already there.
+ *
+ * The merge is the whole point. Without it a phone that only knows slot 0
+ * uploads a bundle of one and erases the two heroes it has never seen.
+ */
+export async function pushCloudSlots() {
   const c = await getClient();
   if (!c) return false;
   const u = await currentUser();
   if (!u) return false;
+
+  const mine = localSlots();
+  const theirs = (await pullCloudSlots()) || new Array(MAX_SLOTS).fill(null);
+  const tombs = readTombstones();
+
+  const slots = {};
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    // a slot deleted on this device stays deleted, even though the cloud still
+    // has it — otherwise DELETE would be undone by the next sync
+    if (tombs[i] && tombs[i] >= stamp(theirs[i])) continue;
+    // Same rule as the download, so the two halves can never disagree and start
+    // trading the slot back and forth. A cloud copy that is clearly newer means
+    // another device is mid-session: leave it alone rather than stamp on it.
+    const best = decideSlot(mine[i], theirs[i]) === 'take' ? theirs[i] : (mine[i] || theirs[i]);
+    if (best) slots[i] = best;
+  }
+
   const { error } = await c.from('saves').upsert({
     user_id: u.id,
-    payload: save,
+    payload: { v: BUNDLE_V, slots },
     updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' });
   if (error) { console.warn('[semesta] cloud save failed:', error.message); return false; }
+  clearTombstones();
   return true;
 }
 
+// A delete has to survive one sync round-trip, or the cloud copy walks straight
+// back in. The tombstone is cleared once a push has actually landed.
+const TOMB_KEY = 'semesta.tomb.v1';
+function readTombstones() {
+  try { return JSON.parse(localStorage.getItem(TOMB_KEY) || '{}') || {}; } catch { return {}; }
+}
+function clearTombstones() { try { localStorage.removeItem(TOMB_KEY); } catch {} }
+/** Call when a slot is deleted locally, so the deletion propagates. */
+export function markSlotDeleted(i) {
+  try {
+    const t = readTombstones();
+    t[i] = Date.now();
+    localStorage.setItem(TOMB_KEY, JSON.stringify(t));
+  } catch {}
+}
+
 /**
- * Wipe this account's cloud save.
+ * Bring the account's heroes onto this device.
+ *
+ * Called when the menu opens signed in, and again the moment a sign-in lands —
+ * BEFORE anything is offered, because a player who cannot see their hero will
+ * make a new one and that is how the old one used to die.
+ *
+ * @param ask  async(info) => 'local'|'cloud', consulted only for a slot that
+ *             exists in both places with timestamps too close to call.
+ * @returns    { pulled, asked } — pulled counts slots that changed locally.
+ */
+export async function syncSlotsFromCloud(ask) {
+  if (!cloudConfigured()) return { pulled: 0 };
+  const theirs = await pullCloudSlots();
+  if (!theirs) return { pulled: 0 };            // offline: change nothing
+  const mine = localSlots();
+  let pulled = 0;
+
+  const plan = planSync(mine, theirs);
+  for (const w of plan.writes) { saveSlot(w.slot, w.save); pulled++; }
+  for (const q of plan.asks) {
+    const a = mine[q.slot]; const b = theirs[q.slot];
+    const pick = ask ? await ask({
+      slot: q.slot,
+      localLevel: a?.level ?? 1, cloudLevel: b?.level ?? 1,
+      localName: a?.character?.name, cloudName: b?.character?.name,
+      localAt: stamp(a), cloudAt: stamp(b),
+    }) : (stamp(b) > stamp(a) ? 'cloud' : 'local');
+    if (pick === 'cloud') { saveSlot(q.slot, b); pulled++; }
+  }
+
+  // whatever this device knows that the cloud does not now goes up
+  await pushCloudSlots();
+  return { pulled };
+}
+
+/** Back-compat shim: the save loop calls this on its slow beat. */
+export async function saveCloud() { return pushCloudSlots(); }
+
+/**
+ * Wipe the WHOLE account: every slot, gone. This is DELETE PROFILE.
  *
  * Deliberately does NOT touch localStorage: "delete my profile" means the copy
  * kept on the server, and quietly destroying what is on the device as well
@@ -314,34 +502,31 @@ export async function deleteCloudSave() {
   if (!u) return false;
   const { error } = await c.from('saves').delete().eq('user_id', u.id);
   if (error) { console.warn('[semesta] delete failed:', error.message); return false; }
+  for (let i = 0; i < MAX_SLOTS; i++) markSlotDeleted(i);
   return true;
+}
+
+/**
+ * Delete ONE hero from the account, leaving the others alone.
+ *
+ * The select screen used to call `deleteCloudSave()` for slot 0, which was
+ * right when the row held a single save and became "delete all three heroes"
+ * the moment it held a bundle.
+ */
+export async function deleteCloudSlot(i) {
+  markSlotDeleted(i);
+  return pushCloudSlots();
 }
 
 /**
  * Decide which save to actually play, on sign-in.
  *
- * @param ask  async (info) => 'local' | 'cloud'  — only called when it is a
- *             genuinely close call, so the player is never nagged for nothing.
+ * Now a thin wrapper: syncing pulls every slot, so by the time this returns the
+ * chosen slot on disk is already the right one.
  */
 export async function reconcile(ask) {
-  const local = readLocal();
-  const cloud = await loadCloud();
-  if (!cloud) { if (local) await saveCloud(local); return { save: local, from: 'local' }; }
-  if (!local) return { save: cloud.save, from: 'cloud' };
-
-  const localAt = Number(local.at || 0);
-  const cloudAt = cloud.at;
-  const gap = Math.abs(localAt - cloudAt);
-  // more than five minutes apart is not ambiguous — take the newer one
-  if (gap > 5 * 60 * 1000) {
-    const useCloud = cloudAt > localAt;
-    return { save: useCloud ? cloud.save : local, from: useCloud ? 'cloud' : 'local' };
-  }
-  const pick = ask ? await ask({
-    localLevel: local?.leveling?.level ?? 1, cloudLevel: cloud.save?.leveling?.level ?? 1,
-    localAt, cloudAt,
-  }) : 'cloud';
-  return { save: pick === 'local' ? local : cloud.save, from: pick };
+  await syncSlotsFromCloud(ask);
+  return { save: loadSlot(activeSlot()), from: 'local' };
 }
 
 /**
@@ -355,7 +540,11 @@ export async function reconcile(ask) {
 export function startCloudAutosave(getSave, everyMs = 60000) {
   let timer = null;
   let dirty = false;
-  const flush = async () => { if (dirty) { dirty = false; await saveCloud(getSave()); } };
+  // `getSave` is no longer read: the uploader takes every slot straight off
+  // localStorage, which the game has already written by the time it is marked
+  // dirty. Passing one save up was how a second character used to erase the
+  // first. The argument stays for callers that still pass it.
+  const flush = async () => { if (dirty) { dirty = false; await pushCloudSlots(); } };
   const mark = () => { dirty = true; };
   timer = setInterval(flush, everyMs);
   // `visibilitychange` rather than `beforeunload`: mobile browsers frequently

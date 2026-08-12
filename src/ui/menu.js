@@ -12,6 +12,7 @@ import {
   cloudConfigured, currentUser, signInWithGoogle, signOut, onAuthChange,
   enabledProviders, mountGoogleButton, deleteCloudSave,
 } from '../net/auth.js';
+import { deleteSlot, MAX_SLOTS } from '../systems/profiles.js';
 import { serverConfigured } from '../net/client.js';
 import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
@@ -340,12 +341,18 @@ function drawMountains(ctx, w, h) {
 }
 
 // ---------------------------------------------------------------------------
-// showOpening(saved) -> Promise<{ action: 'new' | 'continue' | 'online' }>
+// showOpening(saved, syncAccount) -> Promise<{ action: 'new'|'continue'|'online' }>
+//
+// `syncAccount` pulls the signed-in account's heroes down and hands back
+// whichever one belongs in the active slot. It is called again the moment a
+// sign-in lands, because that is the whole reason somebody signs in HERE: they
+// are on a second device and want their character. Without it the menu would go
+// on offering nothing but NEW ADVENTURE to a player who already has three.
 // ---------------------------------------------------------------------------
 const escapeText = (t) => String(t).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-export function showOpening(saved) {
+export function showOpening(saved, syncAccount) {
   return new Promise(async (resolve) => {
     // key out the solid PNG backgrounds so the logo/mascot float cleanly
     const [logo, mascot] = await Promise.all([cleanImage(logoUrl), cleanImage(mascotUrl)]);
@@ -531,7 +538,7 @@ export function showOpening(saved) {
           // redirect route, which always works.
           const slot = acct.querySelector('.gbtn');
           const mounted = await mountGoogleButton(slot, (r) => {
-            if (r.ok) renderAccount();
+            if (r.ok) afterSignIn();
             else { acct.innerHTML = `<span class="note">${r.error}</span>`; setTimeout(renderAccount, 2600); }
           });
           if (!mounted) slot.outerHTML = '<button data-a="google">▶ SIGN IN WITH GOOGLE</button>';
@@ -565,10 +572,12 @@ export function showOpening(saved) {
         }
         b.textContent = 'DELETING…';
         const ok = await deleteCloudSave();
-        // the local save goes too, or CONTINUE would resurrect what was just
+        // The local saves go too, or CONTINUE would resurrect what was just
         // deleted the next time the page loads — which is not what anybody
-        // means by "delete my profile"
-        try { localStorage.removeItem('semesta.save.v3'); } catch {}
+        // means by "delete my profile". ALL of them: this is the account-wide
+        // button, and it used to clear only the slot-0 key, leaving two heroes
+        // on the device that the next sync would happily upload again.
+        for (let i = 0; i < MAX_SLOTS; i++) deleteSlot(i);
         savedRef = null;               // so CONTINUE goes away with it
         acct.innerHTML = `<span class="note">${ok
           ? 'Profile deleted. Start a new adventure whenever you like.'
@@ -576,9 +585,35 @@ export function showOpening(saved) {
         setTimeout(() => { renderAccount(); rebuildMenuButtons(); }, 2600);
       }
     });
+    /**
+     * A sign-in has landed. Fetch the account's heroes and redraw the menu
+     * around them.
+     *
+     * Signing in used to only repaint the account strip, so a player on a
+     * second device watched it say "Signed in as ..." next to a menu still
+     * offering nothing but NEW ADVENTURE — and making one there is what
+     * overwrote the hero they had signed in to reach.
+     */
+    let syncing = false;
+    async function afterSignIn() {
+      renderAccount();
+      if (!syncAccount || syncing) return;
+      syncing = true;
+      const note = document.createElement('div');
+      note.className = 'continfo';
+      note.textContent = 'Fetching your characters…';
+      menu.appendChild(note);
+      try {
+        const fresh = await syncAccount();
+        if (fresh) savedRef = fresh;
+      } catch { /* offline: the local save is still the truth */ }
+      note.remove();
+      syncing = false;
+      rebuildMenuButtons();
+    }
     renderAccount();
     // coming back from the Google redirect lands here with a fresh session
-    onAuthChange(() => renderAccount());
+    onAuthChange(() => afterSignIn());
 
     // --- the GUIDE: everything the game can teach, before you commit to a
     // character. New players' questions all arrive before NEW ADVENTURE, not

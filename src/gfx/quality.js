@@ -93,9 +93,21 @@ const KNOBS = {
     // the bonfire and the island beacons each add their own, and a measured
     // build was running 26 live point lights even on LOW. With Lambert
     // materials every one of them costs per-fragment work on every lit surface.
-    sparse: { decor: 0.3,  lights: 0,  critters: 0,   waterSeg: 28, fogDensity: 0.03,  maxLights: 8 },
-    normal: { decor: 0.65, lights: 6,  critters: 0.5, waterSeg: 52, fogDensity: 0.024, maxLights: 20 },
-    lush:   { decor: 1,    lights: 12, critters: 1,   waterSeg: 84, fogDensity: 0.022, maxLights: 40 },
+    //
+    // The ceilings were 8/20/40 and that was far too generous. Point lights are
+    // not free scenery: the Lambert fragment shader loops over EVERY visible one
+    // for every lit pixel on screen, so twenty of them is twenty times that loop
+    // across the whole frame — and it is paid on the integrated graphics of a
+    // laptop exactly as hard as on a desktop card.
+    //
+    // The important part is that almost none of them can be SEEN. A tōrō throws
+    // light a few units; past that it contributes a rounding error to pixels it
+    // cannot brighten. The culler already keeps the NEAREST ones, so cutting the
+    // ceiling drops lights you were never looking at. Eight nearby lanterns
+    // still reads as a lit road at night, which is the whole reason they exist.
+    sparse: { decor: 0.3,  lights: 0,  critters: 0,   waterSeg: 28, fogDensity: 0.03,  maxLights: 4 },
+    normal: { decor: 0.65, lights: 6,  critters: 0.5, waterSeg: 52, fogDensity: 0.024, maxLights: 8 },
+    lush:   { decor: 1,    lights: 12, critters: 1,   waterSeg: 84, fogDensity: 0.022, maxLights: 16 },
   },
   view: { near: 110, mid: 160, far: 220 },
 };
