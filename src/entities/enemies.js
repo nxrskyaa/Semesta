@@ -14,6 +14,8 @@ import { sharedBox, sharedCyl, sharedSphere } from '../gfx/meshcache.js';
 
 // Aggro ranges are deliberately modest — monsters shouldn't dogpile players
 // who are just exploring; you mostly fight what you walk up to.
+import { DUNGEON_TYPES, DUNGEON_BUILDERS, DUNGEON_BOSSES } from './dungeonfoes.js';
+
 export const ENEMY_TYPES = {
   slime: {
     name: 'Slime', hp: 14, dmg: 4, speed: 1.5, xp: 8, aggro: 4.0, attackRange: 1.0,
@@ -72,6 +74,12 @@ export const ENEMY_TYPES = {
     name: 'Mossback', hp: 55, dmg: 11, speed: 0.65, xp: 30, aggro: 3.5, attackRange: 1.3,
     attackCd: 2.2, weight: 0.05, behavior: 'melee',
   },
+  // THE HOLLOW'S OWN. Merged in rather than kept in a separate table so that
+  // every system that already walks ENEMY_TYPES -- the Index catalogue, the
+  // loading-screen prewarm, level scaling, disposal -- sees them for free and
+  // cannot forget one. They all carry `weight: 0` and `dungeonOnly`, so the
+  // overworld spawner can never roll one however it is called.
+  ...DUNGEON_TYPES,
 };
 
 // ---------------------------------------------------------------------------
@@ -519,6 +527,10 @@ const BUILDERS = {
   treant: buildTreantMesh, golem: buildGolemMesh,
   frostling: buildFrostlingMesh, sparkit: buildSparkitMesh, puffowl: buildPuffowlMesh,
   embercub: buildEmbercubMesh, thornling: buildThornlingMesh, mossback: buildMossbackMesh,
+  // The Hollow's own. Merged rather than listed separately so every existing
+  // path -- spawning, the prewarm, disposal, the Index -- picks them up without
+  // a single `if (dungeon)` anywhere.
+  ...DUNGEON_BUILDERS,
 };
 
 // --- world bosses: giant variants that appear on a timer ---
@@ -596,6 +608,9 @@ export const WORLD_BOSSES = {
       { at: 0.28, every: 3.4, move: 'inferno', tell: 1.3, color: '#ff5a2c', r: 9 },
     ],
   },
+  // The Hollow's wardens and lords. Same shape, same `phases` script, so the
+  // boss handler in main.js needs nothing added for them.
+  ...DUNGEON_BOSSES,
 };
 const BOSS_LIFETIME = 150; // seconds before it wanders away
 
@@ -767,6 +782,77 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         dead: false,
       });
       return;
+    }
+  }
+
+  /**
+   * PUT ONE EXACTLY HERE, at exactly this level.
+   *
+   * `spawnOne` is the OVERWORLD's spawner and every line of it is about the
+   * overworld: it picks a random ring 17-45 units out, rejects water, rejects
+   * blocked decor cells, and derives a level from how far the spot is from the
+   * village. None of that means anything in a sealed hall seventeen units
+   * across, five hundred units above the map — and the decor-blocked test in
+   * particular would have consulted cell 0,0 for every dungeon spawn, because
+   * the terrain override answers `cellOf` with a constant.
+   *
+   * A dungeon floor is a composed encounter, not a wilderness: the plan says
+   * what stands where and at what level, so this places it and asks nothing.
+   *
+   * @param opts.boss   a WORLD_BOSSES id, which brings its scale, phases and title
+   * @param opts.hpMult / dmgMult / xpMult  the difficulty multipliers
+   */
+  function spawnAt(type, x, y, z, level, opts = {}) {
+    const boss = opts.boss ? WORLD_BOSSES[opts.boss] : null;
+    const def = boss
+      ? { ...ENEMY_TYPES[boss.base], ...boss, boss: true }
+      : ENEMY_TYPES[type];
+    if (!def) return null;
+    const meshType = boss ? boss.base : type;
+    const mesh = BUILDERS[meshType]?.();
+    if (!mesh) return null;
+
+    let hpMax = Math.round((boss ? boss.hp : def.hp * (1 + (level - 1) * 0.35)) * (opts.hpMult ?? 1));
+    let dmg = Math.round((boss ? boss.dmg : def.dmg * (1 + (level - 1) * 0.3)) * (opts.dmgMult ?? 1));
+    let xp = Math.round((boss ? boss.xp : def.xp * (1 + (level - 1) * 0.4)) * (opts.xpMult ?? 1));
+
+    if (boss) {
+      mesh.scale.setScalar(boss.scale || 2);
+    } else if (opts.elite) {
+      hpMax = Math.round(hpMax * 2.6); dmg = Math.round(dmg * 1.5); xp = Math.round(xp * 2.5);
+      mesh.scale.setScalar(1.32);
+    }
+
+    const label = boss ? boss.name : (opts.elite ? `★ ${def.name}` : def.name);
+    const np = makeNameplate(label, level, !!boss || !!opts.elite);
+    np.sprite.position.y = (boss ? 1.4 * (boss.scale || 2) : 1.15);
+    np.sprite.visible = !!boss;                 // a boss announces itself
+    mesh.add(np.sprite);
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+
+    const e = {
+      type: meshType, def, level, mesh, np, elite: !!opts.elite,
+      hp: hpMax, hpMax, dmg, xp,
+      state: 'aggro',                            // nothing in the Hollow wanders
+      wanderT: 0, dir: Math.random() * Math.PI * 2,
+      attackCd: 0, hurtFlash: 0, anim: Math.random() * 10,
+      knock: new THREE.Vector2(0, 0),
+      stunT: 0, frozenT: 0,
+      chargeT: 0, windupT: 0, chargeDir: new THREE.Vector2(), chargeHit: false,
+      dead: false,
+      dungeon: true,                             // so the run can count its own
+      bossId: opts.boss || null,
+      phases: boss?.phases || null, phaseT: 0, phaseI: 0,
+    };
+    enemies.push(e);
+    return e;
+  }
+
+  /** Clear the floor: used when leaving a run, or moving to the next hall. */
+  function clearDungeonFoes() {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (enemies[i].dungeon) { retire(enemies[i]); enemies.splice(i, 1); }
     }
   }
 
@@ -1235,5 +1321,5 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     };
   }
 
-  return { enemies, update, damage, spawnOne, spawnWorldBoss, prewarm };
+  return { enemies, update, damage, spawnOne, spawnAt, clearDungeonFoes, spawnWorldBoss, prewarm };
 }
