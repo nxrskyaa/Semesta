@@ -812,9 +812,16 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     const mesh = BUILDERS[meshType]?.();
     if (!mesh) return null;
 
-    let hpMax = Math.round((boss ? boss.hp : def.hp * (1 + (level - 1) * 0.35)) * (opts.hpMult ?? 1));
-    let dmg = Math.round((boss ? boss.dmg : def.dmg * (1 + (level - 1) * 0.3)) * (opts.dmgMult ?? 1));
-    let xp = Math.round((boss ? boss.xp : def.xp * (1 + (level - 1) * 0.4)) * (opts.xpMult ?? 1));
+    // THE CALLER'S MULTIPLIER IS THE WHOLE MULTIPLIER.
+    //
+    // Deliberately NOT the overworld's `1 + (level-1) * 0.3` on top: that curve
+    // is tuned for the levels the wilds actually produce, roughly 1 to 10, and
+    // a dungeon floor hands out 24 to 58. Applying both turned Easy floor 3
+    // into something that killed a Lv25 hero in eight seconds. The floor plan
+    // owns its own difficulty; `level` here is a label for the nameplate.
+    let hpMax = Math.round((boss ? boss.hp : def.hp) * (opts.hpMult ?? 1));
+    let dmg = Math.round((boss ? boss.dmg : def.dmg) * (opts.dmgMult ?? 1));
+    let xp = Math.round((boss ? boss.xp : def.xp) * (opts.xpMult ?? 1));
 
     if (boss) {
       mesh.scale.setScalar(boss.scale || 2);
@@ -946,7 +953,16 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
   function update(dt, playerState, time, isNight) {
     const playerPos = playerState.pos;
     const aliveCount = enemies.filter((e) => !e.dead).length;
-    if (aliveCount < MAX_ENEMIES && Math.random() < dt * 2.5) {
+    // THE WILDS DO NOT FOLLOW YOU UNDERGROUND.
+    //
+    // This spawner places a monster around the player and seats it with
+    // `terrain.surfaceY`. Inside the Hollow that method is overridden to answer
+    // the hall floor, so the ambient roll went on running and quietly filled the
+    // dungeon with Anavela's own Slimes and Boarlings — measured at 641 stray
+    // meshes in one room, which is what buried the hall under a brown carpet and
+    // made a composed encounter into a pile. A dungeon floor is exactly the set
+    // of monsters its plan asked for, so ambient spawning stops at the door.
+    if (aliveCount < MAX_ENEMIES && !hooks.ambientPaused?.() && Math.random() < dt * 2.5) {
       spawnOne(playerPos, isNight);
     }
 

@@ -80,19 +80,19 @@ export const THEMES = {
 export const DIFFICULTIES = {
   easy: {
     id: 'easy', name: 'Descent', tag: 'EASY', color: '#7fd06a',
-    enemyLv: 0, hp: 0.8, dmg: 0.65, xp: 1.0, coins: 1.0,
+    enemyLv: 0, hp: 0.8, dmg: 0.55, xp: 1.0, coins: 1.0,
     packs: 0.8, maxLoot: 'rare',
     blurb: 'The whole Hollow, at a pace you can learn it at. Every floor, every boss.',
   },
   medium: {
     id: 'medium', name: 'Deep Descent', tag: 'MEDIUM', color: '#ffc95c',
-    enemyLv: 6, hp: 1.5, dmg: 1.05, xp: 1.7, coins: 1.6,
+    enemyLv: 6, hp: 1.2, dmg: 0.95, xp: 1.7, coins: 1.6,
     packs: 1.0, maxLoot: 'epic',
     blurb: 'They hit back properly, and they do not come one at a time.',
   },
   hard: {
     id: 'hard', name: 'The Unlit', tag: 'HARD', color: '#ff6b5e',
-    enemyLv: 14, hp: 2.6, dmg: 1.55, xp: 2.8, coins: 2.4,
+    enemyLv: 14, hp: 1.7, dmg: 1.45, xp: 2.8, coins: 2.4,
     packs: 1.25, maxLoot: 'mythic',
     blurb: 'No mercy, no second chances, and the only place the Unlit gear drops.',
   },
@@ -130,7 +130,31 @@ export function planFloor(n, diffId) {
     // you cannot see through a crowd is just a crowd
     guards: kind === 'warden' ? Math.max(2, Math.round(3 * d.packs)) : 0,
     boss: kind === 'hall' ? null : bossFor(n),
-    hpMult: d.hp, dmgMult: d.dmg, xpMult: d.xp, coinMult: d.coins,
+
+    // THE HOLLOW SCALES ON ITS OWN CURVE, and it has to.
+    //
+    // The overworld multiplies a monster by `1 + (level-1) * 0.3` for damage,
+    // which is tuned for the levels it actually produces — roughly 1 to 10. A
+    // dungeon floor hands out levels of 24 to 58, and at level 24 that curve is
+    // already EIGHT TIMES the base. Measured before this: a hero at Lv25 with
+    // 400 HP stood still on EASY floor 3 and was dead in eight seconds. That is
+    // not a difficulty, it is a wall, and it made "Easy is a real run anyone can
+    // finish" a lie.
+    //
+    // So the floor supplies the whole multiplier and the level is only a label.
+    // Health climbs faster than damage on purpose: deeper floors should take
+    // longer to chew through, not delete you quicker.
+    hpMult: (1 + n * 0.18) * d.hp,
+    dmgMult: (1 + n * 0.10) * d.dmg,
+    xpMult: (1 + n * 0.25) * d.xp,
+    coinMult: d.coins,
+    // A BOSS TAKES THE DIFFICULTY AND NOT THE FLOOR CURVE. Its health is
+    // already written per floor in the boss table — 900 for the first warden,
+    // 4,600 for the last lord — so multiplying by depth as well would have made
+    // Emberheart a fifty-thousand-point health bar you hit for four minutes.
+    bossHpMult: d.hp,
+    bossDmgMult: d.dmg,
+    bossXpMult: d.xp,
   };
 }
 

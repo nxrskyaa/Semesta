@@ -582,7 +582,30 @@ async function init(character, saved, audio, online = false) {
     });
   }
 
+  // true only while a dungeon run is live; see inSafeZone below
+  let inHollow = false;
+
   function inSafeZone(x, z) {
+    // THERE ARE NO SANCTUARIES IN THE HOLLOW, and forgetting that made the
+    // whole dungeon a walking tour.
+    //
+    // Anavela's zones are tested in x/z only, because the overworld is one
+    // surface. The Hollow is stacked five hundred units ABOVE that surface, so
+    // a hall centred on (0,0) — which is where they are built — sat squarely
+    // inside the village's own 13-unit sanctuary at (0.5, 0.5). Every monster
+    // down there was therefore treated as standing in the basecamp: repelled at
+    // the boundary, dropping aggro, wandering off. Measured before this line:
+    // the hero stood still in the middle of a full hall for five seconds and
+    // took ZERO damage while all four monsters went from aggro to wander.
+    //
+    // Testing the run rather than the coordinates closes it wherever a hall is
+    // built, instead of relying on a hall never overlapping a camp or a house.
+    // Read off a plain flag, NOT off `dungeon`: this function is called during
+    // the world build (the first monsters are spawned there) and `dungeon` is
+    // declared hundreds of lines later, so naming it here would read a const in
+    // its temporal dead zone and stop the loading bar dead. That has now
+    // happened SEVEN times in this file.
+    if (inHollow) return null;
     for (const c of calmZones) {
       if ((x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r) return c;
     }
@@ -827,6 +850,8 @@ async function init(character, saved, audio, online = false) {
     },
     sfx: (n) => audio.sfx(n),
     inSafeZone,
+    // reads a plain flag, not `dungeon`, for the TDZ reason above
+    ambientPaused: () => inHollow,
     getPlayerLevel: () => leveling.state.level, // monsters scale every 5 levels
   });
   for (let i = 0; i < 14; i++) enemyMgr.spawnOne(player.state.pos);
@@ -1531,6 +1556,18 @@ async function init(character, saved, audio, online = false) {
     return id;
   }
 
+  /** Retire every monster that is not part of a dungeon floor. */
+  function clearSurfaceFoes() {
+    for (let i = enemyMgr.enemies.length - 1; i >= 0; i--) {
+      const e = enemyMgr.enemies[i];
+      if (e.dungeon) continue;
+      e.hp = 0; e.dead = true;
+      e.mesh.visible = false;
+      if (e.mesh.parent) e.mesh.parent.remove(e.mesh);
+      enemyMgr.enemies.splice(i, 1);
+    }
+  }
+
   /** Stock the current floor from its plan. Nothing here is random rabble. */
   function populateFloor(plan) {
     enemyMgr.clearDungeonFoes();
@@ -1548,8 +1585,12 @@ async function init(character, saved, audio, online = false) {
       enemyMgr.spawnAt(band[i % band.length], at.x, at.y, at.z, plan.level, mult);
     }
     if (plan.boss) {
-      // dead centre, so it is the first thing you see when the door shuts
-      enemyMgr.spawnAt(null, 0, DUNGEON_Y, -2, plan.level, { ...mult, boss: plan.boss });
+      // dead centre, so it is the first thing you see when the door shuts.
+      // Its own multipliers, not the rabble's — see the note in planFloor.
+      enemyMgr.spawnAt(null, 0, DUNGEON_Y, -2, plan.level, {
+        boss: plan.boss,
+        hpMult: plan.bossHpMult, dmgMult: plan.bossDmgMult, xpMult: plan.bossXpMult,
+      });
       const b = WORLD_BOSSES[plan.boss];
       hud.banner?.(`${b.name} — ${b.title}`);
       audio.sfx('boss_spawn');
@@ -1563,6 +1604,12 @@ async function init(character, saved, audio, online = false) {
     // is meant to be played, and a run you watched is not a run you cleared.
     if (autoBattle) { autoBattle = false; hud.setAuto?.(false); }
     if (watercraft.state.active) watercraft.leave(player, true);
+    inHollow = true;
+    // EVERY surface monster goes before the door shuts. They were spawned around
+    // Anavela and seated on Anavela's ground; leaving them alive means they are
+    // still in the enemy list, still updated, and still walking at a hero who is
+    // now five hundred units up. The wilds refill on their own once you are back.
+    clearSurfaceFoes();
     const run = dungeon.begin(difficulty, floor);
     const at = dungeonWorld.enter(run.plan);
     player.state.pos.set(at.x, at.y, at.z);
@@ -1577,7 +1624,9 @@ async function init(character, saved, audio, online = false) {
 
   function leaveHollow(died = false) {
     if (!dungeon.state.active) return;
+    inHollow = false;
     enemyMgr.clearDungeonFoes();
+    clearSurfaceFoes();     // and nothing the Hollow spawned comes up with you
     dungeonWorld.leave();
     dungeon.leave(died);
     const back = hollowReturn || terrain.spawn;
