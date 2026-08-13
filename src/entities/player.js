@@ -898,6 +898,133 @@ function buildExoticWeapon(g, def, s) {
   const float = (mesh) => { mesh.userData.by = mesh.position.y; out.anim.floaters.push(mesh); g.add(mesh); };
   const key = `${def.model}_${def.type}`;
 
+  // -------------------------------------------------------------------------
+  // THE HOLLOW'S THREE FAMILIES.
+  //
+  // Handled FIRST and returned early, on purpose. The chain below ends in a
+  // bare `else` that builds celestial daggers, so anything it does not
+  // recognise silently becomes a pair of moon knives — a new model would have
+  // looked wrong rather than looked missing, which is far harder to notice.
+  //
+  // Each family is one idea carried across all four weapon types, rather than
+  // twelve unrelated objects: you should be able to tell an Unlit weapon from
+  // a Glacius one across the room without reading the name.
+  // -------------------------------------------------------------------------
+  if (def.model === 'unlit' || def.model === 'glacius' || def.model === 'emberheart') {
+    const fam = def.model;
+    const cyl = (rt, rb, h, mat, seg = 8) =>
+      new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+    // the material each family's mass is cut from
+    const solid = () => fam === 'glacius'
+      ? lam(lightC, { transparent: true, opacity: 0.72 })     // ice you see into
+      : lam(darkC);                                            // dark / obsidian
+    // and the light inside it, which is what actually reads at distance
+    const core = () => B(def.glow, {
+      transparent: true, opacity: fam === 'unlit' ? 0.75 : 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+
+    /** The family's signature ornament, hung wherever a type has room for it. */
+    const ornament = (y, sc = 1) => {
+      const o = new THREE.Group();
+      o.position.y = y;
+      if (fam === 'unlit') {
+        // A SMOTHERED LANTERN. The Lanternkeepers' own light, caged and going
+        // out — the whole point of the weapon is that it is a lamp that failed.
+        const cage = cyl(0.075 * sc, 0.075 * sc, 0.17 * sc, lam('#1a1626'), 6);
+        for (let i = 0; i < 4; i++) {
+          const bar = box(0.012 * sc, 0.18 * sc, 0.012 * sc, lam('#3a3050'));
+          const a = (i / 4) * Math.PI * 2;
+          bar.position.set(Math.cos(a) * 0.07 * sc, 0, Math.sin(a) * 0.07 * sc);
+          o.add(bar);
+        }
+        const flame = octa(0.045 * sc, core());
+        flame.scale.y = 1.6;
+        o.add(cage, flame);
+      } else if (fam === 'glacius') {
+        // shards that never settle: they orbit, so the weapon is never still
+        for (let i = 0; i < 5; i++) {
+          const sh = octa(0.035 * sc, lam(lightC, { transparent: true, opacity: 0.85 }));
+          sh.scale.set(0.5, 1.9, 0.5);
+          const a = (i / 5) * Math.PI * 2;
+          sh.position.set(Math.cos(a) * 0.12 * sc, Math.sin(i * 1.3) * 0.05, Math.sin(a) * 0.12 * sc);
+          float(sh);
+        }
+        const heart = octa(0.05 * sc, core());
+        o.add(heart);
+      } else {
+        // a molten heart behind cracked plates, breathing rather than blinking
+        const heart = octa(0.06 * sc, core());
+        heart.scale.set(1, 1.5, 1);
+        const shellA = box(0.1 * sc, 0.16 * sc, 0.05 * sc, lam('#1e100c'));
+        shellA.position.z = 0.05 * sc;
+        const shellB = shellA.clone();
+        shellB.position.z = -0.05 * sc;
+        o.add(heart, shellA, shellB);
+      }
+      g.add(o);
+      return o;
+    };
+
+    if (def.type === 'sword') {
+      // a heavy slab of a blade, with the light showing along a cut fuller
+      const blade = box(0.1, 1.05 * s, 0.035, solid());
+      blade.position.y = 0.72 * s;
+      const fuller = box(0.028, 0.92 * s, 0.05, core());
+      fuller.position.y = 0.72 * s;
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.22 * s, 4), solid());
+      tip.position.y = 1.3 * s;
+      const guard = box(0.34, 0.055, 0.09, lam(fam === 'glacius' ? '#2f5c78' : '#2a2230'));
+      guard.position.y = 0.2;
+      g.add(blade, fuller, tip, guard, grip());
+      ornament(0.2, 1.1);
+    } else if (def.type === 'bow') {
+      // two swept limbs and no wooden riser: the grip IS the ornament
+      for (const sy of [-1, 1]) {
+        const limb = new THREE.Mesh(
+          new THREE.TorusGeometry(0.32 * s, 0.028, 5, 9, Math.PI * 0.6), solid());
+        limb.position.y = sy * 0.3 * s;
+        limb.rotation.z = sy > 0 ? -0.5 : Math.PI + 0.5;
+        g.add(limb);
+        const glint = new THREE.Mesh(
+          new THREE.TorusGeometry(0.32 * s, 0.01, 4, 9, Math.PI * 0.6), core());
+        glint.position.set(0, sy * 0.3 * s, 0.02);
+        glint.rotation.z = sy > 0 ? -0.5 : Math.PI + 0.5;
+        g.add(glint);
+      }
+      const string = box(0.006, 1.24 * s, 0.006, B('#e8e0f0', { transparent: true, opacity: 0.55 }));
+      string.position.set(0.3 * s, 0, 0);
+      g.add(string, grip());
+      ornament(0, 1.0);
+    } else if (def.type === 'staff') {
+      // a plain shaft that exists only to hold the ornament up
+      const shaft = cyl(0.028, 0.036, 1.3 * s, solid(), 6);
+      shaft.position.y = 0.62 * s;
+      const collar = cyl(0.055, 0.055, 0.06, lam('#2a2230'), 6);
+      collar.position.y = 1.16 * s;
+      g.add(shaft, collar);
+      ornament(1.34 * s, 1.5);
+    } else {
+      // paired short blades, because a dagger class swings two
+      const mk = () => {
+        const d = new THREE.Group();
+        d.userData.isWeapon = true;
+        const b = box(0.055, 0.42 * s, 0.022, solid());
+        b.position.y = 0.3 * s;
+        const edge = box(0.016, 0.36 * s, 0.032, core());
+        edge.position.y = 0.3 * s;
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12 * s, 4), solid());
+        tip.position.y = 0.55 * s;
+        d.add(b, edge, tip, grip());
+        return d;
+      };
+      g.add(mk());
+      out.off = mk();
+      ornament(0.16, 0.75);
+    }
+    return out;
+  }
+
   if (key === 'star_sword') {
     // a faceted crystal greatblade with shard fragments orbiting loose
     const core = octa(0.16, lam(lightC));

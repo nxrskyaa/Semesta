@@ -26,6 +26,9 @@ export const ITEMS = {
   wisp_essence: { name: 'Wisp Essence', sell: 8 },
   golem_core:   { name: 'Golem Core', sell: 40 },
   forge_stone:  { name: 'Forge Stone', sell: 6 },
+  // THE HOLLOW's currency. Only drops below, only spends below -- it is the
+  // proof that you went down, and what the gate trades against.
+  hollow_shard: { name: 'Hollow Shard', sell: 40 },
   frost_shard:  { name: 'Frost Shard', sell: 9 },
   static_fluff: { name: 'Static Fluff', sell: 6 },
   soft_plume:   { name: 'Soft Plume', sell: 8 },
@@ -166,6 +169,47 @@ export const ITEMS = {
   trail_ink:    { name: 'Ink Trail', cosmetic: 'trail', rarity: 'rare' },
   trail_aurora: { name: 'Aurora Trail', cosmetic: 'trail', rarity: 'mythic', limited: 'Lanterns' },
 
+  // ---------------------------------------------------------------------
+  // THE HOLLOW SET -- dungeon only, and the whole reason to go back down.
+  //
+  // `limited: 'The Hollow'` marks them in the wardrobe and the Index as
+  // unobtainable anywhere else: no gacha, no shop, no quest pays these out.
+  // A reward you can also buy is not a reward, it is a price.
+  // ---------------------------------------------------------------------
+  hollow_lantern:   { name: "Keeper's Lantern",   cosmetic: 'back',  rarity: 'epic',      limited: 'The Hollow' },
+  hat_keeper:       { name: 'Lanternkeeper Hood',  cosmetic: 'hat',   rarity: 'epic',      limited: 'The Hollow' },
+  hat_hoarfrost:    { name: 'Hoarfrost Crown',     cosmetic: 'hat',   rarity: 'legendary', limited: 'The Hollow' },
+  hat_embercrown:   { name: 'Ember Crown',         cosmetic: 'hat',   rarity: 'mythic',    limited: 'The Hollow' },
+  back_frostmantle: { name: 'Frostmantle',         cosmetic: 'back',  rarity: 'legendary', limited: 'The Hollow' },
+  back_cinderwing:  { name: 'Cinderwings',         cosmetic: 'back',  rarity: 'mythic',    limited: 'The Hollow' },
+  trail_emberdust:  { name: 'Emberdust Trail',     cosmetic: 'trail', rarity: 'rare',      limited: 'The Hollow' },
+  trail_frostmote:  { name: 'Frostmote Trail',     cosmetic: 'trail', rarity: 'epic',      limited: 'The Hollow' },
+  trail_cinder:     { name: 'Cinderfall Trail',    cosmetic: 'trail', rarity: 'legendary', limited: 'The Hollow' },
+
+  // ---------------------------------------------------------------------------
+  // THE HOLLOW'S WEAPONS. One family per lord, and each family is a different
+  // OBJECT rather than the same blade in a new colour -- `model` sends it to its
+  // own builder in player.js, exactly the way the gacha exclusives work.
+  //
+  //   unlit       solid dark closed around a smothered lantern flame
+  //   glacius     fractured ice under a halo of shards that never quite settles
+  //   emberheart  cracked obsidian over a molten core that breathes
+  // ---------------------------------------------------------------------------
+  unlit_blade:   { name: 'The Unlit Edge',     weapon: true, type: 'sword',  tier: 5, dmg: 40, speed: 1.72, range: 2.7, arc: 2.3, blade: ['#241d33', '#6a5a86'], scale: 1.26, glow: '#8f78d8', rarity: 'legendary', model: 'unlit', limited: 'The Hollow' },
+  unlit_bow:     { name: 'The Unlit Span',     weapon: true, type: 'bow',    tier: 5, dmg: 34, speed: 1.55, range: 15,  arc: 0,   blade: ['#241d33', '#6a5a86'], scale: 1.20, glow: '#8f78d8', rarity: 'legendary', model: 'unlit', limited: 'The Hollow' },
+  unlit_staff:   { name: 'The Unlit Rod',      weapon: true, type: 'staff',  tier: 5, dmg: 36, speed: 1.50, range: 13,  arc: 0,   blade: ['#241d33', '#6a5a86'], scale: 1.24, glow: '#8f78d8', rarity: 'legendary', model: 'unlit', limited: 'The Hollow' },
+  unlit_fangs:   { name: 'The Unlit Fangs',    weapon: true, type: 'dagger', tier: 5, dmg: 30, speed: 2.50, range: 2.0, arc: 2.0, blade: ['#241d33', '#6a5a86'], scale: 1.10, glow: '#8f78d8', rarity: 'legendary', model: 'unlit', limited: 'The Hollow' },
+
+  glacius_blade: { name: 'Glacius Shardblade', weapon: true, type: 'sword',  tier: 6, dmg: 48, speed: 1.78, range: 2.8, arc: 2.4, blade: ['#2f5c78', '#cdeeff'], scale: 1.30, glow: '#8fd8ff', rarity: 'mythic', model: 'glacius', limited: 'The Hollow' },
+  glacius_bow:   { name: 'Glacius Rimebow',    weapon: true, type: 'bow',    tier: 6, dmg: 41, speed: 1.60, range: 16,  arc: 0,   blade: ['#2f5c78', '#cdeeff'], scale: 1.24, glow: '#8fd8ff', rarity: 'mythic', model: 'glacius', limited: 'The Hollow' },
+  glacius_staff: { name: 'Glacius Spire',      weapon: true, type: 'staff',  tier: 6, dmg: 44, speed: 1.55, range: 14,  arc: 0,   blade: ['#2f5c78', '#cdeeff'], scale: 1.28, glow: '#8fd8ff', rarity: 'mythic', model: 'glacius', limited: 'The Hollow' },
+  glacius_claws: { name: 'Glacius Talons',     weapon: true, type: 'dagger', tier: 6, dmg: 36, speed: 2.60, range: 2.1, arc: 2.1, blade: ['#2f5c78', '#cdeeff'], scale: 1.14, glow: '#8fd8ff', rarity: 'mythic', model: 'glacius', limited: 'The Hollow' },
+
+  ember_blade:   { name: 'Emberheart Cleaver', weapon: true, type: 'sword',  tier: 6, dmg: 54, speed: 1.82, range: 2.9, arc: 2.5, blade: ['#3a1410', '#ff9a4a'], scale: 1.36, glow: '#ff7a3c', rarity: 'mythic', model: 'emberheart', limited: 'The Hollow' },
+  ember_bow:     { name: 'Emberheart Recurve', weapon: true, type: 'bow',    tier: 6, dmg: 46, speed: 1.64, range: 16,  arc: 0,   blade: ['#3a1410', '#ff9a4a'], scale: 1.28, glow: '#ff7a3c', rarity: 'mythic', model: 'emberheart', limited: 'The Hollow' },
+  ember_staff:   { name: 'Emberheart Brand',   weapon: true, type: 'staff',  tier: 6, dmg: 50, speed: 1.58, range: 14,  arc: 0,   blade: ['#3a1410', '#ff9a4a'], scale: 1.32, glow: '#ff7a3c', rarity: 'mythic', model: 'emberheart', limited: 'The Hollow' },
+  ember_claws:   { name: 'Emberheart Claws',   weapon: true, type: 'dagger', tier: 6, dmg: 41, speed: 2.70, range: 2.1, arc: 2.2, blade: ['#3a1410', '#ff9a4a'], scale: 1.16, glow: '#ff7a3c', rarity: 'mythic', model: 'emberheart', limited: 'The Hollow' },
+
   // mount whistles — starter one is free, the rest come from villager quests
   mount_sprig:      { name: 'Sprig Whistle', mountId: 'sprig' },
   mount_trotter:    { name: 'Trotter Whistle', mountId: 'trotter' },
@@ -268,11 +312,23 @@ export const ITEMS = {
   celestial_claws: { name: 'Celestium Claws', weapon: true, type: 'dagger', tier: 6, dmg: 26, speed: 3.5,  range: 2.2, arc: 2.0, hits: 2, blade: ['#6a2a4a', '#ffc8e8'], scale: 0.95, glow: '#f05a9a', rarity: 'mythic', model: 'celestial' },
 };
 
+
 // gacha weapon lookup: rarity tier -> weapon type -> item id
 export const GACHA_WEAPONS = {
   epic:      { sword: 'star_blade', bow: 'star_bow', staff: 'star_staff', dagger: 'star_fangs' },
   legendary: { sword: 'dragon_edge', bow: 'dragon_recurve', staff: 'dragon_scepter', dagger: 'dragon_talons' },
   mythic:    { sword: 'celestial_saber', bow: 'celestial_arc', staff: 'celestial_rod', dagger: 'celestial_claws' },
+};
+
+
+// The Hollow's weapon lookup, deliberately the SAME SHAPE as GACHA_WEAPONS so
+// main.js's exoticFor() resolves a lord's prize to the family matching YOUR
+// class -- a Summoner is never handed a bow, and axe/cannon/fist borrow the
+// closest silhouette rather than being granted nothing.
+export const DUNGEON_WEAPONS = {
+  unlit:      { sword: 'unlit_blade',   bow: 'unlit_bow',   staff: 'unlit_staff', dagger: 'unlit_fangs' },
+  glacius:    { sword: 'glacius_blade', bow: 'glacius_bow', staff: 'glacius_staff', dagger: 'glacius_claws' },
+  emberheart: { sword: 'ember_blade',   bow: 'ember_bow',   staff: 'ember_staff', dagger: 'ember_claws' },
 };
 
 // [itemId, chance, min, max]

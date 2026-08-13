@@ -33,6 +33,7 @@ import { createParticles } from './gfx/particles.js';
 import { makeTerrainAtlas } from './gfx/textures.js';
 import { createPlayer } from './entities/player.js';
 import { createEnemyManager, WORLD_BOSSES } from './entities/enemies.js';
+import { BAND_SPECIES } from './entities/dungeonfoes.js';
 import { createNPCs, makeQuestMark, NPC_DEFS } from './entities/npcs.js';
 import { createPickups } from './entities/pickups.js';
 import { createProjectiles } from './entities/projectiles.js';
@@ -54,9 +55,12 @@ import { createFishing } from './systems/fishing.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
 import { createHousing, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
 import { createIndex } from './systems/index.js';
+import { createDungeon } from './systems/dungeon.js';
+import { createDungeonWorld, buildHollowGate, DUNGEON_Y } from './world/dungeonworld.js';
+import { showDungeonGate, hollowLockedText } from './ui/dungeonpanel.js';
 import { createFriends } from './systems/friends.js';
 import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
-import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS } from './systems/items.js';
+import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS, DUNGEON_WEAPONS } from './systems/items.js';
 import { createWardrobe, cosmeticsBySlot } from './systems/cosmetics.js';
 import { createAudio } from './audio/audio.js';
 import { showCharacterCreation } from './ui/charcreate.js';
@@ -1223,8 +1227,16 @@ async function init(character, saved, audio, online = false) {
    * The gamepass already had the right answer and kept it to itself. One helper
    * now, used by all three callers.
    */
-  function exoticFor(tier) {
-    const fam = GACHA_WEAPONS[tier];
+  function exoticFor(tier) { return familyFor(GACHA_WEAPONS[tier]); }
+
+  /**
+   * Resolve a weapon FAMILY to the piece matching whatever the hero is.
+   *
+   * Shared by the gacha, the gamepass and the Hollow. Three reward systems
+   * quietly disagreeing about what a Fighter gets is exactly the kind of bug
+   * that only shows up in somebody's screenshot.
+   */
+  function familyFor(fam) {
     if (!fam) return null;
     const wt = CLASSES[character.cls]?.weaponType || 'sword';
     // axe/cannon/fist have no exotic family of their own yet, so each borrows
@@ -1459,6 +1471,204 @@ async function init(character, saved, audio, online = false) {
     onBanner: (t) => hud.banner(t),
   });
   gamepass.load(saved?.gamepass);
+
+  // ==========================================================================
+  // THE HOLLOW
+  //
+  // The dungeon is a place, a run, and a reward table, and they are three
+  // separate modules on purpose: `dungeon` knows the rules and nothing about
+  // THREE, `dungeonWorld` builds halls and knows nothing about rewards, and
+  // the glue lives here — the same split as dailies, gamepass and the Index.
+  // ==========================================================================
+  // THE GATE, in the plaza. It sits on the fourth avenue behind the shrine —
+  // the Hollow is under the shrine in the fiction, so it should be found by
+  // walking behind it rather than by opening a menu. `decor.clearArea` keeps
+  // scenery off it, the same call every other structure gets.
+  const hollowGate = (() => {
+    const a = Math.PI * 0.75;                       // between two avenues
+    const x = terrain.spawn.x + Math.cos(a) * 10.5;
+    const z = terrain.spawn.z + Math.sin(a) * 10.5;
+    decor.clearArea?.(x, z, 3.0);
+    const g = buildHollowGate(terrain.surfaceY(x, z));
+    g.position.set(x, terrain.surfaceY(x, z), z);
+    g.rotation.y = -a + Math.PI / 2;
+    scene.add(g);
+    return { x, z, mesh: g };
+  })();
+
+  const dungeon = createDungeon();
+  dungeon.load(saved?.dungeon);
+  const dungeonWorld = createDungeonWorld(scene, terrain);
+  // where the hero was standing in Anavela, so leaving puts them back
+  let hollowReturn = null;
+
+
+  /** Everything a floor pays, granted through the one path items already take. */
+  function grantDungeon(list) {
+    for (const r of list) {
+      if (r.kind === 'coins') inventory.addCoins(Math.round(r.amount * coinMult()));
+      else if (r.kind === 'xp') leveling.addXp(r.amount);
+      else if (r.kind === 'item') inventory.add(r.id, r.amount || 1);
+    }
+  }
+
+  /**
+   * A boss prize. `WEAPON:family` resolves to the piece matching YOUR class,
+   * the same contract the gamepass and gacha already use — nobody is handed a
+   * bow for beating a lord as a Summoner.
+   */
+  function grantPrize(id) {
+    if (!id) return null;
+    if (id.startsWith('WEAPON:')) {
+      // exactly the rule exoticFor already applies to gacha and gamepass
+      // weapons, so the three reward systems can never disagree about what a
+      // Fighter or a Summoner should be handed
+      const wid = familyFor(DUNGEON_WEAPONS[id.slice(7)]);
+      if (wid) { inventory.add(wid, 1); return wid; }
+      return null;
+    }
+    inventory.add(id, 1);
+    return id;
+  }
+
+  /** Stock the current floor from its plan. Nothing here is random rabble. */
+  function populateFloor(plan) {
+    enemyMgr.clearDungeonFoes();
+    const band = BAND_SPECIES[plan.theme] || BAND_SPECIES.stone;
+    const mult = { hpMult: plan.hpMult, dmgMult: plan.dmgMult, xpMult: plan.xpMult };
+    for (let i = 0; i < plan.count; i++) {
+      const at = dungeonWorld.spawnPoint();
+      const type = band[i % band.length];
+      // a rare elite in the rabble keeps a hall from being a metronome
+      enemyMgr.spawnAt(type, at.x, at.y, at.z, plan.level,
+        { ...mult, elite: Math.random() < 0.1 });
+    }
+    for (let i = 0; i < plan.guards; i++) {
+      const at = dungeonWorld.spawnPoint();
+      enemyMgr.spawnAt(band[i % band.length], at.x, at.y, at.z, plan.level, mult);
+    }
+    if (plan.boss) {
+      // dead centre, so it is the first thing you see when the door shuts
+      enemyMgr.spawnAt(null, 0, DUNGEON_Y, -2, plan.level, { ...mult, boss: plan.boss });
+      const b = WORLD_BOSSES[plan.boss];
+      hud.banner?.(`${b.name} — ${b.title}`);
+      audio.sfx('boss_spawn');
+    }
+  }
+
+  function enterHollow(difficulty, floor) {
+    hollowReturn = player.state.pos.clone();
+    // AUTO-BATTLE IS REFUSED DOWN HERE, and this is where it is switched off
+    // rather than merely ignored: the Hollow is the one place in the game that
+    // is meant to be played, and a run you watched is not a run you cleared.
+    if (autoBattle) { autoBattle = false; hud.setAuto?.(false); }
+    if (watercraft.state.active) watercraft.leave(player, true);
+    const run = dungeon.begin(difficulty, floor);
+    const at = dungeonWorld.enter(run.plan);
+    player.state.pos.set(at.x, at.y, at.z);
+    player.state.vy = 0;
+    player.state.grounded = true;
+    populateFloor(run.plan);
+    audio.sfx('teleport');
+    audio.setMood?.('story');
+    hud.banner?.(`${dungeon.THEMES[run.plan.theme].name} — FLOOR ${floor}`);
+    return run;
+  }
+
+  function leaveHollow(died = false) {
+    if (!dungeon.state.active) return;
+    enemyMgr.clearDungeonFoes();
+    dungeonWorld.leave();
+    dungeon.leave(died);
+    const back = hollowReturn || terrain.spawn;
+    player.state.pos.set(back.x, terrain.surfaceY(back.x, back.z), back.z);
+    player.state.vy = 0;
+    player.state.grounded = true;
+    hollowReturn = null;
+    audio.sfx('teleport');
+    hud.toastText(died
+      ? 'The Hollow spat you back out. What you found, you kept.'
+      : 'You climb back into the daylight.');
+  }
+
+  /**
+   * Watch the floor. When the last thing in it dies the stair unseals and the
+   * floor pays — checked here rather than on the kill, because a boss that
+   * splits or summons is not finished the moment its own health hits zero.
+   */
+  let hollowClearT = 0;
+  function hollowTick(dt) {
+    const run = dungeon.state.active;
+    if (!run) return;
+    if (player.state.dead) { leaveHollow(true); return; }
+    hollowClearT -= dt;
+    if (hollowClearT > 0) return;
+    hollowClearT = 0.35;
+    const alive = enemyMgr.enemies.filter((e) => e.dungeon && !e.dead).length;
+    hud.setHollow?.({
+      floor: run.floor, of: dungeon.MAX_FLOOR, left: alive,
+      theme: dungeon.THEMES[run.plan.theme], kind: run.plan.kind,
+      difficulty: dungeon.DIFFICULTIES[run.difficulty],
+    });
+    if (alive > 0 || run.cleared) return;
+
+    // --- the floor is clear ---
+    dungeon.markCleared();
+    dungeonWorld.openStair();
+    grantDungeon(dungeon.floorReward(run.plan));
+    particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ffd23e', 22);
+
+    if (run.plan.boss) {
+      const firstClear = !dungeon.bossBeaten(run.difficulty, run.plan.boss);
+      // OWNED HAS TO ASK BOTH HALVES OF THE BAG. `count()` only reads
+      // `materials`; weapons live in a separate SET, so a count-only check
+      // reports every weapon you own as missing. It happens not to matter today
+      // because the band pools hold cosmetics — but that is luck, not design,
+      // and the Index lost a whole category to exactly this once already.
+      const { drops } = dungeon.bossDrops(run.plan, {
+        firstClear,
+        owned: (id) => inventory.state.weapons.has(id) || inventory.count(id) > 0,
+      });
+      dungeon.markBossBeaten(run.difficulty, run.plan.boss);
+      const got = drops.map(grantPrize).filter(Boolean);
+      if (got.length) {
+        audio.sfx('reveal_mythic');
+        addShake(0.35);
+        hud.banner?.(got.map((id) => ITEMS[id]?.name || id).join('  ·  '));
+      }
+    }
+    audio.sfx('levelup_big');
+    hud.toastText(run.floor >= dungeon.MAX_FLOOR
+      ? 'The bottom of the Hollow. There is nothing below this.'
+      : 'The stair unseals. Take it, or climb out with what you have.');
+  }
+
+  /** Down one floor. Same run, so what you are carrying comes with you. */
+  function descendHollow() {
+    const plan = dungeon.descend();
+    if (!plan) { leaveHollow(false); return; }
+    const at = dungeonWorld.enter(plan);
+    player.state.pos.set(at.x, at.y, at.z);
+    player.state.vy = 0;
+    populateFloor(plan);
+    hud.banner?.(`${dungeon.THEMES[plan.theme].name} — FLOOR ${plan.floor}`);
+    audio.sfx('teleport');
+  }
+
+  /** The gate in Anavela: asks, then sends you down. */
+  async function openHollowGate() {
+    const lv = leveling.state.level;
+    if (!dungeon.unlocked(lv)) {
+      hud.toastText(hollowLockedText(lv, dungeon.UNLOCK_LEVEL));
+      audio.sfx('deny');
+      return;
+    }
+    player.state.busy = true;
+    const pick = await showDungeonGate(dungeon, lv);
+    player.state.busy = false;
+    if (pick) enterHollow(pick.difficulty, pick.floor);
+  }
+
 
   // --- STORY: the reason any of this is happening ---
   const story = createStory({
@@ -2107,6 +2317,9 @@ const CAM_PITCH_DEFAULT = 0.98;
    */
   function autoBattleTick(dt) {
     if (!autoBattle) return;
+    // NOT IN THE HOLLOW. Switched off rather than paused, so it cannot quietly
+    // resume when the next floor loads.
+    if (dungeon.state.active) { autoBattle = false; hud.setAuto?.(false); return; }
 
     // DYING STOPS IT. It used to keep running while you lay dead: the tick
     // returned early on `dead`, but the flag stayed on, so the moment you
@@ -2647,6 +2860,28 @@ const CAM_PITCH_DEFAULT = 0.98;
     const list = [];
     const add = (kind, label, run, extra = {}) => list.push({ kind, label, run, ...extra });
 
+    // INSIDE THE HOLLOW nothing else in the world is reachable, so the whole
+    // priority list below is skipped: there is exactly the stair and the way
+    // out, and letting a villager three hundred units away win the button
+    // would be absurd.
+    if (dungeon.state.active) {
+      const st = dungeonWorld.stairSpot();
+      const ex = dungeonWorld.exitSpot();
+      const near = (q) => q && Math.hypot(player.state.pos.x - q.x, player.state.pos.z - q.z) < 2.6;
+      const run = dungeon.state.active;
+      if (near(st) && run.cleared && run.floor < dungeon.MAX_FLOOR) {
+        add('stair', `Descend to floor ${run.floor + 1}`, () => descendHollow());
+      }
+      if (near(ex)) add('exit', 'Climb out of the Hollow', () => leaveHollow(false));
+      return list;
+    }
+
+    // The gate itself, in the plaza beside the shrine.
+    if (hollowGate && Math.hypot(player.state.pos.x - hollowGate.x,
+                                 player.state.pos.z - hollowGate.z) < 2.6) {
+      add('hollow', 'The Hollow — descend', () => { openHollowGate(); });
+    }
+
     // Spider goes in FIRST when you are close. She is tiny and she moves, so if
     // she loses the button to a market stall three metres away you will never
     // manage to pet her at all.
@@ -3125,6 +3360,7 @@ const CAM_PITCH_DEFAULT = 0.98;
         stats: stats.serialize(),
         awakenNudged,
         gamepass: gamepass.serialize(),
+        dungeon: dungeon.serialize(),
         story: story.serialize(),
         pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
         at: Date.now(),
@@ -3138,6 +3374,14 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   // debug/testing handle (used by automated verification)
   window.__semesta = {
+    // THE HOLLOW. Listed HERE and not in the enemy hooks far above, where an
+    // earlier version of this put it: that object is built during the world
+    // build, hundreds of lines before `dungeon` exists, so naming it there read
+    // a const in its temporal dead zone and stopped the loading bar dead at 78%
+    // with nothing on screen to say why. Sixth time TDZ has done this in this
+    // file. Expose a thing where it EXISTS, never where it reads nicely.
+    dungeon, dungeonWorld, hollowGate,
+    enterHollow, leaveHollow, descendHollow, openHollowGate, populateFloor,
     dailies, gamepass, story, skilltree, index, landmarks, watercraft, isles, hud, wind,
     net, remote, chat, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
     composer, usePost,
@@ -3401,7 +3645,12 @@ const CAM_PITCH_DEFAULT = 0.98;
       watercraft.drive(dt, player, player.moveVecFor(input, cam.yaw), time);
     }
     watercraft.update(dt, time);
-    rescueIfOutOfWorld();
+    dungeonWorld.update(dt, time);
+    hollowTick(dt);
+    // The out-of-world rescue must not fire five hundred units up: while a run
+    // is live the terrain override reports the hall as in-bounds, so this is
+    // simply skipped rather than made to understand dungeons.
+    if (!dungeon.state.active) rescueIfOutOfWorld();
     autoBattleTick(dt);
 
     // moving cancels an in-progress fishing session

@@ -20,9 +20,80 @@ export const TRAILS = {
   trail_lantern: { colors: ['#ffdca0', '#ffb85c'], rate: 4, rise: 0.7 },
   trail_ink:     { colors: ['#2a2438', '#6a5a9a'], rate: 6, rise: 0.3 },
   trail_aurora:  { colors: ['#7fd0c8', '#c8a0f0'], rate: 8, rise: 1.2 },
+  // --- THE HOLLOW ---------------------------------------------------------
+  // Deliberately not "the ember trail but purple": each one moves differently.
+  // Emberdust settles (low rise, slow), Frostmote hangs (slowest rise of any
+  // trail in the game), Cinderfall climbs hard and fast like real updraught.
+  trail_emberdust: { colors: ['#c86a3a', '#ffb45c'], rate: 5, rise: 0.35 },
+  trail_frostmote: { colors: ['#8fd8ff', '#e8f8ff'], rate: 4, rise: 0.15 },
+  trail_cinder:    { colors: ['#ff5a2a', '#ffd166'], rate: 9, rise: 1.9 },
 };
 
 const HAT_BUILDERS = {
+  // --- THE HOLLOW ---------------------------------------------------------
+  hat_keeper() {
+    // A LANTERNKEEPER'S HOOD. Deep cowl, no face inside it, and the order's
+    // small brass lamp pinned at the temple -- the uniform of the people whose
+    // job it was to keep the lights on, worn by whoever finally went down.
+    const g = new THREE.Group();
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), lam('#2e2740'));
+    hood.position.y = 0.06;
+    const peak = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.28, 6), lam('#241d33'));
+    peak.position.set(0, 0.26, -0.12);
+    peak.rotation.x = -0.5;
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.38, 0.05, 12), lam('#241d33'));
+    brim.position.y = -0.02;
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.07), lam('#8a7040'));
+    lamp.position.set(0.28, 0.06, 0.1);
+    const flame = new THREE.Mesh(new THREE.OctahedronGeometry(0.035),
+      new THREE.MeshBasicMaterial({ color: 0xffcb6a, transparent: true, opacity: 0.9,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    flame.position.set(0.28, 0.07, 0.1);
+    g.add(hood, peak, brim, lamp, flame);
+    return g;
+  },
+  hat_hoarfrost() {
+    // A crown that grew rather than being made: seven rime spires of uneven
+    // height off a band of blue ice, tallest at the front.
+    const g = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.09, 12), lam('#5d8fae'));
+    g.add(band);
+    const ice = new THREE.MeshLambertMaterial({ color: 0xcdeeff, transparent: true, opacity: 0.85 });
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const front = Math.cos(a - Math.PI / 2);
+      const h = 0.16 + Math.max(0, front) * 0.3 + (i % 2) * 0.05;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.05, h, 4), ice);
+      sp.position.set(Math.cos(a) * 0.27, 0.04 + h / 2, Math.sin(a) * 0.27);
+      sp.rotation.z = -Math.cos(a) * 0.22;
+      sp.rotation.x = Math.sin(a) * 0.22;
+      g.add(sp);
+    }
+    return g;
+  },
+  hat_embercrown() {
+    // Obsidian points with the fire showing between them, not on them --
+    // the glow lives in the gaps, which is what makes it read as heat.
+    const g = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.33, 0.11, 12), lam('#1e100c'));
+    g.add(band);
+    const glow = new THREE.MeshBasicMaterial({ color: 0xff7a3c, transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.035, 12), glow);
+    ring.position.y = 0.02;
+    g.add(ring);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const h = 0.2 + (i % 3) * 0.07;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.055, h, 4), lam('#2a1612'));
+      sp.position.set(Math.cos(a) * 0.28, 0.05 + h / 2, Math.sin(a) * 0.28);
+      g.add(sp);
+      const seam = new THREE.Mesh(new THREE.BoxGeometry(0.02, h * 0.6, 0.02), glow);
+      seam.position.set(Math.cos(a) * 0.28, 0.05 + h * 0.35, Math.sin(a) * 0.28 + 0.03);
+      g.add(seam);
+    }
+    return g;
+  },
   hat_straw() {
     const g = new THREE.Group();
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.05, 10), lam('#d8b86a'));
@@ -411,6 +482,83 @@ function wing(colorA, colorB, opacity = 1, additive = false) {
 }
 
 const BACK_BUILDERS = {
+  // --- THE HOLLOW ---------------------------------------------------------
+  hollow_lantern() {
+    // The order's own lamp, still lit, carried on a hooked pole over one
+    // shoulder. This is the only back piece in the game that is a TOOL rather
+    // than wings or a pack, and that is why it reads as earned.
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.62, 6), lam('#4a3a28'));
+    pole.position.set(0.02, 0.06, 0);
+    pole.rotation.z = 0.34;
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.014, 5, 9, Math.PI * 1.3), lam('#8a7040'));
+    hook.position.set(-0.09, 0.33, 0);
+    hook.rotation.y = Math.PI / 2;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.16, 0.13), lam('#6a5638'));
+    body.position.set(-0.13, 0.19, 0);
+    const pane = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.1),
+      new THREE.MeshBasicMaterial({ color: 0xffcb6a, transparent: true, opacity: 0.8,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    pane.position.set(-0.13, 0.19, 0);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.07, 4), lam('#8a7040'));
+    cap.position.set(-0.13, 0.3, 0);
+    g.add(pole, hook, body, pane, cap);
+    return g;
+  },
+  back_frostmantle() {
+    // A heavy cloak stiff with rime: three overlapping panels rather than one
+    // sheet, so it hangs in folds, with icicles along the hem.
+    const g = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const w = 0.42 - i * 0.07;
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5 - i * 0.05, 0.03),
+        lam(i === 0 ? '#3d5a70' : '#4f7288'));
+      panel.position.set(0, -0.08 - i * 0.02, -0.02 - i * 0.03);
+      g.add(panel);
+    }
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.1, 10), lam('#cdeeff'));
+    collar.position.y = 0.2;
+    g.add(collar);
+    const ice = new THREE.MeshLambertMaterial({ color: 0xdff4ff, transparent: true, opacity: 0.85 });
+    for (let i = 0; i < 6; i++) {
+      const ic = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1 + (i % 3) * 0.05, 4), ice);
+      ic.position.set(-0.17 + i * 0.068, -0.36, 0);
+      ic.rotation.x = Math.PI;
+      g.add(ic);
+    }
+    return g;
+  },
+  back_cinderwing() {
+    // Wings of burning ash: the feathers are GAPS between plates, so what you
+    // see beating is the fire between them rather than the plates themselves.
+    const g = new THREE.Group();
+    const plate = lam('#1e100c');
+    const fire = new THREE.MeshBasicMaterial({ color: 0xff7a3c, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    const roots = [];
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Group();
+      wing.position.set(sx * 0.1, 0.12, -0.04);
+      for (let i = 0; i < 5; i++) {
+        const len = 0.42 - i * 0.06;
+        const f = new THREE.Mesh(new THREE.BoxGeometry(len, 0.075, 0.02), plate);
+        f.position.set(sx * (0.06 + len / 2), 0.1 - i * 0.09, 0);
+        f.rotation.z = sx * (0.34 - i * 0.13);
+        wing.add(f);
+        const gap = new THREE.Mesh(new THREE.BoxGeometry(len * 0.9, 0.022, 0.03), fire);
+        gap.position.set(sx * (0.06 + len / 2), 0.055 - i * 0.09, 0.01);
+        gap.rotation.z = sx * (0.34 - i * 0.13);
+        wing.add(gap);
+      }
+      const ember = new THREE.Mesh(new THREE.OctahedronGeometry(0.045), fire);
+      ember.position.set(sx * 0.07, 0.14, 0.02);
+      wing.add(ember);
+      g.add(wing);
+      roots.push(wing);
+    }
+    g.userData.wingRoots = roots;
+    return g;
+  },
   back_pack() {
     const g = new THREE.Group();
     const pack = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.14), lam('#8a6a48'));

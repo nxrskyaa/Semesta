@@ -255,6 +255,72 @@ function dressHall(g, half, theme, t, rnd) {
 // THE HALL
 // ---------------------------------------------------------------------------
 
+/**
+ * THE GATE, standing in Anavela.
+ *
+ * It has to read as a way DOWN from a top-down camera, which a hole in the
+ * ground does not — from above a hole is a dark circle and dark circles are
+ * everywhere. So it is a stair with a lintel over it: the steps descend into
+ * shadow, the frame gives it a silhouette against the paving, and the
+ * Lanternkeeper glyph over the door says whose door it was.
+ */
+export function buildHollowGate() {
+  const g = new THREE.Group();
+  const stone = '#3f3a4e';
+  const base = boxMesh(4.6, 0.4, 4.0, stone);
+  base.position.y = 0.2;
+  base.receiveShadow = true;
+  g.add(base);
+
+  // four descending steps, each darker, going into a black mouth
+  for (let i = 0; i < 4; i++) {
+    const st = boxMesh(2.4 - i * 0.1, 0.28, 0.5, shade(stone, 1 - i * 0.16));
+    st.position.set(0, 0.32 - i * 0.16, 0.9 - i * 0.5);
+    g.add(st);
+  }
+  const mouth = boxMesh(2.2, 0.9, 1.5, '#07060b');
+  mouth.position.set(0, 0.1, -0.7);
+  g.add(mouth);
+
+  // the frame: two posts and a lintel, so it has a shape from any angle
+  for (const sx of [-1, 1]) {
+    const post = boxMesh(0.5, 3.0, 0.6, stone);
+    post.position.set(sx * 1.5, 1.5, -0.2);
+    post.castShadow = true;
+    g.add(post);
+    const cap = boxMesh(0.7, 0.26, 0.8, '#57506c');
+    cap.position.set(sx * 1.5, 3.05, -0.2);
+    g.add(cap);
+  }
+  const lintel = boxMesh(3.6, 0.55, 0.8, '#57506c');
+  lintel.position.set(0, 3.35, -0.2);
+  g.add(lintel);
+
+  // the order's mark, still burning after everything
+  const glyph = cylMesh(0.34, 0.34, 0.1, '#ffb45c', 6, { unique: true });
+  glyph.material.transparent = true;
+  glyph.material.opacity = 0.85;
+  glyph.material.blending = THREE.AdditiveBlending;
+  glyph.material.depthWrite = false;
+  glyph.rotation.x = Math.PI / 2;
+  glyph.position.set(0, 3.35, 0.25);
+  glyph.userData.dynamic = true;
+  g.add(glyph);
+
+  // two dead lanterns on the posts: the light this place used to have
+  for (const sx of [-1, 1]) {
+    const l = boxMesh(0.26, 0.3, 0.26, '#2a2438');
+    l.position.set(sx * 1.5, 2.5, 0.35);
+    g.add(l);
+  }
+  const light = new THREE.PointLight('#ffb45c', 0.9, 10, 2);
+  light.position.set(0, 3.2, 0.6);
+  g.add(light);
+
+  g.userData = { glyph, light, dynamic: true };
+  return g;
+}
+
 export function createDungeonWorld(scene, terrain) {
   const root = new THREE.Group();
   root.visible = false;
