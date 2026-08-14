@@ -59,6 +59,30 @@ const CSS = `
    hundred units above them. A map that is confidently wrong is worse than no
    map: it tells you where you are, and you are not there. */
 body.inhollow #hud .mapbox { display: none; }
+
+/* ---- the Hollow's run banner (top right, where the map was) ----
+   It answers the only two questions a run raises while you are in it: how deep
+   am I, and how much of this floor is left. Deliberately in the map's place
+   rather than somewhere new -- that corner is already where you look for
+   "where am I", and underground the map has nothing to say. */
+#hud .hollow { position: absolute; top: 12px; right: 12px; width: 176px;
+  background: rgba(20,14,26,0.9); border: var(--pix-frame, 3px solid #4a4060);
+  padding: 9px 11px 10px; display: none; pointer-events: none; }
+body.inhollow #hud .hollow { display: block; }
+#hud .hollow .band { font-family: var(--font-display, monospace); font-size: 11px;
+  letter-spacing: 1px; color: #d8c8ff; }
+#hud .hollow .fl { font-family: var(--font-display, monospace); font-size: 21px;
+  color: #fff; line-height: 1.15; margin-top: 1px; }
+#hud .hollow .fl small { font-size: 11px; color: #8f82ad; }
+#hud .hollow .diff { display: inline-block; font-size: 9px; letter-spacing: 1px;
+  padding: 1px 5px; margin-top: 4px; border: 1px solid currentColor; }
+#hud .hollow .left { margin-top: 7px; font-size: 11px; color: #cfc4e4; }
+#hud .hollow .bar { height: 6px; margin-top: 4px; background: #2a2240;
+  border: 1px solid #453a63; }
+#hud .hollow .bar i { display: block; height: 100%; background: #c05a5a; width: 100%; }
+#hud .hollow.clear .left { color: #8fe08a; }
+#hud .hollow.clear .bar i { background: #6ac06a; }
+
 #hud .mapbox { position: absolute; top: 10px; right: 10px; width: 148px; }
 #hud .mapbox .minimap { width: 148px; height: 148px; position: relative; overflow: hidden; }
 #hud .mapbox canvas { width: 100%; height: 100%; display: block; }
@@ -1079,6 +1103,43 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   const beaconEl = root.querySelector('.pinbeacon');
   const beaconArr = beaconEl.querySelector('.arr');
   const beaconTxt = beaconEl.querySelector('.txt');
+  // ---- THE HOLLOW's run banner -------------------------------------------
+  const hollowEl = document.createElement('div');
+  hollowEl.className = 'hollow';
+  hollowEl.innerHTML = `<div class="band"></div><div class="fl"></div>
+    <div class="diff"></div><div class="left"></div><div class="bar"><i></i></div>`;
+  root.appendChild(hollowEl);
+  let hollowTotal = 0;
+  let hollowFloor = -1;
+
+  /**
+   * Draw the run. Called a few times a second from the dungeon tick.
+   * `null` while there is no run; the CSS hides it off `body.inhollow` anyway,
+   * so a stale banner can never survive a run ending.
+   */
+  function setHollow(h) {
+    if (!h) return;
+    // The denominator is whatever THIS floor started with, re-taken when the
+    // floor number changes. Keying it off anything that does not actually
+    // change per floor re-takes it every tick, and a bar whose maximum shrinks
+    // with its value sits at full forever.
+    if (h.floor !== hollowFloor) { hollowFloor = h.floor; hollowTotal = h.left; }
+    if (h.left > hollowTotal) hollowTotal = h.left;
+    hollowEl.querySelector('.band').textContent = `${h.theme.glyph} ${h.theme.name}`;
+    hollowEl.querySelector('.fl').innerHTML =
+      `FLOOR ${h.floor} <small>/ ${h.of}</small>`;
+    const d = hollowEl.querySelector('.diff');
+    d.textContent = h.difficulty.tag;
+    d.style.color = h.difficulty.color;
+    const clear = h.left === 0;
+    hollowEl.classList.toggle('clear', clear);
+    hollowEl.querySelector('.left').textContent = clear
+      ? (h.kind === 'hall' ? 'CLEAR — the stair is open' : 'CLEAR — take the stair')
+      : `${h.left} left${h.kind === 'great' ? ' · LORD' : h.kind === 'warden' ? ' · WARDEN' : ''}`;
+    hollowEl.querySelector('.bar i').style.width =
+      hollowTotal ? `${Math.round((h.left / hollowTotal) * 100)}%` : '0%';
+  }
+
   function setBeacon(b) {
     if (!b) { beaconEl.classList.remove('show'); return; }
     beaconEl.classList.add('show');
@@ -1187,6 +1248,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     setSkills, setClassName, setOnline,
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
+    setHollow,
     refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge, setIndexBadge,
   };
 }

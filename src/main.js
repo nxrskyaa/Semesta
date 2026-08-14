@@ -1658,7 +1658,7 @@ async function init(character, saved, audio, online = false) {
     if (hollowClearT > 0) return;
     hollowClearT = 0.35;
     const alive = enemyMgr.enemies.filter((e) => e.dungeon && !e.dead).length;
-    hud.setHollow?.({
+    hud.setHollow({
       floor: run.floor, of: dungeon.MAX_FLOOR, left: alive,
       theme: dungeon.THEMES[run.plan.theme], kind: run.plan.kind,
       difficulty: dungeon.DIFFICULTIES[run.difficulty],
