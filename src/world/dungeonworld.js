@@ -108,11 +108,18 @@ function buildWalls(g, half, t) {
       g.add(p);
     }
   }
-  // A CEILING. Without one the hall is an open-air pit with the sky over it,
-  // and it stops reading as underground the moment the camera tilts up.
-  const ceil = boxMesh(L, 0.8, L, shade(t.wall, 0.6));
-  ceil.position.y = WALL_H + 0.4;
-  g.add(ceil);
+  // NO CEILING, and the reason is the camera.
+  //
+  // A roof is the obvious way to say "underground", and it is exactly wrong for
+  // this game. Semesta looks down from about fourteen units above the hero, so a
+  // lid at nine and a half put the camera OUTSIDE the room looking at the back
+  // of the tiles. Measured by reading the framebuffer: the middle of the screen
+  // was a single colour bucket, pure black, nought per cent lit. The hall was
+  // built and lit correctly the whole time and the camera was above the roof.
+  //
+  // What actually sells underground from this angle is air and edges, not a lid:
+  // the tight dark fog, the black background behind it and walls tall enough to
+  // cut the view off. That is the trade every top-down dungeon makes.
 }
 
 /** A brazier: bowl, coals and a real flame that flickers on its own phase. */
@@ -321,10 +328,72 @@ export function buildHollowGate() {
   return g;
 }
 
-export function createDungeonWorld(scene, terrain) {
+export function createDungeonWorld(scene, terrain, opts = {}) {
   const root = new THREE.Group();
   root.visible = false;
   scene.add(root);
+
+  // ==========================================================================
+  // ANAVELA IS SWITCHED OFF, NOT MOVED AWAY FROM.
+  //
+  // The first version stacked the halls five hundred units above the map and
+  // called that a separate world. It is not, and every symptom came from the
+  // same place: the villagers' nameplates floated in the dark because they
+  // were still in the scene, the minimap still drew the overworld, the fog and
+  // the sun were still Anavela's, the ambient spawner still seeded the room.
+  // Each of those is a different patch and there is always another one.
+  //
+  // A dungeon is a DIFFERENT PLACE. So entering hides the whole overworld and
+  // installs the Hollow's own fog and light, and leaving puts back exactly what
+  // was there — nothing else in the game has to know.
+  //
+  // The set to hide is a SNAPSHOT taken the moment Anavela finished building,
+  // rather than a hand-written list of modules. A list has to be maintained,
+  // and the day somebody adds a new landmark and forgets it, one building hangs
+  // in the void. A snapshot cannot be forgotten. Anything born later — particle
+  // bursts, arrows, dropped loot, the hall itself — is simply not in it and
+  // keeps working, which matters because the FX systems add loose meshes
+  // straight to the scene with no group of their own.
+  //
+  // Lights are excluded: hiding those would black out the hero as well.
+  // ==========================================================================
+  const keep = new Set([root, ...(opts.keep || [])]);
+  const overworld = scene.children.filter((o) => !o.isLight && !keep.has(o));
+  const shown = new Map();          // object -> its visibility before we hid it
+  let stashedFog = null;
+  const stashedLights = new Map();
+
+  function hideOverworld(theme) {
+    if (shown.size) return;
+    for (const o of overworld) { shown.set(o, o.visible); o.visible = false; }
+    stashedFog = scene.fog;
+    // The Hollow's own air: the band's colour, and close enough that the far
+    // wall fades into it. This is most of what makes a room read as underground.
+    scene.fog = new THREE.Fog(new THREE.Color(theme.fog), 6, 46);
+    scene.background = new THREE.Color(theme.fog);
+    for (const o of scene.children) {
+      if (!o.isLight || o.isPointLight) continue;
+      stashedLights.set(o, { i: o.intensity, c: o.color.getHex() });
+      // A dungeon has no sun. What is left is a dim cold bounce so the hero and
+      // the monsters are not pure silhouettes, and the braziers do the rest.
+      // Intensity carries the darkness; the COLOUR must stay usable. Tinting
+      // the ambient to the fog — which is nearly black by design — multiplied
+      // every Lambert surface by almost nothing and the room stayed invisible
+      // even once the roof was gone.
+      o.intensity = o.isAmbientLight || o.isHemisphereLight ? 0.75 : 0.35;
+      o.color.set(theme.trim);
+    }
+  }
+
+  function showOverworld() {
+    if (!shown.size) return;
+    for (const [o, v] of shown) o.visible = v;
+    shown.clear();
+    scene.fog = stashedFog;
+    scene.background = null;
+    for (const [o, s] of stashedLights) { o.intensity = s.i; o.color.setHex(s.c); }
+    stashedLights.clear();
+  }
 
   let hall = null;             // the built floor currently in the scene
   let override = null;         // what we installed on `terrain`
@@ -383,11 +452,22 @@ export function createDungeonWorld(scene, terrain) {
     exit.rotation.y = Math.PI;
     g.add(exit);
 
-    // Bake the static half. The braziers' flames, the seal and the portals are
-    // marked dynamic above, so only the masonry merges — a hall is ~250 little
-    // boxes and every one of them would otherwise be a draw call.
+    // THE HALL IS NOT BAKED, and that is deliberate.
+    //
+    // Baking it looked like an obvious win — a hall is ~250 little boxes and
+    // every one is a draw call. What it actually did was DELETE the room. The
+    // merge detached the originals and produced nothing in their place, and
+    // because the only parts marked dynamic are the flames, the seal and the
+    // two portals, those were the only things left: a pitch-black void with six
+    // fires burning in it. Measured, the hall was down to 23 meshes and every
+    // one of them was a flame colour. No error, no warning, nothing in the
+    // console — the geometry simply stopped existing.
+    //
+    // It is one room at a time, the props are shared-geometry instances
+    // already, and the village carries more than this. Correct and unmerged
+    // beats fast and invisible; if the draw calls ever matter, the fix is to
+    // find out why bake drops these buckets, not to bake blind.
     braziers.forEach((b) => { b.userData.flame.userData.dynamic = true; });
-    bakeStatic(g);
 
     g.position.set(0, DUNGEON_Y, 0);
     root.add(g);
@@ -449,6 +529,7 @@ export function createDungeonWorld(scene, terrain) {
   function enter(plan) {
     const at = buildFloorHall(plan);
     installOverride();
+    hideOverworld(THEMES[plan.theme] || THEMES.stone);
     root.visible = true;
     state.active = true;
     return at;
@@ -456,9 +537,20 @@ export function createDungeonWorld(scene, terrain) {
 
   function leave() {
     removeOverride();
+    showOverworld();
     root.visible = false;
     state.active = false;
     disposeHall();
+  }
+
+  /** Re-dress the air when the band changes on the way down. */
+  function retheme(plan) {
+    const t = THEMES[plan.theme] || THEMES.stone;
+    if (scene.fog) scene.fog.color.set(t.fog);
+    if (scene.background?.set) scene.background.set(t.fog);
+    for (const o of scene.children) {
+      if (o.isLight && !o.isPointLight) o.color.set(t.trim);
+    }
   }
 
   /** Lift the seal. Called when the last thing in the hall dies. */
@@ -524,7 +616,7 @@ export function createDungeonWorld(scene, terrain) {
   }
 
   return {
-    state, enter, leave, update, openStair, stairSpot, exitSpot, spawnPoint,
+    state, enter, leave, retheme, update, openStair, stairSpot, exitSpot, spawnPoint,
     dispose, DUNGEON_Y, halfFor,
     isActive: () => state.active,
   };

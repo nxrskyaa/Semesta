@@ -1523,7 +1523,9 @@ async function init(character, saved, audio, online = false) {
 
   const dungeon = createDungeon();
   dungeon.load(saved?.dungeon);
-  const dungeonWorld = createDungeonWorld(scene, terrain);
+  // The hero is explicitly KEPT: they are in the scene from world-build time, so
+  // the snapshot would otherwise hide the player along with the village.
+  const dungeonWorld = createDungeonWorld(scene, terrain, { keep: [player.state.group] });
   // where the hero was standing in Anavela, so leaving puts them back
   let hollowReturn = null;
 
@@ -1697,6 +1699,7 @@ async function init(character, saved, audio, online = false) {
     const plan = dungeon.descend();
     if (!plan) { leaveHollow(false); return; }
     const at = dungeonWorld.enter(plan);
+    dungeonWorld.retheme(plan);         // the band changes on the way down
     player.state.pos.set(at.x, at.y, at.z);
     player.state.vy = 0;
     populateFloor(plan);
@@ -3755,7 +3758,10 @@ const CAM_PITCH_DEFAULT = 0.98;
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
     lighting.state.weatherDim = weather.state.intensity;
-    lighting.update(dt, player.state.pos);
+    // ANAVELA'S SKY DOES NOT REACH THE HOLLOW. This drives the sun, the fog
+    // colour and the whole day cycle every frame; left running it repainted the
+    // dungeon's air back to whatever the clock said outside, once per frame.
+    if (!inHollow) lighting.update(dt, player.state.pos);
     particles.update(dt);
     dmgNums.update(dt);
     skillSys.update(dt);
