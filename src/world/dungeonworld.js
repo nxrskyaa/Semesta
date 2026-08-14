@@ -146,7 +146,9 @@ function buildBrazier(t, seed) {
   }
   flame.userData.dynamic = true;
   b.add(flame);
-  const light = new THREE.PointLight(t.light, 1.5, 16, 2);
+  // Reach matters more than brightness here: at 16 units a brazier lit its own
+  // plinth and nothing else, so the room between them stayed black.
+  const light = new THREE.PointLight(t.light, 2.4, 30, 2);
   light.position.y = 2.1;
   b.add(light);
   b.userData = { flame, light, seed };
@@ -369,7 +371,12 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     stashedFog = scene.fog;
     // The Hollow's own air: the band's colour, and close enough that the far
     // wall fades into it. This is most of what makes a room read as underground.
-    scene.fog = new THREE.Fog(new THREE.Color(theme.fog), 6, 46);
+    // Near/far measured against the CAMERA, which sits about thirty units from
+    // the floor it is looking at — not fourteen, because the tilt pushes it back
+    // as well as up. At 6/46 the entire room was already sixty per cent fogged
+    // toward a near-black colour before anything else dimmed it, which is how a
+    // lit hall came out looking like an empty void.
+    scene.fog = new THREE.Fog(new THREE.Color(theme.fog), 22, 105);
     scene.background = new THREE.Color(theme.fog);
     for (const o of scene.children) {
       if (!o.isLight || o.isPointLight) continue;
@@ -380,8 +387,13 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
       // the ambient to the fog — which is nearly black by design — multiplied
       // every Lambert surface by almost nothing and the room stayed invisible
       // even once the roof was gone.
-      o.intensity = o.isAmbientLight || o.isHemisphereLight ? 0.75 : 0.35;
+      // A dungeon should be MOODY, not unreadable. The fires do the character;
+      // this is the floor of light that keeps the room legible under them. At
+      // 0.75 of a dark brown it was neither — you could not see the walls you
+      // were fighting against.
+      o.intensity = o.isAmbientLight || o.isHemisphereLight ? 1.45 : 0.7;
       o.color.set(theme.trim);
+      if (o.isHemisphereLight && o.groundColor) o.groundColor.set(theme.floor);
     }
   }
 

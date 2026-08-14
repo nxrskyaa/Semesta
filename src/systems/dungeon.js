@@ -52,20 +52,20 @@ export const THEMES = {
   stone: {
     name: 'The Stone Halls',
     blurb: 'Lanternkeeper masonry, and the first place the lights went out.',
-    floor: '#4a4038', wall: '#3a332c', trim: '#7a6a52', accent: '#ffb45c',
-    fog: '#1a1512', light: '#ffa94d', glyph: '◈',
+    floor: '#6b5d4e', wall: '#544a3e', trim: '#a08a68', accent: '#ffc478',
+    fog: '#241d18', light: '#ffb45c', glyph: '◈',
   },
   frost: {
     name: 'The Frost Crypt',
     blurb: 'Below the water table. Whatever is down here, the cold kept it.',
-    floor: '#3d4a58', wall: '#2c3742', trim: '#7fa8c8', accent: '#8fd8ff',
-    fog: '#101820', light: '#7fc8ff', glyph: '❉',
+    floor: '#586c80', wall: '#3f4e5e', trim: '#9cc4e0', accent: '#a8e4ff',
+    fog: '#18242e', light: '#8fd0ff', glyph: '❉',
   },
   ember: {
     name: 'The Ember Core',
     blurb: 'The bottom. Something down here is still burning after all this time.',
-    floor: '#4a2a24', wall: '#33201c', trim: '#c05a32', accent: '#ff7a3c',
-    fog: '#1a0c08', light: '#ff6a34', glyph: '✸',
+    floor: '#6b3d34', wall: '#4a2e28', trim: '#d67246', accent: '#ff8f52',
+    fog: '#26120c', light: '#ff7a3c', glyph: '✸',
   },
 };
 

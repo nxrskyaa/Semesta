@@ -53,6 +53,12 @@ const CSS = `
 }
 
 /* ---- minimap + clock (top right) ---- */
+/* THE HOLLOW HAS NO MAP OF ANAVELA IN IT. The minimap draws the overworld from
+   the terrain grid, and underground it went on cheerfully showing the village,
+   the lakes and the coastline while you were sealed in a stone room five
+   hundred units above them. A map that is confidently wrong is worse than no
+   map: it tells you where you are, and you are not there. */
+body.inhollow #hud .mapbox { display: none; }
 #hud .mapbox { position: absolute; top: 10px; right: 10px; width: 148px; }
 #hud .mapbox .minimap { width: 148px; height: 148px; position: relative; overflow: hidden; }
 #hud .mapbox canvas { width: 100%; height: 100%; display: block; }

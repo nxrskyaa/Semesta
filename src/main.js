@@ -1607,6 +1607,7 @@ async function init(character, saved, audio, online = false) {
     if (autoBattle) { autoBattle = false; hud.setAuto?.(false); }
     if (watercraft.state.active) watercraft.leave(player, true);
     inHollow = true;
+    document.body.classList.add('inhollow');
     // EVERY surface monster goes before the door shuts. They were spawned around
     // Anavela and seated on Anavela's ground; leaving them alive means they are
     // still in the enemy list, still updated, and still walking at a hero who is
@@ -1627,6 +1628,7 @@ async function init(character, saved, audio, online = false) {
   function leaveHollow(died = false) {
     if (!dungeon.state.active) return;
     inHollow = false;
+    document.body.classList.remove('inhollow');
     enemyMgr.clearDungeonFoes();
     clearSurfaceFoes();     // and nothing the Hollow spawned comes up with you
     dungeonWorld.leave();
