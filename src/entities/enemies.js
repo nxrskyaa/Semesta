@@ -670,7 +670,9 @@ function redrawNameplate(np, hpFrac) {
   ctx.fillStyle = '#3a1512';
   ctx.fillRect(14, 20, 100, 7);
   ctx.fillStyle = np.boss ? '#e8a33d' : '#d1372c';
-  ctx.fillRect(14, 20, Math.max(0, Math.round(100 * hpFrac)), 7);
+  // clamped at BOTH ends: the track is 100px inside a 108px plate, so an
+  // over-full bar drew straight off the edge of the nameplate
+  ctx.fillRect(14, 20, Math.round(100 * Math.max(0, Math.min(1, hpFrac))), 7);
   if (np.sprite.material.map) np.sprite.material.map.needsUpdate = true;
 }
 

@@ -34,7 +34,11 @@ const CSS = `
 #hud .plate .bars { display: flex; flex-direction: column; gap: 3px; min-width: 148px; }
 #hud .plate .pname { font-size: 11px; color: #e8e8d8; display: flex; justify-content: space-between; gap: 8px; }
 #hud .plate .pname .cls { color: var(--cc, #9ab86a); font-size: 9px; letter-spacing: 1px; }
-#hud .bar { height: 10px; background: #17120f; border: 1px solid #0a0f0a; position: relative; }
+/* overflow:hidden is the belt to the clamp's braces. A fill that is somehow
+   still wider than its track gets cut at the frame instead of painting a green
+   line across the screen -- which is exactly what an unclamped hp/maxHp did the
+   moment a tonic pushed hp above max. */
+#hud .bar { height: 10px; background: #17120f; border: 1px solid #0a0f0a; position: relative; overflow: hidden; }
 #hud .bar > div { height: 100%; transition: width 0.12s; }
 #hud .bar.hp > div { background: linear-gradient(180deg, #8fe062, #4f9f34 60%, #3d7a28); }
 #hud .bar.st { height: 7px; }
@@ -936,11 +940,16 @@ export function createHUD(root, { inventory, character, forge, audio }) {
 
   function updateVitals(player, leveling, dt) {
     const s = player.state;
-    els.hpFill.style.width = `${(s.hp / s.maxHp) * 100}%`;
+    // CLAMPED. hp can legitimately exceed maxHp for a beat -- a tonic, a buff, a
+    // level-up that raises current before it raises the ceiling -- and an
+    // unclamped percentage put the green fill outside its own frame and straight
+    // across the HUD.
+    const pct = (a, b) => `${Math.max(0, Math.min(1, b > 0 ? a / b : 0)) * 100}%`;
+    els.hpFill.style.width = pct(s.hp, s.maxHp);
     els.hpTxt.textContent = `${Math.ceil(s.hp)} / ${s.maxHp}`;
-    els.stFill.style.width = `${(s.stamina / s.maxStamina) * 100}%`;
+    els.stFill.style.width = pct(s.stamina, s.maxStamina);
     els.lv.textContent = `Lv${leveling.state.level}`;
-    els.xpFill.style.width = `${leveling.progress() * 100}%`;
+    els.xpFill.style.width = pct(leveling.progress(), 1);
     els.xpLvl.textContent = `Lv${leveling.state.level}`;
     els.lowhp.style.opacity = s.hp / s.maxHp < 0.3 && !s.dead ? '0.7' : '0';
     if (vignetteT > 0) {

@@ -41,7 +41,15 @@ const HALF = 17;
 const HALF_WARDEN = 13;
 /** A great boss needs room to use its area attacks and for you to leave them. */
 const HALF_GREAT = 22;
-const WALL_H = 9;
+// TALL WALLS FIGHT THE CAMERA. Semesta looks down over the hero's shoulder, so
+// anything above about five units on the near side of the room is standing
+// between you and your own character. At nine the near wall simply covered the
+// bottom of the view. The room is closed by the dark above it and by fog, not by
+// building higher — which is the trade every top-down dungeon makes.
+const WALL_H = 4.6;
+/** How far the corners are cut off. An octagon reads as ARCHITECTURE; a square
+ *  box reads as a box, and no amount of texture fixes that. */
+const CHAMFER = 0.30;
 
 export function halfFor(kind) {
   return kind === 'warden' ? HALF_WARDEN : kind === 'great' ? HALF_GREAT : HALF;
@@ -52,26 +60,63 @@ export function halfFor(kind) {
 // ---------------------------------------------------------------------------
 
 /** A flagged floor slab: real courses, not one flat plane. */
+/** True inside the octagon, with `pad` of margin. The room's real shape. */
+function insideRoom(x, z, half, pad = 0) {
+  // Derived from where buildWalls actually PUTS the faces, not from a tidy
+  // guess. A first version used half*(2-CHAMFER) as the diagonal limit, which
+  // is far looser than the real chamfer wall: measured, you could stand at the
+  // cut corner and walk straight through it. Collision has to be read off the
+  // same numbers the geometry is built from or the two drift apart silently.
+  const R = half + 0.7;
+  const flat = R - 0.5 - pad;                          // the four axis faces
+  if (Math.abs(x) > flat || Math.abs(z) > flat) return false;
+  const diag = R * (1 - CHAMFER * 0.62) - pad;         // the four cut corners
+  return Math.abs(x) + Math.abs(z) < diag * Math.SQRT2;
+}
+
+/** A flagged floor: real courses, a border band and an inlaid centre. */
 function buildFloor(g, half, t) {
+  // THE BED SITS FULLY BELOW THE TILES. It used to span -0.33..-0.03 while the
+  // tiles spanned -0.13..0.09, so the two solids overlapped and the shared
+  // surfaces flickered against each other as the camera moved. That is the
+  // "kedip-kedip" — z-fighting, not a texture problem.
+  const bed = boxMesh(half * 2 + 1.4, 0.5, half * 2 + 1.4, shade(t.wall, 0.8));
+  // Top at -0.20, a clear 0.07 BELOW the tiles underside at -0.13. Ending it
+  // exactly level with them would leave two coplanar faces, and coplanar is
+  // precisely what z-fighting needs — "touching" is not "separated".
+  bed.position.y = -0.45;                     // top at -0.13, the tiles' underside
+  bed.receiveShadow = true;
+  g.add(bed);
+
   const step = 2.4;
   const n = Math.ceil((half * 2) / step);
-  // the grout shows through the gaps, same trick the plaza uses
-  const grout = boxMesh(half * 2 + 1.2, 0.3, half * 2 + 1.2, t.wall);
-  grout.position.y = -0.18;
-  grout.receiveShadow = true;
-  g.add(grout);
   for (let ix = 0; ix < n; ix++) {
     for (let iz = 0; iz < n; iz++) {
       const x = -half + step * (ix + 0.5), z = -half + step * (iz + 0.5);
-      if (Math.abs(x) > half - 0.2 || Math.abs(z) > half - 0.2) continue;
-      // two alternating tones so the floor reads as laid rather than painted
-      const dark = (ix + iz) % 2 === 0;
-      const f = boxMesh(step - 0.22, 0.22, step - 0.22, dark ? t.floor : shade(t.floor, 1.12));
+      if (!insideRoom(x, z, half, 0.4)) continue;
+      const r = Math.hypot(x, z);
+      // three courses rather than a checkerboard: an inlaid medallion at the
+      // centre, a plain field, and a darker border band at the wall line. A
+      // floor with a middle has somewhere to stand and fight over.
+      const inner = r < 4.2;
+      const border = !insideRoom(x, z, half, 3.4);
+      const col = inner ? shade(t.trim, 0.75)
+        : border ? shade(t.floor, 0.82)
+          : ((ix + iz) % 2 === 0 ? t.floor : shade(t.floor, 1.1));
+      const f = boxMesh(step - 0.22, 0.22, step - 0.22, col);
       f.position.set(x, -0.02, z);
       f.receiveShadow = true;
       g.add(f);
     }
   }
+
+  // the medallion's ring, sitting proud of the flags so it catches the light
+  const ring = cylMesh(4.5, 4.5, 0.06, t.trim, 8);
+  ring.position.y = 0.11;
+  g.add(ring);
+  const eye = cylMesh(1.15, 1.15, 0.08, shade(t.accent, 0.55), 8);
+  eye.position.y = 0.13;
+  g.add(eye);
 }
 
 function shade(hex, mul) {
@@ -80,46 +125,63 @@ function shade(hex, mul) {
   return `#${c.getHexString()}`;
 }
 
-/** Four walls with pilasters, a cornice, and no way out but the doors. */
+/**
+ * AN EIGHT-SIDED HALL, not a crate.
+ *
+ * Four flat walls meeting at right angles is the single thing that made this
+ * read as "kotak": from a top-down camera a square room is a rectangle with a
+ * rectangle of floor in it, and every corner looks the same. Chamfering the
+ * corners gives eight faces, three visible depths at any time, and somewhere to
+ * put the braziers that is not simply "against a wall".
+ *
+ * Each face is a base plinth, the wall itself, a recessed panel and a cornice —
+ * four bands of depth, which is what makes masonry read as built rather than as
+ * a painted plane.
+ */
 function buildWalls(g, half, t) {
-  const L = half * 2 + 1.2;
-  for (let s = 0; s < 4; s++) {
-    const a = (s * Math.PI) / 2;
-    const w = boxMesh(L, WALL_H, 1.2, t.wall);
-    w.position.set(Math.sin(a) * (half + 0.6), WALL_H / 2, Math.cos(a) * (half + 0.6));
-    w.rotation.y = a;
-    w.receiveShadow = true;
-    g.add(w);
-    // a cornice band so the wall has a top edge instead of just stopping
-    const c = boxMesh(L, 0.5, 1.6, t.trim);
-    c.position.set(Math.sin(a) * (half + 0.6), WALL_H - 0.25, Math.cos(a) * (half + 0.6));
-    c.rotation.y = a;
-    g.add(c);
-    // pilasters break the run of the wall up
-    for (let i = -2; i <= 2; i++) {
-      if (i === 0) continue;                       // leave the middle for a door
-      const p = boxMesh(1.1, WALL_H - 0.6, 0.5, t.trim);
-      const off = (i / 2.4) * half;
-      p.position.set(
-        Math.sin(a) * (half + 0.1) + Math.cos(a) * off,
-        (WALL_H - 0.6) / 2,
-        Math.cos(a) * (half + 0.1) - Math.sin(a) * off);
-      p.rotation.y = a;
-      g.add(p);
+  const R = half + 0.7;
+  const SIDES = 8;
+  for (let i = 0; i < SIDES; i++) {
+    // NO offset: this puts the four FLAT faces on the axes (0/90/180/270) and
+    // the four chamfers on the diagonals. The stair and the way out sit on the
+    // -Z and +Z flats, so a door is always centred on a wall rather than
+    // straddling a cut corner, and the alcoves land on the diagonals where the
+    // braziers go.
+    const a = (i / SIDES) * Math.PI * 2;
+    const cx = Math.cos(a), cz = Math.sin(a);
+    // the chamfers sit closer in than the flats, which is what cuts the corners
+    const diag = i % 2 === 1;
+    const d = diag ? R * (1 - CHAMFER * 0.62) : R;
+    const L = diag ? half * CHAMFER * 2.5 : half * 1.5;
+
+    const put = (w, h, dep, col, y, out) => {
+      const m = boxMesh(w, h, dep, col);
+      m.position.set(cx * (d + out), y, cz * (d + out));
+      m.rotation.y = -a + Math.PI / 2;
+      m.receiveShadow = true;
+      g.add(m);
+      return m;
+    };
+
+    put(L, 0.55, 1.5, shade(t.wall, 1.25), 0.27, 0);       // plinth
+    put(L, WALL_H, 1.0, t.wall, WALL_H / 2 + 0.4, 0.2);     // the wall
+    // a recessed panel, inset so its edges catch a highlight
+    put(L * 0.72, WALL_H * 0.55, 0.24, shade(t.wall, 0.72), WALL_H * 0.5, -0.28);
+    put(L, 0.42, 1.35, t.trim, WALL_H + 0.6, 0);            // cornice
+
+    // ALCOVES on the chamfers only: a lit niche is worth more than eight of
+    // them, and putting them on the diagonals means they never fight a door.
+    if (diag) {
+      const niche = boxMesh(1.5, 2.1, 0.4, '#0a0810');
+      niche.position.set(cx * (d - 0.32), 1.6, cz * (d - 0.32));
+      niche.rotation.y = -a + Math.PI / 2;
+      g.add(niche);
+      const arch = boxMesh(1.9, 0.3, 0.6, t.trim);
+      arch.position.set(cx * (d - 0.3), 2.8, cz * (d - 0.3));
+      arch.rotation.y = -a + Math.PI / 2;
+      g.add(arch);
     }
   }
-  // NO CEILING, and the reason is the camera.
-  //
-  // A roof is the obvious way to say "underground", and it is exactly wrong for
-  // this game. Semesta looks down from about fourteen units above the hero, so a
-  // lid at nine and a half put the camera OUTSIDE the room looking at the back
-  // of the tiles. Measured by reading the framebuffer: the middle of the screen
-  // was a single colour bucket, pure black, nought per cent lit. The hall was
-  // built and lit correctly the whole time and the camera was above the roof.
-  //
-  // What actually sells underground from this angle is air and edges, not a lid:
-  // the tight dark fog, the black background behind it and walls tall enough to
-  // cut the view off. That is the trade every top-down dungeon makes.
 }
 
 /** A brazier: bowl, coals and a real flame that flickers on its own phase. */
@@ -446,11 +508,15 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     // braziers around the room: the only light down here, and the reason the
     // walls read as stone rather than as a flat colour
     const braziers = [];
-    const ring = plan.kind === 'great' ? 8 : 6;
+    // FOUR in the alcoves, on the chamfered corners, so the light comes from
+    // somewhere the architecture actually put it -- plus two flanking the
+    // stair. Six lamps standing in a circle in the middle of a room is set
+    // dressing; lamps in niches is a building.
+    const ring = 4;
     for (let i = 0; i < ring; i++) {
-      const a = (i / ring) * Math.PI * 2 + 0.4;
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const b = buildBrazier(t, i);
-      b.position.set(Math.cos(a) * (half - 1.8), 0, Math.sin(a) * (half - 1.8));
+      b.position.set(Math.cos(a) * (half - 2.4), 0, Math.sin(a) * (half - 2.4));
       braziers.push(b);
       g.add(b);
     }
@@ -516,7 +582,9 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     // decides a fight.
     terrain.surfaceY = () => DUNGEON_Y;
     // Inside the walls, minus a body's width so you cannot clip into masonry.
-    terrain.walkable = (x, z) => Math.abs(x) < state.half - 0.6 && Math.abs(z) < state.half - 0.6;
+    // Follows the octagon, not a square: with a box test you could stand inside
+    // the chamfered corners, which is outside the visible room.
+    terrain.walkable = (x, z) => insideRoom(x, z, state.half, 1.1);
     // There is no water in the Hollow, and saying so switches off swimming, the
     // boats, the shore rescue and the weather in one line each.
     terrain.swimmable = () => false;
