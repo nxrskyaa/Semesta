@@ -269,57 +269,213 @@ function buildExit(t) {
   return g;
 }
 
+/**
+ * PILLARS — the single biggest thing an empty room was missing.
+ *
+ * Walls define where a room ENDS; pillars are what make it feel like it has an
+ * inside. They also give the fight geometry: something to break line of sight
+ * on, to put between you and a ranged monster, to circle a boss around. A flat
+ * open box is the same fight from every position in it.
+ *
+ * Four of them, set inside the chamfers so they frame the middle without ever
+ * standing in a doorway. Each is a base, a tapered shaft with a carved band, a
+ * capital, and a hanging chain-brazier above.
+ */
+function buildPillar(t, half, a) {
+  const g = new THREE.Group();
+  const H = 5.6;
+  const base = cylMesh(0.62, 0.78, 0.5, shade(t.trim, 0.85), 8);
+  base.position.y = 0.25;
+  const shaft = cylMesh(0.42, 0.54, H, t.wall, 8);
+  shaft.position.y = 0.5 + H / 2;
+  // a carved band two thirds up: one detail at the right height stops a
+  // cylinder reading as a pipe
+  const band = cylMesh(0.5, 0.5, 0.34, t.trim, 8);
+  band.position.y = 0.5 + H * 0.66;
+  const cap = cylMesh(0.8, 0.5, 0.42, shade(t.trim, 0.9), 8);
+  cap.position.y = 0.5 + H + 0.2;
+  g.add(base, shaft, band, cap);
+  // rubble collected at the foot, so it looks stood rather than placed
+  for (let i = 0; i < 3; i++) {
+    const r = boxMesh(0.3 + i * 0.12, 0.2, 0.26, shade(t.wall, 1.2));
+    const ra = a + (i - 1) * 0.9;
+    r.position.set(Math.cos(ra) * 0.85, 0.1, Math.sin(ra) * 0.85);
+    r.rotation.y = ra;
+    g.add(r);
+  }
+  return g;
+}
+
+/**
+ * A brazier hung on chains from the dark above.
+ *
+ * There is no ceiling to hang it from and that is fine — the chains simply run
+ * up out of the light, which says "there is more room above you" far better
+ * than a lid ever did. It sways, slowly and on its own phase.
+ */
+function buildHangingLamp(t, seed) {
+  const g = new THREE.Group();
+  const pivot = new THREE.Group();
+  pivot.position.y = 8.4;
+  // three chains, drawn as a ladder of small links
+  for (let c = 0; c < 3; c++) {
+    const ca = (c / 3) * Math.PI * 2;
+    for (let i = 0; i < 7; i++) {
+      const link = boxMesh(0.055, 0.18, 0.055, shade(t.trim, 0.6));
+      link.position.set(Math.cos(ca) * 0.3, -0.28 - i * 0.28, Math.sin(ca) * 0.3);
+      pivot.add(link);
+    }
+  }
+  const bowl = cylMesh(0.66, 0.34, 0.36, shade(t.trim, 0.75), 10);
+  bowl.position.y = -2.3;
+  pivot.add(bowl);
+  const fire = new THREE.Group();
+  fire.position.y = -2.05;
+  for (let i = 0; i < 3; i++) {
+    const f = cylMesh(0.02, 0.19 - i * 0.05, 0.46 + i * 0.2, i === 0 ? '#fff2c0' : t.accent, 6,
+      { unique: true, opacity: 0.9 });
+    f.material.transparent = true;
+    f.material.blending = THREE.AdditiveBlending;
+    f.material.depthWrite = false;
+    f.position.y = 0.2 + i * 0.09;
+    f.userData.phase = seed * 3.1 + i * 2.2;
+    fire.add(f);
+  }
+  fire.userData.dynamic = true;
+  pivot.add(fire);
+  const light = new THREE.PointLight(t.light, 2.0, 26, 2);
+  light.position.y = -2.1;
+  pivot.add(light);
+  pivot.userData.dynamic = true;
+  g.add(pivot);
+  g.userData = { pivot, fire, light, seed };
+  return g;
+}
+
 /** Band-specific dressing, so the three depths are not one room recoloured. */
 function dressHall(g, half, theme, t, rnd) {
+  // ---- shared: pillars and hanging lamps, the room's own interior ----
+  const lamps = [];
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const d = half * 0.56;
+    const pil = buildPillar(t, half, a);
+    pil.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+    g.add(pil);
+    const lamp = buildHangingLamp(t, i);
+    lamp.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+    g.add(lamp);
+    lamps.push(lamp);
+  }
+
+  // ---- banners on the flat walls: cloth breaks a stone room up ----
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    if (Math.abs(Math.sin(a)) > 0.9) continue;        // leave the two doorways clear
+    const d = half + 0.1;
+    const cloth = boxMesh(1.5, 3.2, 0.08, shade(t.accent, 0.5));
+    cloth.position.set(Math.cos(a) * d, 3.0, Math.sin(a) * d);
+    cloth.rotation.y = -a + Math.PI / 2;
+    g.add(cloth);
+    const rod = boxMesh(1.9, 0.14, 0.16, t.trim);
+    rod.position.set(Math.cos(a) * d, 4.65, Math.sin(a) * d);
+    rod.rotation.y = -a + Math.PI / 2;
+    g.add(rod);
+  }
+
   if (theme === 'stone') {
-    // fallen Lanternkeeper masonry and dead lampposts
-    for (let i = 0; i < 7; i++) {
-      const r = boxMesh(0.8 + rnd() * 1.4, 0.5 + rnd() * 0.9, 0.8 + rnd() * 1.2, shade(t.wall, 1.2));
-      r.position.set((rnd() - 0.5) * half * 1.7, 0.3, (rnd() - 0.5) * half * 1.7);
+    // fallen Lanternkeeper masonry, and their dead lamps lying where they fell
+    for (let i = 0; i < 9; i++) {
+      const r = boxMesh(0.8 + rnd() * 1.5, 0.4 + rnd() * 0.9, 0.8 + rnd() * 1.2, shade(t.wall, 1.25));
+      const a = rnd() * 6.28, d = 6 + rnd() * (half - 8);
+      r.position.set(Math.cos(a) * d, 0.25, Math.sin(a) * d);
       r.rotation.y = rnd() * 3.14;
       g.add(r);
     }
-    for (let i = 0; i < 3; i++) {
-      const p = cylMesh(0.14, 0.18, 2.6, shade(t.trim, 0.7), 6);
-      p.position.set((rnd() - 0.5) * half * 1.5, 1.3, (rnd() - 0.5) * half * 1.5);
-      p.rotation.z = (rnd() - 0.5) * 0.5;          // leaning, snapped, dead
-      g.add(p);
+    for (let i = 0; i < 4; i++) {
+      const post = cylMesh(0.13, 0.17, 2.4, shade(t.trim, 0.65), 6);
+      const a = rnd() * 6.28, d = 7 + rnd() * (half - 9);
+      post.position.set(Math.cos(a) * d, 0.7, Math.sin(a) * d);
+      post.rotation.z = 1.1 + rnd() * 0.4;          // snapped and leaning, not standing
+      g.add(post);
+      const box = boxMesh(0.34, 0.36, 0.34, shade(t.wall, 1.4));
+      box.position.set(Math.cos(a) * d + 0.9, 0.18, Math.sin(a) * d);
+      g.add(box);
     }
   } else if (theme === 'frost') {
-    // ice columns from floor to ceiling, and rime on the ground
-    for (let i = 0; i < 6; i++) {
-      const h = 3 + rnd() * 5;
-      const col = cylMesh(0.28 + rnd() * 0.3, 0.5 + rnd() * 0.4, h, '#bfe8ff', 6,
-        { unique: true, opacity: 0.55 });
+    // ice grown THROUGH the room: columns floor-to-dark, and sheets on the walls
+    for (let i = 0; i < 8; i++) {
+      const h = 3 + rnd() * 6;
+      const col = cylMesh(0.22 + rnd() * 0.3, 0.55 + rnd() * 0.4, h, '#cfeeff', 6,
+        { unique: true, opacity: 0.5 });
       col.material.transparent = true;
-      col.position.set((rnd() - 0.5) * half * 1.7, h / 2, (rnd() - 0.5) * half * 1.7);
+      const a = rnd() * 6.28, d = 5 + rnd() * (half - 7);
+      col.position.set(Math.cos(a) * d, h / 2, Math.sin(a) * d);
+      col.rotation.z = (rnd() - 0.5) * 0.3;
       g.add(col);
     }
-    for (let i = 0; i < 9; i++) {
-      const s = sphereMesh(0.3 + rnd() * 0.5, '#dff2ff', 6, 4);
-      s.scale.y = 0.3;
-      s.position.set((rnd() - 0.5) * half * 1.8, 0.1, (rnd() - 0.5) * half * 1.8);
-      g.add(s);
+    // frozen spikes bursting up out of the floor
+    for (let i = 0; i < 12; i++) {
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.18 + rnd() * 0.22, 0.7 + rnd() * 1.4, 5),
+        sharedMat('#dff4ff', { unique: true, opacity: 0.72 }));
+      sp.material.transparent = true;
+      const a = rnd() * 6.28, d = 4 + rnd() * (half - 6);
+      sp.position.set(Math.cos(a) * d, 0.35, Math.sin(a) * d);
+      sp.rotation.z = (rnd() - 0.5) * 0.5;
+      g.add(sp);
     }
   } else {
-    // cracked black rock with molten seams glowing up through it
-    for (let i = 0; i < 8; i++) {
-      const seam = boxMesh(0.5 + rnd() * 3.5, 0.06, 0.35, '#ff8a3c', { unique: true });
+    // molten seams running across the floor, and cracked slabs heaved up
+    for (let i = 0; i < 10; i++) {
+      const seam = boxMesh(0.6 + rnd() * 4, 0.05, 0.28, '#ff8a3c', { unique: true });
       seam.material.transparent = true;
-      seam.material.opacity = 0.85;
+      seam.material.opacity = 0.9;
       seam.material.blending = THREE.AdditiveBlending;
       seam.material.depthWrite = false;
-      seam.position.set((rnd() - 0.5) * half * 1.8, 0.14, (rnd() - 0.5) * half * 1.8);
+      const a = rnd() * 6.28, d = 3 + rnd() * (half - 5);
+      seam.position.set(Math.cos(a) * d, 0.15, Math.sin(a) * d);
       seam.rotation.y = rnd() * 3.14;
       g.add(seam);
     }
-    for (let i = 0; i < 6; i++) {
-      const r = boxMesh(1 + rnd() * 1.6, 0.7 + rnd() * 1.4, 1 + rnd() * 1.4, '#2a1a16');
-      r.position.set((rnd() - 0.5) * half * 1.7, 0.4, (rnd() - 0.5) * half * 1.7);
-      r.rotation.y = rnd() * 3.14;
+    for (let i = 0; i < 7; i++) {
+      const r = boxMesh(1.4 + rnd() * 1.8, 0.5 + rnd() * 1.2, 1.4 + rnd() * 1.4, '#2a1a16');
+      const a = rnd() * 6.28, d = 6 + rnd() * (half - 8);
+      r.position.set(Math.cos(a) * d, 0.3, Math.sin(a) * d);
+      r.rotation.set((rnd() - 0.5) * 0.3, rnd() * 3.14, (rnd() - 0.5) * 0.3);
       g.add(r);
     }
   }
+  return lamps;
+}
+
+/**
+ * DUST IN THE LIGHT. A hall with nothing moving in the air is a diorama. These
+ * are additive point-sprites drifting UPWARD on their own speeds — embers in
+ * the Ember Core, snow settling in the Frost Crypt, plain dust in the Halls —
+ * and they are what make the space read as air rather than as vacuum.
+ */
+function buildMotes(t, half, theme, budget = 1) {
+  const n = Math.round((theme === 'ember' ? 90 : 70) * budget);
+  const pos = new Float32Array(n * 3);
+  const spd = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.28, d = Math.random() * half;
+    pos[i * 3] = Math.cos(a) * d;
+    pos[i * 3 + 1] = Math.random() * 8;
+    pos[i * 3 + 2] = Math.sin(a) * d;
+    spd[i] = 0.16 + Math.random() * 0.55;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color: new THREE.Color(theme === 'frost' ? '#dff4ff' : t.accent),
+    size: theme === 'ember' ? 0.16 : 0.12,
+    transparent: true, opacity: 0.7, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.userData = { dynamic: true, spd, n, half, down: theme === 'frost' };
+  return pts;
 }
 
 // ---------------------------------------------------------------------------
@@ -503,7 +659,10 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
 
     buildFloor(g, half, t);
     buildWalls(g, half, t);
-    dressHall(g, half, plan.theme, t, rnd);
+    const lamps = dressHall(g, half, plan.theme, t, rnd);
+    const motes = buildMotes(t, half, plan.theme);
+    motes.position.y = 0;
+    g.add(motes);
 
     // braziers around the room: the only light down here, and the reason the
     // walls read as stone rather than as a flat colour
@@ -550,7 +709,7 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     g.position.set(0, DUNGEON_Y, 0);
     root.add(g);
     hall = g;
-    hall.userData = { braziers, stair, exit, half, theme: plan.theme };
+    hall.userData = { braziers, lamps, motes, stair, exit, half, theme: plan.theme };
 
     state.half = half;
     state.theme = plan.theme;
@@ -676,6 +835,34 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
       b.userData.light.intensity = 1.35 + Math.sin(time * 6.1 + s) * 0.22
         + Math.sin(time * 15.7 + s * 1.7) * 0.1;
     }
+    // hanging lamps: each swings on its own phase and its own axis, so four of
+    // them never look like one object nodding in time
+    for (const l of u.lamps || []) {
+      const p = l.userData.pivot, sd = l.userData.seed;
+      p.rotation.z = Math.sin(time * 0.55 + sd * 1.7) * 0.055;
+      p.rotation.x = Math.cos(time * 0.42 + sd * 2.3) * 0.045;
+      for (const f of l.userData.fire.children) {
+        const ph = f.userData.phase;
+        f.scale.set(1, 0.82 + Math.sin(time * 8.1 + ph) * 0.17, 1);
+        f.material.opacity = 0.7 + Math.sin(time * 12 + ph) * 0.22;
+      }
+      l.userData.light.intensity = 1.9 + Math.sin(time * 5.3 + sd) * 0.25;
+    }
+    // dust rising through the light, each speck on its own speed, wrapping at
+    // the top so the column never empties
+    if (u.motes) {
+      const a = u.motes.geometry.attributes.position;
+      const { spd, n, half: hh, down } = u.motes.userData;
+      for (let i = 0; i < n; i++) {
+        let y = a.array[i * 3 + 1] + (down ? -1 : 1) * spd[i] * dt;
+        if (down && y < 0) y = 8;
+        if (!down && y > 8) y = 0;
+        a.array[i * 3 + 1] = y;
+        a.array[i * 3] += Math.sin(time * 0.4 + i) * dt * 0.16;
+      }
+      a.needsUpdate = true;
+    }
+
     // the seal: grinds upward once the hall is clear, and the rune turns
     const st = u.stair.userData;
     st.t += dt * (st.open ? 0.7 : 0);

@@ -58,6 +58,7 @@ import { createIndex } from './systems/index.js';
 import { createDungeon } from './systems/dungeon.js';
 import { createDungeonWorld, buildHollowGate, DUNGEON_Y } from './world/dungeonworld.js';
 import { showDungeonGate, hollowLockedText } from './ui/dungeonpanel.js';
+import { playDescent } from './ui/descent.js';
 import { createFriends } from './systems/friends.js';
 import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
 import { ITEMS, RARITY, RARITY_ORDER, GACHA_WEAPONS, DUNGEON_WEAPONS } from './systems/items.js';
@@ -1599,7 +1600,9 @@ async function init(character, saved, audio, online = false) {
     }
   }
 
-  function enterHollow(difficulty, floor) {
+  const KIND_WORD = { hall: 'HALL', warden: 'WARDEN', great: 'LORD' };
+
+  async function enterHollow(difficulty, floor) {
     hollowReturn = player.state.pos.clone();
     // AUTO-BATTLE IS REFUSED DOWN HERE, and this is where it is switched off
     // rather than merely ignored: the Hollow is the one place in the game that
@@ -1614,14 +1617,23 @@ async function init(character, saved, audio, online = false) {
     // now five hundred units up. The wilds refill on their own once you are back.
     clearSurfaceFoes();
     const run = dungeon.begin(difficulty, floor);
-    const at = dungeonWorld.enter(run.plan);
-    player.state.pos.set(at.x, at.y, at.z);
-    player.state.vy = 0;
-    player.state.grounded = true;
-    populateFloor(run.plan);
+    const theme = dungeon.THEMES[run.plan.theme];
     audio.sfx('teleport');
-    audio.setMood?.('story');
-    hud.banner?.(`${dungeon.THEMES[run.plan.theme].name} — FLOOR ${floor}`);
+    // THE WORLD CHANGES BEHIND THE CURTAIN. The descent calls back at its
+    // darkest frame, so the hero is never seen being moved and Anavela never
+    // blinks out in front of you — the transition IS the travel.
+    await playDescent({
+      theme, label: theme.name,
+      sub: `FLOOR ${floor} · ${KIND_WORD[run.plan.kind]} · ${dungeon.DIFFICULTIES[difficulty].tag}`,
+      onMid: () => {
+        const at = dungeonWorld.enter(run.plan);
+        player.state.pos.set(at.x, at.y, at.z);
+        player.state.vy = 0;
+        player.state.grounded = true;
+        populateFloor(run.plan);
+        audio.setMood('hollow');
+      },
+    });
     return run;
   }
 
@@ -1697,16 +1709,23 @@ async function init(character, saved, audio, online = false) {
   }
 
   /** Down one floor. Same run, so what you are carrying comes with you. */
-  function descendHollow() {
+  async function descendHollow() {
     const plan = dungeon.descend();
     if (!plan) { leaveHollow(false); return; }
-    const at = dungeonWorld.enter(plan);
-    dungeonWorld.retheme(plan);         // the band changes on the way down
-    player.state.pos.set(at.x, at.y, at.z);
-    player.state.vy = 0;
-    populateFloor(plan);
-    hud.banner?.(`${dungeon.THEMES[plan.theme].name} — FLOOR ${plan.floor}`);
+    const theme = dungeon.THEMES[plan.theme];
     audio.sfx('teleport');
+    await playDescent({
+      theme, label: theme.name,
+      sub: `FLOOR ${plan.floor} · ${KIND_WORD[plan.kind]} · ${dungeon.DIFFICULTIES[plan.difficulty].tag}`,
+      dur: 1700,                       // shorter between floors: you know the way now
+      onMid: () => {
+        const at = dungeonWorld.enter(plan);
+        dungeonWorld.retheme(plan);    // the band changes on the way down
+        player.state.pos.set(at.x, at.y, at.z);
+        player.state.vy = 0;
+        populateFloor(plan);
+      },
+    });
   }
 
   /** The gate in Anavela: asks, then sends you down. */
@@ -3912,10 +3931,15 @@ const CAM_PITCH_DEFAULT = 0.98;
     }
     audio.setCombat(Math.min(1, aggroN / 3));
     // out on open water gets its own brighter set of tracks
-    audio.setMood(
-      (watercraft.state.active || player.state.swimming) && terrain.inOcean(player.state.pos.x, player.state.pos.z)
-        ? 'sea' : isNight,
-    );
+    // THE LOOP MUST NOT OVERWRITE THE HOLLOW. This runs every frame, so even a
+    // correctly-set dungeon mood was replaced by day/night on the very next one
+    // — the dungeon could never hold its own music for a single frame.
+    if (!inHollow) {
+      audio.setMood(
+        (watercraft.state.active || player.state.swimming) && terrain.inOcean(player.state.pos.x, player.state.pos.z)
+          ? 'sea' : isNight,
+      );
+    }
     audio.setRain(weather.state.intensity);
 
     hud.updateVitals(player, leveling, dt);

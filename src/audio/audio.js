@@ -42,6 +42,46 @@ export function createAudio() {
         a: [[0, 3, 7], [-2, 3, 8], [-4, 0, 7], [0, 5, 8]],
         b: [[0, 5, 8], [-4, 0, 7], [0, 3, 7], [-2, 3, 8]] },
     ],
+    // THE HOLLOW. Three pieces, one per band, and they are deliberately not
+    // "night, but darker". Everything down here is built from intervals the
+    // overworld never uses -- a flat second and a tritone in Stone, a whole-tone
+    // scale in Frost that has no home note to come back to, a Phrygian-dominant
+    // in Ember that leans somewhere hot. They are SLOW (40-52bpm) with sparse
+    // melodies, because a dungeon should feel like a held breath and because you
+    // are listening for the thing behind you rather than humming along.
+    // THE PROLOGUE. Documented as its own mood for a long time and never
+    // actually wired: setMood did not know the name, so ten beats about
+    // forty-one people who did not come back played the ordinary night music.
+    // Slow natural minor, and the chord loops never resolve to the root on the
+    // last bar, so nothing feels finished while somebody is still reading.
+    story: [
+      { name: 'Forty-One Names', root: 147, bpm: 46, voice: 'bell',
+        scale: [0, 2, 3, 5, 7, 8, 10, 12],
+        a: [[0, 3, 7], [-4, 0, 3], [-2, 3, 7], [-5, 0, 3]],
+        b: [[-5, 0, 3], [-2, 3, 7], [0, 3, 8], [-4, 0, 5]] },
+      { name: 'The Northern Road', root: 131, bpm: 42, voice: 'pluck',
+        scale: [0, 2, 3, 7, 8, 10, 12, 15],
+        a: [[0, 3, 8], [-2, 2, 7], [-5, 0, 3], [0, 3, 7]],
+        b: [[-2, 2, 7], [0, 3, 8], [-4, 0, 5], [-5, 0, 3]] },
+      { name: 'Not Past The Gate', root: 165, bpm: 40, voice: 'kalimba',
+        scale: [0, 3, 5, 7, 10, 12, 14, 17],
+        a: [[0, 3, 7], [-5, 0, 5], [-3, 0, 7], [-5, 0, 3]],
+        b: [[-3, 0, 7], [0, 3, 7], [-5, 0, 5], [-2, 3, 7]] },
+    ],
+    hollow: [
+      { name: 'The Stone Halls', root: 110, bpm: 46, voice: 'pluck',
+        scale: [0, 1, 5, 6, 7, 12, 13, 17],           // flat 2nd + tritone: unresolved
+        a: [[0, 3, 7], [-1, 4, 6], [0, 1, 8], [-5, 1, 6]],
+        b: [[0, 1, 8], [-6, 0, 5], [-1, 4, 6], [0, 3, 6]] },
+      { name: 'The Frost Crypt', root: 98, bpm: 40, voice: 'bell',
+        scale: [0, 2, 4, 6, 8, 10, 12, 14],           // whole-tone: no home to land on
+        a: [[0, 4, 8], [2, 6, 10], [-2, 2, 6], [0, 4, 10]],
+        b: [[-4, 0, 6], [0, 4, 8], [2, 6, 8], [-2, 4, 8]] },
+      { name: 'The Ember Core', root: 131, bpm: 52, voice: 'kalimba',
+        scale: [0, 1, 4, 5, 7, 8, 11, 12],            // Phrygian dominant: hot, eastern
+        a: [[0, 4, 7], [1, 5, 8], [-4, 0, 5], [0, 4, 11]],
+        b: [[1, 5, 8], [0, 4, 7], [-1, 4, 8], [0, 3, 7]] },
+    ],
     night: [
       { name: 'Lantern Road', root: 196, bpm: 66, voice: 'pluck',
         scale: [0, 2, 3, 7, 8, 12, 14, 15],
@@ -384,8 +424,15 @@ export function createAudio() {
 
   // setMood(true/false) = night/day (in-world); setMood('menu') = title/creation music
   function setMood(v) {
-    // 'menu' | 'sea' | true(night) | false(day)
-    const next = v === 'menu' ? 'menu' : v === 'sea' ? 'sea' : (v ? 'night' : 'day');
+    // 'menu' | 'story' | 'hollow' | 'sea' | true(night) | false(day)
+    //
+    // NAMED MOODS ARE MATCHED EXPLICITLY. This used to fall through to the
+    // truthy test, so any string it did not recognise -- 'story', 'hollow',
+    // anything -- came out as NIGHT. The dungeon was asking for its own music
+    // and silently getting the overworld's after dark, which is why it sounded
+    // like nothing had changed.
+    const NAMED = ['menu', 'sea', 'hollow', 'story'];
+    const next = NAMED.includes(v) ? v : (v ? 'night' : 'day');
     if (next === mood) return;
     mood = next;
     trackIdx = -1;            // force rollTrack to land somewhere new
