@@ -137,6 +137,8 @@ are now adopted.
 - **`powerPreference: 'high-performance'`** — without the hint a laptop with
   switchable graphics runs WebGL on the integrated chip, which is the machine
   most players are on.
+- **SHADOW CASTERS ARE GATED BY RANGE.** The sun s shadow camera is 60 units across; 338 objects carried `castShadow` and 242 of them sat further than 45 units from the hero, where nothing can ever reach the depth map. The flag is now driven by distance, riding along on the light tick that already traverses the scene — one comparison per object, no extra pass. Measured: **338 casters down to 62, none beyond range**, draw calls 476 to 441
+- CORRECTION TO THE STATIC AUDIT BELOW, and it is why measuring beat counting: the 564 raw allocation sites are NOT where the cost is. player.js has 242 of them and contributes **31 meshes and 18 materials** at runtime, because there is one player and most sites are conditional. The real load is the world: 3,216 meshes and 1,311 materials outside any single system. The gardens 228 `BufferGeometry` objects are `bakeStatic` OUTPUT — one merged geometry per plant — so they are the optimisation, not waste. The next real win there is INSTANCING identical baked plants rather than deduplicating anything
 - STILL OWED, with the evidence: a live scene carries **4,063 meshes, 476 draw
   calls, 290k triangles, 2,731 distinct geometries and 1,863 distinct
   materials**. Grouping meshes by their top-level ancestor shows subtrees with

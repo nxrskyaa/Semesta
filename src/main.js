@@ -3584,10 +3584,34 @@ const CAM_PITCH_DEFAULT = 0.98;
    * Rescanning costs one traverse a second against four thousand objects, which
    * is nothing next to what it prevents.
    */
+  // SHADOWS ONLY MATTER INSIDE THE SHADOW FRUSTUM.
+  //
+  // The sun's shadow camera is 60 units across, but 338 objects in the world
+  // carry castShadow and — measured — 242 of them sit further than 45 units
+  // from the hero. Not one of those can ever land in the depth map. They are
+  // still walked, still tested, and any that straddle the edge are still drawn
+  // into it for nothing.
+  //
+  // The flag is switched by distance instead. This rides along on the light
+  // tick, which already traverses the scene four times a second, so the gate
+  // itself costs one comparison per object and no extra pass.
+  const SHADOW_R = 42;                 // comfortably past the 30-unit frustum
+  function gateShadow(o) {
+    if (!o.userData.shadowGate) return;
+    const e = o.matrixWorld.elements;
+    const d = (e[12] - player.state.pos.x) ** 2 + (e[14] - player.state.pos.z) ** 2;
+    o.castShadow = d < SHADOW_R * SHADOW_R;
+  }
+
   function collectLights() {
     lightPool = [];
     let total = 0;
     scene.traverse((o) => {
+      // remember which objects ASKED to cast, once, then drive the flag by range
+      if ((o.isMesh || o.isInstancedMesh)) {
+        if (o.castShadow && !o.userData.shadowGate) o.userData.shadowGate = true;
+        if (o.userData.shadowGate) gateShadow(o);
+      }
       if (!o.isPointLight) return;
       total++;
       // The hero's lamp is never culled — it is the one light whose whole job
