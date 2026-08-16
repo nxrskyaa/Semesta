@@ -357,7 +357,16 @@ async function init(character, saved, audio, online = false) {
 
   // --- renderer & scene (sized by the GRAPHICS settings) ---
   let qual = getQuality();
-  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  const renderer = new THREE.WebGLRenderer({
+    // Everything lands in the composer's own targets, so MSAA on the default
+    // framebuffer is memory bandwidth spent on a buffer nothing samples.
+    antialias: false,
+    // ASK FOR THE DISCRETE GPU. Without this hint a laptop with switchable
+    // graphics runs WebGL on the integrated chip — which is the machine most
+    // players are on, and the one where the difference is largest. It costs
+    // nothing to ask and the browser still decides.
+    powerPreference: 'high-performance',
+  });
   renderer.setSize(window.innerWidth, window.innerHeight);
   // FILMIC GRADE. This is the single biggest reason a scene reads as "nicer":
   // ACES rolls highlights off instead of clipping them to flat white, so a
@@ -390,8 +399,16 @@ async function init(character, saved, audio, online = false) {
     // Strength and threshold are tuned so FLAMES and glowing FX bloom hard
     // while lit surfaces stay crisp. A lower threshold would smear the whole
     // world; a wider radius is what gives the glow its soft falloff.
+    // HALF RESOLUTION, and this is the cheapest large win in the renderer.
+    //
+    // UnrealBloomPass is not one pass: it is five downsamples and five
+    // upsamples plus a composite, every one of them a full-screen draw. At the
+    // backing-store size that is eleven full-frame passes of fill on top of the
+    // scene itself. Bloom is a WIDE, SOFT blur by construction — its whole job
+    // is to throw light around — so the half-res chain is visually almost
+    // indistinguishable and costs a QUARTER of the fragments.
     bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5),
       0.52,   // strength
       0.85,   // radius — softer, wider halo
       0.72,   // threshold: flames, sparks and sun glitter, not lit walls
@@ -400,6 +417,65 @@ async function init(character, saved, audio, online = false) {
     composer.addPass(new OutputPass());
   }
   const usePost = () => composer && qual.bloom;
+
+  // ==========================================================================
+  // ADAPTIVE RESOLUTION — measure, then shed pixels.
+  //
+  // The graphics preset picks a render scale ONCE, at boot, from
+  // `hardwareConcurrency` and `deviceMemory`. Those tell you how many cores a
+  // machine has; they tell you nothing about its GPU, its thermal state, what
+  // else it is running, or how heavy the part of the world you happen to be
+  // standing in is. A fixed guess is either too low (you paid for sharpness you
+  // did not need) or too high (it drops frames and never recovers), and there
+  // is no third outcome.
+  //
+  // So the frame budget is MEASURED and the backing store follows it. Render
+  // scale is quadratic on fill rate, which makes it by far the strongest lever
+  // available: dropping from 1.0 to 0.8 removes 36% of every fragment in the
+  // frame, shadow maps and bloom included.
+  //
+  // Three things keep it from becoming a wobble you can see:
+  //   · it reads the MEDIAN of a second of frames, not the last one, so a
+  //     single hitch — a chest opening, a boss spawning — never moves it;
+  //   · it steps by 0.1 and waits a full second between steps;
+  //   · it only ever climbs back to the preset's own scale, never past it, so
+  //     ULTRA still looks like ULTRA on a machine that can hold it.
+  // ==========================================================================
+  const adaptive = {
+    scale: 1,                 // multiplier ON TOP of the preset's render scale
+    min: 0.55,
+    samples: [],
+    cooldown: 0,
+    enabled: true,
+  };
+
+  function applyPixelRatio() {
+    const base = Math.min(window.devicePixelRatio, 1.75) * qual.renderScale;
+    renderer.setPixelRatio(base * adaptive.scale);
+  }
+
+  function tickAdaptive(dt, frameMs) {
+    if (!adaptive.enabled) return;
+    adaptive.samples.push(frameMs);
+    adaptive.cooldown -= dt;
+    if (adaptive.samples.length < 45 || adaptive.cooldown > 0) return;
+    // the median, so one bad frame cannot move the resolution
+    const sorted = adaptive.samples.slice().sort((a, b) => a - b);
+    const med = sorted[sorted.length >> 1];
+    adaptive.samples.length = 0;
+
+    const before = adaptive.scale;
+    // 20ms ~ 50fps: below that we are losing frames and sharpness is the first
+    // thing worth trading. 13ms ~ 75fps: comfortably clear, take some back.
+    if (med > 20) adaptive.scale = Math.max(adaptive.min, adaptive.scale - 0.1);
+    else if (med < 13) adaptive.scale = Math.min(1, adaptive.scale + 0.1);
+
+    if (adaptive.scale !== before) {
+      adaptive.cooldown = 1.0;
+      applyPixelRatio();
+      composer?.setSize(innerWidth, innerHeight);
+    }
+  }
 
   setBoot(0.1, 'Painting the pixel tiles…'); await frame();
 
@@ -3391,7 +3467,7 @@ const CAM_PITCH_DEFAULT = 0.98;
   // --- GRAPHICS settings: live groups take effect immediately ---
   onQualityChange((nq) => {
     qual = nq;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75) * nq.renderScale);
+    applyPixelRatio();   // keeps the adaptive multiplier on top of the new preset
     renderer.setSize(innerWidth, innerHeight);
     composer?.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = nq.shadows;
@@ -3983,7 +4059,12 @@ const CAM_PITCH_DEFAULT = 0.98;
       touchUI?.setMenuOpen(panels.anyOpen() || dialog.isOpen() || worldmap.isOpen() || hud.isMenuPopOpen());
     }
 
+    // TIME THE FRAME, then let the resolution follow it. Measured around the
+    // draw itself rather than the whole tick, because the draw is the part the
+    // pixel ratio actually controls.
+    const drawStart = performance.now();
     if (usePost()) composer.render(); else renderer.render(scene, camera);
+    tickAdaptive(dt, performance.now() - drawStart);
   }
   schedule(loop);
 }

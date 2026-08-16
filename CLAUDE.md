@@ -111,6 +111,42 @@ ialotemple`, never the art, and repainted with Semesta's own chibi builder per t
 - `dungeonfoes.js` deliberately does NOT import from enemies.js even though enemies.js merges its tables — that cycle would let a load-order accident spread a const still in its TDZ. And the dungeon handles go in the REAL `window.__semesta` literal near the end of init, not the enemy-hooks object hundreds of lines earlier: naming them there read `dungeon` in its dead zone and stopped the loading bar at 78% with nothing on screen to say why. **Sixth TDZ bite in this file. Expose a thing where it EXISTS, never where it reads nicely**
 - NOTE when verifying: **`inventory.state.weapons` is a SET and `inventory.count()` only reads `materials`** — a count-only "do I own it" check reports every weapon as missing, and `Object.keys()` on a Set is `[]`. That produced one false bug report during this build, and it is the same shape as the Index bug that once logged nothing forever
 
+## Renderer performance — measured, and what is still owed
+
+Benchmarked against SeismicSkate (React Three Fiber, same author). That project
+is a single skate park and Semesta is a 200-cell open world, so the workloads
+are not comparable — but three of its choices were straightforwardly better and
+are now adopted.
+
+- **ADAPTIVE RESOLUTION.** The preset picked a render scale ONCE at boot from
+  `hardwareConcurrency`/`deviceMemory`, which say how many CPU cores a machine
+  has and nothing about its GPU, its thermal state or how heavy the part of the
+  world you are standing in is. A fixed guess is either too low or drops frames
+  and never recovers. The frame is timed around the draw now and the backing
+  store follows it: median of ~45 frames (never one hitch), steps of 0.1, a
+  one-second cooldown, floor 0.55, and it never climbs past the preset own
+  scale. Render scale is QUADRATIC on fill, so 1.0 -> 0.8 removes 36% of every
+  fragment including shadows and bloom. This is the lever that makes a frame
+  budget a promise rather than a hope.
+- **BLOOM AT HALF RESOLUTION.** UnrealBloomPass is not one pass — it is five
+  downsamples, five upsamples and a composite, each a full-screen draw. At
+  backing-store size that is eleven full-frame passes on top of the scene. Bloom
+  is a wide soft blur by construction, so half-res is visually near-identical
+  and costs a quarter of the fragments. Measured: 640x360 against a 1600x900
+  screen, about one sixth of the previous fill.
+- **`powerPreference: 'high-performance'`** — without the hint a laptop with
+  switchable graphics runs WebGL on the integrated chip, which is the machine
+  most players are on.
+- STILL OWED, with the evidence: a live scene carries **4,063 meshes, 476 draw
+  calls, 290k triangles, 2,731 distinct geometries and 1,863 distinct
+  materials**. Grouping meshes by their top-level ancestor shows subtrees with
+  geometry and material counts running roughly 1:1 with mesh count — the shared
+  `meshcache` is barely reaching them. **564 raw `new THREE.*Geometry` /
+  `new Mesh*Material` sites sit in modules that never import meshcache at all**:
+  player.js (242), cosmetics.js (125), pets.js (81), mounts.js (63), decor.js,
+  fishing.js, farming.js. Routing those through `sharedBox`/`sharedMat` is the
+  next large win and it is mechanical rather than clever
+
 ## Multiplayer & accounts (live)
 
 - `server/` — the authoritative half, running on a VPS behind a Cloudflare Tunnel. Owns the clock, weather, monster spawning and AI, the world boss, shared farm plots and chat. **The map is never sent**: every client generates a byte-identical world from fixed seeds, which is why one small box is enough. Interest management caps each player's feed at a 70-unit radius; positions go out at 8Hz as TARGETS, and the client eases between them
