@@ -1361,6 +1361,24 @@ function buildGarden(rng, kind, detail = 1) {
       r: 0.5 + rng() * 0.75,
     });
   }
+  // ONE PIVOT FOR THE WHOLE BED, and it is both cheaper and more correct.
+  //
+  // Every plant used to carry its own sway on its own phase, which made all
+  // fifty-eight of them animated pivots. bakeStatic bakes each posed pivot
+  // separately in its own frame, so a bed that should have merged into a
+  // handful of meshes came out as 228 — measured — and all fifty-eight were
+  // posed every frame on top of that.
+  //
+  // Wind in this game is supposed to come from ONE source: the note on
+  // `world/wind.js` says the coherence is exactly what separates weather from
+  // every prop wobbling on its own private sine. A bed of flowers leaning
+  // together in a gust is what a gust looks like. So the bed sways as one, the
+  // plants under it are static and merge, and the only thing left turning on
+  // its own is a sunflower's head — which has a reason to.
+  const sway = new THREE.Group();
+  sway.position.set(0, 0, 0);
+  g.add(sway);
+
   const plant = (x, z, c) => {
     if (Math.hypot(x, z) > R - 0.4) return false;
     if (Math.abs(x) < 0.52 && z > 0) return false;        // keep the path clear
@@ -1370,8 +1388,11 @@ function buildGarden(rng, kind, detail = 1) {
     f.position.set(x, 0.27, z);
     f.rotation.y = rng() * Math.PI * 2;
     f.scale.setScalar(0.82 + rng() * 0.4);
-    g.add(f);
-    heads.push({ o: f, phase: rng() * 10, sun: !!f.userData.sunflower });
+    sway.add(f);
+    // only the sun-followers stay in the per-frame list now
+    if (f.userData.sunflower && f.userData.head) {
+      heads.push({ o: f, head: f.userData.head, phase: rng() * 10 });
+    }
     return true;
   };
   // KEEP TRYING until the bed actually holds N plants. Placing exactly N times
@@ -1461,7 +1482,7 @@ function buildGarden(rng, kind, detail = 1) {
     flutter.push({ o: b, a: rng() * 6.28, r: 0.8 + rng() * 1.6, y: 0.6 + rng() * 0.7, sp: 0.5 + rng() * 0.6 });
   }
 
-  g.userData.garden = { heads, flutter };
+  g.userData.garden = { heads, flutter, sway };
   return g;
 }
 
@@ -1690,7 +1711,10 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       if (!G) continue;
       // the stalk sways as one piece; only a sunflower's HEAD turns separately,
       // so everything else in the plant merges down to a couple of meshes
-      for (const h of G.heads) { dyn(h.o); dyn(h.o.userData?.head); }
+      // The bed's single sway pivot, and the sunflower heads that turn inside
+      // it. Marking all fifty-eight plants made each one its own bake island.
+      dyn(G.sway);
+      for (const h of G.heads) dyn(h.head);
       for (const f of G.flutter) dyn(f.o);
     }
     for (const lm of [festival, watch, ...docks.map((d) => d.mesh)]) dynAll(lm.userData.lanterns);
@@ -1782,15 +1806,17 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     for (const gd of gardens) {
       if (!near(gd)) continue;
       const G = gd.userData.garden;
+      // the whole bed leans together, off the one wind vector
+      if (G.sway) {
+        G.sway.rotation.z = wind ? wind.sway(0) * 0.045 : Math.sin(time * 1.3) * 0.05;
+        G.sway.rotation.x = Math.cos(time * 1.1) * 0.03;
+      }
+      // Only sunflowers are in this list now, and each entry already holds the
+      // head it turns — no per-frame userData lookup, no test that is true for
+      // every entry.
       for (const h of G.heads) {
-        const sway = (wind ? wind.sway(h.phase) * 0.05 : Math.sin(time * 1.3 + h.phase) * 0.055);
-        h.o.rotation.z = sway;
-        h.o.rotation.x = Math.cos(time * 1.1 + h.phase) * 0.035;
-        // a sunflower head follows the sun across the sky and droops at night
-        if (h.sun && h.o.userData.head) {
-          h.o.userData.head.rotation.y = -gd.rotation.y + sunAz;
-          h.o.userData.head.rotation.x = sunEl;
-        }
+        h.head.rotation.y = -gd.rotation.y + sunAz;
+        h.head.rotation.x = sunEl;
       }
       for (const f of G.flutter) {
         f.a += dt * f.sp;
