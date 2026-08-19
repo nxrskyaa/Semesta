@@ -224,17 +224,29 @@ export function createWorldMap({ minimap, terrain }) {
     // player arrow
     const p = refs.player.state;
     const [px, py] = toXY(p.pos.x, p.pos.z);
+    // SAME 180-DEGREE FAULT THE MINIMAP ALREADY FIXED, and it survived here
+    // because this file draws its own arrow. `toXY` maps world z straight to
+    // canvas y exactly as the minimap does, the tip is authored at (0,-1) —
+    // canvas UP — and `rotate(-facing)` sends it to (-sin f, -cos f), which is
+    // the exact negative of the heading (sin f, cos f). Checked against all
+    // four cardinals: every one pointed backwards. The correct angle is
+    // PI - facing, for the reason spelled out in minimap.js.
+    //
+    // The casing is a stroke under the fill rather than the old offset shadow:
+    // an offset only darkens two edges, so the arrow still merged into pale
+    // ground — the snow biome and the beaches — on the side the offset missed.
     ctx.save();
     ctx.translate(px, py);
-    ctx.rotate(-p.facing);
-    ctx.fillStyle = '#0a0f0a';
-    ctx.beginPath();
-    ctx.moveTo(1, -8); ctx.lineTo(7, 7); ctx.lineTo(1, 3.5); ctx.lineTo(-5, 7);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#f0f0e0';
+    ctx.rotate(Math.PI - p.facing);
     ctx.beginPath();
     ctx.moveTo(0, -9); ctx.lineTo(6, 6); ctx.lineTo(0, 2.5); ctx.lineTo(-6, 6);
-    ctx.closePath(); ctx.fill();
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#0a0f0a';
+    ctx.stroke();
+    ctx.fillStyle = '#fdfbef';
+    ctx.fill();
     ctx.restore();
   }
 

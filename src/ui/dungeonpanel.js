@@ -43,11 +43,12 @@ const CSS = `
 .dgate .band .bb { font-size: 11px; color: #8f82ad; margin-top: 3px; line-height: 1.5; }
 .dgate .warn { margin-top: 12px; font-size: 11px; color: #ffb07a; line-height: 1.5; }
 .dgate .row { display: flex; gap: 9px; margin-top: 16px; }
-.dgate button.go { flex: 1; padding: 11px; background: #6a4ba8; color: #fff; border: var(--pix-btn, 2px solid #8a6ac8);
+.dgate button.go { flex: 1; padding: 11px; background: #6a4ba8; color: #fff; border: 0;
+  box-shadow: var(--pix-btn, 0 0 0 2px #8a6ac8);
   font-family: var(--font-display, monospace); font-size: 13px; letter-spacing: 1px; cursor: pointer; }
 .dgate button.go:disabled { background: #332c48; color: #6a6080; cursor: not-allowed; }
 .dgate button.back { padding: 11px 16px; background: #241d33; color: #bfb2d8;
-  border: var(--pix-btn, 2px solid #3d3454); cursor: pointer; font-size: 12px; }
+  border: 0; box-shadow: var(--pix-btn, 0 0 0 2px #3d3454); cursor: pointer; font-size: 12px; }
 `;
 
 const KIND_LABEL = { hall: 'HALL', warden: 'WARDEN', great: 'LORD' };

@@ -3,6 +3,20 @@
 // by the main loop. Rarity drives how flashy each piece looks.
 import * as THREE from 'three';
 import { ITEMS } from './items.js';
+// SIX COSMETICS COULD NOT BE WORN, and it was a missing import.
+//
+// `sharedMat` is used at seven sites in this file and was never imported, so
+// building hat_lantern, hat_antlers, hat_horns, hat_starcap, hat_moon or
+// back_lanterns threw `sharedMat is not defined`. The throw went nowhere you
+// could see it: `equip()` does `const c = buildCosmetic(id); if (c) {...}`, so
+// a piece that fails to build sets the slot in `state`, saves, shows as WORN in
+// the wardrobe — and puts nothing on the character. Silent, and it looked like
+// the item was simply cosmetic-only or the art had not been made yet.
+//
+// Measured by building all 54 cosmetics: 6 threw, and every one of them is a
+// late addition — the older pieces use this file's own `lam()` helper, which is
+// why the wardrobe worked at all and why nobody caught it.
+import { sharedMat } from '../gfx/meshcache.js';
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 function glow(color) { return new THREE.MeshBasicMaterial({ color: new THREE.Color(color) }); }

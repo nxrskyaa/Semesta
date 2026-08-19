@@ -512,6 +512,12 @@ body.touch #hud .onboard .go { font-size: 11px; padding: 11px; letter-spacing: 2
 }
 #hud .pinbeacon.show { display: flex; }
 #hud .pinbeacon .arr { font-size: 14px; color: #ff8a5e; display: inline-block; transition: transform 0.12s linear; }
+/* the Hollow's way out: warm daylight, matching the arch it points at */
+#hud .pinbeacon.hollow {
+  color: #ffe6b0; background: rgba(14,10,20,0.88);
+  box-shadow: 0 0 0 2px #8a6a34, 0 0 0 4px var(--ink);
+}
+#hud .pinbeacon.hollow .arr { color: #ffd79a; }
 
 /* ---- level up celebration ---- */
 #hud .lvlup {
@@ -1149,11 +1155,16 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       hollowTotal ? `${Math.round((h.left / hollowTotal) * 100)}%` : '0%';
   }
 
+  // The same chip serves the overworld waypoint and the Hollow's way out. It
+  // carries a label because "MARK" is wrong for a door, and a tone because a
+  // mark you dropped yourself and the exit from a dungeon should not read as
+  // the same kind of thing.
   function setBeacon(b) {
     if (!b) { beaconEl.classList.remove('show'); return; }
     beaconEl.classList.add('show');
+    beaconEl.classList.toggle('hollow', b.tone === 'hollow');
     beaconArr.style.transform = `rotate(${b.angle}rad)`;
-    const txt = `MARK · ${Math.round(b.dist)}m`;
+    const txt = `${b.label || 'MARK'} · ${Math.round(b.dist)}m`;
     if (beaconTxt.textContent !== txt) beaconTxt.textContent = txt;
   }
 

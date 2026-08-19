@@ -62,12 +62,33 @@ export function buildWater(terrain, scene) {
 
   const tex = makeWaterNoiseTexture();
   tex.repeat.set(S / 8, S / 8);
-  // Phong, not Lambert: the sun needs something to glint off
+  // Phong, not Lambert: the sun needs something to glint off.
+  //
+  // THE GLINT HAS TO BE A PATH, NOT A WALL. A near-white specular (#cfeef7) at
+  // a low shininess (72) spreads its lobe across a plane that is almost flat
+  // and almost fills the frame — so at midday on the coast the highlight
+  // saturated, cleared the bloom threshold and smeared into a featureless
+  // white sheet. Measured at the ordinary gameplay camera, 14.66% of the
+  // frame was blown to pure white at noon, and the sea's colour, wave banding
+  // and shoreline all vanished inside it. Nothing about the fog or the AO was
+  // involved; hiding this one mesh took the blown fraction to 0.
+  //
+  // The specular term is ADDED after diffuse and is multiplied by neither the
+  // vertex colour nor the map, which is why no amount of tinting the water
+  // helped. The fix is to dim the highlight and tighten the lobe: swept
+  // against the real frame at a pinned camera and sun, #cfeef7/72 -> 14.66%,
+  // /220 -> 10.87%, #8fc4d4/140 -> 8.85%, #6a9aa8/180 -> 5.31%, and
+  // #4a737f/220 -> 2.14%, which still reads as a bright sun path on the water
+  // with the swell visible through it. Black would be 0 and is not the goal.
+  //
+  // MEASURE THIS AT A PINNED CAMERA. A first sweep moved the framing between
+  // trials and reported the identical figure for six very different materials,
+  // which is the same trap as A/B-ing a post pass with `pass.enabled`.
   const mat = new THREE.MeshPhongMaterial({
     map: tex,
     vertexColors: true,
-    specular: new THREE.Color('#cfeef7'),
-    shininess: 72,
+    specular: new THREE.Color('#4a737f'),
+    shininess: 220,
     transparent: true,
     opacity: 0.88,
     depthWrite: false,

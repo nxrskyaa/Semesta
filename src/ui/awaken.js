@@ -45,14 +45,16 @@ const TXT = {
 };
 
 const CSS = `
-.tree .row { display: flex; gap: 8px; }
-.tree .row .close { flex: 1; }
-.tree .respec {
+.awk .row .close { flex: 1; }
+.awk .respec {
   padding: 9px 12px; background: #3a2436; color: #ffb0c8;
-  border: var(--pix-btn, 2px solid #6a3a58); cursor: pointer;
+  border: 0; box-shadow: var(--pix-btn, 0 0 0 2px #6a3a58); cursor: pointer;
   font-family: var(--font-display, monospace); font-size: 11px; letter-spacing: 1px;
 }
-.tree .respec[data-armed="1"] { background: #6a2038; color: #fff; border-color: #a83a5c; }
+.awk .respec[data-armed="1"] {
+  background: #6a2038; color: #fff;
+  box-shadow: var(--pix-btn, 0 0 0 2px #a83a5c), 0 0 0 2px #a83a5c;
+}
 .awk {
   position: fixed; inset: 0; z-index: 190;
   display: flex; flex-direction: column; align-items: center; justify-content: center;

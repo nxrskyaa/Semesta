@@ -737,6 +737,8 @@ async function init(character, saved, audio, online = false) {
 
   // true only while a dungeon run is live; see inSafeZone below
   let inHollow = false;
+  // set by the webglcontextlost handler further down; the loop asks before drawing
+  let isContextLost = () => false;
 
   function inSafeZone(x, z) {
     // THERE ARE NO SANCTUARIES IN THE HOLLOW, and forgetting that made the
@@ -1290,6 +1292,20 @@ async function init(character, saved, audio, online = false) {
   const tele = { channel: 0, cd: 0, dest: 'home' };
   function teleportHome(dest = 'home') {
     if (player.state.dead || player.state.busy) return;
+    // THERE IS NO FAST TRAVEL OUT OF THE HOLLOW, and the reason is not flavour.
+    // Both destinations are Anavela coordinates, and while a run is live the
+    // terrain override answers for a single sealed room: anywhere outside it
+    // reports `walkable` false and the ground at DUNGEON_Y. Teleporting home
+    // therefore drops you in a void five hundred units up, with no floor to
+    // walk on and the exit portal back in a room you can no longer reach — a
+    // hard stuck that only a reload clears. The basecamp only ever seemed to
+    // work because the village spawn is (0.5, 0.5) and the hall is centred on
+    // the origin, so it happened to land inside the walls. That is luck.
+    if (dungeon.state.active) {
+      hud.toastText('No way out but the stair or the arch. The Hollow does not let go that easily.');
+      audio.sfx('deny');
+      return;
+    }
     // you cannot teleport off a hull — step off first, or the craft comes with
     // you and ends up buried in the hillside at the far end
     if (watercraft.state.active) {
@@ -1658,18 +1674,45 @@ async function init(character, saved, audio, online = false) {
   // THREE, `dungeonWorld` builds halls and knows nothing about rewards, and
   // the glue lives here — the same split as dailies, gamepass and the Index.
   // ==========================================================================
-  // THE GATE, in the plaza. It sits on the fourth avenue behind the shrine —
-  // the Hollow is under the shrine in the fiction, so it should be found by
-  // walking behind it rather than by opening a menu. `decor.clearArea` keeps
-  // scenery off it, the same call every other structure gets.
+  // THE GATE, in the plaza, standing in the gap between two avenues.
+  //
+  // IT USED TO STAND INSIDE THE SHRINE, and the cause is the facing convention
+  // this file already warns about. The village lays everything out with
+  // `polar(ang, r) = [sin(ang) * r, cos(ang) * r]`; this block used
+  // `(cos(a), sin(a))`, which is the maths convention and the MIRROR of it
+  // across the 45-degree line. So `Math.PI * 0.75` — written and commented as
+  // "between two avenues" — came out on AV[3] instead, the one avenue that
+  // already had the shrine on it, and 10.5 units along that ray is inside a
+  // shrine whose footprint reaches 11.3. Measured: the gate's box overlapped
+  // the shrine's by 3.85 units and sat dead on the avenue centre line, which
+  // is what read from a distance as a black slab dumped on the plaza.
+  //
+  // The village core turns out to have no room for a rigid six-unit structure:
+  // a sweep of every bearing at quarter-unit radii, inside the 12.5-unit safe
+  // zone and clear of all four avenues, found exactly one pocket. 265 degrees
+  // at 11.25 clears every building by 0.47, sits on ground that is level to
+  // 0.000 across the whole footprint, keeps 7.7 units of avenue clearance, and
+  // is still inside the safe zone — which matters, because you stand at this
+  // gate reading a difficulty panel and must not be attacked while you do.
+  //
+  // The seat is taken from the HIGHEST ground under the footprint rather than
+  // the centre sample, the same rule `landmarks.place()` follows: proud on the
+  // low side beats half-buried on the high side.
   const hollowGate = (() => {
-    const a = Math.PI * 0.75;                       // between two avenues
-    const x = terrain.spawn.x + Math.cos(a) * 10.5;
-    const z = terrain.spawn.z + Math.sin(a) * 10.5;
-    decor.clearArea?.(x, z, 3.0);
-    const g = buildHollowGate(terrain.surfaceY(x, z));
-    g.position.set(x, terrain.surfaceY(x, z), z);
-    g.rotation.y = -a + Math.PI / 2;
+    const a = (265 * Math.PI) / 180;
+    const x = terrain.spawn.x + Math.sin(a) * 11.25;
+    const z = terrain.spawn.z + Math.cos(a) * 11.25;
+    decor.clearArea?.(x, z, 3.4);
+    let y = terrain.surfaceY(x, z);
+    for (let i = 0; i < 16; i++) {
+      const t = (i / 16) * Math.PI * 2;
+      for (const rr of [1.6, 3.1]) {
+        y = Math.max(y, terrain.surfaceY(x + Math.cos(t) * rr, z + Math.sin(t) * rr));
+      }
+    }
+    const g = buildHollowGate();
+    g.position.set(x, y, z);
+    g.rotation.y = Math.atan2(terrain.spawn.x - x, terrain.spawn.z - z);
     scene.add(g);
     return { x, z, mesh: g };
   })();
@@ -1699,7 +1742,7 @@ async function init(character, saved, audio, online = false) {
   // not by a sweep that cannot tell a building from a bag of buildings.
   // The hero is explicitly KEPT: they are in the scene from world-build time, so
   // the snapshot would otherwise hide the player along with the village.
-  const dungeonWorld = createDungeonWorld(scene, terrain, { keep: [player.state.group] });
+  const dungeonWorld = createDungeonWorld(scene, terrain, { keep: [player.state.group], camera });
   // where the hero was standing in Anavela, so leaving puts them back
   let hollowReturn = null;
 
@@ -1778,6 +1821,59 @@ async function init(character, saved, audio, online = false) {
 
   const KIND_WORD = { hall: 'HALL', warden: 'WARDEN', great: 'LORD' };
 
+  /**
+   * THE DESCENT IS AN ASYNC GAP, AND THAT GAP IS WHERE THE HOLLOW BROKE.
+   *
+   * `playDescent` runs for 2.2 seconds (1.7 between floors) and calls back at
+   * its darkest frame to move the hero, build the hall and install the terrain
+   * override. That callback fired UNCONDITIONALLY. So if the run ended while
+   * the animation was still playing — and the commonest way is simply dying: an
+   * arrow already in flight when you stepped through, a burn ticking, a boss's
+   * area landing as you took the stair — this happened in order:
+   *
+   *   1. `hollowTick` sees `player.state.dead`, calls `leaveHollow(true)`.
+   *   2. That removes the override, shows Anavela, clears `dungeon.state.active`.
+   *   3. The descent reaches 46% and `onMid` runs ANYWAY: it rebuilds the hall,
+   *      hides the overworld and installs the override again.
+   *   4. Nothing will ever take it back off, because `hollowTick` returns on
+   *      the first line when there is no active run, and `leaveHollow` returns
+   *      on ITS first line for the same reason.
+   *
+   * The result is a world stuck in dungeon mode with no run in it: the terrain
+   * answers 500 for the ground everywhere, the whole overworld is hidden, and
+   * the player is left standing in a void that no button can get them out of.
+   * Measured from a verified clean baseline — ground at (50,50) reads 0.6
+   * before, 500 after, overworld hidden, `dungeon.state.active` null. Only a
+   * reload recovers it, which is exactly what "stuck, frozen, nothing works"
+   * describes.
+   *
+   * The fix is a token. Every enter and every leave bumps `hollowEpoch`, and
+   * the descent captures the value it started with; a callback whose epoch has
+   * moved on knows it belongs to a run that is already over and does nothing.
+   */
+  let hollowEpoch = 0;
+  // true while a descent animation is playing and the floor has not been
+  // populated yet — see the note in hollowTick
+  let hollowFilling = false;
+
+  /**
+   * Tear dungeon mode off the world whatever state it is in.
+   *
+   * Deliberately NOT guarded on `dungeon.state.active` — this is the thing you
+   * call precisely when that guard is what stranded you.
+   */
+  function forceSurface() {
+    inHollow = false;
+    document.body.classList.remove('inhollow');
+    enemyMgr.clearDungeonFoes();
+    if (dungeonWorld.state.active) dungeonWorld.leave();
+    const back = hollowReturn || terrain.spawn;
+    player.state.pos.set(back.x, terrain.surfaceY(back.x, back.z), back.z);
+    player.state.vy = 0;
+    player.state.grounded = true;
+    hollowReturn = null;
+  }
+
   async function enterHollow(difficulty, floor) {
     hollowReturn = player.state.pos.clone();
     // AUTO-BATTLE IS REFUSED DOWN HERE, and this is where it is switched off
@@ -1793,6 +1889,8 @@ async function init(character, saved, audio, online = false) {
     // now five hundred units up. The wilds refill on their own once you are back.
     clearSurfaceFoes();
     const run = dungeon.begin(difficulty, floor);
+    const epoch = ++hollowEpoch;
+    hollowFilling = true;               // no clear-check until the floor is filled
     const theme = dungeon.THEMES[run.plan.theme];
     audio.sfx('teleport');
     // THE WORLD CHANGES BEHIND THE CURTAIN. The descent calls back at its
@@ -1802,19 +1900,31 @@ async function init(character, saved, audio, online = false) {
       theme, label: theme.name,
       sub: `FLOOR ${floor} · ${KIND_WORD[run.plan.kind]} · ${dungeon.DIFFICULTIES[difficulty].tag}`,
       onMid: () => {
+        // the run this descent belongs to may already be over — see hollowEpoch
+        if (epoch !== hollowEpoch || dungeon.state.active !== run) return;
         const at = dungeonWorld.enter(run.plan);
         player.state.pos.set(at.x, at.y, at.z);
         player.state.vy = 0;
         player.state.grounded = true;
         populateFloor(run.plan);
+        hollowFilling = false;
         audio.setMood('hollow');
       },
     });
+    hollowFilling = false;              // also clears it if onMid never ran
+    // and it can end during the second half of the animation too
+    if (epoch !== hollowEpoch || dungeon.state.active !== run) { forceSurface(); return null; }
+    // SAY HOW TO LEAVE, ON THE WAY IN. People were getting stuck down here not
+    // because leaving was hard but because nothing ever told them it was
+    // possible — no minimap, two identical-looking arches, and a prompt you
+    // only see once you are already standing on the right tile.
+    hud.toastText('The lit arch marked WAY OUT takes you home — the chip at the top points to it.');
     return run;
   }
 
   function leaveHollow(died = false) {
     if (!dungeon.state.active) return;
+    hollowEpoch++;              // invalidates any descent still in flight
     inHollow = false;
     document.body.classList.remove('inhollow');
     enemyMgr.clearDungeonFoes();
@@ -1840,8 +1950,32 @@ async function init(character, saved, audio, online = false) {
   let hollowClearT = 0;
   function hollowTick(dt) {
     const run = dungeon.state.active;
+    // THE INVARIANT: the world is never in dungeon mode without a run in it.
+    //
+    // The epoch token above closes the race that used to break this, but the
+    // failure it caused is bad enough — a world the player cannot leave without
+    // reloading — that it is worth one comparison a frame to make the whole
+    // class of it self-healing. Any future path that ends a run while the
+    // terrain override is installed gets caught here instead of stranding
+    // somebody. This can only ever be true when something has gone wrong:
+    // both teardowns drop `dungeonWorld` BEFORE `dungeon`, never the reverse.
+    if (!run && dungeonWorld.state.active) {
+      forceSurface();
+      hud.toastText('The Hollow let go of you. You are back in Anavela.');
+      return;
+    }
     if (!run) return;
     if (player.state.dead) { leaveHollow(true); return; }
+    // THE FLOOR IS NOT JUDGED UNTIL IT HAS BEEN FILLED.
+    //
+    // Same async gap as the freeze, different symptom: `dungeon.begin()` sets
+    // the run, but the monsters are not spawned until `onMid` fires a second
+    // into the descent. This tick was already counting from the first frame,
+    // saw "0 monsters alive", and declared the floor CLEARED before the player
+    // had landed — which opened the stair, paid the floor reward and, on a
+    // boss floor, rolled the boss drops for a boss that had not spawned yet.
+    // Measured on a fresh entry: `run.cleared` true with three monsters alive.
+    if (hollowFilling) return;
     hollowClearT -= dt;
     if (hollowClearT > 0) return;
     hollowClearT = 0.35;
@@ -1903,9 +2037,9 @@ async function init(character, saved, audio, online = false) {
         <div style="font-size:12px;line-height:1.6;color:#9a8ab8;margin-bottom:16px"></div>
         <div style="display:flex;gap:9px">
           <button data-no style="flex:1;padding:10px;background:#241d33;color:#bfb2d8;
-            border:var(--pix-btn,2px solid #3d3454);cursor:pointer;font-size:12px"></button>
+            border:0;box-shadow:var(--pix-btn,0 0 0 2px #3d3454);cursor:pointer;font-size:12px"></button>
           <button data-yes style="flex:1;padding:10px;background:#6a4ba8;color:#fff;
-            border:var(--pix-btn,2px solid #8a6ac8);cursor:pointer;
+            border:0;box-shadow:var(--pix-btn,0 0 0 2px #8a6ac8);cursor:pointer;
             font-family:var(--font-display,monospace);font-size:12px;letter-spacing:1px"></button>
         </div></div>`;
       const [h, b] = el.querySelectorAll('div > div');
@@ -1950,8 +2084,12 @@ async function init(character, saved, audio, online = false) {
 
   /** Down one floor. Same run, so what you are carrying comes with you. */
   async function descendHollow() {
+    const run = dungeon.state.active;
+    if (!run) return;
     const plan = dungeon.descend();
     if (!plan) { leaveHollow(false); return; }
+    const epoch = ++hollowEpoch;
+    hollowFilling = true;              // the new floor is empty until onMid fills it
     const theme = dungeon.THEMES[plan.theme];
     audio.sfx('teleport');
     await playDescent({
@@ -1959,13 +2097,19 @@ async function init(character, saved, audio, online = false) {
       sub: `FLOOR ${plan.floor} · ${KIND_WORD[plan.kind]} · ${dungeon.DIFFICULTIES[plan.difficulty].tag}`,
       dur: 1700,                       // shorter between floors: you know the way now
       onMid: () => {
+        // same race as enterHollow, and dying on the stair is the likeliest way
+        // to hit it: you take the descent on the health the last floor left you
+        if (epoch !== hollowEpoch || dungeon.state.active !== run) return;
         const at = dungeonWorld.enter(plan);
         dungeonWorld.retheme(plan);    // the band changes on the way down
         player.state.pos.set(at.x, at.y, at.z);
         player.state.vy = 0;
         populateFloor(plan);
+        hollowFilling = false;
       },
     });
+    hollowFilling = false;
+    if (epoch !== hollowEpoch || dungeon.state.active !== run) forceSurface();
   }
 
   /** The gate in Anavela: asks, then sends you down. */
@@ -2567,8 +2711,128 @@ const CAM_PITCH_DEFAULT = 0.98;
   // the locked target. Re-picking the nearest enemy every frame made it
   // oscillate between two equidistant monsters and commit to neither.
   let autoTarget = null;
+  // THE PROGRESS WATCHDOG, and it is the whole reason the hero no longer
+  // stands at the water's edge staring at something it can never reach.
+  // `autoBest` is the closest we have ever got to the CURRENT target and
+  // `autoStall` is how long it has been since that improved; together they
+  // answer "am I actually getting there?" without any pathfinding.
+  let autoBest = Infinity;
+  let autoStall = 0;
+  let autoClock = 0;
+  // targets we gave up on, and when they become fair game again. A WeakMap so
+  // a monster that dies takes its entry with it.
+  const autoSkip = new WeakMap();
+  // where to wander when there is nothing to fight
+  let autoRoam = null;
+  let autoRoamT = 0;
 
   function autoUnlocked() { return leveling.state.level >= AUTO_UNLOCK_LEVEL; }
+
+  function autoDropTarget(skipFor = 0) {
+    if (autoTarget && skipFor > 0) autoSkip.set(autoTarget, autoClock + skipFor);
+    autoTarget = null;
+    autoBest = Infinity;
+    autoStall = 0;
+  }
+
+  /**
+   * One step of auto-battle walking, with the sliding the old chase only did
+   * half of.
+   *
+   * It used to try exactly ONE shoulder when blocked (`+PI/2`), so a hero
+   * pinned against the wrong side of a rock, a hut wall or a shoreline pushed
+   * into it forever. Both shoulders are tried now, then both diagonals, and
+   * the caller is told whether anything moved.
+   */
+  function autoStep(ux, uz, dt) {
+    const p = player.state.pos;
+    const sp = (CLASSES[character.cls]?.speed || cls.speed)
+      * (1 + player.buffVal('speed')) * (player.state.mount?.speedMult || 1)
+      * stats.moveMult() * 0.95 * dt;
+    const go = (dx, dz) => {
+      const nx = p.x + dx * sp, nz = p.z + dz * sp;
+      if (!terrain.walkable(nx, nz, p.y)) return false;
+      p.x = nx; p.z = nz;
+      p.y += (terrain.surfaceY(nx, nz) - p.y) * Math.min(1, dt * 14);
+      player.state.isMoving = true;
+      return true;
+    };
+    if (go(ux, uz)) return true;
+    const base = Math.atan2(ux, uz);
+    for (const off of [Math.PI / 2, -Math.PI / 2, Math.PI * 0.72, -Math.PI * 0.72]) {
+      const a = base + off;
+      if (go(Math.sin(a), Math.cos(a))) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Pick something to fight.
+   *
+   * The old code took `nearestEnemy(26)` flat, which is how the hero ended up
+   * committed to a slime on the far bank of a lake: nearest by straight line,
+   * unreachable on foot, and the lock only broke on death or 30 units, neither
+   * of which was ever going to happen. Distance is now a SCORE, and a straight
+   * line that crosses water is heavily demoted rather than banned — a monster
+   * on the far side of a puddle you can walk around is still a fair target,
+   * one across a lake is not. Anything the watchdog gave up on recently is
+   * skipped outright.
+   */
+  function autoPickTarget() {
+    const p = player.state.pos;
+    let best = null, bestScore = Infinity;
+    for (const e of enemyMgr.enemies) {
+      if (e.dead) continue;
+      const until = autoSkip.get(e);
+      if (until != null && autoClock < until) continue;
+      const dx = e.mesh.position.x - p.x, dz = e.mesh.position.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 26) continue;
+      let score = d;
+      // Sample the straight line for water. This is deliberately NOT
+      // pathfinding — it only has to stop the hero committing to the obviously
+      // hopeless, and the watchdog catches everything it misses.
+      const steps = Math.max(3, Math.min(12, Math.round(d / 2)));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / (steps + 1);
+        if (terrain.swimmable(p.x + dx * t, p.z + dz * t)) { score += 40; break; }
+      }
+      if (score < bestScore) { bestScore = score; best = e; }
+    }
+    return best;
+  }
+
+  /**
+   * NOTHING TO FIGHT IS NOT A REASON TO STAND STILL. The old tick returned the
+   * moment `nearestEnemy` came up empty, so clearing the area left the hero
+   * planted on the spot for as long as you left it running — measured at zero
+   * drift over five seconds with no monster alive anywhere. Auto-battle is a
+   * grinding mode; grinding means going to find the next one.
+   */
+  function autoRoamTick(dt) {
+    const p = player.state.pos;
+    autoRoamT -= dt;
+    if (!autoRoam || autoRoamT <= 0
+      || Math.hypot(autoRoam.x - p.x, autoRoam.z - p.z) < 2.2) {
+      autoRoam = null;
+      for (let i = 0; i < 24; i++) {
+        const a = Math.random() * Math.PI * 2, r = 12 + Math.random() * 10;
+        const x = p.x + Math.sin(a) * r, z = p.z + Math.cos(a) * r;
+        if (!terrain.walkable(x, z, terrain.surfaceY(x, z))) continue;
+        // no point walking somewhere nothing is allowed to spawn
+        if (inSafeZone(x, z)) continue;
+        autoRoam = { x, z };
+        break;
+      }
+      autoRoamT = 6;
+    }
+    if (!autoRoam) return;
+    const dx = autoRoam.x - p.x, dz = autoRoam.z - p.z;
+    const d = Math.hypot(dx, dz) || 1;
+    player.state.facing = Math.atan2(dx, dz);
+    // walked into something and could not slide past it: pick a new heading
+    if (!autoStep(dx / d, dz / d, dt)) autoRoam = null;
+  }
 
   /**
    * Back to the main menu, and (if signed in) sign out on the way.
@@ -2657,15 +2921,21 @@ const CAM_PITCH_DEFAULT = 0.98;
     // are things you chose to be defenceless for.
     if (player.state.busy || dialog.isOpen() || fishing.state.afk) return;
 
+    autoClock += dt;
+
     // ---- TARGET LOCK. Keep the current one until it dies or runs too far.
     if (autoTarget && (autoTarget.dead
       || Math.hypot(autoTarget.mesh.position.x - player.state.pos.x,
         autoTarget.mesh.position.z - player.state.pos.z) > 30)) {
-      autoTarget = null;
+      autoDropTarget();
     }
-    if (!autoTarget) autoTarget = nearestEnemy(26);
+    if (!autoTarget) {
+      autoTarget = autoPickTarget();
+      autoBest = Infinity;
+      autoStall = 0;
+    }
     const e = autoTarget;
-    if (!e) return;
+    if (!e) { autoRoamTick(dt); return; }
 
     const dx = e.mesh.position.x - player.state.pos.x, dz = e.mesh.position.z - player.state.pos.z;
     const dist = Math.hypot(dx, dz) || 1;
@@ -3217,10 +3487,14 @@ const CAM_PITCH_DEFAULT = 0.98;
     if (dungeon.state.active) {
       const st = dungeonWorld.stairSpot();
       const ex = dungeonWorld.exitSpot();
-      const near = (q) => q && Math.hypot(player.state.pos.x - q.x, player.state.pos.z - q.z) < 2.6;
+      const near = (q) => q && Math.hypot(player.state.pos.x - q.x, player.state.pos.z - q.z) < 3.6;
       const run = dungeon.state.active;
+      // A wider reach than the overworld's 2.6 on purpose: these two are the
+      // only things in the room you can interact with, nothing can compete for
+      // the button, and hunting for the exact tile you have to stand on is the
+      // other half of "I could not work out how to leave".
       if (near(st) && run.cleared && run.floor < dungeon.MAX_FLOOR) {
-        add('stair', `Descend to floor ${run.floor + 1}`, () => descendHollow());
+        add('stair', `DESCEND — down to floor ${run.floor + 1}`, () => descendHollow());
       }
       // LEAVING IS NOT A DOORWAY, IT IS A DECISION. One press used to end the
       // run outright — and the way out sits three steps from where you land, so
@@ -3229,7 +3503,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       // are giving up: progress on cleared floors is kept, the floor you are
       // standing on is not.
       if (near(ex)) {
-        add('exit', 'Climb out of the Hollow', () => askLeaveHollow());
+        add('exit', 'WAY OUT — leave the Hollow', () => askLeaveHollow());
       }
       return list;
     }
@@ -3666,12 +3940,40 @@ const CAM_PITCH_DEFAULT = 0.98;
   }
 
   // --- resize ---
+  // ONE PATH FOR RESIZING, not two. This used to size the renderer and the
+  // composer by hand and skip everything else `applyPixelRatio` does — the
+  // adaptive ratio, the half-resolution bloom, the AO target. Two code paths
+  // that must agree about render-target sizes is exactly the shape of the
+  // mismatch that produced black frames the first time, so there is now one.
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-    composer?.setSize(innerWidth, innerHeight);
+    applyPixelRatio();
   });
+
+  // WEBGL CONTEXTS ARE LOST, AND WITHOUT THIS THE SCREEN STAYS BLACK FOREVER.
+  //
+  // A driver hiccup, a laptop switching graphics chips, or the OS reclaiming
+  // the GPU under pressure all kill the context — and the browser only
+  // attempts to restore one if the page calls `preventDefault()` on the lost
+  // event. There was no handler at all, so any of those turned into a black
+  // canvas with the game still running behind it and no way back but a reload.
+  // Nothing here can be drawn while the context is gone, so the loop skips the
+  // draw rather than throwing once per frame.
+  let contextLost = false;
+  renderer.domElement.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    contextLost = true;
+    hud.toastText('Graphics device reset — restoring…');
+  });
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    contextLost = false;
+    // every GPU-side target died with the context; this rebuilds the backing
+    // store, the composer's targets and the bloom/AO passes in one call
+    applyPixelRatio();
+    hud.toastText('Graphics restored.');
+  });
+  isContextLost = () => contextLost;
 
   // --- GRAPHICS settings: live groups take effect immediately ---
   onQualityChange((nq) => {
@@ -4262,25 +4564,47 @@ const CAM_PITCH_DEFAULT = 0.98;
       hud.setClock(lighting.clockText(), isNight);
       minimap.update(player.state.pos, player.state.facing, enemyMgr.enemies,
         { lands: housing.lands, pin: worldmap.getPin() });
-      // waypoint beacon: arrow + distance to the player's map mark
-      const pin = worldmap.getPin();
-      if (pin) {
-        const dx = pin.x - player.state.pos.x, dz = pin.z - player.state.pos.z;
-        const dist = Math.hypot(dx, dz);
-        if (dist < 2.5) { // arrived — clear the mark with a little celebration
-          worldmap.clearPin();
-          hud.setBeacon(null);
-          hud.toastText('You reached your mark!');
-          particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#ff8a5e', 12);
-          audio.sfx('catch');
-        } else {
-          // rotate the arrow relative to the camera heading (screen-up)
-          const worldAng = Math.atan2(dx, dz);
-          const camAng = cam.yaw + Math.PI;
-          hud.setBeacon({ angle: -(worldAng - camAng) - Math.PI / 2, dist });
-        }
+      // IN THE HOLLOW THE BEACON POINTS AT A DOOR, and this is the answer to
+      // "how do I get out of here". The minimap is hidden underground on
+      // purpose — it draws Anavela and would be confidently wrong — so there
+      // was NO navigation aid at all in a dark room with tight fog, and the
+      // way out was a box against a wall you had to walk into to identify.
+      // The chip names the door it points at, so it also teaches which is which.
+      const runNow = dungeon.state.active;
+      const camAng = cam.yaw + Math.PI;
+      if (runNow) {
+        // whichever door is the thing to do next: the stair once the floor is
+        // finished and there is a floor below it, otherwise the way home
+        const wantStair = runNow.cleared && runNow.floor < dungeon.MAX_FLOOR;
+        const t = wantStair ? dungeonWorld.stairSpot() : dungeonWorld.exitSpot();
+        if (t) {
+          const dx = t.x - player.state.pos.x, dz = t.z - player.state.pos.z;
+          hud.setBeacon({
+            angle: -(Math.atan2(dx, dz) - camAng) - Math.PI / 2,
+            dist: Math.hypot(dx, dz),
+            label: wantStair ? 'DESCEND' : 'WAY OUT',
+            tone: 'hollow',
+          });
+        } else hud.setBeacon(null);
       } else {
-        hud.setBeacon(null);
+        // waypoint beacon: arrow + distance to the player's map mark
+        const pin = worldmap.getPin();
+        if (pin) {
+          const dx = pin.x - player.state.pos.x, dz = pin.z - player.state.pos.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < 2.5) { // arrived — clear the mark with a little celebration
+            worldmap.clearPin();
+            hud.setBeacon(null);
+            hud.toastText('You reached your mark!');
+            particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#ff8a5e', 12);
+            audio.sfx('catch');
+          } else {
+            // rotate the arrow relative to the camera heading (screen-up)
+            hud.setBeacon({ angle: -(Math.atan2(dx, dz) - camAng) - Math.PI / 2, dist });
+          }
+        } else {
+          hud.setBeacon(null);
+        }
       }
       touchUI?.update(skillSys, inventory.count('tonic'));
       // interact prompts: primary (F / ★) + distinct secondary (R / ★₂)
@@ -4297,6 +4621,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // TIME THE FRAME, then let the resolution follow it. Measured around the
     // draw itself rather than the whole tick, because the draw is the part the
     // pixel ratio actually controls.
+    if (isContextLost()) return;      // nothing on the GPU exists right now
     const drawStart = performance.now();
     if (usePost()) composer.render(); else renderer.render(scene, camera);
     tickAdaptive(dt, performance.now() - drawStart);

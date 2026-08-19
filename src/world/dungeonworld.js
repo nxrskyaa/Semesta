@@ -32,6 +32,47 @@ import * as THREE from 'three';
 import { boxMesh, cylMesh, sphereMesh, sharedMat, sharedBox } from '../gfx/meshcache.js';
 import { bakeStatic } from '../gfx/bake.js';
 import { THEMES } from '../systems/dungeon.js';
+import { drawText, textWidth } from '../gfx/signs.js';
+
+/**
+ * A LIT PLAQUE OVER A DOORWAY.
+ *
+ * The stair and the way out were both "a box frame with a glowing disc in it",
+ * one of them the way DOWN and the other the way HOME, and nothing on either
+ * said which. In a dark room with tight fog, where the minimap is deliberately
+ * hidden, the only way to tell them apart was to walk up to one and read the
+ * interact prompt — which is exactly why people could not find the exit.
+ *
+ * The lettering uses the same 5x7 bitmap font the village signboards use, for
+ * the same reason: it upscales to crisp blocks, and it does not depend on a
+ * webfont having loaded. Painted onto an unlit additive plane so it reads at a
+ * distance in a room lit only by braziers.
+ */
+function buildPlaque(label, color) {
+  const scale = 4, pad = 12;
+  const w = pad * 2 + textWidth(label) * scale;
+  const h = pad * 2 + 7 * scale;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, w, h);
+  // a soft dark backing so the letters hold against a bright brazier behind
+  ctx.fillStyle = 'rgba(6,4,10,0.72)';
+  ctx.fillRect(0, 0, w, h);
+  drawText(ctx, label, pad, pad, scale, color);
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex, transparent: true, depthWrite: false, toneMapped: false,
+  });
+  const aspect = w / h;
+  const height = 0.62;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(height * aspect, height), mat);
+  m.userData.dynamic = true;          // never bake it: it must keep facing us
+  return m;
+}
 
 /** Far above Anavela. Nothing down there can reach up here, or vice versa. */
 export const DUNGEON_Y = 500;
@@ -243,29 +284,63 @@ function buildStair(t) {
   const glow = new THREE.PointLight(t.accent, 0, 12, 2);
   glow.position.set(0, 2.2, 1.2);
   g.add(glow);
-  g.userData = { seal, rune, glow, open: false, t: 0 };
+  // says what it is, and only lights up once it will actually take you
+  // WELL CLEAR OF THE SEAL'S TRAVEL. The slab grinds up to y 6.7 (spanning
+  // 4.75-8.65) and its z range is 0.10-0.60, so a plaque at z 0.7 was sliced in
+  // half by it the moment the way opened — "DESCEND" read "DESCE". Sitting it
+  // forward at 1.3 also leaves room for the billboard to swing without a corner
+  // clipping back through the stone.
+  const plaque = buildPlaque('DESCEND', '#ffe9a8');
+  plaque.position.set(0, 5.55, 1.3);
+  plaque.material.opacity = 0.28;                 // dim while the way is sealed
+  g.add(plaque);
+  g.userData = { seal, rune, glow, plaque, open: false, t: 0 };
   return g;
 }
 
-/** The way back to Anavela. Always open — nobody is locked in. */
+/**
+ * The way back to Anavela. Always open — nobody is locked in.
+ *
+ * IT HAS TO LOOK NOTHING LIKE THE STAIR. Both used to be a frame with a glowing
+ * disc, in a dark room, with no label — so "how do I get out of here" was a
+ * fair question and the answer was to walk up to each one and read the prompt.
+ * This is now unmistakably a doorway home: a wider arch, a warm daylight pane
+ * rather than a cold rune, a step up to it, and DAYLIGHT written over it.
+ */
 function buildExit(t) {
   const g = new THREE.Group();
-  const arch = boxMesh(4.0, 4.8, 0.8, t.trim);
-  arch.position.y = 2.4;
+  const arch = boxMesh(4.6, 5.2, 0.8, t.trim);
+  arch.position.y = 2.6;
   g.add(arch);
-  const swirl = cylMesh(1.3, 1.3, 0.14, '#8fd8ff', 12, { unique: true });
+  // a step, so it reads as somewhere you walk INTO rather than a wall panel
+  const step = boxMesh(3.4, 0.32, 1.5, shade(t.wall, 1.25));
+  step.position.set(0, 0.16, 0.95);
+  g.add(step);
+  // the pane of daylight — warm, because everything else down here is not
+  const pane = boxMesh(2.9, 3.6, 0.12, '#ffe6b0', { unique: true });
+  pane.material.transparent = true;
+  pane.material.opacity = 0.5;
+  pane.material.blending = THREE.AdditiveBlending;
+  pane.material.depthWrite = false;
+  pane.position.set(0, 2.1, 0.42);
+  pane.userData.dynamic = true;
+  g.add(pane);
+  const swirl = cylMesh(1.25, 1.25, 0.14, '#fff0cc', 12, { unique: true });
   swirl.material.transparent = true;
-  swirl.material.opacity = 0.75;
+  swirl.material.opacity = 0.7;
   swirl.material.blending = THREE.AdditiveBlending;
   swirl.material.depthWrite = false;
   swirl.rotation.x = Math.PI / 2;
-  swirl.position.set(0, 2.1, 0.5);
+  swirl.position.set(0, 2.1, 0.56);
   swirl.userData.dynamic = true;
   g.add(swirl);
-  const light = new THREE.PointLight('#8fd8ff', 1.1, 12, 2);
-  light.position.set(0, 2.2, 1.0);
+  const light = new THREE.PointLight('#ffd79a', 1.6, 16, 2);
+  light.position.set(0, 2.2, 1.2);
   g.add(light);
-  g.userData = { swirl, light };
+  const plaque = buildPlaque('WAY OUT', '#fff0cc');
+  plaque.position.set(0, 5.75, 1.3);              // matched to the stair's, so both read the same
+  g.add(plaque);
+  g.userData = { swirl, pane, light, plaque };
   return g;
 }
 
@@ -578,6 +653,10 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
   // Lights are excluded: hiding those would black out the hero as well.
   // ==========================================================================
   const keep = new Set([root, ...(opts.keep || [])]);
+  // the portal plaques billboard toward this; without it they sit edge-on to a
+  // camera that looks down from thirty units and cannot be read at all
+  const camera = opts.camera || null;
+  const _pv = new THREE.Vector3();
   const overworld = scene.children.filter((o) => !o.isLight && !keep.has(o));
   const shown = new Map();          // object -> its visibility before we hid it
   let stashedFog = null;
@@ -900,9 +979,25 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     st.rune.rotation.z += dt * (st.open ? 2.2 : 0.35);
     st.rune.material.opacity = st.open ? 0.9 : 0.25 + Math.sin(time * 2) * 0.06;
     st.glow.intensity = lift * 1.6;
+    // DESCEND only lights up when it will actually take you, so the sign is
+    // telling you the truth about whether the floor is finished
+    st.plaque.material.opacity = 0.26 + lift * 0.74;
     // the way home turns slowly the whole time
-    u.exit.userData.swirl.rotation.z -= dt * 0.9;
-    u.exit.userData.swirl.material.opacity = 0.62 + Math.sin(time * 1.7) * 0.12;
+    const ex = u.exit.userData;
+    ex.swirl.rotation.z -= dt * 0.9;
+    ex.swirl.material.opacity = 0.62 + Math.sin(time * 1.7) * 0.12;
+    ex.pane.material.opacity = 0.42 + Math.sin(time * 1.1) * 0.09;
+    ex.light.intensity = 1.5 + Math.sin(time * 1.4) * 0.22;
+    // BOTH PLAQUES FACE THE CAMERA. A flat label on a wall is unreadable from
+    // the angle you actually approach it — the camera looks down from ~30 units
+    // and the arches sit against the walls, so a fixed plane is edge-on for
+    // most of the room. Billboarding is what makes them legible from anywhere.
+    if (camera) {
+      for (const p of [st.plaque, ex.plaque]) {
+        p.getWorldPosition(_pv);
+        p.lookAt(camera.position.x, _pv.y, camera.position.z);
+      }
+    }
   }
 
   function dispose() {

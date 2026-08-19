@@ -145,14 +145,31 @@ export function createMinimap(canvas, terrain, decor) {
     // Canvas rotate(t) maps (0,-1) to (sin t, -cos t). The heading direction is
     // (sin f, cos f) and canvas y IS world z here, so we need -cos t = cos f,
     // which is t = PI - f.
+    //
+    // AND IT NEEDS A CASING, because a cream arrow on the snow biome is a cream
+    // arrow on a cream tile. The snow tile is #e8f0f5 and the arrow was
+    // #f0f0e0 — the same brightness — so in the north-west corner of the map
+    // the one marker you actually navigate by simply vanished. Every OTHER
+    // marker in this file already draws a dark outline (the house, the boss
+    // diamond, the waypoint flag all stroke #5e3c10); the player arrow was the
+    // only one without, which is what made it the only one that could disappear.
+    //
+    // A stroke UNDER a fill is the fix rather than a drop shadow: it casings
+    // every edge equally, so the arrow reads on white snow and on dark forest
+    // with the same shape, and it never depends on which way it is pointing.
     const cx = (px - sx) * k, cz = (pz - sz) * k;
     ctx.save();
     ctx.translate(cx, cz);
     ctx.rotate(Math.PI - facing);
-    ctx.fillStyle = '#f0f0e0';
     ctx.beginPath();
-    ctx.moveTo(0, -6); ctx.lineTo(4.5, 5); ctx.lineTo(0, 2.5); ctx.lineTo(-4.5, 5);
-    ctx.closePath(); ctx.fill();
+    ctx.moveTo(0, -7); ctx.lineTo(5, 5.5); ctx.lineTo(0, 2.5); ctx.lineTo(-5, 5.5);
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#12180f';
+    ctx.stroke();
+    ctx.fillStyle = '#fdfbef';
+    ctx.fill();
     ctx.restore();
   }
 

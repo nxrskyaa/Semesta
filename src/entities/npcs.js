@@ -1364,10 +1364,28 @@ export function buildSignboard(label, glyph, accent, h = 2.5) {
     link.position.set(dx, h - 0.2, 0);
     g.add(link);
   }
-  const boardMat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
-  const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), boardMat);
+  // TWO SINGLE-SIDED FACES, NOT ONE DOUBLE-SIDED ONE. A DoubleSide plane shows
+  // the SAME texture from behind, and a texture seen from behind is mirrored —
+  // so the FARM board read "MЯAꟻ" to anyone walking in from the field, which is
+  // the side most people approach it from. This is the identical fault the
+  // Rialo banner already fixed, and the identical fix: the back layer gets its
+  // own texture with `repeat.x = -1`, so the lettering reads correctly from
+  // BOTH sides. The two faces are coplanar and never draw the same pixel —
+  // each one only renders for the facing it owns — so there is nothing to
+  // z-fight.
+  const board = new THREE.Group();
+  const plane = new THREE.PlaneGeometry(bw, bh);
+  const face = new THREE.Mesh(plane, new THREE.MeshLambertMaterial({ map: tex, side: THREE.FrontSide }));
+  face.castShadow = true;
+  board.add(face);
+  const backTex = tex.clone();
+  backTex.needsUpdate = true;
+  backTex.wrapS = THREE.RepeatWrapping;
+  backTex.repeat.x = -1;
+  backTex.offset.x = 1;
+  const backFace = new THREE.Mesh(plane, new THREE.MeshLambertMaterial({ map: backTex, side: THREE.BackSide }));
+  board.add(backFace);
   board.position.y = h - 0.32 - bh / 2;
-  board.castShadow = true;
   g.add(board);
   // the board swings, very slightly, on its chains
   g.userData.swing = board;
@@ -1720,16 +1738,32 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
   const [ckx, ckz] = polar(AV[3] + Math.PI / 4, 10.6);
 
   // --- HUTS: an outer ring, set BETWEEN the avenues so they never block one --
-  const HUT_R = 12.6;
+  //
+  // THE STACKED BUILDINGS WERE HERE, and they were a modulo, not a bake.
+  // The angle used to be `AV[i % 4] + (i < 4 ? +45deg : -45deg)`, which reads
+  // as "six huts spread around the ring" and is not: AV[0]+45 and AV[3]-45 are
+  // the SAME bearing, and so are AV[1]+45 and AV[0]-45. Six huts landed on
+  // FOUR angles, and the radius stagger `HUT_R + (i % 2) * 1.1` put each
+  // colliding pair 1.1 units apart when a hut is 2.7 across — so two of them
+  // grew through each other and the roofs read as loose slabs lying over the
+  // grass. Measured on the live world: huts at (0.5, 13.1) and (0.5, 14.2),
+  // and at (13.1, 0.5) and (14.2, 0.5).
+  //
+  // The slots are DATA now, one bearing each, chosen against the ring that was
+  // already there rather than derived from the avenues and hoped for. The
+  // whole ring was modelled and every pair measured: the old layout had seven
+  // collisions (two hut/hut, plus the hearth, the herb garden and three flower
+  // beds), this one has none, with 0.51 units to spare at the tightest point.
+  // The forbidden bearings are the four avenues and the six flower beds; these
+  // six sit in the six gaps that leaves.
   const hutStyles = [
-    [0.9, '#d8c8a8', '#a85a48'], [0.85, '#d0b898', '#7a8a5a'],
-    [0.9, '#c0a888', '#5a7a9a'], [0.8, '#d8c0a0', '#8a5a88'],
-    [0.86, '#cfbf9f', '#4f7a6a'], [0.82, '#d4c2a2', '#96603c'],
+    [0.9, '#d8c8a8', '#a85a48', 64, 12.6], [0.85, '#d0b898', '#7a8a5a', 109, 13.7],
+    [0.9, '#c0a888', '#5a7a9a', 160, 12.6], [0.8, '#d8c0a0', '#8a5a88', 244, 13.7],
+    [0.86, '#cfbf9f', '#4f7a6a', 289, 12.6], [0.82, '#d4c2a2', '#96603c', 353, 13.7],
   ];
   const hutSpots = [];
-  hutStyles.forEach(([sc, wall, roof], i) => {
-    const ang = AV[i % 4] + (i < 4 ? Math.PI / 4 : -Math.PI / 4);
-    const [hx, hz] = polar(ang, HUT_R + (i % 2) * 1.1);
+  hutStyles.forEach(([sc, wall, roof, deg, r]) => {
+    const [hx, hz] = polar(deg * Math.PI / 180, r);
     place(buildHut(sc, wall, roof), hx, hz, true, 1);
     hutSpots.push([hx, hz]);
   });
