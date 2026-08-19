@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { N8AOPass } from 'n8ao';
 import { Terrain, buildTerrainMesh } from './world/terrain.js';
 import { buildDecor } from './world/decor.js';
 import { buildWater } from './world/water.js';
@@ -392,7 +393,7 @@ async function init(character, saved, audio, online = false) {
   // pixels. The mip chain is not cheap to allocate, so it is built once and
   // simply bypassed when the FX knob turns bloom off. Touch devices never build
   // it at all — UnrealBloom is too heavy for a phone whatever the preset says.
-  let composer = null, bloomPass = null;
+  let composer = null, bloomPass = null, aoPass = null;
   if (!isTouchDevice()) {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -413,6 +414,39 @@ async function init(character, saved, audio, online = false) {
       0.85,   // radius — softer, wider halo
       0.72,   // threshold: flames, sparks and sun glitter, not lit walls
     );
+    // ======================================================================
+    // AMBIENT OCCLUSION — the single biggest visual difference between this
+    // and a game that looks "expensive".
+    //
+    // Bloom adds light; AO takes it away where light could not reach. That is
+    // what makes a corner read as a corner, a crate sit ON the ground instead
+    // of hovering a millimetre above it, and a chibi head read as a sphere
+    // rather than a flat disc. Semesta had every surface lit by the same
+    // hemisphere with nothing to ground it, which is why props looked pasted on.
+    //
+    // ORDER MATTERS: after the scene, BEFORE bloom. AO darkens creases, and
+    // bloom should be picking its highlights out of the graded image — running
+    // it the other way rounds the glow back into the corners AO just deepened.
+    //
+    // Half resolution for the same reason bloom is: occlusion is a soft, wide
+    // signal, so the cost is worth a quarter of the fragments and the
+    // difference is not visible at this camera distance.
+    aoPass = new N8AOPass(scene, camera, window.innerWidth, window.innerHeight);
+    // Solved by sweeping the radius against the actual frame rather than by
+    // taste. Measured, with the shaded fraction of the middle of the plaza:
+    //   no AO  1.3%   ·  r1.6  2.0%  ·  r4  3.2%  ·  r8  4.5%  ·  r20  5.8%
+    // Six is the point where contact shadows are unmistakably there and it is
+    // still an occlusion term — past about fourteen the radius exceeds the
+    // props it is meant to ground and the whole frame just gets murkier, which
+    // reads as a dirty screen rather than as light behaving.
+    aoPass.configuration.aoRadius = 6;          // world units
+    aoPass.configuration.distanceFalloff = 1.0;
+    aoPass.configuration.intensity = 4;
+    aoPass.configuration.halfRes = true;
+    aoPass.setQualityMode('Medium');
+    aoPass.enabled = !!qual.bloom;
+    composer.addPass(aoPass);
+
     composer.addPass(bloomPass);
     composer.addPass(new OutputPass());
   }
@@ -464,6 +498,7 @@ async function init(character, saved, audio, online = false) {
     // full frame, which silently undid the half-resolution bloom the first
     // time the resolution moved
     bloomPass?.setSize(window.innerWidth * 0.5, window.innerHeight * 0.5);
+    aoPass?.setSize(window.innerWidth, window.innerHeight);
   }
 
   function tickAdaptive(dt, frameMs) {
@@ -3540,6 +3575,9 @@ const CAM_PITCH_DEFAULT = 0.98;
     renderer.shadowMap.enabled = nq.shadows;
     camera.far = nq.drawDistance;
     camera.updateProjectionMatrix();
+    // AO rides the same fx tier as bloom: it is the other half of the same
+    // "can this machine afford a full-screen pass" question.
+    if (aoPass) aoPass.enabled = !!nq.bloom;
     lighting.applyQuality?.(nq);
   });
 
@@ -3598,7 +3636,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // file. Expose a thing where it EXISTS, never where it reads nicely.
     // the adaptive resolution scaler, exposed like everything else so a step
     // can be forced and its effect measured rather than assumed
-    adaptive, applyPixelRatio, composer, bloomPass,
+    adaptive, applyPixelRatio, composer, bloomPass, aoPass,
     resetStats, resetSkillPoints,
     dungeon, dungeonWorld, hollowGate,
     enterHollow, leaveHollow, descendHollow, openHollowGate, populateFloor,
