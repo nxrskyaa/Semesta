@@ -120,10 +120,73 @@ export function createFarming(scene, terrain, decorBlocked, particles) {
     scene.add(group);
     const base = buildPlotMesh(owned);
     group.add(base);
-    plots.push({
+    const plot = {
       i, x, z, y, group, base,
       owned, seed: null, stage: -1, t: 0, cropMesh: null,
-    });
+      sign: makeSign(),
+    };
+    group.add(plot.sign.spr);
+    plots.push(plot);
+  }
+
+  // ==========================================================================
+  // A TIMER OVER THE SOIL.
+  //
+  // Planting used to be a leap of faith: you pressed Plant, a sprout appeared,
+  // and then there was no way to know whether it needed ten more seconds or two
+  // more minutes except standing there. So people either camped a plot doing
+  // nothing, or wandered off and forgot which of the eight they had sown.
+  //
+  // The sign answers both without a UI panel: the crop's name, a bar, and the
+  // time left — and READY in green when it can be picked, so a full field can be
+  // read at a glance from the path.
+  //
+  // Drawn on a 128x40 canvas so it stays in the game's pixel idiom, and only
+  // repainted when the SECOND changes rather than every frame: a canvas upload
+  // per plot per frame would cost more than the crop is worth.
+  // ==========================================================================
+  function makeSign() {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 40;
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    spr.scale.set(1.5, 0.47, 1);
+    spr.position.y = 1.15;
+    spr.renderOrder = 6;
+    spr.visible = false;
+    return { c, tex, spr, last: -1 };
+  }
+
+  function paintSign(p, secsLeft, frac, label) {
+    const g = p.sign.c.getContext('2d');
+    g.clearRect(0, 0, 128, 40);
+    const ready = secsLeft <= 0;
+    g.fillStyle = 'rgba(12,16,12,0.78)';
+    g.fillRect(6, 2, 116, 36);
+    g.strokeStyle = ready ? '#6ac06a' : '#5a5040';
+    g.lineWidth = 2;
+    g.strokeRect(7, 3, 114, 34);
+    g.font = 'bold 12px monospace';
+    g.textAlign = 'center';
+    g.fillStyle = '#e8e8dc';
+    g.fillText(label, 64, 16);
+    if (ready) {
+      g.fillStyle = '#8fe08a';
+      g.fillText('READY', 64, 31);
+    } else {
+      // the bar, then the clock over it — mm:ss reads faster than a percentage
+      g.fillStyle = '#2a2418';
+      g.fillRect(14, 22, 100, 9);
+      g.fillStyle = '#c8a33a';
+      g.fillRect(14, 22, Math.round(100 * Math.max(0, Math.min(1, frac))), 9);
+      const m = Math.floor(secsLeft / 60), sec = Math.ceil(secsLeft % 60);
+      g.fillStyle = '#fff';
+      g.font = 'bold 11px monospace';
+      g.fillText(m > 0 ? `${m}:${String(sec).padStart(2, '0')}` : `${sec}s`, 64, 31);
+    }
+    p.sign.tex.needsUpdate = true;
   }
 
   function setBase(p) {
@@ -175,13 +238,27 @@ export function createFarming(scene, terrain, decorBlocked, particles) {
 
   function update(dt) {
     for (const p of plots) {
-      if (!p.seed || p.stage >= 2) continue;
-      p.t += dt;
+      if (!p.seed || p.stage < 0) { if (p.sign.spr.visible) p.sign.spr.visible = false; continue; }
       const grow = ITEMS[p.seed].growTime / 2; // two stage-ups
-      if (p.t >= grow) {
-        p.t = 0;
-        p.stage++;
-        setCropMesh(p);
+      if (p.stage < 2) {
+        p.t += dt;
+        if (p.t >= grow) {
+          p.t = 0;
+          p.stage++;
+          setCropMesh(p);
+        }
+      }
+      // TIME LEFT ACROSS THE WHOLE PLANT, not just this stage — a bar that
+      // refills every time the sprout grows is a bar that lies about how long
+      // you have to wait.
+      const stagesLeft = Math.max(0, 2 - p.stage);
+      const secs = p.stage >= 2 ? 0 : stagesLeft * grow - p.t;
+      const total = 2 * grow;
+      p.sign.spr.visible = true;
+      const whole = Math.ceil(secs);
+      if (whole !== p.sign.last) {
+        p.sign.last = whole;
+        paintSign(p, secs, 1 - secs / total, ITEMS[ITEMS[p.seed].seed]?.name || 'Crop');
       }
     }
   }

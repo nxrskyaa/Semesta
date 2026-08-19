@@ -743,7 +743,15 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     // Inside the walls, minus a body's width so you cannot clip into masonry.
     // Follows the octagon, not a square: with a box test you could stand inside
     // the chamfered corners, which is outside the visible room.
-    terrain.walkable = (x, z) => insideRoom(x, z, state.half, 1.1);
+    //
+    // AND THE PILLARS ARE SOLID. Keeping them out of the spawn picker was not
+    // enough — measured, a warden's guard walked into one on its own, because
+    // the AI only asks whether the ground is walkable and the ground under a
+    // pillar was. A monster standing inside stone reads exactly as one that is
+    // hiding, and it is one you cannot hit. Collision is the only place this
+    // can be fixed once for the player and everything that hunts them.
+    terrain.walkable = (x, z) => insideRoom(x, z, state.half, 1.1)
+      && !nearPillar(x, z, state.half, 1.15);
     // There is no water in the Hollow, and saying so switches off swimming, the
     // boats, the shore rescue and the weather in one line each.
     terrain.swimmable = () => false;
@@ -807,14 +815,35 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
   /** A clear spot to put a monster: on the floor, away from both doors. */
   function spawnPoint(rnd = Math.random) {
     const half = state.half;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 60; i++) {
       const x = (rnd() - 0.5) * (half - 3) * 2;
       const z = (rnd() - 0.5) * (half - 3) * 2;
       // keep them off the arrival pad so nothing is standing on you when you land
       if (Math.hypot(x - 0, z - (half - 3.5)) < 6) continue;
+      // NOTHING SPAWNS INSIDE A PILLAR. I added four of them for the fight to
+      // have geometry and forgot that this picker predates them, so a monster
+      // could arrive standing in solid stone — which from the camera reads
+      // exactly as "it is hiding" and, worse, as one you cannot hit.
+      if (nearPillar(x, z, half, 1.5)) continue;
+      // and inside the OCTAGON, not the square it is inscribed in: the cut
+      // corners are wall now, so a spawn there is a monster in the masonry
+      if (!insideRoom(x, z, half, 1.6)) continue;
       return { x, y: DUNGEON_Y, z };
     }
+    // Last resort is the middle of the floor rather than (0,0) blindly: it is
+    // always inside the room, always clear of the pillars, and always somewhere
+    // you can reach.
     return { x: 0, y: DUNGEON_Y, z: 0 };
+  }
+
+  /** The four pillars sit on the diagonals at 0.56 of the half-width. */
+  function nearPillar(x, z, half, pad = 1.2) {
+    const d = half * 0.56;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      if (Math.hypot(x - Math.cos(a) * d, z - Math.sin(a) * d) < pad) return true;
+    }
+    return false;
   }
 
   function update(dt, time) {
@@ -883,7 +912,7 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
   }
 
   return {
-    state, enter, leave, retheme, update, openStair, stairSpot, exitSpot, spawnPoint,
+    state, enter, leave, retheme, update, openStair, nearPillar, stairSpot, exitSpot, spawnPoint,
     dispose, DUNGEON_Y, halfFor,
     isActive: () => state.active,
   };

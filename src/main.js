@@ -1763,7 +1763,10 @@ async function init(character, saved, audio, online = false) {
     if (plan.boss) {
       // dead centre, so it is the first thing you see when the door shuts.
       // Its own multipliers, not the rabble's — see the note in planFloor.
-      enemyMgr.spawnAt(null, 0, DUNGEON_Y, -2, plan.level, {
+      // The boss stands on the medallion in the middle of the floor, not at
+      // -2 toward the stair: that put it half inside the stair frame on the
+      // tighter warden rooms, where the wall is only thirteen units out.
+      enemyMgr.spawnAt(null, 0, DUNGEON_Y, 0, plan.level, {
         boss: plan.boss,
         hpMult: plan.bossHpMult, dmgMult: plan.bossDmgMult, xpMult: plan.bossXpMult,
       });
@@ -1879,6 +1882,70 @@ async function init(character, saved, audio, online = false) {
     hud.toastText(run.floor >= dungeon.MAX_FLOOR
       ? 'The bottom of the Hollow. There is nothing below this.'
       : 'The stair unseals. Take it, or climb out with what you have.');
+  }
+
+  /**
+   * A yes/no the player has to answer. Built here rather than reached for in
+   * dialog.js, which has no confirm — and a missing method that silently falls
+   * through to "yes" is worse than no confirmation at all, because it looks
+   * like it asked.
+   */
+  function confirmBox({ title, body, yes, no }) {
+    return new Promise((resolve) => {
+      const el = document.createElement('div');
+      el.style.cssText = `position:fixed;inset:0;z-index:75;display:flex;
+        align-items:center;justify-content:center;background:rgba(6,4,10,0.82);
+        font-family:var(--font-body,monospace)`;
+      el.innerHTML = `<div style="width:min(420px,92vw);background:#171224;
+        border:var(--pix-frame,3px solid #4a4060);padding:18px 20px 16px">
+        <div style="font-family:var(--font-display,monospace);font-size:16px;
+          letter-spacing:1px;color:#e8d8ff;margin-bottom:8px"></div>
+        <div style="font-size:12px;line-height:1.6;color:#9a8ab8;margin-bottom:16px"></div>
+        <div style="display:flex;gap:9px">
+          <button data-no style="flex:1;padding:10px;background:#241d33;color:#bfb2d8;
+            border:var(--pix-btn,2px solid #3d3454);cursor:pointer;font-size:12px"></button>
+          <button data-yes style="flex:1;padding:10px;background:#6a4ba8;color:#fff;
+            border:var(--pix-btn,2px solid #8a6ac8);cursor:pointer;
+            font-family:var(--font-display,monospace);font-size:12px;letter-spacing:1px"></button>
+        </div></div>`;
+      const [h, b] = el.querySelectorAll('div > div');
+      h.textContent = title; b.textContent = body;
+      el.querySelector('[data-yes]').textContent = yes;
+      el.querySelector('[data-no]').textContent = no;
+      const close = (v) => { document.removeEventListener('keydown', key); el.remove(); resolve(v); };
+      const key = (e) => { if (e.key === 'Escape') close(false); };
+      document.addEventListener('keydown', key);
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('[data-yes]')) close(true);
+        else if (e.target.closest('[data-no]') || e.target === el) close(false);
+      });
+      document.body.appendChild(el);
+    });
+  }
+
+  /**
+   * Ask before ending a run.
+   *
+   * Worth a sentence rather than a two-step button, because what you lose is
+   * not obvious: cleared floors stay cleared and the bag is yours, but the
+   * floor under your feet is abandoned. Somebody who has just fought their way
+   * to a warden should be told that before they tap the nearest glowing arch —
+   * and the arch is three steps from where you land, so it is easy to tap.
+   */
+  async function askLeaveHollow() {
+    const run = dungeon.state.active;
+    if (!run) return;
+    player.state.busy = true;
+    const ok = await confirmBox({
+      title: 'CLIMB OUT?',
+      body: run.cleared
+        ? `Floor ${run.floor} is cleared and stays cleared. You keep everything you found.`
+        : `Floor ${run.floor} is not cleared. You keep everything you found, but this floor is abandoned — you would start it again from the top.`,
+      yes: 'CLIMB OUT',
+      no: 'STAY DOWN HERE',
+    });
+    player.state.busy = false;
+    if (ok) leaveHollow(false);
   }
 
   /** Down one floor. Same run, so what you are carrying comes with you. */
@@ -3155,7 +3222,15 @@ const CAM_PITCH_DEFAULT = 0.98;
       if (near(st) && run.cleared && run.floor < dungeon.MAX_FLOOR) {
         add('stair', `Descend to floor ${run.floor + 1}`, () => descendHollow());
       }
-      if (near(ex)) add('exit', 'Climb out of the Hollow', () => leaveHollow(false));
+      // LEAVING IS NOT A DOORWAY, IT IS A DECISION. One press used to end the
+      // run outright — and the way out sits three steps from where you land, so
+      // the button you reach for on arrival is the button that throws away the
+      // floor you were about to fight. It asks first now, and it says what you
+      // are giving up: progress on cleared floors is kept, the floor you are
+      // standing on is not.
+      if (near(ex)) {
+        add('exit', 'Climb out of the Hollow', () => askLeaveHollow());
+      }
       return list;
     }
 
