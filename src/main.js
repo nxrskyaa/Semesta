@@ -452,6 +452,18 @@ async function init(character, saved, audio, online = false) {
   function applyPixelRatio() {
     const base = Math.min(window.devicePixelRatio, 1.75) * qual.renderScale;
     renderer.setPixelRatio(base * adaptive.scale);
+    // SETPIXELRATIO ALONE DOES NOTHING TO THE BACKING STORE, and that was the
+    // black frame. three.js only recomputes the drawing buffer inside setSize,
+    // so changing the ratio and then resizing the COMPOSER left the canvas at
+    // the old size and the composer's targets at the new one. A frame rendered
+    // through mismatched targets comes out black — intermittently, because it
+    // only happened on the frames where the adaptive scaler actually stepped.
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    composer?.setSize(window.innerWidth, window.innerHeight);
+    // and put bloom back to half: composer.setSize resets every pass to the
+    // full frame, which silently undid the half-resolution bloom the first
+    // time the resolution moved
+    bloomPass?.setSize(window.innerWidth * 0.5, window.innerHeight * 0.5);
   }
 
   function tickAdaptive(dt, frameMs) {
@@ -473,7 +485,6 @@ async function init(character, saved, audio, online = false) {
     if (adaptive.scale !== before) {
       adaptive.cooldown = 1.0;
       applyPixelRatio();
-      composer?.setSize(innerWidth, innerHeight);
     }
   }
 
@@ -3488,9 +3499,7 @@ const CAM_PITCH_DEFAULT = 0.98;
   // --- GRAPHICS settings: live groups take effect immediately ---
   onQualityChange((nq) => {
     qual = nq;
-    applyPixelRatio();   // keeps the adaptive multiplier on top of the new preset
-    renderer.setSize(innerWidth, innerHeight);
-    composer?.setSize(innerWidth, innerHeight);
+    applyPixelRatio();   // ratio, canvas, composer and bloom, in that order
     renderer.shadowMap.enabled = nq.shadows;
     camera.far = nq.drawDistance;
     camera.updateProjectionMatrix();
@@ -3550,6 +3559,9 @@ const CAM_PITCH_DEFAULT = 0.98;
     // a const in its temporal dead zone and stopped the loading bar dead at 78%
     // with nothing on screen to say why. Sixth time TDZ has done this in this
     // file. Expose a thing where it EXISTS, never where it reads nicely.
+    // the adaptive resolution scaler, exposed like everything else so a step
+    // can be forced and its effect measured rather than assumed
+    adaptive, applyPixelRatio, composer, bloomPass,
     dungeon, dungeonWorld, hollowGate,
     enterHollow, leaveHollow, descendHollow, openHollowGate, populateFloor,
     dailies, gamepass, story, skilltree, index, landmarks, watercraft, isles, hud, wind,
