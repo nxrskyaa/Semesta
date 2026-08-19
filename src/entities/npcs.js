@@ -2035,12 +2035,52 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
           // pick the next thing to do. Rocking is the common case, the way
           // sitting quietly is the common case for a person on a jetty.
           const roll = Math.random();
-          n.chipAct = roll < 0.5 ? 'rock' : roll < 0.75 ? 'cuddle' : roll < 0.92 ? 'bounce' : 'stretch';
-          n.chipT = n.chipAct === 'stretch' ? 1.6 : 2.5 + Math.random() * 3;
+          // SHE HOPS NOW, and that is the fix rather than more idle fidgeting.
+          //
+          // Measured, every part of her was already animating — ahoge, head,
+          // both plushies, the egg's own rock. She still read as "just sitting
+          // there", and after being told twice I stopped defending the design:
+          // an NPC that never CHANGES PLACE reads as furniture no matter how
+          // much of it is moving. She cannot walk, she is in an egg — so the
+          // egg hops, which is both the honest solution and a better joke.
+          n.chipAct = roll < 0.34 ? 'rock' : roll < 0.55 ? 'hop'
+            : roll < 0.74 ? 'cuddle' : roll < 0.92 ? 'bounce' : 'stretch';
+          n.chipT = n.chipAct === 'stretch' ? 1.6 : n.chipAct === 'hop' ? 0.9
+            : 2.5 + Math.random() * 3;
           n.chipT0 = n.chipT;
+          if (n.chipAct === 'hop') {
+            // a short shuffle, kept on a leash around where she was placed so
+            // she never wanders off the jetty she belongs on
+            n.chipHome = n.chipHome || { x: p.x, z: p.z };
+            const a = Math.random() * Math.PI * 2;
+            const d = 0.5 + Math.random() * 0.9;
+            let nx = p.x + Math.cos(a) * d, nz = p.z + Math.sin(a) * d;
+            if (Math.hypot(nx - n.chipHome.x, nz - n.chipHome.z) > 2.4) {
+              // past the leash: hop back toward home instead of further out
+              const back = Math.atan2(n.chipHome.z - p.z, n.chipHome.x - p.x);
+              nx = p.x + Math.cos(back) * d; nz = p.z + Math.sin(back) * d;
+            }
+            n.chipFrom = { x: p.x, z: p.z };
+            n.chipTo = { x: nx, z: nz };
+          }
         }
         const act = n.chipAct || 'rock';
         const phase = 1 - n.chipT / (n.chipT0 || 1);       // 0..1 through the action
+        if (act === 'hop' && n.chipFrom && n.chipTo) {
+          // one arc: ease across the ground, and a sine for the lift so the
+          // egg leaves the floor and lands rather than sliding
+          const k = phase * phase * (3 - 2 * phase);
+          p.x = n.chipFrom.x + (n.chipTo.x - n.chipFrom.x) * k;
+          p.z = n.chipFrom.z + (n.chipTo.z - n.chipFrom.z) * k;
+          n.mesh.position.x = p.x;
+          n.mesh.position.z = p.z;
+          n.mesh.position.y = terrain.surfaceY(p.x, p.z) + Math.sin(phase * Math.PI) * 0.45;
+          // squash on the way up, stretch at the top, squash again on landing
+          const sq = 1 - Math.sin(phase * Math.PI) * 0.12;
+          n.mesh.scale.set(1 / sq, sq, 1 / sq);
+        } else {
+          n.mesh.scale.set(1, 1, 1);
+        }
 
         // the whole egg rocks gently side to side, always
         n.mesh.rotation.z = Math.sin(t * 1.3) * 0.045;
