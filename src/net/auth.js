@@ -336,19 +336,47 @@ const stamp = (s) => Number(s?.at || 0);
  *
  * Returns 'take' (cloud wins), 'keep' (local wins), 'same', or 'ask'.
  */
+const sameHero = (a, b) => !!a && !!b
+  && (a.character?.name || '') === (b.character?.name || '')
+  && (a.character?.cls || '') === (b.character?.cls || '');
+
+/** How far along a save is. Level first, then the tie-breakers that still move
+ *  when the level does not, so "did I lose anything" has an honest answer. */
+const progressOf = (d) => (Number(d?.level) || 1) * 1e9
+  + (Number(d?.xp) || 0) * 1e3 + (Number(d?.inventory?.coins) || 0);
+
 export function decideSlot(mine, theirs, closeMs = 5 * 60 * 1000) {
   if (!theirs) return mine ? 'keep' : 'same';
   if (!mine) return 'take';
   const a = stamp(mine); const b = stamp(theirs);
   // the same save that has been round-tripped: timestamps land within a beat
   if (Math.abs(a - b) < 1500) return 'same';
+
+  // ONE HERO IS NOT A QUESTION.
+  //
+  // The prompt was firing on nearly every sync, and the screenshot said why:
+  // "Lv 31" against "Lv 31", eleven seconds apart. That is one character whose
+  // local autosave (every 8s) is simply fresher than the last cloud upload
+  // (every 60s) — which is the NORMAL state of affairs, not an ambiguity. The
+  // window between 1.5s and five minutes is exactly where that gap always lands,
+  // so the player was being asked to arbitrate between a save and itself.
+  //
+  // Asking is only honest when taking the newer one would LOSE something: same
+  // hero, but the older copy is further along, which means the newer one came
+  // from a device that was behind. Otherwise the newer save is just the newer
+  // save, and it wins in silence.
+  if (sameHero(mine, theirs)) {
+    const newerIsCloud = b > a;
+    const newer = newerIsCloud ? theirs : mine;
+    const older = newerIsCloud ? mine : theirs;
+    if (progressOf(newer) >= progressOf(older)) return newerIsCloud ? 'take' : 'keep';
+    return 'ask';
+  }
+
   if (Math.abs(a - b) > closeMs) return b > a ? 'take' : 'keep';
   return 'ask';
 }
 
-const sameHero = (a, b) => !!a && !!b
-  && (a.character?.name || '') === (b.character?.name || '')
-  && (a.character?.cls || '') === (b.character?.cls || '');
 
 /**
  * Work out what a download should do to this device, without touching it.

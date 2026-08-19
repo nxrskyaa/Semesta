@@ -630,8 +630,20 @@ export function showOpening(saved, syncAccount) {
       rebuildMenuButtons();
     }
     renderAccount();
-    // coming back from the Google redirect lands here with a fresh session
-    onAuthChange(() => afterSignIn());
+    // ONLY WHEN THE PERSON CHANGES, not on every auth event.
+    //
+    // Supabase fires onAuthStateChange for TOKEN_REFRESHED too, and it
+    // refreshes the token whenever the tab regains focus. So every alt-tab was
+    // running a full account sync and re-showing the "two saves found" prompt.
+    // Nothing about the player changed; only their token did.
+    let lastUserId = null;
+    currentUser().then((u) => { lastUserId = u?.id ?? null; });
+    onAuthChange(async (u) => {
+      const id = u?.id ?? null;
+      if (id === lastUserId) { renderAccount(); return; }
+      lastUserId = id;
+      afterSignIn();
+    });
 
     // --- the GUIDE: everything the game can teach, before you commit to a
     // character. New players' questions all arrive before NEW ADVENTURE, not
