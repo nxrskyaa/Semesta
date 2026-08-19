@@ -4,7 +4,7 @@
 // can see what the build actually adds up to rather than having to trust the
 // per-point text.
 //
-// The + button is the only control. There is no respec and no confirm dialog:
+// The + button is the only spending control, and there is no confirm on it:
 // a single point is a small enough commitment that asking "are you sure" for
 // each one would be noise, and the cost of a wrong point is one level of
 // patience rather than a ruined character.
@@ -17,8 +17,8 @@ const TXT = {
   points: { en: 'POINTS TO SPEND', id: 'POIN TERSEDIA' },
   none: { en: 'No points left — level up for more.', id: 'Poin habis — naik level untuk tambahan.' },
   hint: {
-    en: `${POINTS_PER_LEVEL} points every level. There is no respec, so spend them on what you actually play.`,
-    id: `${POINTS_PER_LEVEL} poin setiap level. Tidak ada respec, jadi pakailah sesuai gaya mainmu.`,
+    en: `${POINTS_PER_LEVEL} points every level. Spend them on what you actually play — and if you change your mind later, you can take them all back.`,
+    id: `${POINTS_PER_LEVEL} poin setiap level. Pakai sesuai gaya mainmu — kalau berubah pikiran, semuanya bisa diambil kembali.`,
   },
   totals: { en: 'WHAT YOUR BUILD ADDS UP TO', id: 'HASIL TOTAL BUILD-MU' },
   close: { en: 'CLOSE', id: 'TUTUP' },
@@ -26,6 +26,16 @@ const TXT = {
 };
 
 const CSS = `
+.spanel .resetrow { display: flex; gap: 8px; }
+.spanel .resetrow .close { flex: 1; }
+.spanel .respec, .tree .respec {
+  padding: 9px 12px; background: #3a2436; color: #ffb0c8;
+  border: var(--pix-btn, 2px solid #6a3a58); cursor: pointer;
+  font-family: var(--font-display, monospace); font-size: 11px; letter-spacing: 1px;
+}
+.spanel .respec[data-armed="1"], .tree .respec[data-armed="1"] {
+  background: #6a2038; color: #fff; border-color: #a83a5c;
+}
 #statspanel {
   position: fixed; inset: 0; z-index: 190;
   display: flex; align-items: center; justify-content: center; padding: 18px;
@@ -141,11 +151,34 @@ export function showStats(stats, on = {}) {
             ${stats.summary().map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}
           </div>
         </div>
-        <button class="close">${t(TXT.close)}</button>
+        <div class="resetrow">
+          ${on.onReset ? `<button class="respec" data-reset="1">RESET ATTRIBUTES</button>` : ''}
+          <button class="close">${t(TXT.close)}</button>
+        </div>
       </div>`;
   }
 
   el.addEventListener('click', (e) => {
+    // TWO STEPS. Handing every point back is not destructive — nothing is lost
+    // and it can be spent again — but it does undo a deliberate build, so it
+    // should not be one stray tap away. The button becomes a different button
+    // and has to be pressed again, and it re-arms itself after four seconds.
+    const rb = e.target.closest('[data-reset]');
+    if (rb) {
+      if (rb.dataset.armed !== '1') {
+        rb.dataset.armed = '1';
+        rb.textContent = 'RETURN EVERY POINT?';
+        setTimeout(() => {
+          if (!rb.isConnected) return;
+          rb.dataset.armed = '';
+          rb.textContent = 'RESET ATTRIBUTES';
+        }, 4000);
+        return;
+      }
+      on.onReset?.();
+      paint();
+      return;
+    }
     const b = e.target.closest('[data-a]');
     if (b) {
       if (stats.spend(b.dataset.a, 1)) { on.onChange?.(); paint(); }

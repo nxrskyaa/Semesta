@@ -4,7 +4,22 @@
  *  monster scaling adds a tier per 5 hero levels, the class trees open their
  *  last tier at 24, and auto-battle unlocks here. A cap is not a limitation —
  *  it is what lets the rest of the curve mean something. */
-export const MAX_LEVEL = 30;
+// THE CAP IS 50. Raised from 30, and the audit that went with it is written
+// down because a cap is not one number — it is every curve that reads it.
+//
+//   HP        40 + (lv-1)*10   -> 530 at 50 (was 330)
+//   Stamina  100 + (lv-1)*6    -> 394 (was 274)
+//   Damage     1 + (lv-1)*0.06 -> x3.94 (was x2.74)
+//   Attributes    3 per level  -> 150 points (was 90), via `grantedTo`
+//   Skill points  1 per level  -> 50, against 21 nodes plus four upgrades each,
+//                                 so the tree still cannot be fully bought
+//
+// The things that did NOT move, deliberately: the awakening stays at 10 and the
+// class-tree tiers at 10/16/24, because those are about the shape of the first
+// hours and raising the ceiling does not change when a hero should choose what
+// they are. The Hollow still opens at 20 and scales on its own curve, so it is
+// untouched by this.
+export const MAX_LEVEL = 50;
 
 export function xpNeeded(level) {
   return Math.round(22 * Math.pow(level, 1.45));

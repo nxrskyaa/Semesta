@@ -1142,10 +1142,26 @@ export function createSkillSystem(deps) {
     }
   }
 
+  /**
+   * Take every skill back to level 1 and report how many upgrades that undoes.
+   *
+   * It returns the COUNT rather than refunding anything itself: the points live
+   * in main.js, which is the only place that knows what an upgrade cost, and a
+   * system that hands out currency it does not own is how ledgers drift apart.
+   */
+  function resetLevels() {
+    let freed = 0;
+    for (const id of Object.keys(levels)) {
+      freed += Math.max(0, (levels[id] || 1) - 1);
+      delete levels[id];
+    }
+    return freed;
+  }
+
   function serialize() { return { levels: { ...levels } }; }
   function load(data) {
     if (data?.levels) Object.assign(levels, data.levels);
   }
 
-  return { cast, update, ready, cdFrac, levelOf, upgrade, effCd, serialize, load, SKILLS };
+  return { cast, update, ready, cdFrac, levelOf, upgrade, effCd, resetLevels, serialize, load, SKILLS };
 }

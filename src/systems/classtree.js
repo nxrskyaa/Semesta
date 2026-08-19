@@ -190,9 +190,28 @@ export function createClassTree() {
     state.loadout = state.loadout.filter((id) => id && valid.has(id));
   }
 
+  /**
+   * Unlearn the whole tree and hand the points back.
+   *
+   * Refunds each node's OWN cost rather than counting nodes, because the tree
+   * does not price them all the same — refunding one per node would quietly
+   * rob anyone who bought the expensive ones.
+   */
+  function resetLearned(cls) {
+    let back = 0;
+    for (const id of Object.keys(state.learned)) {
+      const n = nodeOf(cls, id);
+      back += n?.cost ?? 1;
+    }
+    state.learned = {};
+    state.loadout = [];
+    state.points += back;
+    return back;
+  }
+
   return {
     state,
-    learn, equip, unequip, activeSkills, rows, blockedReason, resetFor,
+    learn, equip, unequip, activeSkills, rows, blockedReason, resetFor, resetLearned,
     addPoints: (n) => { state.points += n; },
     serialize: () => ({ learned: { ...state.learned }, loadout: [...state.loadout], points: state.points }),
     load: (d) => {

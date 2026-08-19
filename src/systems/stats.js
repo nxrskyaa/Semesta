@@ -48,7 +48,9 @@ export const ATTR_ORDER = ['might', 'vitality', 'agility', 'focus'];
 export const POINTS_PER_LEVEL = 3;
 
 /** A hard ceiling per attribute, so nothing can be pushed past the point where
- *  the maths stops being sane. 60 is well above what a Lv30 hero can reach. */
+ *  the maths stops being sane. At the Lv50 cap a hero earns 150 points against
+ *  four attributes, so this still binds: you can max two and part of a third,
+ *  which is a real choice rather than a formality. */
 export const ATTR_CAP = 60;
 
 export function createStats() {
@@ -120,8 +122,28 @@ export function createStats() {
     ];
   }
 
+  /**
+   * Hand every spent point back.
+   *
+   * The design said "no respec" and meant it — a build you cannot undo is a
+   * build you have to think about. But that was written when the cap was 30 and
+   * ninety points; at fifty and a hundred and fifty, a choice made at level
+   * twelve is being enforced on a character forty levels later, and a player who
+   * wants to try a Might build after grinding a Focus one has no route but to
+   * delete the hero. Undoing a build is not the same as never having to make one:
+   * the points still cost levels, and the reset is a deliberate, confirmed act.
+   *
+   * @returns how many points came back, so the caller can say so.
+   */
+  function reset() {
+    let back = 0;
+    for (const k of ATTR_ORDER) { back += state.spent[k]; state.spent[k] = 0; }
+    state.points += back;
+    return back;
+  }
+
   return {
-    state, syncLevel, spend, canSpend, rows, summary,
+    state, syncLevel, spend, canSpend, rows, summary, reset,
     dmgMult, bonusHp, atkSpeedMult, moveMult, bonusStamina, staminaRegenMult,
     serialize: () => ({ points: state.points, spent: { ...state.spent }, grantedTo: state.grantedTo }),
     load: (d) => {

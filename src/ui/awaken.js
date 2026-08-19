@@ -45,6 +45,14 @@ const TXT = {
 };
 
 const CSS = `
+.tree .row { display: flex; gap: 8px; }
+.tree .row .close { flex: 1; }
+.tree .respec {
+  padding: 9px 12px; background: #3a2436; color: #ffb0c8;
+  border: var(--pix-btn, 2px solid #6a3a58); cursor: pointer;
+  font-family: var(--font-display, monospace); font-size: 11px; letter-spacing: 1px;
+}
+.tree .respec[data-armed="1"] { background: #6a2038; color: #fff; border-color: #a83a5c; }
 .awk {
   position: fixed; inset: 0; z-index: 190;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -293,10 +301,31 @@ export function showSkillTree(api, on = {}) {
             </div>`).join('')}
         `).join('')}
       </div>
-      <div class="row"><button class="ghost close">${t(TXT.close)}</button></div>`;
+      <div class="row">
+        ${on.onReset ? `<button class="respec" data-reset="1">RESET SKILL POINTS</button>` : ''}
+        <button class="ghost close">${t(TXT.close)}</button>
+      </div>`;
   }
 
   el.addEventListener('click', (e) => {
+    // Two-step, same reasoning as the attribute reset: it undoes a build rather
+    // than destroying anything, so it needs a confirmation but not a warning.
+    const rb = e.target.closest('[data-reset]');
+    if (rb) {
+      if (rb.dataset.armed !== '1') {
+        rb.dataset.armed = '1';
+        rb.textContent = 'UNLEARN EVERYTHING?';
+        setTimeout(() => {
+          if (!rb.isConnected) return;
+          rb.dataset.armed = '';
+          rb.textContent = 'RESET SKILL POINTS';
+        }, 4000);
+        return;
+      }
+      on.onReset?.();
+      paint();
+      return;
+    }
     const learn = e.target.closest('[data-learn]');
     if (learn) {
       if (api.tree.learn(api.cls(), learn.dataset.learn, api.level())) {

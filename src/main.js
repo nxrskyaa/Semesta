@@ -2712,6 +2712,43 @@ const CAM_PITCH_DEFAULT = 0.98;
     openSkillTree();
   }
 
+  // ==========================================================================
+  // RESPEC. Two of them, kept separate because they undo two different things:
+  // attributes are a permanent shape, a skill tree is a loadout you experiment
+  // with. Somebody who wants to try a different weapon line should not have to
+  // give up the Vitality they ground for.
+  //
+  // The design used to say "no respec" and meant it, but that was written for a
+  // level-30 cap and ninety points. At fifty and a hundred and fifty, a choice
+  // made at level twelve is being enforced forty levels later, and the only
+  // route out was deleting the hero. Undoing a build is not the same as never
+  // having to make one: the points still cost the levels that earned them.
+  // ==========================================================================
+  function resetStats() {
+    const back = stats.reset();
+    if (!back) { hud.toastText('Nothing spent yet.'); audio.sfx('deny'); return 0; }
+    applyLevelStats();
+    save();
+    audio.sfx('levelup_big');
+    hud.toastText(`${back} attribute point${back === 1 ? '' : 's'} returned.`);
+    return back;
+  }
+
+  function resetSkillPoints() {
+    // BOTH ledgers, or the player loses points to whichever one is missed:
+    // the tree owns learned nodes, main.js owns the per-skill upgrade levels.
+    const fromTree = classTree.resetLearned(character.cls);
+    const fromLevels = skillSys.resetLevels();
+    skillPoints += fromLevels;
+    const total = fromTree + fromLevels;
+    if (!total) { hud.toastText('Nothing learned yet.'); audio.sfx('deny'); return 0; }
+    refreshLoadout();
+    save();
+    audio.sfx('levelup_big');
+    hud.toastText(`${total} skill point${total === 1 ? '' : 's'} returned.`);
+    return total;
+  }
+
   function openSkillTree() {
     if (isOrigin()) {
       hud.toastText(canAwaken()
@@ -2722,7 +2759,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     }
     showSkillTree(
       { cls: () => character.cls, level: () => leveling.state.level, tree: classTree },
-      { onChange: () => { refreshLoadout(); save(); } },
+      { onChange: () => { refreshLoadout(); save(); }, onReset: resetSkillPoints },
     );
   }
 
@@ -3275,7 +3312,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // Z for the build sheet. U is already the gamepass, and C is crafting.
     if (e.code === 'KeyZ') {
       audio.sfx('ui');
-      showStats(stats, { onChange: () => { applyLevelStats(); save(); } });
+      showStats(stats, { onChange: () => { applyLevelStats(); save(); }, onReset: resetStats });
     }
     if (e.code === 'KeyX') { audio.sfx('ui'); panels.toggle('index'); }
     if (e.code === 'KeyH') { audio.sfx('ui'); panels.toggle('help'); }
@@ -3441,7 +3478,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     onPotion: usePotion,
     onMenu: (which) => {
       if (which === 'stats') {
-        showStats(stats, { onChange: () => { applyLevelStats(); save(); } });
+        showStats(stats, { onChange: () => { applyLevelStats(); save(); }, onReset: resetStats });
         return;
       }
       if (which === 'tree') { audio.sfx('ui'); openSkillTree(); return; }
@@ -3562,6 +3599,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // the adaptive resolution scaler, exposed like everything else so a step
     // can be forced and its effect measured rather than assumed
     adaptive, applyPixelRatio, composer, bloomPass,
+    resetStats, resetSkillPoints,
     dungeon, dungeonWorld, hollowGate,
     enterHollow, leaveHollow, descendHollow, openHollowGate, populateFloor,
     dailies, gamepass, story, skilltree, index, landmarks, watercraft, isles, hud, wind,
