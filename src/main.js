@@ -444,7 +444,23 @@ async function init(character, saved, audio, online = false) {
     aoPass.configuration.intensity = 4;
     aoPass.configuration.halfRes = true;
     aoPass.setQualityMode('Medium');
-    aoPass.enabled = !!qual.bloom;
+    // OFF BY DEFAULT, and that is not indecision.
+    //
+    // I shipped this without ever seeing it — the browser pane here stopped
+    // compositing, so every check was a number rather than a picture, and the
+    // first report back was that the game looked wrong. A visual effect that
+    // has never been LOOKED at does not get to be the default.
+    //
+    // Two things make AO risky specifically in Semesta and both need eyes, not
+    // arithmetic: the world is full of additive sprites (flames, halos,
+    // fireflies, rune circles, water) and occlusion computed from depth can
+    // punch dark rings around them; and at half resolution the occlusion edges
+    // can read as smudges against art that is otherwise crisp pixel-scale.
+    //
+    // The pass stays built and tuned so it costs one flag to try. Turn it on
+    // from the console with __semesta.aoPass.enabled = true, look at it, and if
+    // it holds up it can become the default for the high tiers.
+    aoPass.enabled = false;
     composer.addPass(aoPass);
 
     composer.addPass(bloomPass);
@@ -3575,9 +3591,6 @@ const CAM_PITCH_DEFAULT = 0.98;
     renderer.shadowMap.enabled = nq.shadows;
     camera.far = nq.drawDistance;
     camera.updateProjectionMatrix();
-    // AO rides the same fx tier as bloom: it is the other half of the same
-    // "can this machine afford a full-screen pass" question.
-    if (aoPass) aoPass.enabled = !!nq.bloom;
     lighting.applyQuality?.(nq);
   });
 
