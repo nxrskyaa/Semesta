@@ -443,6 +443,20 @@ async function init(character, saved, audio, online = false) {
     aoPass.configuration.distanceFalloff = 1.0;
     aoPass.configuration.intensity = 4;
     aoPass.configuration.halfRes = true;
+    // THE WHITE HAZE WAS DOUBLE GAMMA, and this is the line that fixes it.
+    //
+    // N8AOPass assumes it is the last thing writing to the screen, so by
+    // default it does its own linear-to-sRGB conversion. In this chain the
+    // OutputPass behind it already does exactly that, plus the tone map. Two
+    // conversions on one image is a milky white wash over everything — which
+    // is precisely what "buram putih" was, and it is also why my very first
+    // A/B read the scene as BRIGHTER with AO on. I dismissed that number as an
+    // artefact of toggling the pass. It was the bug talking.
+    aoPass.configuration.gammaCorrection = false;
+    // Semesta is full of additive sprites — flames, halos, fireflies, rune
+    // circles, water. Occlusion taken from a plain depth buffer rings them with
+    // dark halos; this makes the pass account for them instead.
+    aoPass.configuration.transparencyAware = true;
     aoPass.setQualityMode('Medium');
     // OFF BY DEFAULT, and that is not indecision.
     //
