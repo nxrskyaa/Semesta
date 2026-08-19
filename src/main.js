@@ -57,7 +57,6 @@ import { createHousing, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js'
 import { createIndex } from './systems/index.js';
 import { createDungeon } from './systems/dungeon.js';
 import { createDungeonWorld, buildHollowGate, DUNGEON_Y } from './world/dungeonworld.js';
-import { bakeStatic } from './gfx/bake.js';
 import { showDungeonGate, hollowLockedText } from './ui/dungeonpanel.js';
 import { playDescent } from './ui/descent.js';
 import { createFriends } from './systems/friends.js';
@@ -1601,42 +1600,27 @@ async function init(character, saved, audio, online = false) {
 
   const dungeon = createDungeon();
   dungeon.load(saved?.dungeon);
-  // ==========================================================================
-  // THE CATCH-ALL BAKE, and the measurement that made it obvious.
+  // NO CATCH-ALL BAKE SWEEP HERE, and the reason is worth keeping.
   //
-  // Draw calls were measured from four places in the world: an open field cost
-  // 125, a flower bed 236, the coast 1,297 and the VILLAGE PLAZA 1,399. The
-  // village is where you spawn, where the shop, the forge and the gacha are,
-  // and where a player spends most of their time — so the worst frame in the
-  // game is also the most common one.
+  // Measuring showed the village plaza costing several times what open ground
+  // does, because each builder bakes only its OWN list and anything added to
+  // the scene outside those lists is never merged. The obvious fix — walk the
+  // finished scene and bake every static top-level child — is wrong, and it
+  // shipped broken for one commit: houses came apart and pale slabs of building
+  // ended up scattered across the grass.
   //
-  // The cause is not density, it is coverage. Each builder bakes its OWN list:
-  // npcs.js bakes `placed`, landmarks bakes `built`, isles bins per island. Any
-  // structure added straight to the scene outside those lists is simply never
-  // merged, and several are — measured, one 61-mesh subtree in the village was
-  // costing 62 draw calls, one per mesh, with nothing animated in it at all.
+  // bakeStatic is built to be handed ONE STRUCTURE. It merges everything under
+  // the root into the ROOT'S frame and then removes the originals from their
+  // parents. Several top-level children are container groups holding many
+  // separately-placed buildings, and some of those buildings are still
+  // referenced and repositioned afterwards — docks, houses, anything
+  // moveToClearSpot touches. Merging a container flattens all of that into one
+  // mesh at the container's origin and empties the groups the rest of the game
+  // is still holding on to.
   //
-  // A per-builder list is a thing somebody has to remember to add to. This
-  // sweep is the belt to that: it walks the finished world once and bakes
-  // anything static that nobody merged. bakeStatic is already safe to call on
-  // an already-baked subtree (a bucket of one merges nothing) and it respects
-  // `userData.dynamic` on both objects and materials, so posed props and
-  // animated colours are left exactly alone.
-  // ==========================================================================
-  {
-    let before = 0, after = 0, touched = 0;
-    for (const child of [...scene.children]) {
-      if (child.isLight || child.userData?.dynamic) continue;
-      if (child === player.state.group) continue;
-      let meshes = 0;
-      child.traverse((o) => { if (o.isMesh && !o.isInstancedMesh) meshes++; });
-      if (meshes < 8) continue;              // nothing to gain, and cheaper to skip
-      const r = bakeStatic(child);
-      if (r.before > r.after) { before += r.before; after += r.after; touched++; }
-    }
-    if (touched) console.info(`[semesta] catch-all bake: ${touched} subtrees, ${before} -> ${after} meshes`);
-  }
-
+  // The coverage gap is real and worth closing, but it has to be closed where
+  // the structures are BUILT — by handing each builder's own list to bake —
+  // not by a sweep that cannot tell a building from a bag of buildings.
   // The hero is explicitly KEPT: they are in the scene from world-build time, so
   // the snapshot would otherwise hide the player along with the village.
   const dungeonWorld = createDungeonWorld(scene, terrain, { keep: [player.state.group] });
