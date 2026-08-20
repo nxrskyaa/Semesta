@@ -2136,9 +2136,9 @@ async function init(character, saved, audio, online = false) {
         font-family:var(--font-body,monospace)`;
       el.innerHTML = `<div style="width:min(420px,92vw);background:#171224;
         border:var(--pix-frame,3px solid #4a4060);padding:18px 20px 16px">
-        <div style="font-family:var(--font-display,monospace);font-size:16px;
+        <div data-title style="font-family:var(--font-display,monospace);font-size:16px;
           letter-spacing:1px;color:#e8d8ff;margin-bottom:8px"></div>
-        <div style="font-size:12px;line-height:1.6;color:#9a8ab8;margin-bottom:16px"></div>
+        <div data-body style="font-size:12px;line-height:1.6;color:#9a8ab8;margin-bottom:16px"></div>
         <div style="display:flex;gap:9px">
           <button data-no style="flex:1;padding:10px;background:#241d33;color:#bfb2d8;
             border:0;box-shadow:var(--pix-btn,0 0 0 2px #3d3454);cursor:pointer;font-size:12px"></button>
@@ -2146,8 +2146,22 @@ async function init(character, saved, audio, online = false) {
             border:0;box-shadow:var(--pix-btn,0 0 0 2px #8a6ac8);cursor:pointer;
             font-family:var(--font-display,monospace);font-size:12px;letter-spacing:1px"></button>
         </div></div>`;
-      const [h, b] = el.querySelectorAll('div > div');
-      h.textContent = title; b.textContent = body;
+      // NAME THE ELEMENTS. THIS DIALOG NEVER ONCE OPENED.
+      //
+      // It used to find its own parts with `el.querySelectorAll('div > div')`
+      // and destructure the first two. But `el` IS a div, so the CARD — its
+      // only child — matches `div > div` as well: the list came back as
+      // [card, title, body, buttonRow], `h` was the card, and `h.textContent =
+      // title` replaced the entire dialog with a string, deleting both buttons.
+      // The very next line asked for `[data-yes]`, got null, and threw inside
+      // the Promise executor — before `document.body.appendChild(el)`.
+      //
+      // So the confirm never appeared, the promise rejected silently, and
+      // pressing F at the WAY OUT arch did absolutely nothing. Adding the
+      // try/finally earlier stopped that from FREEZING the player, which hid
+      // the real fault behind a symptom that looked fixed.
+      el.querySelector('[data-title]').textContent = title;
+      el.querySelector('[data-body]').textContent = body;
       el.querySelector('[data-yes]').textContent = yes;
       el.querySelector('[data-no]').textContent = no;
       const close = (v) => { document.removeEventListener('keydown', key); el.remove(); resolve(v); };
@@ -4568,9 +4582,24 @@ const CAM_PITCH_DEFAULT = 0.98;
     particles.update(dt);
     dmgNums.update(dt);
     skillSys.update(dt);
-    npcs.update(dt, player.state.pos, time, isNight);
-    chests.update(dt, player.state.pos);
-    camps.update(dt, player.state.pos, time);
+    // ANAVELA STOPS MOVING WHILE YOU ARE UNDER IT.
+    //
+    // These all re-seat themselves on `terrain.surfaceY(x, z)` every frame, and
+    // while a run is live the override answers DUNGEON_Y for every coordinate
+    // in the world — so the entire village climbed five hundred units and stood
+    // inside the hall. Measured on floor 30: 16 of 16 villagers at y=500, the
+    // nearest 2.6 units from the hero, invisible but there. They were hidden so
+    // nothing was drawn, which is exactly why it went unnoticed; the positions
+    // were wrong all the same, and anything that tests distance in x/z alone
+    // would have found a shopkeeper standing in the Ember Core.
+    //
+    // Skipping the tick is also simply correct: none of it can be seen, and
+    // posing a hidden village is work nobody is paid for.
+    if (!inHollow) {
+      npcs.update(dt, player.state.pos, time, isNight);
+      chests.update(dt, player.state.pos);
+      camps.update(dt, player.state.pos, time);
+    }
     gathering.update(dt);
     // dayFrac 0 at dawn -> 1 at dusk, so garden sunflowers can track the sun
     landmarks.update(dt, time, player.state.pos,
