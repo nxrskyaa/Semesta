@@ -42,6 +42,8 @@ const CSS = `
 .dgate .band .bn { font-family: var(--font-display, monospace); font-size: 12px; color: #d8c8ff; }
 .dgate .band .bb { font-size: 11px; color: #8f82ad; margin-top: 3px; line-height: 1.5; }
 .dgate .warn { margin-top: 12px; font-size: 11px; color: #ffb07a; line-height: 1.5; }
+.dgate .note { margin-top: 10px; padding: 8px 11px; background: #1a1526; border-left: 3px solid #d8b45c;
+  font-size: 11px; color: #c8bce0; line-height: 1.55; }
 .dgate .row { display: flex; gap: 9px; margin-top: 16px; }
 .dgate button.go { flex: 1; padding: 11px; background: #6a4ba8; color: #fff; border: 0;
   box-shadow: var(--pix-btn, 0 0 0 2px #8a6ac8);
@@ -68,7 +70,17 @@ export function showDungeonGate(dj, level) {
     }
     const ov = dj.overview(level);
     let diff = 'easy';
-    let floor = 1;
+    // OPEN ON THE DEEPEST FLOOR YOU HAVE EARNED, not on floor 1.
+    //
+    // The floor row only ever offers the last six worth offering, so a player
+    // who has cleared all thirty saw boxes [10,15,20,25,29,30] with NONE of
+    // them highlighted, a band panel describing the Stone Halls, and a button
+    // reading DESCEND - FLOOR 1. The default was floor 1 and floor 1 was not
+    // even in the list, so there was no visual cue that a floor had to be
+    // picked at all — pressing the big button replayed the first floor of a
+    // dungeon you had already finished. Somebody who cleared the bottom wants
+    // the bottom; that is the only sensible thing to open on.
+    let floor = dj.highestOpen(diff);
 
     const el = document.createElement('div');
     el.className = 'dgate';
@@ -108,7 +120,10 @@ export function showDungeonGate(dj, level) {
             const c = ov.difficulties.find((q) => q.id === id);
             return `<div class="diff ${id === diff ? 'on' : ''}" data-d="${id}" style="color:${x.color}">
               <div class="t">${x.tag}</div>
-              <div class="n" style="color:${x.color}">${c.done ? 'CLEARED' : `Floor ${c.cleared} / ${dj.MAX_FLOOR}`}</div>
+              <div class="n" style="color:${x.color}">${
+                c.done ? 'CLEARED'
+                  : c.cleared === 0 ? 'OPEN &middot; not started'
+                    : `Floor ${c.cleared} / ${dj.MAX_FLOOR}`}</div>
               <div class="b">${x.blurb}</div>
             </div>`;
           }).join('')}
@@ -123,6 +138,11 @@ export function showDungeonGate(dj, level) {
             </div>`;
           }).join('')}
         </div>
+
+        ${open === 1 && dj.DIFF_ORDER.some((id) => (ov.difficulties.find((q) => q.id === id)?.cleared || 0) > 0)
+          ? `<div class="note">Nothing is locked here — every difficulty is open from the start.
+              But each one is its own climb, so ${d.tag} begins at floor 1 no matter how deep
+              you went on another.</div>` : ''}
 
         <div class="band">
           <div class="bn">${theme.glyph} ${theme.name} &nbsp;·&nbsp; ${KIND_LABEL[kind]}</div>
@@ -145,7 +165,9 @@ export function showDungeonGate(dj, level) {
     // silently died; the same mistake costs the same thing here.
     el.addEventListener('click', (e) => {
       const d = e.target.closest('[data-d]');
-      if (d) { diff = d.dataset.d; paint(); return; }
+      // each difficulty is its own ladder, so switching jumps to where THAT
+      // one left off rather than carrying a number across that means nothing
+      if (d) { diff = d.dataset.d; floor = dj.highestOpen(diff); paint(); return; }
       const f = e.target.closest('[data-f]');
       if (f) { floor = Number(f.dataset.f); paint(); return; }
       if (e.target.closest('.back') || e.target === el) { close(null); return; }
