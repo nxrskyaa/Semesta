@@ -35,7 +35,7 @@ import { makeTerrainAtlas } from './gfx/textures.js';
 import { createPlayer } from './entities/player.js';
 import { createEnemyManager, WORLD_BOSSES } from './entities/enemies.js';
 import { BAND_SPECIES } from './entities/dungeonfoes.js';
-import { createNPCs, makeQuestMark, NPC_DEFS } from './entities/npcs.js';
+import { createNPCs, makeQuestMark, NPC_DEFS, buildSignboard } from './entities/npcs.js';
 import { createPickups } from './entities/pickups.js';
 import { createProjectiles } from './entities/projectiles.js';
 import { createDamageNumbers, resolveMeleeHit } from './systems/combat.js';
@@ -1751,6 +1751,29 @@ async function init(character, saved, audio, online = false) {
     g.position.set(x, y, z);
     g.rotation.y = Math.atan2(terrain.spawn.x - x, terrain.spawn.z - z);
     scene.add(g);
+
+    // A BOARD, BECAUSE A BLACK ARCH EXPLAINS NOTHING.
+    //
+    // Every other station in the plaza carries a signboard — SHOP, FORGE,
+    // GACHA, FARM — precisely because three matching daises with a prop on each
+    // told a newcomer nothing. The one structure that is not a dais and not a
+    // colour anybody recognises had no board at all, so people walked past a
+    // dark stone arch with no idea it was the entrance to the endgame.
+    //
+    // It stands BETWEEN the gate and the plaza on the same bearing, so you read
+    // it on the way in, and the clearance was measured against the gate's own
+    // footprint rather than guessed: the arch reaches ~2.4 from its centre, so
+    // 3.4 out puts the posts clear of it with the board facing the square.
+    {
+      const toCentre = Math.atan2(terrain.spawn.x - x, terrain.spawn.z - z);
+      const sx = x + Math.sin(toCentre) * 3.4;
+      const sz = z + Math.cos(toCentre) * 3.4;
+      const sign = buildSignboard('THE HOLLOW', 'gate', '#8f7ad8');
+      sign.position.set(sx, terrain.surfaceY(sx, sz), sz);
+      sign.rotation.y = Math.atan2(terrain.spawn.x - sx, terrain.spawn.z - sz);
+      decor.clearArea?.(sx, sz, 1.4);
+      scene.add(sign);
+    }
     return { x, z, mesh: g };
   })();
 
@@ -2048,7 +2071,27 @@ async function init(character, saved, audio, online = false) {
     // --- the floor is clear ---
     dungeon.markCleared();
     dungeonWorld.openStair();
-    grantDungeon(dungeon.floorReward(run.plan));
+
+    // SAY WHAT THE FLOOR PAID, or it reads as paying nothing.
+    //
+    // The reward was always granted — measured on floor 6: +124 coins, +480 XP
+    // and 2 forge stones all landed in the bag. But the ONLY line the player
+    // saw was "The stair unseals", so a floor clear looked like it handed over
+    // nothing at all, and that is exactly how it was reported. Coins and XP go
+    // into counters at the edge of the screen that nobody watches during a
+    // fight; an item goes into a bag that is closed. If the game does not name
+    // it at the moment it happens, it did not happen as far as the player is
+    // concerned.
+    const paid = dungeon.floorReward(run.plan);
+    grantDungeon(paid);
+    const paidLine = paid.map((r) => {
+      if (r.kind === 'coins') return `+${Math.round(r.amount * coinMult())} coins`;
+      if (r.kind === 'xp') return `+${r.amount} XP`;
+      const n = r.amount || 1;
+      return `${ITEMS[r.id]?.name || r.id}${n > 1 ? ` x${n}` : ''}`;
+    }).join('   ·   ');
+    hud.banner?.(`FLOOR ${run.floor} CLEARED`);
+    hud.toastText(paidLine);
     particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ffd23e', 22);
 
     if (run.plan.boss) {
@@ -2067,7 +2110,10 @@ async function init(character, saved, audio, online = false) {
       if (got.length) {
         audio.sfx('reveal_mythic');
         addShake(0.35);
-        hud.banner?.(got.map((id) => ITEMS[id]?.name || id).join('  ·  '));
+        // a TOAST, not a banner: the banner is already showing FLOOR N CLEARED
+        // and the second call would simply wipe the first before it was read
+        hud.toastText(`${firstClear ? 'FIRST CLEAR' : 'BOSS DROP'} — ${
+          got.map((id) => ITEMS[id]?.name || id).join('  ·  ')}`);
       }
     }
     audio.sfx('levelup_big');

@@ -154,6 +154,13 @@ function drawGlyph(ctx, kind, x, y, s, accent) {
   } else if (kind === 'home') {
     P(2, 6, 9, 6, '#c8b090'); P(1, 4, 11, 2, '#a85a48');
     P(5, 8, 3, 4, '#6a4a30');
+  } else if (kind === 'gate') {
+    // a dark arch with a black mouth and a rune over it — the way DOWN, and
+    // deliberately the only glyph here that is mostly unlit
+    P(1, 3, 11, 2, '#5a5470');            // lintel
+    P(1, 5, 3, 8, '#4a4460'); P(9, 5, 3, 8, '#4a4460');   // jambs
+    P(4, 5, 5, 8, '#0a0810');             // the mouth
+    P(5, 1, 3, 2, accent);                // rune above
   } else {
     P(3, 3, 7, 7, accent);
   }
