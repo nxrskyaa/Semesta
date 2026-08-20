@@ -2151,11 +2151,20 @@ async function init(character, saved, audio, online = false) {
   let busyStuckT = 0;
   function busyWatchdog(dt) {
     if (!player.state.busy) { busyStuckT = 0; return; }
+    // Two layers on purpose. The module checks are the truth, but this watchdog
+    // is the last thing standing between a player and a frozen game, so it also
+    // asks the DOM: anything actually ON SCREEN holds the flag even if the
+    // module that put it there has somehow lost track of itself. A watchdog
+    // that fires early is worse than the bug it guards, so it errs toward
+    // waiting.
     const somethingIsHoldingIt = dialog.isOpen()
       || panels.anyOpen()
-      || document.querySelector('[data-yes]')      // a confirm box
-      || document.querySelector('.cshow.show, .dgate, .awk, #statspanel')
+      || worldmap.isOpen()
+      || document.querySelector('[data-yes]')          // a confirm box
+      || document.querySelector('#dialog.show')        // an NPC talking
+      || document.querySelector('.cshow.show, .dgate, .awk, #statspanel, .descent')
       || fishing.state.active || fishing.state.afk
+      || player.state.dead
       || workFx;
     if (somethingIsHoldingIt) { busyStuckT = 0; return; }
     busyStuckT += dt;
