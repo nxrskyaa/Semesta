@@ -952,6 +952,29 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     }
   }
 
+  /**
+   * HOW FAR A MONSTER WILL NOTICE YOU FROM.
+   *
+   * Anavela's ranges are deliberately short — walking across the map should not
+   * drag a train of monsters behind you. That reasoning is right for an open
+   * world and WRONG for a sealed room you have to empty to move on, and it is
+   * what "the monsters are hiding" actually was.
+   *
+   * Measured on floor 22: seven foes spread up to 25.9 units from the hero, all
+   * of them inside the room and standing on the floor — nothing clipped, nothing
+   * stuck. But dungeon aggro is 6 to 9, the camera looks down from fourteen
+   * units so anything past ~20 is off screen, and the minimap is hidden
+   * underground on purpose. So the banner says three are left, three monsters
+   * wander their own corner in the dark forever, and the player walks laps.
+   *
+   * `e.aggroBoost` is set by the Hollow (see hollowTick): the fewer are left and
+   * the longer the floor drags, the further they hunt. Early on a floor still
+   * plays like a fight you walk into; the stragglers come to you.
+   */
+  function aggroOf(e) {
+    return e.def.aggro * (e.aggroBoost || 1);
+  }
+
   function update(dt, playerState, time, isNight) {
     const playerPos = playerState.pos;
     const aliveCount = enemies.filter((e) => !e.dead).length;
@@ -1102,7 +1125,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       if (e.state === 'wander') {
         e.wanderT -= dt;
         if (e.wanderT <= 0) { e.wanderT = 1.5 + Math.random() * 3; e.dir = Math.random() * Math.PI * 2; }
-        if (distP < e.def.aggro && !playerState.busy && !playerSafe
+        if (distP < aggroOf(e) && !playerState.busy && !playerSafe
           && !hooks.inSafeZone?.(playerPos.x, playerPos.z)) e.state = 'aggro';
         // FACE THE WAY YOU WALK. Wander never set the rotation, so a monster
         // kept whatever heading it last had while drifting off in a new one —
@@ -1181,7 +1204,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
   function meleeAI(e, playerState, distP, dt) {
     const p = e.mesh.position;
     const playerPos = playerState.pos;
-    if (distP > e.def.aggro * 2.6) { e.state = 'wander'; e.np.sprite.visible = e.hp < e.hpMax; return; }
+    if (distP > aggroOf(e) * 2.6) { e.state = 'wander'; e.np.sprite.visible = e.hp < e.hpMax; return; }
     const dx = playerPos.x - p.x, dz = playerPos.z - p.z;
     const l = Math.hypot(dx, dz) || 1;
     if (distP > e.def.attackRange * 0.85) {
@@ -1198,7 +1221,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
   function rangedAI(e, playerState, distP, dt) {
     const p = e.mesh.position;
     const playerPos = playerState.pos;
-    if (distP > e.def.aggro * 2.2) { e.state = 'wander'; e.np.sprite.visible = e.hp < e.hpMax; return; }
+    if (distP > aggroOf(e) * 2.2) { e.state = 'wander'; e.np.sprite.visible = e.hp < e.hpMax; return; }
     const dx = playerPos.x - p.x, dz = playerPos.z - p.z;
     const l = Math.hypot(dx, dz) || 1;
     // keep distance
@@ -1250,7 +1273,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       }
       return;
     }
-    if (distP > e.def.aggro * 2.4) { e.state = 'wander'; e.np.sprite.visible = e.hp < e.hpMax; return; }
+    if (distP > aggroOf(e) * 2.4) { e.state = 'wander'; e.np.sprite.visible = e.hp < e.hpMax; return; }
     const dx = playerPos.x - p.x, dz = playerPos.z - p.z;
     const l = Math.hypot(dx, dz) || 1;
     e.mesh.rotation.y = Math.atan2(dx, dz);

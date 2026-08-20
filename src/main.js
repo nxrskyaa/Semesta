@@ -1945,6 +1945,7 @@ async function init(character, saved, audio, online = false) {
         player.state.grounded = true;
         populateFloor(run.plan);
         hollowFilling = false;
+        hollowHunt = 0;                 // a fresh floor starts calm
         audio.setMood('hollow');
       },
     });
@@ -1985,6 +1986,8 @@ async function init(character, saved, audio, online = false) {
    * splits or summons is not finished the moment its own health hits zero.
    */
   let hollowClearT = 0;
+  // seconds the current floor has been running, for the hunt widening below
+  let hollowHunt = 0;
   function hollowTick(dt) {
     const run = dungeon.state.active;
     // THE INVARIANT: the world is never in dungeon mode without a run in it.
@@ -2017,6 +2020,24 @@ async function init(character, saved, audio, online = false) {
     if (hollowClearT > 0) return;
     hollowClearT = 0.35;
     const alive = enemyMgr.enemies.filter((e) => e.dungeon && !e.dead).length;
+
+    // A FLOOR NEVER LEAVES YOU HUNTING.
+    //
+    // The dungeon's own aggro ranges are 6 to 9 units and its rooms scatter
+    // monsters up to ~26 away, so the last few would sit in a dark corner off
+    // screen while the banner counted them — with no minimap down here to find
+    // them by. The remaining monsters widen their search instead: a little as
+    // the floor empties, more the longer it drags. Nothing chases you from the
+    // far wall the moment you land, and nothing hides once you are down to the
+    // stragglers.
+    hollowHunt += dt;
+    if (run.cleared) hollowHunt = 0;
+    // 1.0 with a full room, rising toward ~4.5 as it empties
+    const byCount = alive <= 1 ? 4.5 : alive <= 2 ? 3.4 : alive <= 4 ? 2.3 : 1.4;
+    // and +0.5 for every 15s the floor has gone on, capped, so a stalemate ends
+    const byTime = Math.min(2.5, hollowHunt / 15 * 0.5);
+    const boost = byCount + byTime;
+    for (const e of enemyMgr.enemies) if (e.dungeon && !e.dead) e.aggroBoost = boost;
     hud.setHollow({
       floor: run.floor, of: dungeon.MAX_FLOOR, left: alive,
       theme: dungeon.THEMES[run.plan.theme], kind: run.plan.kind,
@@ -2200,6 +2221,7 @@ async function init(character, saved, audio, online = false) {
         player.state.vy = 0;
         populateFloor(plan);
         hollowFilling = false;
+        hollowHunt = 0;                 // and so does each floor below it
       },
     });
     hollowFilling = false;
