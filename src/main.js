@@ -511,7 +511,21 @@ async function init(character, saved, audio, online = false) {
     samples: [],
     cooldown: 0,
     enabled: true,
+    // consecutive medians outside the dead band — see tickAdaptive
+    strikesUp: 0,
+    strikesDown: 0,
   };
+  // A RESIZE CLEARS THE DRAWING BUFFER, and that is the black flicker.
+  //
+  // Assigning canvas.width — which is what `renderer.setSize` does — reallocates
+  // the drawing buffer and clears it to transparent black. Measured: brightness
+  // 52.2 before the step, 0.0 immediately after, on 6 of 6 resolution changes.
+  // If the compositor picks up that moment before the next frame lands, the
+  // screen blinks black. Nothing was wrong with the RENDER; the gap is between
+  // the resize and the next draw, which is why sampling after `composer.render`
+  // found nothing. Redrawing inside applyPixelRatio closes the gap so there is
+  // never a cleared buffer for the compositor to show.
+  let canRedraw = false;
 
   function applyPixelRatio() {
     const base = Math.min(window.devicePixelRatio, 1.75) * qual.renderScale;
@@ -529,6 +543,12 @@ async function init(character, saved, audio, online = false) {
     // time the resolution moved
     bloomPass?.setSize(window.innerWidth * 0.5, window.innerHeight * 0.5);
     aoPass?.setSize(window.innerWidth, window.innerHeight);
+    // the buffer we just reallocated is blank — put a frame in it NOW, before
+    // anything can composite it (see the note on `canRedraw`)
+    if (canRedraw) {
+      try { if (usePost()) composer.render(); else renderer.render(scene, camera); }
+      catch { /* mid-boot, or a context that is not there yet */ }
+    }
   }
 
   function tickAdaptive(dt, frameMs) {
@@ -542,13 +562,30 @@ async function init(character, saved, audio, online = false) {
     adaptive.samples.length = 0;
 
     const before = adaptive.scale;
-    // 20ms ~ 50fps: below that we are losing frames and sharpness is the first
-    // thing worth trading. 13ms ~ 75fps: comfortably clear, take some back.
-    if (med > 20) adaptive.scale = Math.max(adaptive.min, adaptive.scale - 0.1);
-    else if (med < 13) adaptive.scale = Math.min(1, adaptive.scale + 0.1);
+    // A WIDE DEAD BAND, AND TWO STRIKES BEFORE MOVING.
+    //
+    // The old thresholds were adjacent — down above 20ms, up below 13ms — so a
+    // machine sitting near the boundary chased itself: step up, get slower,
+    // step down, get faster, step up. Every one of those steps reallocates the
+    // drawing buffer, and every reallocation is a chance to show a black frame,
+    // so a hunting scaler is a flickering screen. The band is wider now
+    // (11-22ms is "leave it alone") and a step needs the median to stay outside
+    // it for two checks running, which no oscillation can satisfy.
+    if (med > 22) adaptive.strikesDown++; else adaptive.strikesDown = 0;
+    if (med < 11) adaptive.strikesUp++; else adaptive.strikesUp = 0;
+
+    if (adaptive.strikesDown >= 2) {
+      adaptive.scale = Math.max(adaptive.min, adaptive.scale - 0.1);
+      adaptive.strikesDown = 0;
+    } else if (adaptive.strikesUp >= 2) {
+      adaptive.scale = Math.min(1, adaptive.scale + 0.1);
+      adaptive.strikesUp = 0;
+    }
 
     if (adaptive.scale !== before) {
-      adaptive.cooldown = 1.0;
+      // dropping quality under load should be quick; taking it back should be
+      // cautious, or the pair of them becomes its own oscillation
+      adaptive.cooldown = adaptive.scale < before ? 1.5 : 3.0;
       applyPixelRatio();
     }
   }
@@ -2069,17 +2106,65 @@ async function init(character, saved, audio, online = false) {
   async function askLeaveHollow() {
     const run = dungeon.state.active;
     if (!run) return;
-    player.state.busy = true;
-    const ok = await confirmBox({
+    // TRY/FINALLY, BECAUSE A REJECTED AWAIT FREEZES THE PLAYER FOREVER.
+    //
+    // This is the "I clicked to leave the dungeon and now no button or menu
+    // works" report. `busy` gates movement, every panel and every interaction,
+    // and it was set before an await with the clear on the line AFTER it — so
+    // anything that made `confirmBox` reject (a throw inside the Promise
+    // executor rejects it, and the markup is read with a destructuring
+    // `querySelectorAll` that would throw if it ever came back short) skipped
+    // the clear entirely and left the hero frozen with no dialog on screen to
+    // dismiss. An unhandled rejection is silent, so it looks like the game
+    // simply stopped.
+    let ok = false;
+    try {
+      player.state.busy = true;
+      ok = await confirmBox({
       title: 'CLIMB OUT?',
       body: run.cleared
         ? `Floor ${run.floor} is cleared and stays cleared. You keep everything you found.`
         : `Floor ${run.floor} is not cleared. You keep everything you found, but this floor is abandoned — you would start it again from the top.`,
-      yes: 'CLIMB OUT',
-      no: 'STAY DOWN HERE',
-    });
-    player.state.busy = false;
+        yes: 'CLIMB OUT',
+        no: 'STAY DOWN HERE',
+      });
+    } finally {
+      player.state.busy = false;      // whatever happened, you get to move again
+    }
     if (ok) leaveHollow(false);
+  }
+
+  /**
+   * NOTHING MAY HOLD THE PLAYER STILL WITHOUT SHOWING ITSELF.
+   *
+   * `busy` gates movement, every panel, every interaction — so a `busy` that is
+   * never cleared is a completely frozen game, and the player cannot even open
+   * a menu to see what happened. The try/finally blocks above close the two
+   * paths that actually did it, but the failure is severe enough and silent
+   * enough to be worth an invariant rather than a list of fixed causes.
+   *
+   * Everything that legitimately sets `busy` also puts something on screen or
+   * sets a state you can see: a dialog, a panel, the cook/forge show, fishing,
+   * a work pose. If none of those is true and `busy` has been up for two
+   * seconds, nothing is holding it and the flag is simply stuck.
+   */
+  let busyStuckT = 0;
+  function busyWatchdog(dt) {
+    if (!player.state.busy) { busyStuckT = 0; return; }
+    const somethingIsHoldingIt = dialog.isOpen()
+      || panels.anyOpen()
+      || document.querySelector('[data-yes]')      // a confirm box
+      || document.querySelector('.cshow.show, .dgate, .awk, #statspanel')
+      || fishing.state.active || fishing.state.afk
+      || workFx;
+    if (somethingIsHoldingIt) { busyStuckT = 0; return; }
+    busyStuckT += dt;
+    if (busyStuckT > 2) {
+      busyStuckT = 0;
+      player.state.busy = false;
+      player.setWorkPose?.(false);
+      hud.toastText('Something let go of you late — you can move again.');
+    }
   }
 
   /** Down one floor. Same run, so what you are carrying comes with you. */
@@ -2120,9 +2205,15 @@ async function init(character, saved, audio, online = false) {
       audio.sfx('deny');
       return;
     }
-    player.state.busy = true;
-    const pick = await showDungeonGate(dungeon, lv);
-    player.state.busy = false;
+    // same shape, same hazard as askLeaveHollow — a rejected await here would
+    // freeze you standing at the gate instead of inside the dungeon
+    let pick = null;
+    try {
+      player.state.busy = true;
+      pick = await showDungeonGate(dungeon, lv);
+    } finally {
+      player.state.busy = false;
+    }
     if (pick) enterHollow(pick.difficulty, pick.floor);
   }
 
@@ -4333,6 +4424,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     watercraft.update(dt, time);
     dungeonWorld.update(dt, time);
     hollowTick(dt);
+    busyWatchdog(dt);
     // The out-of-world rescue must not fire five hundred units up: while a run
     // is live the terrain override reports the hall as in-bounds, so this is
     // simply skipped rather than made to understand dungeons.
@@ -4626,6 +4718,9 @@ const CAM_PITCH_DEFAULT = 0.98;
     if (usePost()) composer.render(); else renderer.render(scene, camera);
     tickAdaptive(dt, performance.now() - drawStart);
   }
+  // from here on a resize can safely paint a frame into the buffer it just
+  // cleared; before this the scene and the composer are still being assembled
+  canRedraw = true;
   schedule(loop);
 }
 
