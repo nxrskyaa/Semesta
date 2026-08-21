@@ -662,7 +662,24 @@ export function createPanels(hudRoot, {
         <div class="nm">${cur.name} <small>Standing on ${isle}. It heals you nearby and monsters keep their distance.</small></div></div>`;
     }
 
-    if (!next) {
+    // UNDER CONSTRUCTION owns the panel while a rung is running: there is
+    // nothing to decide, so offering a button would only invite a second press.
+    const wip = estate.building?.();
+    if (wip) {
+      const left = estate.remaining();
+      const total = wip.buildMs || 1;
+      const pct = Math.max(0, Math.min(100, Math.round((1 - left / total) * 100)));
+      html += `<h4 class="sect">UNDER CONSTRUCTION</h4>
+        <div class="rec-row"><div class="dot" style="background:${wip.roof}"></div>
+          <div class="nm">${wip.name}<small>${wip.desc}</small></div></div>
+        <div style="margin-top:8px;height:12px;background:rgba(10,14,10,0.6);
+          box-shadow:inset 0 0 0 1px rgba(216,184,102,0.35);overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#d8b45c,#ffe27a)"></div></div>
+        <div style="font-size:11px;color:var(--gold);margin-top:6px">
+          ${estate.fmtLeft(left)} left &nbsp;·&nbsp; ${pct}%</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">
+          The work carries on whether the game is open or not — come back when it is done.</div>`;
+    } else if (!next) {
       html += `<div style="font-size:11px;color:var(--text);margin-top:8px">
         The beacon is lit. There is nothing left to build here — which, for a Lanternkeeper, is the whole job done.</div>`;
     } else {
@@ -677,7 +694,8 @@ export function createPanels(hudRoot, {
       const label = tier === 0 ? 'BUILD' : 'UPGRADE';
       html += `<h4 class="sect">${tier === 0 ? 'RAISE YOUR HOUSE' : 'NEXT UPGRADE'}</h4>
         <div class="rec-row"><div class="dot" style="background:${next.roof}"></div>
-          <div class="nm">${next.name}<small>${next.desc}</small></div>
+          <div class="nm">${next.name}<small>${next.desc}${
+            next.buildMs ? ` &nbsp;·&nbsp; <b style="color:var(--gold)">takes ${estate.fmtLeft(next.buildMs)}</b>` : ''}</small></div>
           <div class="cost">${cost}</div>
           <button class="act" data-build ${ready && onSite ? '' : 'disabled'}>${label}</button></div>`;
       if (!onSite) {

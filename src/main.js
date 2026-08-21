@@ -35,7 +35,7 @@ import { makeTerrainAtlas } from './gfx/textures.js';
 import { createPlayer } from './entities/player.js';
 import { createEnemyManager, WORLD_BOSSES } from './entities/enemies.js';
 import { BAND_SPECIES } from './entities/dungeonfoes.js';
-import { createNPCs, makeQuestMark, NPC_DEFS, buildSignboard } from './entities/npcs.js';
+import { createNPCs, makeQuestMark, NPC_DEFS } from './entities/npcs.js';
 import { createPickups } from './entities/pickups.js';
 import { createProjectiles } from './entities/projectiles.js';
 import { createDamageNumbers, resolveMeleeHit } from './systems/combat.js';
@@ -1245,19 +1245,49 @@ async function init(character, saved, audio, online = false) {
       if (this.missing().length) { audio.sfx('deny'); return; }
       for (const [id, n] of Object.entries(d.cost)) inventory.remove(id, n);
       if (d.coins) inventory.spendCoins(d.coins);
-      const built = housing.build();
-      if (!built) return;
+      // START it. The materials are spent now — the timber goes into the build
+      // — and the house lands when its time is up. See the note in housing.js.
+      const started = housing.startBuild();
+      if (!started) return;
       const h = housing.home;
-      decor.clearArea?.(h.x, h.z, 4.6);   // no palm clipping the roof
-      quests.event('build');
-      // the house is a solid building — nudge the player out to the door side so
-      // they aren't trapped inside the freshly-blocked footprint
+      decor.clearArea?.(h.x, h.z, 4.6);   // no palm clipping the scaffolding
       moveToClearSpot(h.x, h.z, 3.4);
-      audio.sfx('quest_done');
-      addShake(0.3);
-      hud.banner(`${built.name.toUpperCase()}!`);
+      audio.sfx('craft');
+      hud.banner('WORK BEGINS');
+      hud.toastText(`${started.name} — ready in ${housing.fmtLeft(started.buildMs || 0)}.`);
+      save();
     },
+    /** How long the current rung has left, for the panel. */
+    building: () => housing.building?.(),
+    remaining: () => housing.buildRemaining(),
+    fmtLeft: (ms) => housing.fmtLeft(ms),
   };
+
+  /**
+   * The house lands on its own, and it lands whether or not you were watching.
+   * Checked once a second rather than per frame: a build is measured in hours
+   * and nothing about it needs sixty looks a second.
+   */
+  let estateT = 0;
+  function estateTick(dt) {
+    estateT -= dt;
+    if (estateT > 0) return;
+    estateT = 1;
+    const done = housing.tickBuild();
+    if (!done) return;
+    const h = housing.home;
+    decor.clearArea?.(h.x, h.z, 4.6);
+    quests.event('build');
+    // only shove the player if they are actually standing on the new footprint
+    if (Math.hypot(player.state.pos.x - h.x, player.state.pos.z - h.z) < 3.4) {
+      moveToClearSpot(h.x, h.z, 3.4);
+    }
+    audio.sfx('quest_done');
+    addShake(0.3);
+    hud.banner(`${done.name.toUpperCase()}!`);
+    hud.toastText(`${done.name} is finished on ${housing.home?.isleName || 'Lanternhome'}.`);
+    save();
+  }
 
   // relocate the player to the nearest walkable, unblocked cell outside a
   // building footprint (prefers the +z "door" side)
@@ -1752,28 +1782,15 @@ async function init(character, saved, audio, online = false) {
     g.rotation.y = Math.atan2(terrain.spawn.x - x, terrain.spawn.z - z);
     scene.add(g);
 
-    // A BOARD, BECAUSE A BLACK ARCH EXPLAINS NOTHING.
+    // THE NAME IS ON THE GATE ITSELF NOW.
     //
-    // Every other station in the plaza carries a signboard — SHOP, FORGE,
-    // GACHA, FARM — precisely because three matching daises with a prop on each
-    // told a newcomer nothing. The one structure that is not a dais and not a
-    // colour anybody recognises had no board at all, so people walked past a
-    // dark stone arch with no idea it was the entrance to the endgame.
-    //
-    // It stands BETWEEN the gate and the plaza on the same bearing, so you read
-    // it on the way in, and the clearance was measured against the gate's own
-    // footprint rather than guessed: the arch reaches ~2.4 from its centre, so
-    // 3.4 out puts the posts clear of it with the board facing the square.
-    {
-      const toCentre = Math.atan2(terrain.spawn.x - x, terrain.spawn.z - z);
-      const sx = x + Math.sin(toCentre) * 3.4;
-      const sz = z + Math.cos(toCentre) * 3.4;
-      const sign = buildSignboard('THE HOLLOW', 'gate', '#8f7ad8');
-      sign.position.set(sx, terrain.surfaceY(sx, sz), sz);
-      sign.rotation.y = Math.atan2(terrain.spawn.x - sx, terrain.spawn.z - sz);
-      decor.clearArea?.(sx, sz, 1.4);
-      scene.add(sign);
-    }
+    // This used to hang a separate signboard 3.4 units away on the plaza side,
+    // which is how every other station is labelled — and it was wrong here: the
+    // stations are small props on wide daises where a board beside them reads
+    // as belonging to them, while the gate is a three-metre arch, so a post
+    // standing off to one side read as an unrelated object rather than as its
+    // name. `buildHollowGate` carries a lit plaque across its own lintel, and
+    // the structure introduces itself.
     return { x, z, mesh: g };
   })();
 
@@ -3760,7 +3777,10 @@ const CAM_PITCH_DEFAULT = 0.98;
     // villager can't hijack the stall/gacha/anvil button
     // a moored craft beats a wandering villager for the button, same as a landmark
     {
-      const m = watercraft.nearest(player.state.pos, 2.8);
+      // 3.8, not 2.8: you board a boat by standing on the pier beside it, and
+      // nothing else at a marina competes for the button. The old reach was
+      // shorter than the gap between the berth and the planking.
+      const m = watercraft.nearest(player.state.pos, 3.8);
       if (m) {
         const def = CRAFT_DEFS[m.id];
         const owned = inventory.count(def.item) > 0;
@@ -4516,6 +4536,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     dungeonWorld.update(dt, time);
     hollowTick(dt);
     busyWatchdog(dt);
+    estateTick(dt);
     // The out-of-world rescue must not fire five hundred units up: while a run
     // is live the terrain override reports the hall as in-bounds, so this is
     // simply skipped rather than made to understand dungeons.
@@ -4603,7 +4624,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     gathering.update(dt);
     // dayFrac 0 at dawn -> 1 at dusk, so garden sunflowers can track the sun
     landmarks.update(dt, time, player.state.pos,
-      Math.max(0, Math.min(1, (lighting.state.minutes / 60 - 6) / 12)), wind);
+      Math.max(0, Math.min(1, (lighting.state.minutes / 60 - 6) / 12)), wind, isNight);
     farming.update(dt);
     // THE PET FETCHES. It runs the drop down, carries it back and hands it over —
     // the same `onPickup` path a drop you walked over takes, so quests, dailies

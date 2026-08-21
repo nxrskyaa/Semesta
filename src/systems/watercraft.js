@@ -550,15 +550,45 @@ export function createWatercraft(scene, terrain, particles, hooks = {}) {
    * berth is nudged to the nearest floatable water — a craft moored on the
    * shelf grounds out the instant you board it and feels broken.
    */
-  function moor(id, x, z, dir = 0) {
-    if (!floats(x, z)) {
-      let found = false;
-      for (let r = 0.6; r <= 10 && !found; r += 0.6) {
-        for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
-          const nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r;
-          if (floats(nx, nz)) { x = nx; z = nz; found = true; break; }
-        }
+  /** Distance from a water cell to the nearest cell a player can stand on. */
+  function nearestWalkableDist(x, z, max = 8) {
+    for (let r = 0.5; r <= max; r += 0.5) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
+        const nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r;
+        if (terrain.swimmable(nx, nz)) continue;
+        if (terrain.walkable(nx, nz, terrain.surfaceY(nx, nz))) return r;
       }
+    }
+    return max + 1;
+  }
+
+  function moor(id, x, z, dir = 0) {
+    // A BERTH YOU CANNOT REACH IS NOT A BERTH.
+    //
+    // This used to take the FIRST floatable cell it found and stop there, which
+    // put the Donut Boat 3.0 units from the nearest cell a player can stand on
+    // — against a boarding reach of 2.8. So it could not be boarded from land
+    // at all: you had to swim out and press the button mid-stroke, which is
+    // exactly the "spawn point is really hard" report.
+    //
+    // A moored craft belongs ALONGSIDE something you can walk on, so the search
+    // now scores every floatable candidate by how close it sits to walkable
+    // ground and keeps the best one, rather than the first.
+    if (!floats(x, z) || nearestWalkableDist(x, z) > 2.0) {
+      let best = null, bestScore = Infinity;
+      for (let r = 0.6; r <= 10; r += 0.5) {
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 12) {
+          const nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r;
+          if (!floats(nx, nz)) continue;
+          const toLand = nearestWalkableDist(nx, nz);
+          // close to shore first, then close to the berth it was asked for
+          const score = toLand * 3 + r;
+          if (score < bestScore) { bestScore = score; best = [nx, nz]; }
+        }
+        // a berth within arm's reach of the pier is good enough — stop looking
+        if (best && bestScore < 3) break;
+      }
+      if (best) { x = best[0]; z = best[1]; }
     }
     const mesh = BUILD[id]();
     mesh.position.set(x, WATER_Y, z);

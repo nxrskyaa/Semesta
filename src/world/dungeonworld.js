@@ -566,60 +566,156 @@ function buildMotes(t, half, theme, budget = 1) {
  * shadow, the frame gives it a silhouette against the paving, and the
  * Lanternkeeper glyph over the door says whose door it was.
  */
+/**
+ * THE GATE IN THE PLAZA, rebuilt.
+ *
+ * The first one was a slab, two square posts and a lintel — plainly a stack of
+ * boxes next to a temple square full of carved stone, and the name stood three
+ * metres away on its own signboard so the two never read as one thing. People
+ * walked past it.
+ *
+ * Two changes carry the redesign. THE NAME IS ON THE BUILDING: a lit plaque set
+ * into the lintel, so the structure introduces itself instead of being labelled
+ * by a post beside it. And the stone is BUILT rather than extruded — stepped
+ * plinth courses, pillars that taper in three stages, corbels carrying the
+ * lintel, a keystone with the order's mark, hanging chains and two live
+ * braziers. Depth here comes from layering boxes, which is this game's whole
+ * vocabulary, not from more triangles.
+ */
 export function buildHollowGate() {
   const g = new THREE.Group();
   const stone = '#3f3a4e';
-  const base = boxMesh(4.6, 0.4, 4.0, stone);
-  base.position.y = 0.2;
-  base.receiveShadow = true;
-  g.add(base);
+  const dark = '#2b2739';
+  const trim = '#57506c';
 
-  // four descending steps, each darker, going into a black mouth
+  // --- a stepped plinth, so it stands ON the plaza the way the stations do ---
+  const courses = [[5.2, 0.22, 4.6], [4.7, 0.20, 4.2], [4.2, 0.18, 3.8]];
+  let py = 0;
+  for (const [w, h, d] of courses) {
+    const c = boxMesh(w, h, d, shade(stone, 1 + (py * 0.5)));
+    c.position.y = py + h / 2;
+    c.receiveShadow = true;
+    g.add(c);
+    py += h;
+  }
+
+  // --- the descent: four steps down into a mouth that has depth in it -------
   for (let i = 0; i < 4; i++) {
-    const st = boxMesh(2.4 - i * 0.1, 0.28, 0.5, shade(stone, 1 - i * 0.16));
-    st.position.set(0, 0.32 - i * 0.16, 0.9 - i * 0.5);
+    const st = boxMesh(2.4 - i * 0.12, 0.26, 0.52, shade(stone, 1 - i * 0.17));
+    st.position.set(0, py - 0.05 - i * 0.17, 1.0 - i * 0.5);
     g.add(st);
   }
-  const mouth = boxMesh(2.2, 0.9, 1.5, '#07060b');
-  mouth.position.set(0, 0.1, -0.7);
-  g.add(mouth);
+  // the mouth is two boxes: a throat and a darker void behind it, so the hole
+  // reads as going somewhere rather than as a black rectangle painted on stone
+  const throat = boxMesh(2.3, 1.1, 1.6, '#141020');
+  throat.position.set(0, py - 0.1, -0.5);
+  g.add(throat);
+  const voidBox = boxMesh(1.9, 0.9, 0.6, '#05040a');
+  voidBox.position.set(0, py - 0.1, -1.25);
+  g.add(voidBox);
 
-  // the frame: two posts and a lintel, so it has a shape from any angle
+  // --- pillars that taper in three stages, with a base and a collar ---------
   for (const sx of [-1, 1]) {
-    const post = boxMesh(0.5, 3.0, 0.6, stone);
-    post.position.set(sx * 1.5, 1.5, -0.2);
-    post.castShadow = true;
-    g.add(post);
-    const cap = boxMesh(0.7, 0.26, 0.8, '#57506c');
-    cap.position.set(sx * 1.5, 3.05, -0.2);
-    g.add(cap);
+    const foot = boxMesh(0.86, 0.3, 0.94, trim);
+    foot.position.set(sx * 1.62, py + 0.15, -0.2);
+    g.add(foot);
+    const seg = [[0.68, 1.05, 0.76], [0.6, 0.95, 0.68], [0.52, 0.85, 0.6]];
+    let sy = py + 0.3;
+    for (const [w, h, d] of seg) {
+      const b = boxMesh(w, h, d, stone);
+      b.position.set(sx * 1.62, sy + h / 2, -0.2);
+      b.castShadow = true;
+      g.add(b);
+      sy += h;
+      // a collar between stages catches the light and breaks the taper up
+      const collar = boxMesh(w + 0.1, 0.09, d + 0.1, trim);
+      collar.position.set(sx * 1.62, sy, -0.2);
+      g.add(collar);
+    }
+    // a corbel bracket carrying the lintel
+    const corbel = boxMesh(0.44, 0.3, 0.9, trim);
+    corbel.position.set(sx * 1.28, sy + 0.16, -0.2);
+    g.add(corbel);
   }
-  const lintel = boxMesh(3.6, 0.55, 0.8, '#57506c');
-  lintel.position.set(0, 3.35, -0.2);
-  g.add(lintel);
 
-  // the order's mark, still burning after everything
-  const glyph = cylMesh(0.34, 0.34, 0.1, '#ffb45c', 6, { unique: true });
+  const LY = py + 0.3 + 2.85;                  // top of the pillars
+
+  // --- the lintel, in two courses with a keystone in the middle -------------
+  const lintel = boxMesh(4.1, 0.5, 0.96, stone);
+  lintel.position.set(0, LY + 0.42, -0.2);
+  lintel.castShadow = true;
+  g.add(lintel);
+  const cornice = boxMesh(4.5, 0.22, 1.12, trim);
+  cornice.position.set(0, LY + 0.78, -0.2);
+  g.add(cornice);
+  const keystone = boxMesh(0.7, 0.72, 1.06, trim);
+  keystone.position.set(0, LY + 0.42, -0.2);
+  g.add(keystone);
+
+  // the order's mark, still burning after everything, set into the keystone
+  const glyph = cylMesh(0.26, 0.26, 0.08, '#ffb45c', 6, { unique: true });
   glyph.material.transparent = true;
   glyph.material.opacity = 0.85;
   glyph.material.blending = THREE.AdditiveBlending;
   glyph.material.depthWrite = false;
   glyph.rotation.x = Math.PI / 2;
-  glyph.position.set(0, 3.35, 0.25);
+  glyph.position.set(0, LY + 0.42, 0.34);
   glyph.userData.dynamic = true;
   g.add(glyph);
 
-  // two dead lanterns on the posts: the light this place used to have
+  // --- THE NAME, ON THE BUILDING -------------------------------------------
+  // This is the fix for "the writing is off on its own": the plaque is part of
+  // the gate, mounted across the lintel, so the two are one object to look at.
+  const plaque = buildPlaque('THE HOLLOW', '#e8d8ff');
+  plaque.scale.setScalar(1.45);
+  plaque.position.set(0, LY + 1.12, 0.1);
+  plaque.userData.dynamic = false;             // fixed to the stone, never billboarded
+  g.add(plaque);
+  const plaqueBack = boxMesh(3.5, 0.62, 0.14, dark);
+  plaqueBack.position.set(0, LY + 1.12, -0.02);
+  g.add(plaqueBack);
+
+  // --- chains hanging from the corbels --------------------------------------
   for (const sx of [-1, 1]) {
-    const l = boxMesh(0.26, 0.3, 0.26, '#2a2438');
-    l.position.set(sx * 1.5, 2.5, 0.35);
-    g.add(l);
+    for (let i = 0; i < 4; i++) {
+      const link = boxMesh(0.07, 0.16, 0.07, '#6a627e');
+      link.position.set(sx * 1.05, LY + 0.08 - i * 0.2, 0.22);
+      link.rotation.y = i * 0.5;
+      g.add(link);
+    }
   }
-  const light = new THREE.PointLight('#ffb45c', 0.9, 10, 2);
-  light.position.set(0, 3.2, 0.6);
+
+  // --- two live braziers, because a dark arch needs something burning -------
+  const fires = [];
+  for (const sx of [-1, 1]) {
+    const bowlLeg = boxMesh(0.18, 0.62, 0.18, trim);
+    bowlLeg.position.set(sx * 2.05, py + 0.31, 1.15);
+    const bowl = cylMesh(0.36, 0.24, 0.26, dark, 8);
+    bowl.position.set(sx * 2.05, py + 0.74, 1.15);
+    g.add(bowlLeg, bowl);
+    const fire = new THREE.Group();
+    fire.position.set(sx * 2.05, py + 0.88, 1.15);
+    for (let i = 0; i < 3; i++) {
+      const t = cylMesh(0.02, 0.15 - i * 0.03, 0.34 + i * 0.12,
+        i === 0 ? '#ffd88a' : i === 1 ? '#ff9a3c' : '#ff6a28', 6, { unique: true });
+      t.material.transparent = true;
+      t.material.blending = THREE.AdditiveBlending;
+      t.material.depthWrite = false;
+      t.position.y = 0.17 + i * 0.06;
+      t.userData.phase = Math.random() * 6.28;
+      t.userData.dynamic = true;
+      fire.add(t);
+    }
+    fire.userData.dynamic = true;
+    g.add(fire);
+    fires.push({ fire, seed: Math.random() * 10 });
+  }
+
+  const light = new THREE.PointLight('#ffb45c', 1.1, 12, 2);
+  light.position.set(0, py + 1.6, 0.9);
   g.add(light);
 
-  g.userData = { glyph, light, dynamic: true };
+  g.userData = { glyph, light, fires, dynamic: true };
   return g;
 }
 

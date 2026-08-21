@@ -1178,20 +1178,45 @@ function buildCenterShrine() {
     basinGeo.userData.base = new Float32Array(pos.count);
     for (let i = 0; i < pos.count; i++) basinGeo.userData.base[i] = pos.getZ(i);
   }
+  // A FLOOR UNDER THE WATER, so the transparency has something to be
+  // transparent ABOUT. Without it the basin was a translucent disc over the
+  // plinth's own top face — which is why it read as a blue lid rather than as
+  // water with a bottom.
+  const bed = new THREE.Mesh(new THREE.CircleGeometry(1.52, 24),
+    lam('#3f5a63'));
+  bed.rotation.x = -Math.PI / 2;
+  bed.position.y = y + 0.055;
+  g.add(bed);
+
   const basin = new THREE.Mesh(basinGeo, new THREE.MeshPhongMaterial({
-    color: 0x4fbfe4, transparent: true, opacity: 0.86, shininess: 90,
-    specular: 0x9fe8ff, side: THREE.DoubleSide,
+    color: 0x4fbfe4, transparent: true, opacity: 0.72, shininess: 90,
+    specular: 0x9fe8ff, side: THREE.DoubleSide, depthWrite: false,
   }));
   basin.rotation.x = -Math.PI / 2;
   basin.position.y = y + 0.11;
+  basin.renderOrder = 2;
   basin.userData.dynamic = true;
   g.add(basin);
-  // a pale shallow ring where the water meets the stone, so the basin has an
-  // edge instead of ending in a hard line
-  const shallow = new THREE.Mesh(new THREE.RingGeometry(1.24, 1.5, 24),
-    new THREE.MeshBasicMaterial({ color: 0xcdf2ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+
+  // THE SHALLOW RING WAS THE FLICKER, and it was five millimetres of clearance.
+  //
+  // It sat at y+0.115 against a basin resting at y+0.11 — and the basin RIPPLES
+  // by up to 0.040, so the water surface swept clean through the ring several
+  // times a second. Both wrote depth, at the same render order, with no
+  // polygon offset: the depth buffer cannot separate 5mm, so the two traded
+  // places every frame and the water appeared to blink in and out.
+  //
+  // Three things fix it together, and they are the same three the lantern light
+  // pools already use: real clearance ABOVE the ripple's reach, no depth write,
+  // and an explicit render order so the pass is decided rather than raced.
+  const shallow = new THREE.Mesh(new THREE.RingGeometry(1.24, 1.52, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xcdf2ff, transparent: true, opacity: 0.34, side: THREE.DoubleSide,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }));
   shallow.rotation.x = -Math.PI / 2;
-  shallow.position.y = y + 0.115;
+  shallow.position.y = y + 0.17;          // clear of the basin's +0.040 ripple
+  shallow.renderOrder = 3;
   g.add(shallow);
   const rim = new THREE.Mesh(sharedCyl(1.62, 1.66, 0.2, 8), lam(PZ.stoneDark));
   rim.position.y = y + 0.04; g.add(rim);

@@ -1432,6 +1432,49 @@ function buildGarden(rng, kind, detail = 1) {
     }
   }
 
+  // TWO LANTERNS, BECAUSE A GARDEN NOBODY CAN SEE IS NOT A GARDEN.
+  //
+  // The beds carried no light source of any kind, and the night floors are sun
+  // 0.20 / hemi 0.34 by design — so after dusk the most colourful thing in the
+  // world became a black patch, which is exactly what was reported. Two posts
+  // flanking the path is also the right answer in the fiction: this is a game
+  // about a Lanternkeeper relighting the places worth coming back to.
+  //
+  // Each carries the same three parts the stone lanterns use, for the same
+  // reasons: a translucent PANE for bloom to catch, a small fast-flickering
+  // flame core so it reads as fire rather than a bulb, and a wide soft ground
+  // POOL on polygonOffset so it never z-fights into a painted circle. One real
+  // PointLight is shared between them — the culler keeps a fixed number of
+  // lights visible, so a bed does not get to spend two of them.
+  const gLamps = [];
+  for (const lx of [-1.15, 1.15]) {
+    const post = new THREE.Mesh(sharedCyl(0.05, 0.07, 1.5, 6), lam('#4a4038'));
+    post.position.set(lx, 0.75, 0.55);
+    const head = new THREE.Mesh(sharedBox(0.3, 0.32, 0.3), lam('#5a5048'));
+    head.position.set(lx, 1.62, 0.55);
+    const pane = new THREE.Mesh(sharedBox(0.22, 0.24, 0.22), new THREE.MeshBasicMaterial({
+      color: 0xffd79a, transparent: true, opacity: 0.9, depthWrite: false,
+    }));
+    pane.position.set(lx, 1.62, 0.55);
+    pane.userData.dynamic = true;
+    const cap = new THREE.Mesh(sharedBox(0.42, 0.07, 0.42), lam('#4a4038'));
+    cap.position.set(lx, 1.82, 0.55);
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(1.5, 16), new THREE.MeshBasicMaterial({
+      color: 0xffc57a, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
+    }));
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(lx, 0.06, 0.55);
+    pool.userData.dynamic = true;
+    g.add(post, head, pane, cap, pool);
+    gLamps.push({ pane, pool, seed: Math.random() * 10 });
+  }
+  const gLight = new THREE.PointLight(0xffc27a, 0, 9, 2);
+  gLight.position.set(0, 1.7, 0.55);
+  g.add(gLight);
+  g.userData.gardenLamps = { lamps: gLamps, light: gLight };
+
   // a rose arch over the path entrance
   const arch = new THREE.Group();
   for (const sx of [-0.6, 0.6]) {
@@ -1551,6 +1594,16 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
    *                builds (pool, plaza, market) need a small number; a tower or
    *                a shrine can live on a slope quite happily.
    */
+  /** Lanternhome and the Rialo Hub are built places — nothing scenic lands there. */
+  function isOnBuiltIsland(x, z) {
+    for (const isl of (terrain.islands || [])) {
+      if (isl.kind !== 'home' && isl.kind !== 'hub') continue;
+      // the whole island plus its beach, so a torch cannot creep up the sand
+      if (Math.hypot(x - isl.x, z - isl.z) < (isl.r || 8) + 6) return true;
+    }
+    return false;
+  }
+
   function place(mesh, tx, tz, blockR = 1, jitter = 12, footR = blockR + 2.5, maxDrop = 99) {
     for (let tries = 0; tries < 140; tries++) {
       // widen the search ring if the neighbourhood is crowded
@@ -1561,6 +1614,17 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       if (!terrain.inBounds(ix, iz)) continue;
       const h = terrain.heightCell(ix, iz);
       if (h <= WATER_LEVEL || h >= 9) continue;
+      // NOT ON A BUILT ISLAND.
+      //
+      // The heart-torch garden landed on Lanternhome — 3.7 units from the
+      // player's own house plot, torches driven through the cottage — because
+      // an island is dry, level land like any other and nothing here said
+      // otherwise. `isles.js` already skips its scatter for `kind: 'hub'` and
+      // `'home'` on exactly this reasoning: both are places somebody BUILDS,
+      // not places to decorate. The footprint list could never have caught it
+      // either, since the house is raised by the housing system long after the
+      // landmarks are down and registers no landmark foot.
+      if (isOnBuiltIsland(x, z)) continue;
       if (!clearOfFoots(x, z, footR)) continue;
       if (!cellsClear(x, z, footR)) continue;
       const g = groundRange(x, z, footR);
@@ -1590,8 +1654,16 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   if (place(tower, S2 * 0.15, S2 * 0.5, 1, 12, 3)) built.push(tower);
   // The schoolhouse is gone — it never had anything to do and it ate one of
   // the flattest sites on the map, which the island housing needs more.
+  // MOVED OFF THE HOME ISLAND. The old target (S2*0.38, S2*0.22) sat 14.2 units
+  // from Lanternhome's centre — inside the island's own 8.5 radius plus its
+  // beach — so the torches were driven through the player's cottage. This
+  // target was picked by sweeping the mainland for flat, dry, empty ground:
+  // measured at (-26, -38), ground level to 0.00 across the whole footprint,
+  // 16.3 units of clearance from the nearest structure, 46 from the village,
+  // and out of the winter biome so the torches read against green rather than
+  // white. The jitter is tighter (8) because the pocket is a good one.
   const heart = buildHeartTorches();
-  if (place(heart, S2 * 0.38, S2 * 0.22, 2, 12, 4)) built.push(heart);
+  if (place(heart, -S2 * 0.26, -S2 * 0.38, 2, 8, 4)) built.push(heart);
   // the Rialo monument stands right at the basecamp so nobody misses it —
   // just outside the village circle, plaque facing the well
   const rialo = buildRialoMonument();
@@ -1749,7 +1821,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     return (p.x - camAt.x) ** 2 + (p.z - camAt.z) ** 2 < NEAR2;
   };
 
-  function update(dt, time, viewer, dayFrac = 0.5, wind = null) {
+  function update(dt, time, viewer, dayFrac = 0.5, wind = null, isNightNow = false) {
     // ONE WIND. Every cloth, lantern and blade in the world leans off the same
     // vector, which is what makes it read as weather rather than as each prop
     // wobbling on its own private sine.
@@ -1804,6 +1876,24 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     // gardens: everything sways, sunflowers turn to follow the sun, butterflies
     // loop over the bed
     for (const gd of gardens) {
+      // THE LAMPS TICK EVEN WHEN THE BED DOES NOT. Sway and butterflies are
+      // fine to skip at distance because nobody can resolve them; a light you
+      // can see from across the map is the whole point of putting it there.
+      const GL = gd.userData.gardenLamps;
+      if (GL) {
+        // isNight is exactly the window the village lamps use, so every light
+        // in Anavela comes up together instead of each on its own schedule
+        const lit = isNightNow ? 1 : 0.04;
+        GL.light.intensity = lit * (1.5 + Math.sin(time * 5.1) * 0.14);
+        for (const L of GL.lamps) {
+          // fast irregular flicker on the pane, slow breathing on the pool —
+          // two rhythms, so it reads as a flame and not as a pulsing bulb
+          const f = 0.82 + Math.sin(time * 9.3 + L.seed) * 0.11
+            + Math.sin(time * 21.7 + L.seed * 2.1) * 0.06;
+          L.pane.material.opacity = lit * f;
+          L.pool.material.opacity = lit * (0.24 + Math.sin(time * 1.7 + L.seed) * 0.05);
+        }
+      }
       if (!near(gd)) continue;
       const G = gd.userData.garden;
       // the whole bed leans together, off the one wind vector

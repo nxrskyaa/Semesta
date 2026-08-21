@@ -38,6 +38,7 @@ export const HOUSE_TIERS = [
     desc: 'Four walls, a tight roof and a lamp by the door. It is enough.',
     cost: { hardwood: 12, iron_ore: 4 },
     coins: 0,
+    buildMs: 20 * 60 * 1000,          // 20 minutes
     roof: '#5a7a4a', wall: '#a8805a',
   },
   {
@@ -47,6 +48,7 @@ export const HOUSE_TIERS = [
     desc: 'A chimney, a picket fence and a flower bed you did not have to buy.',
     cost: { hardwood: 28, iron_ore: 12 },
     coins: 200,
+    buildMs: 4 * 60 * 60 * 1000,      // 4 hours
     roof: '#5a7a9a', wall: '#d0b898',
   },
   {
@@ -56,6 +58,7 @@ export const HOUSE_TIERS = [
     desc: 'Two floors, a stone wall, and a beacon on the ridge that burns all night.',
     cost: { hardwood: 45, iron_ore: 22 },
     coins: 600,
+    buildMs: 12 * 60 * 60 * 1000,     // 12 hours
     roof: '#8a5a88', wall: '#e0d0b0',
   },
 ];
@@ -121,6 +124,89 @@ function buildFoundation() {
     log.position.set(2.3, 0.15 + i * 0.27, 1.2 + (i % 2) * 0.3);
     g.add(log);
   }
+  return g;
+}
+
+/**
+ * A BUILDING SITE. Shown while a tier is under construction.
+ *
+ * A timer with nothing to look at is just a locked door with a clock on it, so
+ * the wait has a thing standing in it: scaffolding poles, a lashed frame, a
+ * half-raised wall in the tier's own colour, and the tools left where somebody
+ * put them down. It reads as "being built" rather than "not built", which is
+ * the whole point of making it take time at all.
+ */
+function buildSite(tier) {
+  const def = HOUSE_TIERS[tier - 1] || HOUSE_TIERS[0];
+  const g = new THREE.Group();
+  const wide = tier >= 2;
+  const W = wide ? 4.4 : 3.6, D = wide ? 4.0 : 3.3;
+
+  // the pad it will stand on
+  const pad = box(W, 0.14, D, '#9aa0a2');
+  pad.position.y = 0.07; pad.receiveShadow = true; g.add(pad);
+
+  // a wall course, only part-way up — the higher the tier the further along
+  const wallH = 0.5 + tier * 0.22;
+  for (const [dx, dz, w, d] of [
+    [0, -D / 2 + 0.15, W - 0.5, 0.24], [-W / 2 + 0.15, 0, 0.24, D - 0.5],
+    [W / 2 - 0.15, 0, 0.24, D - 0.5],
+  ]) {
+    const wall = box(w, wallH, d, def.wall);
+    wall.position.set(dx, 0.14 + wallH / 2, dz);
+    wall.castShadow = true;
+    g.add(wall);
+  }
+
+  // scaffolding: four uprights, two lashed rails and a plank walkway
+  const poles = [];
+  for (const [dx, dz] of [[-W / 2 - 0.2, -D / 2 - 0.2], [W / 2 + 0.2, -D / 2 - 0.2],
+    [-W / 2 - 0.2, D / 2 + 0.2], [W / 2 + 0.2, D / 2 + 0.2]]) {
+    const pole = cyl(0.07, 0.07, 2.5, '#a8805a');
+    pole.position.set(dx, 1.25, dz);
+    g.add(pole); poles.push([dx, dz]);
+  }
+  for (const h of [1.0, 1.9]) {
+    for (const [ax, az, bx, bz] of [
+      [poles[0][0], poles[0][1], poles[1][0], poles[1][1]],
+      [poles[2][0], poles[2][1], poles[3][0], poles[3][1]],
+      [poles[0][0], poles[0][1], poles[2][0], poles[2][1]],
+      [poles[1][0], poles[1][1], poles[3][0], poles[3][1]],
+    ]) {
+      const len = Math.hypot(bx - ax, bz - az);
+      const rail = box(0.06, 0.06, len, '#8a6a48');
+      rail.position.set((ax + bx) / 2, h, (az + bz) / 2);
+      rail.rotation.y = Math.atan2(bx - ax, bz - az);
+      g.add(rail);
+    }
+  }
+  // a plank walkway along one side
+  for (let i = 0; i < 3; i++) {
+    const plank = box(W + 0.5, 0.06, 0.3, '#c8a06a');
+    plank.position.set(0, 1.96, -D / 2 - 0.2 + i * 0.32);
+    g.add(plank);
+  }
+  // tools and material left on site
+  for (let i = 0; i < 3; i++) {
+    const log = cyl(0.14, 0.14, 1.4, '#a8805a');
+    log.rotation.z = Math.PI / 2;
+    log.position.set(W / 2 + 0.9, 0.15 + i * 0.27, 1.0 + (i % 2) * 0.3);
+    g.add(log);
+  }
+  const bucket = cyl(0.19, 0.15, 0.28, '#8d9294');
+  bucket.position.set(-W / 2 - 0.7, 0.14, -0.8); g.add(bucket);
+  const ladder = new THREE.Group();
+  for (const side of [-0.16, 0.16]) {
+    const r = box(0.05, 2.1, 0.05, '#c8a06a');
+    r.position.set(side, 1.05, 0); ladder.add(r);
+  }
+  for (let i = 0; i < 6; i++) {
+    const rung = box(0.36, 0.04, 0.04, '#b8905a');
+    rung.position.set(0, 0.3 + i * 0.32, 0); ladder.add(rung);
+  }
+  ladder.position.set(W / 2 - 0.4, 0, D / 2 + 0.45);
+  ladder.rotation.x = -0.12;
+  g.add(ladder);
   return g;
 }
 
@@ -458,6 +544,17 @@ export function createHousing(scene, terrain, decorBlocked, particles, islands =
     }
   }
 
+  /** "3h 12m", "12m", "48s" — short enough to sit on a sign. */
+  function fmtLeft(ms) {
+    const s2 = Math.ceil(ms / 1000);
+    if (s2 >= 3600) {
+      const h = Math.floor(s2 / 3600), m = Math.floor((s2 % 3600) / 60);
+      return m ? `${h}h ${m}m` : `${h}h`;
+    }
+    if (s2 >= 60) return `${Math.floor(s2 / 60)}m`;
+    return `${s2}s`;
+  }
+
   function refreshLabel() {
     if (!home || !home.sign) return;
     if (home.label) {
@@ -467,6 +564,15 @@ export function createHousing(scene, terrain, decorBlocked, particles, islands =
       home.label.material.map?.dispose();
       home.label.material.dispose();
       home.label = null;
+    }
+    // UNDER CONSTRUCTION takes the sign over, because the one thing somebody
+    // walking up to a building site wants to know is how long is left.
+    if (home.buildingUntil) {
+      const def = HOUSE_TIERS[home.buildingTier - 1];
+      home.label = makeLabel(`BUILDING · ${fmtLeft(buildRemaining())}`,
+        def ? def.name : '', '#ffd23e');
+      home.sign.add(home.label);
+      return;
     }
     // A finished villa gets no label at all: a permanent sign hovering over a
     // house you already own is clutter on the one plot you look at most.
@@ -486,12 +592,69 @@ export function createHousing(scene, terrain, decorBlocked, particles, islands =
    * this module never touches the inventory, same contract as dailies and the
    * gamepass.
    */
-  function build(quiet = false) {
-    if (!home) return null;
+  /**
+   * A HOUSE TAKES TIME NOW, and the clock is the wall clock.
+   *
+   * Building was instant: pay the materials, get the house, and the whole
+   * estate ladder was over in one sitting. Something you waited for is
+   * something you come back for, so each rung books a finishing TIME rather
+   * than a finished house — and it is stored as an absolute timestamp, so it
+   * counts down while the game is closed. A timer that only runs while you are
+   * watching it is a punishment for playing, not a reason to return.
+   *
+   * The materials are taken at the START (the caller's job, as before): the
+   * timber goes into the build, and a site with your wood on it is a promise.
+   */
+  function startBuild() {
+    if (!home || home.buildingUntil) return null;
     const def = nextTier();
+    if (!def) return null;
+    home.buildingTier = def.tier;
+    home.buildingUntil = Date.now() + (def.buildMs || 0);
+    showSite();
+    return def;
+  }
+
+  /** Tear the finished house down to a site while a rung is under way. */
+  function showSite() {
+    if (home.houseMesh) { scene.remove(home.houseMesh); home.houseMesh = null; }
+    if (home.siteMesh) { scene.remove(home.siteMesh); home.siteMesh = null; }
+    const m = buildSite(home.buildingTier || 1);
+    m.position.set(home.x, home.y, home.z);
+    m.rotation.y = isle ? Math.atan2(-isle.x, -isle.z) : 0;
+    scene.add(m);
+    home.siteMesh = m;
+    refreshLabel();
+  }
+
+  /** How long is left, in ms. 0 when nothing is being built. */
+  function buildRemaining() {
+    if (!home?.buildingUntil) return 0;
+    return Math.max(0, home.buildingUntil - Date.now());
+  }
+
+  /**
+   * Called every second by main. Completes a rung whose time has come — which
+   * is also what makes a build that finished while the game was shut land the
+   * moment you load back in.
+   */
+  function tickBuild() {
+    if (!home?.buildingUntil) return null;
+    if (Date.now() < home.buildingUntil) { refreshLabel(); return null; }
+    const tier = home.buildingTier;
+    home.buildingUntil = 0;
+    home.buildingTier = 0;
+    if (home.siteMesh) { scene.remove(home.siteMesh); home.siteMesh = null; }
+    return build(false, tier);
+  }
+
+  function build(quiet = false, forceTier = 0) {
+    if (!home) return null;
+    const def = forceTier ? HOUSE_TIERS[forceTier - 1] : nextTier();
     if (!def) return null;
 
     if (home.houseMesh) { scene.remove(home.houseMesh); home.houseMesh = null; }
+    if (home.siteMesh) { scene.remove(home.siteMesh); home.siteMesh = null; }
     if (home.sign) { scene.remove(home.sign); }
 
     home.tier = def.tier;
@@ -526,7 +689,14 @@ export function createHousing(scene, terrain, decorBlocked, particles, islands =
     return (home.x - pos.x) ** 2 + (home.z - pos.z) ** 2 < radius * radius ? home : null;
   }
 
-  function serialize() { return { tier: home ? home.tier : 0 }; }
+  function serialize() {
+    return {
+      tier: home ? home.tier : 0,
+      // absolute epoch ms, so the wait keeps running with the game shut
+      buildingUntil: home?.buildingUntil || 0,
+      buildingTier: home?.buildingTier || 0,
+    };
+  }
 
   function load(data) {
     if (!data || !home) return;
@@ -538,11 +708,20 @@ export function createHousing(scene, terrain, decorBlocked, particles, islands =
       tier = data.tier || TIER_OF_ID[data.built] || 0;
     }
     while (home.tier < tier && build(true)) { /* walk the ladder up to the saved rung */ }
+    // a rung that was under way when the game closed: either it finished while
+    // you were gone, or it is still going and the site goes back up
+    if (!Array.isArray(data) && data.buildingUntil) {
+      home.buildingUntil = data.buildingUntil;
+      home.buildingTier = data.buildingTier || home.tier + 1;
+      if (Date.now() >= home.buildingUntil) tickBuild();
+      else showSite();
+    }
   }
 
   return {
     lands, home, isle, HOUSE_TIERS,
-    nextTier, build, nearest, serialize, load,
+    nextTier, build, startBuild, tickBuild, buildRemaining, fmtLeft, nearest, serialize, load,
+    building: () => (home?.buildingUntil ? HOUSE_TIERS[home.buildingTier - 1] : null),
     tier: () => (home ? home.tier : 0),
     hasHome: () => !!home && home.tier > 0,
   };
