@@ -1329,6 +1329,67 @@ function paintWeaponIcon(ctx, wdef) {
     ctx.fillStyle = '#5a4630';
     ctx.fillRect(9, 9, 2, 2); ctx.fillRect(4, 9, 2, 2);
     ctx.fillRect(10, 11, 2, 2); ctx.fillRect(3, 11, 2, 2);
+  } else if (wdef.type === 'axe') {
+    // haft up the middle, head bulging to one side. The bit is a stack of
+    // shortening rows rather than a rectangle, which is what gives it a curve.
+    ctx.fillStyle = '#6e5438';
+    ctx.fillRect(9, 2, 2, 13);
+    ctx.fillStyle = '#4a3a28';
+    ctx.fillRect(9, 12, 2, 3);
+    for (let i = 0; i < 7; i++) {
+      const w = 5 - Math.abs(i - 3);                 // widest at the middle
+      ctx.fillStyle = i % 2 ? light : dark;
+      ctx.fillRect(9 - w, 3 + i, w, 1);
+    }
+    ctx.fillStyle = light;
+    for (let i = 0; i < 7; i++) ctx.fillRect(9 - (5 - Math.abs(i - 3)), 3 + i, 1, 1);  // the edge
+    ctx.fillStyle = '#e8c060';
+    ctx.fillRect(8, 2, 3, 1);
+    if ((wdef.tier || 0) >= 2) { ctx.fillStyle = dark; ctx.fillRect(11, 5, 3, 4); }    // a back spike
+  } else if (wdef.type === 'cannon') {
+    // barrel, muzzle flare and a stock under it — read from the side.
+    ctx.fillStyle = dark;
+    ctx.fillRect(3, 6, 10, 5);
+    ctx.fillStyle = light;
+    ctx.fillRect(3, 6, 10, 2);                        // top highlight
+    ctx.fillStyle = dark;
+    ctx.fillRect(12, 4, 3, 9);                        // flared muzzle
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(13, 6, 2, 5);                        // the bore
+    ctx.fillStyle = '#6e5438';
+    ctx.fillRect(1, 9, 4, 4);                         // stock
+    ctx.fillStyle = '#e8c060';
+    ctx.fillRect(7, 5, 2, 7);                         // barrel band
+    if ((wdef.tier || 0) >= 2) { ctx.fillStyle = light; ctx.fillRect(5, 3, 2, 3); }    // sight
+  } else {
+    // SWORD, and everything else. This branch used to not exist at all: the
+    // chain ended after `dagger`, so any weapon whose id was not in WEAPON_MAPS
+    // and whose type was not bow/staff/fist/dagger painted NOTHING and shipped a
+    // blank 16x16 canvas. Measured: 16 of 57 weapons invisible — the whole
+    // Warrior axe branch, the whole Summoner cannon line, the three Hollow lord
+    // blades and star_blade / dragon_edge / celestial_saber, which are the icons
+    // the gamepass draws for its own grand prizes. A blank icon is not a broken
+    // image, so nothing anywhere reported it.
+    //
+    // It stays a catch-all rather than `else if (type === 'sword')` on purpose:
+    // an unrecognised weapon type should look wrong, never look missing.
+    ctx.fillStyle = dark;
+    ctx.fillRect(7, 2, 2, 9);                         // blade
+    ctx.fillStyle = light;
+    ctx.fillRect(7, 2, 1, 9);                         // bevel down one side
+    ctx.fillStyle = light;
+    ctx.fillRect(7, 1, 2, 1);                         // point
+    ctx.fillStyle = '#e8c060';
+    ctx.fillRect(4, 11, 8, 1);                        // crossguard
+    ctx.fillRect(5, 10, 6, 1);
+    ctx.fillStyle = '#6e5438';
+    ctx.fillRect(7, 12, 2, 3);                        // grip
+    ctx.fillStyle = '#e8c060';
+    ctx.fillRect(6, 15, 4, 1);                        // pommel
+    if ((wdef.tier || 0) >= 2) {                      // a rune down the fuller
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(8, 4, 1, 1); ctx.fillRect(8, 7, 1, 1);
+    }
   }
 }
 
