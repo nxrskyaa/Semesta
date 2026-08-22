@@ -184,6 +184,18 @@ export const ITEMS = {
   back_cinderwing:  { name: 'Cinderwings',         cosmetic: 'back',  rarity: 'mythic',    limited: 'The Hollow' },
   trail_emberdust:  { name: 'Emberdust Trail',     cosmetic: 'trail', rarity: 'rare',      limited: 'The Hollow' },
   trail_frostmote:  { name: 'Frostmote Trail',     cosmetic: 'trail', rarity: 'epic',      limited: 'The Hollow' },
+  // ---- THE KEEPER'S VAULT ------------------------------------------------
+  // Pass-exclusive. Not in the shop, not in the gacha, not in the Hollow — the
+  // only way to any of these is a Keeper's Token, and a token only comes off
+  // the pass track. A premium row that hands out things you could already buy
+  // is not a premium row.
+  hat_regalia:      { name: "Keeper's Regalia", cosmetic: 'hat', rarity: 'legendary', limited: "Keeper's Vault" },
+  hat_lumen:        { name: 'Lumenwreath', cosmetic: 'hat', rarity: 'mythic', limited: "Keeper's Vault" },
+  back_constel:     { name: 'Constellation Wings', cosmetic: 'back', rarity: 'legendary', limited: "Keeper's Vault" },
+  back_keepercloak: { name: "Keeper's Mantle", cosmetic: 'back', rarity: 'mythic', limited: "Keeper's Vault" },
+  trail_lumen:      { name: 'Lumen Trail', cosmetic: 'trail', rarity: 'legendary', limited: "Keeper's Vault" },
+  trail_gilded:     { name: 'Gilded Dust', cosmetic: 'trail', rarity: 'mythic', limited: "Keeper's Vault" },
+
   trail_cinder:     { name: 'Cinderfall Trail',    cosmetic: 'trail', rarity: 'legendary', limited: 'The Hollow' },
 
   // ---------------------------------------------------------------------------
@@ -230,6 +242,10 @@ export const ITEMS = {
   // later be fed by a token purchase without touching the pass itself.
   pass_seal:  { name: "Keeper's Seal",  buy: 1000, rarity: 'epic' },
   pass_sigil: { name: "Keeper's Sigil", buy: 3000, rarity: 'legendary' },
+  // The pass's own currency. Deliberately NOT purchasable: it is the one thing
+  // in the game you can only get by playing the track, which is what stops the
+  // Vault from being a second shop.
+  pass_token: { name: "Keeper's Token", rarity: 'legendary' },
 
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },

@@ -38,12 +38,89 @@ export const TRAILS = {
   // Deliberately not "the ember trail but purple": each one moves differently.
   // Emberdust settles (low rise, slow), Frostmote hangs (slowest rise of any
   // trail in the game), Cinderfall climbs hard and fast like real updraught.
+  // --- THE KEEPER'S VAULT -------------------------------------------------
+  // The two showiest trails in the game, and they should be: they cost a token
+  // and a token only comes off the pass track. Lumen drifts UP like the sparks
+  // off a lantern; Gilded hangs and falls, which is what makes it read as
+  // metal leaf rather than as more fire.
+  trail_lumen:   { colors: ['#ffd98a', '#fff4d0'], rate: 10, rise: 1.5 },
+  trail_gilded:  { colors: ['#f0c24e', '#fff0b8'], rate: 12, rise: -0.25 },
   trail_emberdust: { colors: ['#c86a3a', '#ffb45c'], rate: 5, rise: 0.35 },
   trail_frostmote: { colors: ['#8fd8ff', '#e8f8ff'], rate: 4, rise: 0.15 },
   trail_cinder:    { colors: ['#ff5a2a', '#ffd166'], rate: 9, rise: 1.9 },
 };
 
 const HAT_BUILDERS = {
+  // --- THE KEEPER'S VAULT -------------------------------------------------
+  // These two are the most worked pieces in the wardrobe on purpose. A premium
+  // reward has to be visibly a step above the things you can buy, and "a box in
+  // a different colour" is exactly the complaint that produced them.
+  hat_regalia() {
+    // The Lanternkeeper order's full dress crown: a gold band, five tapering
+    // spires, and real GLASS PANES between them with light behind — the same
+    // three parts the stone lanterns in the world are made of, scaled to a hat,
+    // so it reads as belonging to Anavela rather than to a generic fantasy set.
+    const g = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.1, 14), lam('#c8a03a'));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.018, 6, 16), lam('#8a6a1e'));
+    rim.rotation.x = Math.PI / 2; rim.position.y = 0.05;
+    g.add(band, rim);
+    const pane = new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      const front = Math.max(0, Math.cos(a - Math.PI / 2));
+      const h = 0.2 + front * 0.16;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.045, h, 4), lam('#e0bb52'));
+      sp.position.set(Math.cos(a) * 0.28, 0.05 + h / 2, Math.sin(a) * 0.28);
+      g.add(sp);
+      // the lit pane sits BETWEEN two spires, never on one
+      const b = a + Math.PI / 5;
+      const gl = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.02), pane);
+      gl.position.set(Math.cos(b) * 0.28, 0.11, Math.sin(b) * 0.28);
+      gl.lookAt(0, 0.11, 0);
+      g.add(gl);
+    }
+    const finial = new THREE.Mesh(new THREE.OctahedronGeometry(0.055), lam('#fff0b8'));
+    finial.position.y = 0.36;
+    g.add(finial);
+    g.userData.gem = finial;      // pulses, using the crown hook that already exists
+    return g;
+  },
+  hat_lumen() {
+    // LUMENWREATH — mythic, and the only headpiece that is not worn so much as
+    // orbited. Nothing touches the head: a slow ring of five lantern-flames
+    // turns above it on the wardrobe's existing `orbit` hook, with a faint
+    // halo disc under them so there is something for bloom to catch.
+    const g = new THREE.Group();
+    const orbit = new THREE.Group();
+    orbit.position.y = 0.3;
+    const flame = new THREE.MeshBasicMaterial({ color: 0xffe6a8, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    const husk = lam('#c8a03a');
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const x = Math.cos(a) * 0.27, z = Math.sin(a) * 0.27;
+      const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.1, 5), husk);
+      cage.position.set(x, 0, z);
+      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.05), flame);
+      core.position.set(x, 0.005, z);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.05, 5), husk);
+      cap.position.set(x, 0.08, z);
+      orbit.add(cage, core, cap);
+    }
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.012, 6, 22),
+      new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.6,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.rotation.x = Math.PI / 2;
+    orbit.add(halo);
+    const light = new THREE.PointLight(0xffcb6a, 1.1, 3.4, 2);
+    light.position.y = 0.3;
+    g.add(orbit, light);
+    g.userData.orbit = orbit;
+    return g;
+  },
+
   // --- THE HOLLOW ---------------------------------------------------------
   hat_keeper() {
     // A LANTERNKEEPER'S HOOD. Deep cowl, no face inside it, and the order's
@@ -519,6 +596,95 @@ const BACK_BUILDERS = {
     g.add(pole, hook, body, pane, cap);
     return g;
   },
+  // --- THE KEEPER'S VAULT -------------------------------------------------
+  back_keepercloak() {
+    // THE KEEPER'S MANTLE. A long cloak in four hanging panels, a gold-corded
+    // collar, and SEVEN lit lanterns strung along the hem — the job the order
+    // actually did, worn on your back. The lanterns swing on their own pivot
+    // rather than being welded to the cloth, which is what stops the hem from
+    // reading as a painted stripe.
+    const g = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const w = 0.46 - i * 0.06;
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 0.56 - i * 0.04, 0.025),
+        lam(i % 2 ? '#2b2438' : '#352c46'));
+      panel.position.set(0, -0.1 - i * 0.015, -0.02 - i * 0.028);
+      g.add(panel);
+    }
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.25, 0.11, 12), lam('#c8a03a'));
+    collar.position.y = 0.22;
+    const cord = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.014, 6, 16), lam('#f0c24e'));
+    cord.rotation.x = Math.PI / 2; cord.position.y = 0.16;
+    g.add(collar, cord);
+    const flame = new THREE.MeshBasicMaterial({ color: 0xffcb6a, transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    const swing = [];
+    for (let i = 0; i < 7; i++) {
+      const piv = new THREE.Group();
+      piv.position.set(-0.2 + i * 0.067, -0.36, 0.01);
+      const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.06, 4), lam('#8a6a1e'));
+      chain.position.y = -0.03;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.05), lam('#8a7040'));
+      box.position.y = -0.09;
+      const lit = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.045, 0.038), flame);
+      lit.position.y = -0.09;
+      piv.add(chain, box, lit);
+      g.add(piv);
+      swing.push(piv);
+    }
+    const light = new THREE.PointLight(0xffb85c, 0.9, 3.2, 2);
+    light.position.set(0, -0.3, 0.1);
+    g.add(light);
+    g.userData.swing = swing;      // the existing hanging-lantern sway hook
+    g.userData.flicker = light;
+    return g;
+  },
+  back_constel() {
+    // CONSTELLATION WINGS. Not feathers — STARS joined by thin lines, so the
+    // wing is drawn rather than built. Each side is seven points on a swept arc
+    // with the segments between them, and the whole thing beats on the ordinary
+    // wing hook so it still moves like a wing.
+    const g = new THREE.Group();
+    const star = new THREE.MeshBasicMaterial({ color: 0xdce8ff, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    const line = new THREE.MeshBasicMaterial({ color: 0x8ea8e8, transparent: true, opacity: 0.5,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    const roots = [];
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Group();
+      wing.position.set(sx * 0.09, 0.12, -0.05);
+      const pts = [];
+      for (let i = 0; i < 7; i++) {
+        const t = i / 6;
+        const x = sx * (0.08 + t * 0.44);
+        const y = 0.12 - t * t * 0.46 + Math.sin(t * 3.1) * 0.07;
+        pts.push(new THREE.Vector3(x, y, 0));
+        const sz = 0.032 - t * 0.012;
+        const s2 = new THREE.Mesh(new THREE.OctahedronGeometry(sz), star);
+        s2.position.copy(pts[i]);
+        wing.add(s2);
+      }
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        const len = a.distanceTo(b);
+        const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, len, 4), line);
+        seg.position.copy(a).lerp(b, 0.5);
+        seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
+          b.clone().sub(a).normalize());
+        wing.add(seg);
+      }
+      // one bright anchor star at the shoulder
+      const anchor = new THREE.Mesh(new THREE.OctahedronGeometry(0.05), star);
+      anchor.position.set(sx * 0.06, 0.14, 0.01);
+      wing.add(anchor);
+      g.add(wing);
+      roots.push(wing);
+    }
+    const light = new THREE.PointLight(0x9ab8ff, 0.8, 3, 2);
+    g.add(light);
+    g.userData.wingRoots = roots;
+    return g;
+  },
   back_frostmantle() {
     // A heavy cloak stiff with rime: three overlapping panels rather than one
     // sheet, so it hangs in folds, with icicles along the hem.
@@ -827,6 +993,19 @@ export function createWardrobe(player) {
     if (backMesh?.userData.koi) {
       backMesh.userData.koi.rotation.y = Math.sin(time * 2.2) * 0.4;
       backMesh.userData.koi.rotation.z = Math.sin(time * 3.1) * 0.15;
+    }
+    // HANGING LANTERNS SWING. This hook was SET by back_lanterns and by the
+    // Keeper's Mantle and read by nothing, so both wore a row of lamps welded
+    // rigid to the cloth. Each one gets its own phase and its own rate — a row
+    // that swings on one shared sine reads as a single painted object rather
+    // than as seven things on seven chains.
+    if (backMesh?.userData.swing) {
+      const sw = backMesh.userData.swing;
+      for (let i = 0; i < sw.length; i++) {
+        const ph = i * 1.37;                        // irrational-ish, never lines up
+        sw[i].rotation.z = Math.sin(time * (1.6 + i * 0.11) + ph) * 0.26;
+        sw[i].rotation.x = Math.sin(time * (1.1 + i * 0.07) + ph * 0.6) * 0.14;
+      }
     }
   }
 

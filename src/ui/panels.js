@@ -1439,15 +1439,17 @@ export function createPanels(hudRoot, {
     });
   }
 
-  // --- GAMEPASS: a season, three tracks, and a ladder you can read ---------
+  // --- GAMEPASS: a season, three tracks, a vault and an endless tail -------
   // A representative blade per exotic family, purely so the ladder has
   // something to draw before the reward is resolved to your class.
   const WEAPON_TIER_ICON = {
     epic: 'star_blade', legendary: 'dragon_edge', mythic: 'celestial_saber',
   };
-  // Which tab of the pass panel is open. Module-level so a re-render (every
-  // claim re-renders) does not throw the player back to the top.
+  // Which tab is open, and the last Vault prize. Module-level so a re-render —
+  // every claim re-renders — does not throw the player back to the top or wipe
+  // the reveal they are still looking at.
   let passTab = 'track';
+  let vaultReveal = null;
 
   function renderPass() {
     if (!gamepass) return;
@@ -1457,58 +1459,64 @@ export function createPanels(hudRoot, {
     const perk = gamepass.perks();
     const track = gamepass.track();
     const season = gamepass.season();
-    const per = gamepass.XP_PER_TIER;
     const total = gamepass.totalXp();
-    const toNext = tier >= gamepass.PASS_TIERS ? 0 : per - (st.xp % per);
+    const maxTier = gamepass.PASS_TIERS;
+    const prestige = gamepass.inPrestige();
     const prog = gamepass.progressInTier();
+    const toNext = gamepass.toNext();
     const waiting = gamepass.pending();
     const acc = season.accent;
+    const tokens = inventory.count(gamepass.PASS_TOKEN);
+    const vault = gamepass.vaultStatus((id) => inventory.count(id) > 0);
+    const cacheN = gamepass.cachesEarned();
+    const cacheReady = gamepass.cachesReady();
 
-    // The panel is wider than the rest — a battlepass is a comparison table and
-    // a ladder side by side, and at 500px the reward names had nowhere to go.
-    panels.pass.style.width = 'min(600px, calc(100vw - 20px))';
-    panels.pass.style.maxHeight = '88vh';
+    // WIDER AND BIGGER THAN ANY OTHER PANEL, deliberately. This is the one
+    // screen in the game that has to sell something, and at 500px with 7px
+    // labels it was unreadable — which is a strange way to advertise.
+    panels.pass.style.width = 'min(820px, calc(100vw - 18px))';
+    panels.pass.style.maxHeight = '90vh';
 
     const iconFor = (e) => itemIconUrl(e.coins ? 'coin'
       : (e.item || e.cosmetic || e.mount || e.petCharm
         || (e.weaponTier ? WEAPON_TIER_ICON[e.weaponTier] : null) || 'forge_stone'));
 
-    // ---- the three track cards: what each row actually gives you ----------
-    const countRow = (row, key) => track.filter((t) => t[row][key]).length;
+    // ---- the three track cards -------------------------------------------
     const bigOf = (row) => track.filter((t) => t[row].big || t[row].grand).length;
+    const tokOf = (row) => track.reduce((a, t) => a + (t[row].item === gamepass.PASS_TOKEN ? t[row].n : 0), 0);
     const CARDS = [
       {
-        row: 'free', name: 'FREE', tone: '#8ac86a',
-        cost: 'ALWAYS YOURS',
+        row: 'free', name: 'FREE', tone: '#8ac86a', tag: 'ALWAYS YOURS',
+        cost: 'No purchase, ever',
         perk: 'No bonus',
         lines: [
-          bigOf('free') + ' cosmetic &amp; pet rewards',
-          'Coins, tonics and forge stones',
-          'Every third tier is a real item',
+          `<b>${bigOf('free')}</b> highlight rewards across ${maxTier} tiers`,
+          `<b>${tokOf('free')} Keeper's Tokens</b> for the Vault`,
+          'Coins, tonics, brews and forge stones',
         ],
         state: 'active',
       },
       {
-        row: 'basic', name: 'BASIC', tone: '#79c8e8',
-        cost: 'Keeper&#39;s Seal — ' + gamepass.PASS_PRICES.basic + 'c',
+        row: 'basic', name: 'BASIC', tone: '#79c8e8', tag: 'A SECOND ROW',
+        cost: `Keeper&#39;s Seal · <b>${gamepass.PASS_PRICES.basic}c</b>`,
         perk: gamepass.PASS_PERKS.basic.label,
         lines: [
-          'Everything in FREE, plus:',
-          bigOf('basic') + ' cosmetics, trails &amp; a pet',
-          'An EPIC gacha weapon at tier ' + gamepass.PASS_TIERS,
+          'Everything in FREE, and on top:',
+          `<b>${bigOf('basic')}</b> more highlights · <b>+${tokOf('basic')} tokens</b>`,
+          `An <b>EPIC</b> gacha weapon at tier ${maxTier}`,
         ],
         state: owned === 'none' ? 'buy' : 'active',
       },
       {
-        row: 'premium', name: 'PREMIUM', tone: '#c08aff',
+        row: 'premium', name: 'PREMIUM', tone: '#c08aff', tag: 'EVERY ROW',
         cost: owned === 'basic'
-          ? 'Keeper&#39;s Sigil — ' + (gamepass.PASS_PRICES.premium - gamepass.PASS_PRICES.basic) + 'c to upgrade'
-          : 'Keeper&#39;s Sigil — ' + gamepass.PASS_PRICES.premium + 'c',
+          ? `Keeper&#39;s Sigil · <b>${gamepass.PASS_PRICES.premium - gamepass.PASS_PRICES.basic}c</b> to upgrade`
+          : `Keeper&#39;s Sigil · <b>${gamepass.PASS_PRICES.premium}c</b>`,
         perk: gamepass.PASS_PERKS.premium.label,
         lines: [
-          'Everything in FREE and BASIC, plus:',
-          countRow('premium', 'mount') + ' mounts, ' + countRow('premium', 'petCharm') + ' pets, ' + countRow('premium', 'cosmetic') + ' cosmetics',
-          'A MYTHIC weapon at tier ' + gamepass.PASS_TIERS,
+          'Everything in FREE and BASIC, and on top:',
+          `<b>${bigOf('premium')}</b> more highlights · <b>+${tokOf('premium')} tokens</b>`,
+          `Mounts, mythic pets, a <b>MYTHIC</b> weapon at ${maxTier}`,
         ],
         state: owned === 'premium' ? 'active' : 'buy',
       },
@@ -1524,6 +1532,7 @@ export function createPanels(hudRoot, {
 
     const cards = CARDS.map((c) => `
       <div class="pcard ${c.state}" style="--tone:${c.tone}">
+        <div class="pctag">${c.tag}</div>
         <div class="pcn">${c.name}</div>
         <div class="pcc">${c.cost}</div>
         <div class="pcp">${c.perk}</div>
@@ -1531,33 +1540,101 @@ export function createPanels(hudRoot, {
         ${cardBtn(c)}
       </div>`).join('');
 
-    // ---- the ladder, with names ------------------------------------------
+    // ---- the ladder -------------------------------------------------------
     const chip = (row, t) => {
       const e = track[t - 1][row];
       const claimed = st.claimed[row].includes(t);
       const can = gamepass.canClaim(row, t);
       const locked = (row === 'basic' && owned === 'none') || (row === 'premium' && owned !== 'premium');
       const cls = [claimed ? 'got' : '', can ? 'can' : '', locked && !claimed ? 'lock' : '',
-        e.grand ? 'grand' : e.big ? 'big' : ''].filter(Boolean).join(' ');
+        e.token ? 'tokenchip' : '', e.grand ? 'grand' : e.big ? 'big' : ''].filter(Boolean).join(' ');
       const mark = claimed ? '<span class="pcmk">✓</span>'
-        : can ? '<span class="pcmk got2">CLAIM</span>'
+        : can ? '<span class="pcmk go2">CLAIM</span>'
           : locked ? '<span class="pcmk">🔒</span>' : '';
       return `<div class="pchip ${cls}" data-row="${row}" data-tier="${t}">
+        ${e.grand ? '<span class="grandstar">★</span>' : ''}
         <img src="${iconFor(e)}">
         <span class="pcname">${e.label}</span>${mark}
       </div>`;
     };
 
     let ladder = '';
-    for (let t = 1; t <= gamepass.PASS_TIERS; t++) {
-      const reached = t <= tier;
-      ladder += `<div class="trow ${reached ? 'on' : ''} ${t === tier ? 'cur' : ''}">
-        <div class="tno"><b>${t}</b><i>${t * per}</i></div>
+    for (let t = 1; t <= maxTier; t++) {
+      const reached = t <= tier && !(t === tier && !prestige && prog === 0 && t > 1);
+      ladder += `<div class="trow ${t <= tier ? 'on' : ''} ${t === tier && !prestige ? 'cur' : ''}">
+        <div class="tno"><b>${t}</b><i>${gamepass.xpAt(t).toLocaleString()}</i></div>
         <div class="tcs">${chip('free', t)}${chip('basic', t)}${chip('premium', t)}</div>
       </div>`;
     }
+    // THE ENDLESS TAIL. It sits at the bottom of the ladder rather than in its
+    // own tab because it IS the ladder continuing — putting it elsewhere would
+    // be saying the track ends at 50, which is the thing being fixed.
+    ladder += `<div class="prow ${prestige ? 'on' : ''} ${cacheReady ? 'ready' : ''}">
+      <div class="pri">∞</div>
+      <div style="flex:1;min-width:0">
+        <div class="prt">KEEPER'S CACHES — the track does not stop at ${maxTier}</div>
+        <div class="prs">${prestige
+        ? `<b>${cacheN}</b> earned · <b>${st.caches}</b> opened · one more every <b>${gamepass.PRESTIGE_XP.toLocaleString()}</b> XP`
+        : `Unlocks at tier ${maxTier}. Every ${gamepass.PRESTIGE_XP.toLocaleString()} XP after that is another cache — a Keeper's Token, gold and forge stones, forever.`}</div>
+      </div>
+      ${cacheReady ? `<button class="act" data-cache>OPEN ${cacheReady}</button>` : ''}
+    </div>`;
 
-    // ---- how it works ----------------------------------------------------
+    // ---- the vault --------------------------------------------------------
+    const setGrid = gamepass.VAULT_SET.map((v) => {
+      const id = v.cosmetic;
+      const has = inventory.count(id) > 0;
+      const d = ITEMS[id] || {};
+      const col = RARITY[d.rarity || 'legendary']?.color || '#f0c455';
+      return `<div class="vcard ${has ? 'has' : ''}" style="--rc:${col}">
+        <div class="vimg"><img src="${itemIconUrl(id)}"></div>
+        <div class="vname">${d.name || id}</div>
+        <div class="vrar">${(d.rarity || '').toUpperCase()}</div>
+        <div class="vst">${has ? '✓ COLLECTED' : 'LOCKED'}</div>
+      </div>`;
+    }).join('');
+
+    const revealCard = vaultReveal ? (() => {
+      const r = vaultReveal;
+      const id = r.cosmetic || r.item || r.mount || r.petCharm;
+      const d = id ? ITEMS[id] : null;
+      const col = RARITY[d?.rarity || (r.weaponTier || 'legendary')]?.color || '#f0c455';
+      return `<div class="vreveal" style="--rc:${col}" data-dismiss>
+        <div class="vrin">
+          <div class="vrl">FROM THE VAULT</div>
+          <img src="${iconFor(r)}">
+          <div class="vrn">${r.label}</div>
+          <div class="vrr">${(d?.rarity || r.weaponTier || '').toUpperCase()}</div>
+          <div class="vrx">click to continue</div>
+        </div>
+      </div>`;
+    })() : '';
+
+    const vaultTab = `
+      <div class="vhero">
+        <div class="vh1">THE KEEPER&#39;S VAULT</div>
+        <div class="vh2">One token, one piece you do not have. <b>It never gives you a duplicate</b> —
+        ${gamepass.VAULT_SET.length} tokens is the whole set, every time.</div>
+        <div class="vbar">
+          <div class="vtok"><img src="${itemIconUrl(gamepass.PASS_TOKEN)}"><b>${tokens}</b><i>TOKENS</i></div>
+          <div class="vprog">
+            <div class="vpb"><div style="width:${Math.round(vault.have / vault.total * 100)}%"></div></div>
+            <span>${vault.have} / ${vault.total} COLLECTED</span>
+          </div>
+          <button class="act vspin" data-spin ${tokens < 1 ? 'disabled' : ''}>
+            ${tokens < 1 ? 'NO TOKENS' : vault.complete ? '◆ BONUS ROLL' : '◆ OPEN THE VAULT'}
+          </button>
+        </div>
+      </div>
+      ${revealCard}
+      <div class="vgrid">${setGrid}</div>
+      <div class="vnote">${vault.complete
+        ? 'The set is complete. A token now rolls a <b>mythic weapon</b>, a large purse of gold or a stack of forge stones.'
+        : `Tokens come off the pass track — <b>${tokOf('free')}</b> on the free row, <b>+${tokOf('basic')}</b> with Basic,
+           <b>+${tokOf('premium')}</b> with Premium — and one from every Keeper's Cache past tier ${maxTier}.
+           None of these ${gamepass.VAULT_SET.length} pieces exist in the shop, the gacha or the Hollow.`}</div>`;
+
+    // ---- how it works -----------------------------------------------------
     const xpRows = Object.entries(gamepass.PASS_XP)
       .sort((a, b) => b[1] - a[1])
       .map(([k, v]) => `<tr><td>${gamepass.PASS_XP_LABEL[k] || k}</td><td>+${v}</td></tr>`).join('');
@@ -1567,121 +1644,251 @@ export function createPanels(hudRoot, {
         <h5>HOW PASS XP WORKS</h5>
         <p>There are no separate pass quests to hunt down. <b>Everything you already
         do earns pass XP</b> — fighting, fishing, farming, cooking, forging, spinning
-        the gacha. Every <b>${per} XP</b> is one tier, and ${gamepass.PASS_TIERS} tiers
-        (<b>${total.toLocaleString()} XP</b>) completes the season.</p>
+        the gacha.</p>
+        <p>Tiers get more expensive as you climb: tier 1 costs <b>${gamepass.xpForTier(1)} XP</b>
+        and tier ${maxTier} costs <b>${gamepass.xpForTier(maxTier).toLocaleString()}</b>, so the whole
+        track is <b>${total.toLocaleString()} XP</b> — a season's worth of playing, not an
+        afternoon's.</p>
         <table class="pxt"><tr><th>ACTION</th><th>PASS XP</th></tr>${xpRows}</table>
+        <h5>AFTER TIER ${maxTier}</h5>
+        <p>The track does not stop. Every <b>${gamepass.PRESTIGE_XP.toLocaleString()} XP</b> past the
+        last tier is a <b>Keeper's Cache</b> — a Keeper's Token, gold and forge stones —
+        and there is no limit to how many you can open in a season.</p>
+        <h5>KEEPER'S TOKENS AND THE VAULT</h5>
+        <p>Tokens are the pass's own currency. They cannot be bought at any price;
+        the only source is the track and its caches. They are spent in <b>THE VAULT</b>,
+        which holds ${gamepass.VAULT_SET.length} cosmetics that exist nowhere else in Anavela.
+        The Vault <b>never hands you a duplicate</b> — unlike the gacha, every token is
+        a piece you did not have.</p>
         <h5>WHAT THE SEASON MEANS</h5>
-        <p>A season runs <b>${gamepass.SEASON_DAYS} days</b>. When it ends the track
-        resets to tier 1, the rewards change to the next season&#39;s set, and any pass
-        you activated expires with it. <b>Claim what you have earned before the clock
-        runs out</b> — nothing carries over.</p>
+        <p>A season runs <b>${gamepass.SEASON_DAYS} days</b>. When it ends the track resets
+        to tier 1, the rewards change to the next season's set, and any pass you
+        activated expires with it. <b>Claim what you have earned before the clock runs
+        out</b> — nothing carries over. Items already in your bag are yours to keep.</p>
         <h5>FREE vs BASIC vs PREMIUM</h5>
         <p>The <b>FREE</b> row is always claimable and always will be — you are never
         locked out of the pass. <b>BASIC</b> and <b>PREMIUM</b> add a second and third
-        reward on every tier, plus a bonus that runs all season. They are unlocked with
-        an item from <b>Pip&#39;s Shop</b> in the plaza: the <b>Keeper&#39;s Seal</b>
-        and the <b>Keeper&#39;s Sigil</b>. Buying the Sigil while you already hold Basic
-        only costs the difference.</p>
+        reward on every one of the ${maxTier} tiers, more tokens, and a bonus that runs all
+        season. They are unlocked with an item from <b>Pip's Shop</b> in the plaza: the
+        <b>Keeper's Seal</b> and the <b>Keeper's Sigil</b>. Buying the Sigil while you
+        already hold Basic only costs the difference.</p>
       </div>`;
+
+    const trackTab = `
+      <div class="pcards">${cards}</div>
+      ${waiting ? `<button class="act claimall" data-claimall>◆ CLAIM ALL (${waiting})</button>` : ''}
+      <div class="thead stick">
+        <div class="tno">TIER</div>
+        <div class="tcs">
+          <span style="--tone:#8ac86a">FREE</span>
+          <span style="--tone:#79c8e8">BASIC${owned === 'none' ? ' 🔒' : ''}</span>
+          <span style="--tone:#c08aff">PREMIUM${owned === 'premium' ? '' : ' 🔒'}</span>
+        </div>
+      </div>
+      <div class="ptrack">${ladder}</div>`;
 
     panels.pass.innerHTML = `<h3>GAMEPASS <small>[Esc] close</small></h3>
       <style>
-        .psrow { display: flex; align-items: flex-start; gap: 10px; position: relative; z-index: 1; }
-        .pseason { position: relative; overflow: hidden; padding: 10px 12px 9px; margin-bottom: 9px;
-          background: linear-gradient(120deg, rgba(0,0,0,0.5), var(--sacc-dim));
-          box-shadow: inset 0 0 0 2px var(--sacc), inset 0 0 26px rgba(0,0,0,0.55); }
+        /* ---- season hero: the one block that has to look expensive ---- */
+        .pseason { position: relative; overflow: hidden; padding: 14px 16px 12px; margin-bottom: 11px;
+          background:
+            radial-gradient(120% 150% at 88% -20%, var(--sacc-dim), transparent 62%),
+            linear-gradient(135deg, rgba(0,0,0,0.62), rgba(0,0,0,0.28));
+          box-shadow: inset 0 0 0 2px var(--sacc), inset 0 0 34px rgba(0,0,0,0.6),
+            0 0 20px color-mix(in srgb, var(--sacc) 18%, transparent); }
         .pseason::after { content: ''; position: absolute; inset: 0;
-          background: var(--dither) 0 0/4px 4px; opacity: 0.5; pointer-events: none; }
-        .psno { font-size: 8px; letter-spacing: 3px; color: var(--sacc); }
-        .psname { font-family: var(--font-display); font-size: 17px; letter-spacing: 2px;
-          color: #fff5dd; text-shadow: 0 0 14px var(--sacc); margin: 2px 0 4px; }
-        .psblurb { font-size: 9px; color: #cfd6c4; line-height: 1.5; }
-        .psclock { margin-left: auto; text-align: right; flex: 0 0 auto; }
-        .psclock b { display: block; font-family: var(--font-display); font-size: 19px; color: var(--sacc); }
-        .psclock i { font-size: 7px; letter-spacing: 2px; color: var(--muted); font-style: normal; }
+          background: var(--dither) 0 0/4px 4px; opacity: 0.45; pointer-events: none; }
+        .pseason::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+          background: linear-gradient(90deg, transparent, var(--sacc), transparent); opacity: 0.8; }
+        .psrow { display: flex; align-items: flex-start; gap: 14px; position: relative; z-index: 1; }
+        .psno { font-size: 10px; letter-spacing: 4px; color: var(--sacc); }
+        .psname { font-family: var(--font-display); font-size: 23px; letter-spacing: 2px;
+          color: #fff8e6; text-shadow: 0 2px 0 rgba(0,0,0,0.5), 0 0 20px var(--sacc); margin: 3px 0 5px; }
+        .psblurb { font-size: 11px; color: #d8dfce; line-height: 1.55; }
+        .psclock { margin-left: auto; text-align: center; flex: 0 0 auto;
+          padding: 6px 12px; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sacc) 55%, transparent); }
+        .psclock b { display: block; font-family: var(--font-display); font-size: 26px; color: var(--sacc);
+          text-shadow: 0 0 14px var(--sacc); line-height: 1; }
+        .psclock i { font-size: 8px; letter-spacing: 2px; color: var(--muted); font-style: normal; }
 
-        .phead { display: flex; align-items: center; gap: 10px; margin-top: 9px; position: relative; z-index: 1; }
-        .ptier { font-family: var(--font-display); font-size: 24px; color: var(--gold);
-          text-shadow: 0 0 10px var(--gold-glow); line-height: 1; text-align: center; }
-        .ptier small { font-size: 7px; color: var(--muted); letter-spacing: 2px; display: block; margin-top: 3px; }
-        .pxp { flex: 1; height: 11px; background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; }
-        .pxp > div { height: 100%; background: linear-gradient(90deg, #d8b866, #ffe9a8); }
-        .pxpn { font-size: 8px; color: var(--muted); margin-top: 4px; display: flex; justify-content: space-between; gap: 8px; }
-        .pperk { font-size: 8px; color: #b8e89a; letter-spacing: 1px; margin-top: 6px;
+        .phead { display: flex; align-items: center; gap: 12px; margin-top: 12px; position: relative; z-index: 1; }
+        .ptier { font-family: var(--font-display); font-size: 30px; color: var(--gold);
+          text-shadow: 0 0 12px var(--gold-glow); line-height: 1; text-align: center; min-width: 46px; }
+        .ptier small { font-size: 8px; color: var(--muted); letter-spacing: 2px; display: block; margin-top: 4px; }
+        .pxp { flex: 1; height: 15px; background: #10160f; position: relative;
+          box-shadow: inset 0 0 0 2px #2c352c; }
+        .pxp > div { height: 100%; background: linear-gradient(90deg, #c8a03a, #ffe9a8);
+          box-shadow: 0 0 12px var(--gold-glow); }
+        .pxpn { font-size: 10px; color: #b6c0aa; margin-top: 5px; display: flex; justify-content: space-between; gap: 10px; }
+        .ptok { flex: 0 0 auto; text-align: center; padding: 5px 10px;
+          box-shadow: inset 0 0 0 2px rgba(240,196,85,0.45); }
+        .ptok img { width: 22px; height: 22px; image-rendering: pixelated; display: block; margin: 0 auto 2px; }
+        .ptok b { font-family: var(--font-display); font-size: 15px; color: var(--gold); display: block; line-height: 1; }
+        .ptok i { font-size: 7px; letter-spacing: 1px; color: var(--muted); font-style: normal; }
+        .pperk { font-size: 10px; color: #b8e89a; letter-spacing: 1px; margin-top: 8px;
           position: relative; z-index: 1; }
 
-        .pcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
-        .pcard { padding: 9px 8px 8px; background: rgba(0,0,0,0.28); display: flex; flex-direction: column;
-          box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tone) 40%, transparent); }
-        .pcard.active { box-shadow: inset 0 0 0 2px var(--tone), 0 0 12px color-mix(in srgb, var(--tone) 35%, transparent); }
-        .pcn { font-family: var(--font-display); font-size: 12px; letter-spacing: 2px; color: var(--tone); }
-        .pcc { font-size: 8px; color: #e8dcc0; margin: 4px 0 3px; line-height: 1.4; }
-        .pcp { font-size: 8px; color: #b8e89a; letter-spacing: 1px; margin-bottom: 5px; line-height: 1.4; }
-        .pcl { list-style: none; padding: 0; margin: 0 0 8px; flex: 1; }
-        .pcl li { font-size: 8px; color: var(--muted); line-height: 1.5; padding-left: 8px; position: relative; }
+        /* ---- comparison cards ---- */
+        .pcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 11px; }
+        .pcard { position: relative; padding: 12px 11px 11px; background: rgba(0,0,0,0.3);
+          display: flex; flex-direction: column;
+          box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tone) 38%, transparent); }
+        .pcard::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+          background: var(--tone); opacity: 0.75; }
+        .pcard.active { box-shadow: inset 0 0 0 2px var(--tone),
+          0 0 16px color-mix(in srgb, var(--tone) 32%, transparent); }
+        .pctag { font-size: 7px; letter-spacing: 2px; color: var(--muted); }
+        .pcn { font-family: var(--font-display); font-size: 16px; letter-spacing: 3px; color: var(--tone);
+          text-shadow: 0 0 12px color-mix(in srgb, var(--tone) 45%, transparent); margin: 1px 0 5px; }
+        .pcc { font-size: 10px; color: #e8dcc0; margin-bottom: 4px; line-height: 1.45; }
+        .pcc b { color: var(--gold); }
+        .pcp { font-size: 10px; color: #b8e89a; letter-spacing: 1px; margin-bottom: 7px; line-height: 1.45; }
+        .pcl { list-style: none; padding: 0; margin: 0 0 10px; flex: 1; }
+        .pcl li { font-size: 10px; color: #a8b29c; line-height: 1.6; padding-left: 10px; position: relative; }
         .pcl li::before { content: '▪'; position: absolute; left: 0; color: var(--tone); }
-        .pcbtn { font-size: 8px !important; letter-spacing: 1px !important; text-align: center;
-          padding: 6px 3px !important; width: 100%; }
-        .pcbtn.on { color: var(--tone); box-shadow: inset 0 0 0 1px var(--tone); }
-        .pcbtn.buy { color: var(--muted); box-shadow: inset 0 0 0 1px #3a4438; }
+        .pcl b { color: #e8dcc0; }
+        .pcbtn { font-size: 10px !important; letter-spacing: 1px !important; text-align: center;
+          padding: 9px 4px !important; width: 100%; }
+        .pcbtn.on { color: var(--tone); box-shadow: inset 0 0 0 2px var(--tone); }
+        .pcbtn.buy { color: var(--muted); box-shadow: inset 0 0 0 2px #3a4438; }
+        .claimall { width: 100%; margin-bottom: 10px; font-size: 12px !important; padding: 11px !important; }
 
-        .ptabs { display: flex; gap: 4px; margin-bottom: 8px; }
-        .ptabs button { flex: 1; font-size: 9px !important; letter-spacing: 2px !important; padding: 7px 3px !important; }
+        /* ---- tabs ---- */
+        .psticky { position: sticky; top: -16px; z-index: 4; margin: 0 -15px; padding: 16px 15px 0;
+          background: linear-gradient(180deg, var(--panel-1) 78%, transparent);
+          backdrop-filter: blur(2px); }
+        .pmini { display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin-bottom: 7px;
+          background: rgba(0,0,0,0.45); box-shadow: inset 0 0 0 2px #2c352c; }
+        .pmini > b { font-family: var(--font-display); font-size: 12px; color: var(--gold);
+          letter-spacing: 1px; flex: 0 0 auto; }
+        .pmb { flex: 1; height: 8px; min-width: 40px; background: #10160f; box-shadow: inset 0 0 0 2px #2c352c; }
+        .pmb > i { display: block; height: 100%; background: linear-gradient(90deg, #c8a03a, #ffe9a8); }
+        .pmx { font-size: 9px; color: var(--muted); flex: 0 0 auto; }
+        .pmt { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--gold); flex: 0 0 auto; }
+        .pmt img { width: 18px; height: 18px; image-rendering: pixelated; }
+        .ptabs { display: flex; gap: 5px; margin-bottom: 10px; }
+        .ptabs button { flex: 1; font-size: 11px !important; letter-spacing: 2px !important; padding: 10px 4px !important; }
         .ptabs button.sel { color: var(--gold); box-shadow: inset 0 0 0 2px var(--gold); }
 
-        .thead { display: flex; gap: 6px; margin-bottom: 4px; padding-right: 3px; }
-        .thead .tno { font-family: var(--font-body); font-size: 6px; letter-spacing: 1px;
+        /* ---- the ladder ---- */
+        .thead { display: flex; gap: 8px; margin-bottom: 5px; padding-right: 4px; }
+        .thead.stick { position: sticky; z-index: 3; padding-top: 6px; padding-bottom: 4px;
+          margin-left: -15px; margin-right: -15px; padding-left: 15px; padding-right: 19px;
+          background: var(--panel-1); }
+        .thead .tno { font-family: var(--font-body); font-size: 8px; letter-spacing: 1px;
           color: var(--muted); background: none; box-shadow: none; }
-        .thead .tcs span { font-size: 7px; letter-spacing: 2px; color: var(--tone);
-          text-align: center; padding: 3px 0;
-          box-shadow: inset 0 -2px 0 0 color-mix(in srgb, var(--tone) 45%, transparent); }
-        .ptrack { max-height: 38vh; overflow-y: auto; padding-right: 3px;
-          scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
-        .trow { display: flex; gap: 6px; align-items: stretch; margin-bottom: 4px; opacity: 0.55; }
+        .thead .tcs span { font-size: 9px; letter-spacing: 2px; color: var(--tone);
+          text-align: center; padding: 4px 0;
+          box-shadow: inset 0 -2px 0 0 color-mix(in srgb, var(--tone) 50%, transparent); }
+        /* the panel is the scroller; these are plain blocks */
+        .ptrack { padding-right: 2px; }
+        .trow { display: flex; gap: 8px; align-items: stretch; margin-bottom: 5px; opacity: 0.5; }
         .trow.on { opacity: 1; }
-        .trow.cur { box-shadow: 0 0 0 2px var(--gold); }
-        .tno { flex: 0 0 34px; display: flex; flex-direction: column; align-items: center;
+        .trow.cur { box-shadow: 0 0 0 2px var(--gold), 0 0 14px var(--gold-glow); }
+        .tno { flex: 0 0 44px; display: flex; flex-direction: column; align-items: center;
           justify-content: center; background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; }
         .trow.on .tno { box-shadow: inset 0 0 0 2px var(--gold-dim); }
-        .tno b { font-family: var(--font-display); font-size: 13px; color: #d8ceb0; }
-        .tno i { font-size: 6px; color: #6a7a5f; font-style: normal; }
-        .tcs { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; min-width: 0; }
-        .pchip { position: relative; display: flex; align-items: center; gap: 5px; padding: 4px 5px;
+        .tno b { font-family: var(--font-display); font-size: 16px; color: #e0d6b8; }
+        .tno i { font-size: 7px; color: #6a7a5f; font-style: normal; }
+        .tcs { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; min-width: 0; }
+        .pchip { position: relative; display: flex; align-items: center; gap: 7px; padding: 6px 7px;
           background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; min-width: 0; }
-        .pchip img { width: 20px; height: 20px; image-rendering: pixelated; flex: 0 0 20px; }
-        .pcname { font-size: 7px; color: #b6c0aa; line-height: 1.25; overflow: hidden; min-width: 0;
+        .pchip img { width: 30px; height: 30px; image-rendering: pixelated; flex: 0 0 30px; }
+        .pcname { font-size: 10px; color: #c2ccb4; line-height: 1.3; overflow: hidden; min-width: 0;
           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-        .pchip.big { box-shadow: inset 0 0 0 2px #b06ae8; }
-        .pchip.big .pcname { color: #dcc0ff; }
-        .pchip.grand { box-shadow: inset 0 0 0 2px #f0c455, 0 0 10px rgba(240,196,85,0.4); }
-        .pchip.grand .pcname { color: #ffe9a8; }
-        .pchip.can { box-shadow: inset 0 0 0 2px var(--gold), 0 0 10px var(--gold-glow);
+        .pchip.big { box-shadow: inset 0 0 0 2px #b06ae8; background: linear-gradient(180deg, rgba(176,106,232,0.12), transparent); }
+        .pchip.big .pcname { color: #e2ccff; }
+        .pchip.tokenchip { box-shadow: inset 0 0 0 2px #f0c455; background: linear-gradient(180deg, rgba(240,196,85,0.16), transparent); }
+        .pchip.grand { box-shadow: inset 0 0 0 2px #f0c455, 0 0 14px rgba(240,196,85,0.45);
+          background: linear-gradient(180deg, rgba(240,196,85,0.2), transparent); }
+        .pchip.grand .pcname { color: #fff0c0; }
+        .grandstar { position: absolute; top: 1px; left: 2px; font-size: 9px; color: #ffe9a8; }
+        .pchip.can { box-shadow: inset 0 0 0 2px var(--gold), 0 0 14px var(--gold-glow);
           cursor: pointer; animation: pc 1.3s ease-in-out infinite; }
-        @keyframes pc { 50% { filter: brightness(1.3); } }
-        .pchip.got { opacity: 0.3; }
-        .pchip.lock { opacity: 0.4; }
-        .pcmk { margin-left: auto; font-size: 8px; color: #8ac86a; flex: 0 0 auto; }
-        .pcmk.got2 { color: var(--gold); letter-spacing: 1px; }
+        @keyframes pc { 50% { filter: brightness(1.28); } }
+        .pchip.got { opacity: 0.28; }
+        .pchip.lock { opacity: 0.42; }
+        .pcmk { margin-left: auto; font-size: 10px; color: #8ac86a; flex: 0 0 auto; }
+        .pcmk.go2 { color: var(--gold); letter-spacing: 1px; font-size: 9px; }
 
-        .pdoc { font-size: 9px; color: var(--muted); line-height: 1.6; max-height: 38vh; overflow-y: auto;
-          padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
-        .pdoc h5 { font-family: var(--font-display); font-size: 10px; letter-spacing: 2px;
-          color: var(--gold-dim); margin: 12px 0 5px; }
+        /* ---- the endless tail ---- */
+        .prow { display: flex; gap: 10px; align-items: center; margin-top: 8px; padding: 11px 12px;
+          background: rgba(0,0,0,0.3); box-shadow: inset 0 0 0 2px #3a4438; opacity: 0.6; }
+        .prow.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--gold-dim); }
+        .prow.ready { box-shadow: inset 0 0 0 2px var(--gold), 0 0 16px var(--gold-glow); }
+        .pri { font-family: var(--font-display); font-size: 26px; color: var(--gold); flex: 0 0 44px; text-align: center; }
+        .prt { font-size: 11px; letter-spacing: 1px; color: var(--gold-dim); }
+        .prs { font-size: 10px; color: var(--muted); line-height: 1.5; margin-top: 3px; }
+        .prs b { color: #e8dcc0; }
+
+        /* ---- the vault ---- */
+        .vhero { position: relative; overflow: hidden; padding: 14px; margin-bottom: 11px;
+          background: radial-gradient(120% 160% at 50% -30%, rgba(240,196,85,0.16), transparent 65%),
+            linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.3));
+          box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 30px rgba(0,0,0,0.6); }
+        .vh1 { font-family: var(--font-display); font-size: 19px; letter-spacing: 3px; color: var(--gold);
+          text-shadow: 0 0 18px var(--gold-glow); text-align: center; }
+        .vh2 { font-size: 10px; color: #b6c0aa; line-height: 1.6; text-align: center; margin: 6px auto 12px; max-width: 90%; }
+        .vh2 b { color: #ffe9a8; }
+        .vbar { display: flex; align-items: center; gap: 12px; }
+        .vtok { text-align: center; padding: 6px 12px; box-shadow: inset 0 0 0 2px rgba(240,196,85,0.5); }
+        .vtok img { width: 26px; height: 26px; image-rendering: pixelated; display: block; margin: 0 auto 3px; }
+        .vtok b { font-family: var(--font-display); font-size: 18px; color: var(--gold); display: block; line-height: 1; }
+        .vtok i { font-size: 7px; letter-spacing: 1px; color: var(--muted); font-style: normal; }
+        .vprog { flex: 1; min-width: 0; }
+        .vpb { height: 12px; background: #10160f; box-shadow: inset 0 0 0 2px #2c352c; }
+        .vpb > div { height: 100%; background: linear-gradient(90deg, #c8a03a, #ffe9a8); box-shadow: 0 0 10px var(--gold-glow); }
+        .vprog span { font-size: 9px; letter-spacing: 1px; color: var(--muted); display: block; margin-top: 5px; }
+        .vspin { font-size: 12px !important; letter-spacing: 2px !important; padding: 13px 18px !important; flex: 0 0 auto; }
+        .vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .vcard { position: relative; padding: 12px 8px 10px; text-align: center; background: rgba(0,0,0,0.3);
+          box-shadow: inset 0 0 0 2px #2c352c; opacity: 0.6; }
+        .vcard.has { opacity: 1; box-shadow: inset 0 0 0 2px var(--rc), 0 0 14px color-mix(in srgb, var(--rc) 30%, transparent); }
+        .vimg img { width: 46px; height: 46px; image-rendering: pixelated; }
+        .vcard:not(.has) .vimg img { filter: brightness(0) saturate(0) opacity(0.45); }
+        .vname { font-size: 11px; color: #e8dcc0; margin-top: 6px; line-height: 1.3; }
+        .vcard:not(.has) .vname { color: #7a8470; }
+        .vrar { font-size: 8px; letter-spacing: 2px; color: var(--rc); margin-top: 3px; }
+        .vst { font-size: 8px; letter-spacing: 1px; color: var(--muted); margin-top: 5px; }
+        .vcard.has .vst { color: #8ac86a; }
+        .vnote { font-size: 10px; color: var(--muted); line-height: 1.6; margin-top: 11px;
+          padding: 10px 12px; background: rgba(0,0,0,0.25); box-shadow: inset 0 0 0 1px #2c352c; }
+        .vnote b { color: #e8dcc0; }
+        .vreveal { margin-bottom: 11px; padding: 16px; text-align: center; cursor: pointer;
+          background: radial-gradient(100% 140% at 50% 0%, color-mix(in srgb, var(--rc) 28%, transparent), transparent 70%),
+            rgba(0,0,0,0.5);
+          box-shadow: inset 0 0 0 2px var(--rc), 0 0 26px color-mix(in srgb, var(--rc) 40%, transparent);
+          animation: vin 0.42s cubic-bezier(0.2, 1.4, 0.4, 1); }
+        @keyframes vin { from { transform: scale(0.86) rotateX(35deg); opacity: 0; } }
+        .vrl { font-size: 9px; letter-spacing: 4px; color: var(--rc); }
+        .vreveal img { width: 76px; height: 76px; image-rendering: pixelated; margin: 8px 0 4px;
+          filter: drop-shadow(0 0 14px var(--rc)); }
+        .vrn { font-family: var(--font-display); font-size: 17px; color: #fff5dd; letter-spacing: 1px; }
+        .vrr { font-size: 9px; letter-spacing: 3px; color: var(--rc); margin-top: 4px; }
+        .vrx { font-size: 8px; color: var(--muted); margin-top: 9px; }
+
+        /* ---- how it works ---- */
+        .pdoc { font-size: 11px; color: #a8b29c; line-height: 1.7; padding-right: 2px; }
+        .pdoc h5 { font-family: var(--font-display); font-size: 12px; letter-spacing: 2px;
+          color: var(--gold-dim); margin: 15px 0 6px; }
         .pdoc h5:first-child { margin-top: 0; }
         .pdoc b { color: #e8dcc0; }
-        .pxt { width: 100%; border-collapse: collapse; margin: 6px 0 2px; }
-        .pxt th { font-size: 7px; letter-spacing: 2px; color: var(--gold-dim); text-align: left;
-          padding: 3px 5px; border-bottom: 1px solid #2c352c; }
-        .pxt th:last-child, .pxt td:last-child { text-align: right; color: #e8dcc0; }
-        .pxt td { font-size: 8px; padding: 3px 5px; border-bottom: 1px solid rgba(44,53,44,0.5); }
+        .pxt { width: 100%; border-collapse: collapse; margin: 8px 0 2px; }
+        .pxt th { font-size: 8px; letter-spacing: 2px; color: var(--gold-dim); text-align: left;
+          padding: 5px 7px; border-bottom: 1px solid #2c352c; }
+        .pxt th:last-child, .pxt td:last-child { text-align: right; color: var(--gold); }
+        .pxt td { font-size: 10px; padding: 5px 7px; border-bottom: 1px solid rgba(44,53,44,0.5); }
 
-        @media (max-width: 560px) {
+        @media (max-width: 700px) {
           .pcards { grid-template-columns: 1fr; }
           .tcs { grid-template-columns: 1fr; }
-          .psblurb { max-width: 100%; }
+          .vgrid { grid-template-columns: repeat(2, 1fr); }
+          .vbar { flex-wrap: wrap; }
+          .vspin { width: 100%; }
+          .psname { font-size: 19px; }
         }
       </style>
-      <div class="pseason" style="--sacc:${acc};--sacc-dim:${acc}22">
+      <div class="pseason" style="--sacc:${acc};--sacc-dim:${acc}33">
         <div class="psrow">
           <div style="min-width:0">
             <div class="psno">SEASON ${season.number}</div>
@@ -1691,33 +1898,34 @@ export function createPanels(hudRoot, {
           <div class="psclock"><b>${season.daysLeft}</b><i>${season.daysLeft === 1 ? 'DAY LEFT' : 'DAYS LEFT'}</i></div>
         </div>
         <div class="phead">
-          <div class="ptier">${tier}<small>TIER</small></div>
+          <div class="ptier">${prestige ? '∞' : tier}<small>${prestige ? 'PRESTIGE' : 'TIER'}</small></div>
           <div style="flex:1;min-width:0">
             <div class="pxp"><div style="width:${Math.round(prog * 100)}%"></div></div>
             <div class="pxpn">
-              <span>${st.xp.toLocaleString()} / ${total.toLocaleString()} PASS XP</span>
-              <span>${toNext ? `${toNext} to tier ${tier + 1}` : 'SEASON COMPLETE'}</span>
+              <span>${prestige
+        ? `TRACK COMPLETE · cache ${cacheN + 1} in progress`
+        : `${st.xp.toLocaleString()} / ${total.toLocaleString()} PASS XP`}</span>
+              <span>${toNext.toLocaleString()} to ${prestige ? 'the next cache' : `tier ${tier + 1}`}</span>
             </div>
           </div>
+          <div class="ptok"><img src="${itemIconUrl(gamepass.PASS_TOKEN)}"><b>${tokens}</b><i>TOKENS</i></div>
         </div>
         <div class="pperk">ACTIVE PASS: ${perk.label}</div>
       </div>
-      <div class="pcards">${cards}</div>
-      ${waiting ? `<button class="act" data-claimall style="width:100%;margin-bottom:9px">◆ CLAIM ALL (${waiting})</button>` : ''}
-      <div class="ptabs">
-        <button class="act ${passTab === 'track' ? 'sel' : ''}" data-ptab="track">⛓ REWARD TRACK</button>
-        <button class="act ${passTab === 'how' ? 'sel' : ''}" data-ptab="how">✦ HOW IT WORKS</button>
-      </div>
-      ${passTab === 'track' ? `
-        <div class="thead">
-          <div class="tno">TIER</div>
-          <div class="tcs">
-            <span style="--tone:#8ac86a">FREE</span>
-            <span style="--tone:#79c8e8">BASIC${owned === 'none' ? ' 🔒' : ''}</span>
-            <span style="--tone:#c08aff">PREMIUM${owned === 'premium' ? '' : ' 🔒'}</span>
-          </div>
+      <div class="psticky">
+        <div class="pmini">
+          <b>${prestige ? '\u221e' : 'TIER ' + tier}</b>
+          <span class="pmb"><i style="width:${Math.round(prog * 100)}%"></i></span>
+          <span class="pmx">${prestige ? `cache ${cacheN + 1}` : st.xp.toLocaleString() + ' / ' + total.toLocaleString()}</span>
+          <span class="pmt"><img src="${itemIconUrl(gamepass.PASS_TOKEN)}">${tokens}</span>
         </div>
-        <div class="ptrack">${ladder}</div>` : howto}`;
+        <div class="ptabs">
+          <button class="act ${passTab === 'track' ? 'sel' : ''}" data-ptab="track">\u26d3 REWARD TRACK</button>
+          <button class="act ${passTab === 'vault' ? 'sel' : ''}" data-ptab="vault">\u25c6 THE VAULT ${vault.have}/${vault.total}</button>
+          <button class="act ${passTab === 'how' ? 'sel' : ''}" data-ptab="how">\u2726 HOW IT WORKS</button>
+        </div>
+      </div>
+      ${passTab === 'track' ? trackTab : passTab === 'vault' ? vaultTab : howto}`;
 
     panels.pass.querySelectorAll('.pchip.can').forEach((c) => {
       c.addEventListener('click', () => {
@@ -1733,38 +1941,54 @@ export function createPanels(hudRoot, {
       });
     });
     panels.pass.querySelectorAll('[data-ptab]').forEach((b) => {
-      b.addEventListener('click', () => { passTab = b.dataset.ptab; audio.sfx('ui'); renderPass(); });
+      b.addEventListener('click', () => { passTab = b.dataset.ptab; vaultReveal = null; audio.sfx('ui'); renderPass(); });
     });
     panels.pass.querySelector('[data-claimall]')?.addEventListener('click', () => {
       if (gamepass.claimAll()) audio.sfx('quest_done');
       renderPass();
     });
+    panels.pass.querySelector('[data-cache]')?.addEventListener('click', () => {
+      let n = 0;
+      while (gamepass.cachesReady() > 0 && gamepass.claimCache()) n++;
+      if (n) audio.sfx('reveal_epic');
+      renderPass();
+    });
+    panels.pass.querySelector('[data-spin]')?.addEventListener('click', () => {
+      const prize = gamepass.spinVault(
+        (id) => inventory.remove(id, 1),
+        (id) => inventory.count(id) > 0,
+      );
+      if (!prize) { audio.sfx('deny'); return; }
+      vaultReveal = prize;
+      audio.sfx(prize.grand ? 'reveal_mythic' : 'reveal_epic');
+      renderPass();
+    });
+    panels.pass.querySelector('[data-dismiss]')?.addEventListener('click', () => {
+      vaultReveal = null; audio.sfx('ui'); renderPass();
+    });
 
-    // THE TRACK TAKES EXACTLY THE SPACE THAT IS LEFT, and it has to be measured
-    // rather than guessed: a CSS vh cap does not know how tall the header above
-    // it came out, so any fixed value leaves the panel scrolling INSIDE its own
-    // scrolling list — two nested scrollers that fight each other at the seam.
-    // Measured 151px of outer overflow before this, 0 after.
-    // ON A PHONE THE CARDS STACK AND THERE IS NO ROOM FOR TWO PANES. Below
-    // ~200px of space the inner scroller is dropped entirely and the panel
-    // becomes the single scroller — one list you can flick, rather than a
-    // letterbox inside a box that also scrolls.
-    const fill = panels.pass.querySelector('.ptrack, .pdoc');
-    let scroller = panels.pass;
-    if (fill) {
-      const top = fill.getBoundingClientRect().top - panels.pass.getBoundingClientRect().top;
-      const avail = panels.pass.clientHeight - top - 30;
-      if (avail < 200) { fill.style.maxHeight = 'none'; fill.style.overflowY = 'visible'; }
-      else { fill.style.maxHeight = avail + 'px'; scroller = fill; }
-    }
+    // ONE SCROLLER, AND A STICKY BAR — measured, not guessed.
+    //
+    // The first version put a scrolling ladder inside the scrolling panel and
+    // sized it to whatever space was left. There is none: the season hero and
+    // the three comparison cards come to ~480px of a ~700px panel, so the inner
+    // pane got 150px (three rows) and the two scrollers fought at the seam.
+    //
+    // So the PANEL scrolls, once, and a slim bar carrying tier / XP / tokens and
+    // the tabs stays pinned — which is the thing you actually need at tier 45,
+    // not the season blurb you read on the way in.
+    // The column header parks directly under the sticky bar, and only the bar
+    // knows how tall it came out — so the offset is measured, not written in CSS.
+    const bar = panels.pass.querySelector('.psticky');
+    const barH = bar ? bar.getBoundingClientRect().height : 0;
+    const th = panels.pass.querySelector('.thead.stick');
+    if (th) th.style.top = (barH - 16) + 'px';
 
-    // Land on the tier you are actually on. Measured off getBoundingClientRect
-    // rather than scrollIntoView: smooth scrolling is silently inert in a
-    // throttled tab, and offsetTop here is measured against the wrong parent.
-    const cur = panels.pass.querySelector('.trow.cur');
-    if (cur && scroller.contains(cur)) {
-      scroller.scrollTop = (cur.getBoundingClientRect().top - scroller.getBoundingClientRect().top)
-        + scroller.scrollTop - scroller.clientHeight * 0.35;
+    const cur = panels.pass.querySelector('.trow.cur') || panels.pass.querySelector('.prow.ready');
+    if (cur) {
+      const pad = barH + (th ? th.getBoundingClientRect().height : 0) + 16;
+      panels.pass.scrollTop = (cur.getBoundingClientRect().top - panels.pass.getBoundingClientRect().top)
+        + panels.pass.scrollTop - pad;
     }
   }
 

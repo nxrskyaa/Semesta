@@ -734,6 +734,112 @@ const ICON_MAPS = {
     ],
     legend: { g: '#8a6a1e', G: '#f0c24e', p: '#4a2a6a', P: '#8a4fd0', w: '#e8d0ff' },
   },
+  // ---- THE KEEPER'S VAULT --------------------------------------------
+  // Hand-drawn rather than left to `paintCosmeticIcon`. That painter makes a
+  // generic blob tinted by slot and rarity, which is fine for the fortieth hat
+  // and completely wrong for the six pieces the whole premium track is selling:
+  // in the Vault they render at 46px, three across, and a coloured lozenge
+  // there is the entire "the items look too simple" problem in one image.
+  hat_lumen: {
+    map: [
+      '................',
+      '...w....w....w..',
+      '..fwf..fwf..fwf.',
+      '..fff..fff..fff.',
+      '..ggg..ggg..ggg.',
+      '..gggggggggggg..',
+      '..GGGGGGGGGGGG..',
+      '...gggggggggg...',
+      '................',
+    ],
+    legend: { w: '#fffbe8', f: '#ffd98a', g: '#c8a03a', G: '#f0c24e' },
+  },
+  hat_regalia: {
+    map: [
+      '................',
+      '.......s........',
+      '...s...s...s....',
+      '...s.p.s.p.s....',
+      '...s.p.s.p.s....',
+      '..SSSSSSSSSSS...',
+      '..GGGGGGGGGGG...',
+      '..SSSSSSSSSSS...',
+      '................',
+    ],
+    legend: { s: '#e0bb52', S: '#c8a03a', G: '#f0c24e', p: '#ffd98a' },
+  },
+  back_keepercloak: {
+    map: [
+      '................',
+      '....CCCCCCCC....',
+      '...cccccccccc...',
+      '...cmmmmmmmmc...',
+      '..cmmmmmmmmmmc..',
+      '..cmmmmmmmmmmc..',
+      '..cmmmmmmmmmmc..',
+      '..cccccccccccc..',
+      '...l..l..l..l...',
+      '...L..L..L..L...',
+      '................',
+    ],
+    legend: { C: '#f0c24e', c: '#c8a03a', m: '#352c46', l: '#8a6a1e', L: '#ffcb6a' },
+  },
+  back_constel: {
+    map: [
+      '................',
+      '.S............S.',
+      '..s..........s..',
+      '...s...SS...s...',
+      '....S..ss..S....',
+      '.....s.ss.s.....',
+      '......s..s......',
+      '................',
+    ],
+    legend: { s: '#8ea8e8', S: '#dce8ff' },
+  },
+  trail_lumen: {
+    map: [
+      '................',
+      '...........W....',
+      '........w..w....',
+      '.....W..W...w...',
+      '..w..w..w.......',
+      '..W..w..W.......',
+      '..w..W..........',
+      '................',
+    ],
+    legend: { w: '#ffd98a', W: '#fff4d0' },
+  },
+  trail_gilded: {
+    map: [
+      '................',
+      '..G...G....G....',
+      '....g...G...g...',
+      '..G...g...G.....',
+      '.....G...g...G..',
+      '..g...G...g.....',
+      '................',
+    ],
+    legend: { g: '#f0c24e', G: '#fff0b8' },
+  },
+
+  // the pass's currency: a gold coin-seal with the keeper's flame struck into it
+  pass_token: {
+    map: [
+      '................',
+      '.....tttttt.....',
+      '...ttTTTTTTtt...',
+      '..tTTTffffTTTt..',
+      '..tTTfFFFFfTTt..',
+      '..tTTfFwwFfTTt..',
+      '..tTTfFFFFfTTt..',
+      '..tTTTffffTTTt..',
+      '...ttTTTTTTtt...',
+      '.....tttttt.....',
+      '................',
+    ],
+    legend: { t: '#8a6a1e', T: '#f0c24e', f: '#6a4a12', F: '#ffe9a8', w: '#fffbe8' },
+  },
   forge_stone: {
     map: [
       '................',

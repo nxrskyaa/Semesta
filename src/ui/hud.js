@@ -910,7 +910,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   // check-in or a finished daily quest is waiting to be claimed
   const menuBtn = root.querySelector('.menubtn');
   const dailyTile = root.querySelector('[data-menu="daily"]');
-  let badgeN = -1;
+  const passTile = root.querySelector('[data-menu="pass"]');
+  let badgeN = '';
   /** A dot on the LIFE SKILLS tile whenever a point is waiting to be spent. */
   function setLifeBadge(n) {
     const b = root.querySelector('.mtile[data-menu="life"] .lbadge');
@@ -923,15 +924,28 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     if (b) b.classList.toggle('on', n > 0);
   }
 
-  function setMenuBadge(n) {
-    if (n === badgeN) return;
-    badgeN = n;
+  /**
+   * The ☰ glow means "something is waiting"; the NUMBER belongs on the tile
+   * that owns it. It used to put the combined daily + gamepass + skill total on
+   * the DAILY tile, which was already misleading and became plainly wrong when
+   * the pass grew to 50 tiers: 150 claimable rewards printed "152" next to
+   * DAILY. Counts are capped at 99+ because the badge is 16px wide.
+   */
+  function tileBadge(tile, k) {
+    if (!tile) return;
+    let b = tile.querySelector('.dbadge');
+    if (k > 0) {
+      if (!b) { b = document.createElement('span'); b.className = 'dbadge'; tile.appendChild(b); }
+      b.textContent = k > 99 ? '99+' : k;
+    } else b?.remove();
+  }
+  function setMenuBadge(n, parts = {}) {
+    const key = n + ':' + (parts.daily ?? -1) + ':' + (parts.pass ?? -1);
+    if (key === badgeN) return;
+    badgeN = key;
     menuBtn.classList.toggle('hasnew', n > 0);
-    let db = dailyTile.querySelector('.dbadge');
-    if (n > 0) {
-      if (!db) { db = document.createElement('span'); db.className = 'dbadge'; dailyTile.appendChild(db); }
-      db.textContent = n;
-    } else db?.remove();
+    tileBadge(dailyTile, parts.daily ?? n);
+    tileBadge(passTile, parts.pass ?? 0);
   }
   // any HUD-level overlay that must block the mobile joystick/camera zones
   function isMenuPopOpen() {

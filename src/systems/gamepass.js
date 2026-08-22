@@ -32,8 +32,8 @@ import { ITEMS } from './items.js';
 // correct season the moment it loads.
 // ---------------------------------------------------------------------------
 
-/** How long one season runs. Deliberately a month rather than a quarter: a
- *  30-tier track has to be finishable by somebody who plays a few times a week. */
+/** How long one season runs. Deliberately a month rather than a quarter: the
+ *  track has to be finishable by somebody who plays a few times a week. */
 export const SEASON_DAYS = 30;
 /** Season 1 begins here. Never change this — it would reshuffle history. */
 const SEASON_EPOCH = Date.UTC(2026, 7, 1);      // 1 Aug 2026, UTC
@@ -67,14 +67,59 @@ export function seasonNow(at = Date.now()) {
   };
 }
 
-export const PASS_TIERS = 30;
-export const XP_PER_TIER = 100;
+// ---------------------------------------------------------------------------
+// PACING — and the measurement that forced it
+//
+// The first version was 30 tiers at a FLAT 100 XP each: 3,000 XP for the whole
+// season. Measured against the real XP table at plausible rates, that is
+//
+//     50 minutes of auto-battle          (15 kills/min x 4 XP = 60 XP/min)
+//     55 minutes of ordinary mixed play
+//     75 minutes of world bosses
+//
+// — so the entire thirty-day season was over in under an hour, and then there
+// was nothing. That is the whole "naik levelnya cepet banget" complaint, and it
+// has two causes, both fixed here.
+//
+// 1. A FLAT COST MEANS TIER 50 IS AS CHEAP AS TIER 1. Every pass that paces
+//    itself ramps. `xpForTier` climbs from 120 to 1,198, which puts the full
+//    50-tier track at ~33,000 XP — about nine hours of dedicated grinding
+//    spread over thirty days, or roughly twenty minutes a day. Fast for someone
+//    farming, reachable for someone who plays a few evenings a week.
+//
+// 2. A TRACK THAT ENDS IS A TREADMILL THAT STOPS. Past the last tier the pass
+//    keeps going forever in PRESTIGE CACHES — a fixed lump of XP each, paying a
+//    Keeper's Token and gold. It is deliberately not more cosmetics: the set is
+//    finite and completing it should mean something. What it gives is a reason
+//    for the last week of a season to still be worth playing.
+// ---------------------------------------------------------------------------
+
+export const PASS_TIERS = 50;
+/** XP for tier n on its own. Climbs, so the back half is the achievement. */
+export function xpForTier(n) { return 120 + (n - 1) * 22; }
+
+/** Cumulative XP to have REACHED tier n+1. CUM[0] = 0, so tier 1 is free. */
+const CUM = (() => {
+  const c = [0];
+  for (let n = 1; n <= PASS_TIERS; n++) c[n] = c[n - 1] + xpForTier(n);
+  return c;
+})();
+/** XP that completes the whole curated track. */
+export const TOTAL_XP = CUM[PASS_TIERS];
+/** XP per endless cache once the track is done. */
+export const PRESTIGE_XP = 1500;
+
+/** Cumulative XP the ladder prints beside each tier. */
+export function xpAt(tier) { return CUM[Math.max(0, Math.min(PASS_TIERS, tier))]; }
 
 export const PASS_PRICES = { basic: 1000, premium: 3000 };
 
 /** The shop items that unlock each track. */
 export const PASS_ITEMS = { basic: 'pass_seal', premium: 'pass_sigil' };
 export const PASS_ITEM_NAMES = { basic: "Keeper's Seal", premium: "Keeper's Sigil" };
+
+/** The pass's own currency. Earned here, spent only in the Vault. */
+export const PASS_TOKEN = 'pass_token';
 
 /** Permanent boosts each pass carries while it is owned. */
 export const PASS_PERKS = {
@@ -89,7 +134,8 @@ export const PASS_XP = {
   kill: 4, boss: 120, fish: 10, chest: 25, gather: 6,
   plant: 5, harvest: 8, cook: 12, forge: 20, skill: 1, gacha: 15, quest: 60,
   // main.js fires these two as well; without a weight they were silently worth
-  // nothing, which is exactly the kind of thing that makes a pass feel arbitrary
+  // nothing, which is exactly the kind of thing that makes an XP system feel
+  // arbitrary
   sail: 8, island: 40,
 };
 
@@ -102,101 +148,214 @@ export const PASS_XP_LABEL = {
   sail: 'Sail somewhere new', island: 'Set foot on a new island',
 };
 
-/**
- * The reward track. `free` is always claimable; `basic` needs either pass;
- * `premium` needs the premium pass. Big beats land on the round tiers so the
- * ladder has a shape you can see.
- */
-/**
- * THE REWARD TRACK, BUILT PER SEASON.
- *
- * The SHAPE is the tuned part and does not move: which tiers are milestones,
- * where the grand prizes land, how the coin curve climbs. What rotates is WHAT
- * lands on those beats, drawn from the pools below by the season index, so
- * every player sees the same season and next season is genuinely a different
- * track rather than a recoloured one.
- *
- * `free` is always claimable; `basic` needs either pass; `premium` needs the
- * premium pass.
- */
+// ---------------------------------------------------------------------------
+// THE KEEPER'S VAULT — the pass's own spin, and the reason to want tokens
+//
+// The gacha is the random one. The Vault is deliberately the OPPOSITE, because
+// two identical slot machines is one slot machine: **it never hands you a piece
+// you already own**, so six tokens is the whole set, every single time. It
+// still reveals like a spin — that is the part that is fun — but it cannot
+// waste your token, which is what makes it read as a reward rather than a bet.
+//
+// Every piece here exists NOWHERE else in the game: not the shop, not the
+// gacha, not the Hollow. That is what a premium track has to be for.
+// ---------------------------------------------------------------------------
+
+export const VAULT_SET = [
+  { cosmetic: 'hat_lumen' },
+  { cosmetic: 'back_keepercloak' },
+  { cosmetic: 'trail_gilded' },
+  { cosmetic: 'hat_regalia' },
+  { cosmetic: 'back_constel' },
+  { cosmetic: 'trail_lumen' },
+];
+
+/** Once the set is complete a token still has to be worth spending. */
+const VAULT_BONUS = [
+  { w: 45, make: () => ({ weaponTier: 'mythic', label: 'CELESTIUM MYTHIC WEAPON', grand: true }) },
+  { w: 35, make: () => ({ coins: 1200, label: '1,200 coins', big: true }) },
+  { w: 20, make: () => ({ item: 'forge_stone', n: 10, label: 'Forge Stone x10', big: true }) },
+];
+
+// ---------------------------------------------------------------------------
+// THE REWARD TRACK, BUILT PER SEASON
+//
+// The SHAPE is the tuned part and does not move: which tiers are milestones,
+// where the grand prizes land, how the coin curve climbs. What rotates is WHAT
+// lands on those beats, drawn from the pools below by the season index, so
+// every player sees the same season and next season is genuinely a different
+// track rather than a recoloured one.
+//
+// `free` is always claimable; `basic` needs either pass; `premium` needs the
+// premium pass.
+// ---------------------------------------------------------------------------
+
 const POOLS = {
   freeBig: [
-    { cosmetic: 'hat_straw', label: 'Straw Hat' },
-    { cosmetic: 'hat_bandana', label: 'Bandana' },
-    { cosmetic: 'back_sprout', label: 'Sprout Pack' },
-    { cosmetic: 'hat_leaf', label: 'Leaf Cap' },
+    { cosmetic: 'hat_straw' }, { cosmetic: 'hat_bandana' },
+    { cosmetic: 'hat_flower' }, { cosmetic: 'hat_leaf' },
+  ],
+  freeBack: [
+    { cosmetic: 'back_sprout' }, { cosmetic: 'back_shell' },
+    { cosmetic: 'back_reef' }, { cosmetic: 'back_scroll' },
   ],
   freeTrail: [
-    { cosmetic: 'trail_leaf', label: 'Leaf Trail' },
-    { cosmetic: 'trail_bubble', label: 'Bubble Trail' },
-    { cosmetic: 'trail_frost', label: 'Frost Trail' },
-    { cosmetic: 'trail_petal', label: 'Petal Trail' },
+    { cosmetic: 'trail_leaf' }, { cosmetic: 'trail_bubble' },
+    { cosmetic: 'trail_frost' }, { cosmetic: 'trail_petal' },
+  ],
+  freeGrand: [
+    { cosmetic: 'hat_starcap' }, { cosmetic: 'hat_pirate' },
+    { cosmetic: 'back_balloon' }, { cosmetic: 'hat_miner' },
   ],
   freePet: [
-    { petCharm: 'charm_moku', label: 'Moku (pet)' },
-    { petCharm: 'charm_hopps', label: 'Hopps (pet)' },
-    { petCharm: 'charm_flap', label: 'Flap (pet)' },
-    { petCharm: 'charm_koko', label: 'Koko (pet)' },
+    { petCharm: 'charm_moku' }, { petCharm: 'charm_hopps' },
+    { petCharm: 'charm_flap' }, { petCharm: 'charm_koko' },
   ],
   basicCos: [
-    { cosmetic: 'back_prism', label: 'Prism Wings' },
-    { cosmetic: 'hat_wizard', label: 'Wizard Hat' },
-    { cosmetic: 'back_butterfly', label: 'Butterfly Wings' },
-    { cosmetic: 'hat_viking', label: 'Viking Helm' },
+    { cosmetic: 'back_butterfly' }, { cosmetic: 'hat_wizard' },
+    { cosmetic: 'back_bubble' }, { cosmetic: 'hat_viking' },
   ],
   basicCrown: [
-    { cosmetic: 'hat_crown', label: 'Gilded Crown' },
-    { cosmetic: 'hat_halo', label: 'Halo' },
-    { cosmetic: 'hat_catears', label: 'Cat Ears' },
-    { cosmetic: 'hat_chef', label: 'Chef Toque' },
+    { cosmetic: 'hat_crown' }, { cosmetic: 'hat_halo' },
+    { cosmetic: 'hat_catears' }, { cosmetic: 'hat_chef' },
   ],
   basicTrail: [
-    { cosmetic: 'trail_star', label: 'Starfall Trail' },
-    { cosmetic: 'trail_ember', label: 'Ember Trail' },
-    { cosmetic: 'trail_ink', label: 'Ink Trail' },
-    { cosmetic: 'trail_lantern', label: 'Lantern Trail' },
+    { cosmetic: 'trail_star' }, { cosmetic: 'trail_ember' },
+    { cosmetic: 'trail_ink' }, { cosmetic: 'trail_lantern' },
+  ],
+  basicBack: [
+    { cosmetic: 'back_cloakfeather' }, { cosmetic: 'back_koi' },
+    { cosmetic: 'back_pack' }, { cosmetic: 'back_reef' },
   ],
   basicPet: [
-    { petCharm: 'charm_piko', label: 'Piko (pet)' },
-    { petCharm: 'charm_bubbles', label: 'Bubbles (pet)' },
-    { petCharm: 'charm_tuff', label: 'Tuff (pet)' },
-    { petCharm: 'charm_wooly', label: 'Wooly (pet)' },
+    { petCharm: 'charm_piko' }, { petCharm: 'charm_bubbles' },
+    { petCharm: 'charm_tuff' }, { petCharm: 'charm_wooly' },
   ],
   premCos: [
-    { cosmetic: 'hat_kitsune', label: 'Kitsune Mask' },
-    { cosmetic: 'hat_pumpkin', label: 'Pumpkin Head' },
-    { cosmetic: 'hat_moon', label: 'Moonwreath' },
-    { cosmetic: 'hat_antlers', label: 'Spirit Antlers' },
+    { cosmetic: 'hat_kitsune' }, { cosmetic: 'hat_pumpkin' },
+    { cosmetic: 'hat_moon' }, { cosmetic: 'hat_antlers' },
   ],
   premBack: [
-    { cosmetic: 'back_koi', label: 'Koi Kite' },
-    { cosmetic: 'back_phoenix', label: 'Phoenix Wings' },
-    { cosmetic: 'back_lanterns', label: 'Hanging Lanterns' },
-    { cosmetic: 'back_shell', label: 'Turtle Shell' },
+    { cosmetic: 'back_phoenix' }, { cosmetic: 'back_prism' },
+    { cosmetic: 'back_lanterns' }, { cosmetic: 'back_frost' },
+  ],
+  premTrail: [
+    { cosmetic: 'trail_rainbow' }, { cosmetic: 'trail_aurora' },
+    { cosmetic: 'trail_star' }, { cosmetic: 'trail_ember' },
   ],
   premPet: [
-    { petCharm: 'charm_seraphi', label: 'Seraphi (mythic pet)' },
-    { petCharm: 'charm_nox', label: 'Nox (legendary pet)' },
-    { petCharm: 'charm_glimmer', label: 'Glimmer (legendary pet)' },
-    { petCharm: 'charm_zephyr', label: 'Zephyr (mythic pet)' },
+    { petCharm: 'charm_seraphi' }, { petCharm: 'charm_nox' },
+    { petCharm: 'charm_glimmer' }, { petCharm: 'charm_zephyr' },
+  ],
+  premPet2: [
+    { petCharm: 'charm_emberling' }, { petCharm: 'charm_tideling' },
+    { petCharm: 'charm_verdant' }, { petCharm: 'charm_luma' },
   ],
   premMount: [
-    { mount: 'mount_aurora', label: 'AURORA MOUNT' },
-    { mount: 'mount_blossom', label: 'BLOSSOM MOUNT' },
+    { mount: 'mount_aurora' }, { mount: 'mount_blossom' },
+  ],
+  premMount2: [
+    { mount: 'mount_pebble' }, { mount: 'mount_nimbus' },
   ],
 };
 
 /** Same season, same track, on every machine. */
 const pick = (pool, seasonIndex, offset = 0) => pool[(seasonIndex + offset) % pool.length];
 
+const tok = (n) => ({ item: PASS_TOKEN, n, label: `Keeper's Token x${n}`, big: true, token: true });
+
+/**
+ * THE MILESTONES, AS DATA.
+ *
+ * Fifty tiers written as a chain of `else if` is unreadable and impossible to
+ * audit — you cannot see at a glance whether a row has a gap in it. As a table
+ * keyed by tier you can, and the sweep in the test can check every slot.
+ */
+const SHAPE = {
+  free: {
+    5: (S) => ({ ...pick(POOLS.freeTrail, S), big: true }),
+    10: (S) => ({ ...pick(POOLS.freeBig, S), big: true }),
+    15: () => tok(1),
+    20: (S) => ({ ...pick(POOLS.freePet, S), big: true }),
+    25: (S) => ({ ...pick(POOLS.freeBack, S), big: true }),
+    30: () => ({ item: 'potion_xp', n: 3, label: 'Scholar Brew x3', big: true }),
+    35: () => tok(1),
+    40: (S) => ({ ...pick(POOLS.freeTrail, S, 1), big: true }),
+    45: () => ({ item: 'potion_luck', n: 3, label: 'Lucky Charm x3', big: true }),
+    50: (S) => ({ ...pick(POOLS.freeGrand, S), grand: true }),
+  },
+  basic: {
+    3: () => ({ item: 'forge_stone', n: 8, label: 'Forge Stone x8' }),
+    6: (S) => ({ ...pick(POOLS.basicPet, S), big: true }),
+    10: (S) => ({ ...pick(POOLS.basicTrail, S), big: true }),
+    13: () => tok(1),
+    16: (S) => ({ ...pick(POOLS.basicBack, S), big: true }),
+    20: () => ({ item: 'potion_xp', n: 4, label: 'Scholar Brew x4', big: true }),
+    24: (S) => ({ ...pick(POOLS.basicCos, S), big: true }),
+    28: () => tok(1),
+    32: (S) => ({ ...pick(POOLS.basicPet, S, 1), big: true }),
+    36: () => ({ item: 'potion_luck', n: 4, label: 'Lucky Charm x4', big: true }),
+    40: (S) => ({ ...pick(POOLS.basicCrown, S), big: true }),
+    44: () => tok(1),
+    47: (S) => ({ ...pick(POOLS.basicTrail, S, 1), big: true }),
+    50: () => ({ weaponTier: 'epic', label: 'STARFORGED WEAPON', grand: true }),
+  },
+  premium: {
+    4: (S) => ({ ...pick(POOLS.premCos, S, 1), big: true }),
+    7: () => tok(1),
+    9: (S) => ({ ...pick(POOLS.premMount2, S), big: true }),
+    12: (S) => ({ ...pick(POOLS.premPet, S, 2), big: true }),
+    15: (S) => ({ ...pick(POOLS.premBack, S), big: true }),
+    18: () => tok(1),
+    21: () => ({ weaponTier: 'legendary', label: 'DRAGONFANG WEAPON', big: true }),
+    24: (S) => ({ ...pick(POOLS.premPet2, S), big: true }),
+    27: (S) => ({ ...pick(POOLS.premTrail, S), big: true }),
+    30: () => tok(1),
+    33: (S) => ({ ...pick(POOLS.premCos, S), big: true }),
+    36: (S) => ({ ...pick(POOLS.premPet, S), big: true }),
+    39: (S) => ({ ...pick(POOLS.premBack, S, 1), big: true }),
+    42: () => tok(1),
+    45: (S) => ({ ...pick(POOLS.premMount, S), grand: true }),
+    48: () => tok(1),
+    50: () => ({ weaponTier: 'mythic', label: 'CELESTIUM MYTHIC WEAPON', grand: true }),
+  },
+};
+
+/**
+ * What lands on a tier with no milestone on it. Never nothing.
+ *
+ * NOTE THE SIGNATURE: every factory here takes , the SAME
+ * shape as a milestone, because  calls whichever it finds with the
+ * same two arguments. The first version took  alone, so the filler was
+ * handed the SEASON INDEX — which is 0 — and  made every single
+ * free filler a Forge Stone x4, every basic filler 180 coins and every premium
+ * filler a Lucky Charm x3. The track validated (the ids were all real) and
+ * looked, correctly, like the most boring ladder ever built.
+ */
+const FILLER = {
+  // The free row is the one most players actually live on, so every third tier
+  // hands over something that is not money: a row of pure coins is a row nobody
+  // looks at.
+  free: (S, i) => (i % 5 === 0 ? { item: 'forge_stone', n: 4, label: 'Forge Stone x4' }
+    : i % 3 === 0 ? { item: 'tonic', n: 3, label: 'Tonic x3' }
+      : { coins: 70 + i * 9, label: (70 + i * 9) + ' coins' }),
+  // Consumables you would otherwise buy, at a rate the shop cannot match.
+  basic: (S, i) => (i % 4 === 1 ? { item: 'potion_xp', n: 2, label: 'Scholar Brew x2' }
+    : i % 4 === 3 ? { item: 'potion_luck', n: 2, label: 'Lucky Charm x2' }
+      : { coins: 180 + i * 15, label: (180 + i * 15) + ' coins' }),
+  premium: (S, i) => (i % 3 === 0 ? { item: 'potion_luck', n: 3, label: 'Lucky Charm x3' }
+    : i % 3 === 1 ? { item: 'forge_stone', n: 6, label: 'Forge Stone x6' }
+      : { coins: 340 + i * 28, label: (340 + i * 28) + ' coins' }),
+};
+
 /**
  * THE LADDER MUST NEVER LIE ABOUT WHAT A REWARD IS CALLED.
  *
- * The panel shows the reward NAME beside every icon now, and a hand-written
- * label drifts the moment somebody renames an item — a sweep against ITEMS
- * found five already wrong ("Halo" for Radiant Halo, "Gilded Crown" for Royal
- * Crown). Anything with an id takes its name from ITEMS; the hand-written label
- * only survives where there is nothing to look up (coins, a weapon TIER that
+ * The panel shows the reward NAME beside every icon, and a hand-written label
+ * drifts the moment somebody renames an item — a sweep against ITEMS found five
+ * already wrong ("Halo" for Radiant Halo, "Gilded Crown" for Royal Crown).
+ * Anything with an id takes its name from ITEMS; the written label only
+ * survives where there is nothing to look up (coins, a weapon TIER that
  * resolves to your class at claim time).
  */
 function name(e) {
@@ -210,56 +369,15 @@ export function buildTrack(seasonIndex = 0) {
   const S = seasonIndex;
   const t = [];
   for (let i = 1; i <= PASS_TIERS; i++) {
-    // FREE ROW. Every third tier hands over something that is not money: a row
-    // of nothing but coins is a row nobody looks at, and the free track is the
-    // one most players will actually live on.
-    const free = i === 30 ? { ...pick(POOLS.freeBig, S), big: true }
-      : i === 20 ? { ...pick(POOLS.freePet, S), big: true }
-        : i === 10 ? { ...pick(POOLS.freeTrail, S), big: true }
-          : i % 5 === 0 ? { item: 'forge_stone', n: 4, label: 'Forge Stone x4' }
-            : i % 3 === 0 ? { item: 'tonic', n: 3, label: 'Tonic x3' }
-              : { coins: 60 + i * 8, label: (60 + i * 8) + ' coins' };
-
-    // BASIC ROW. Cosmetics, real consumable stacks and a gacha-exclusive weapon
-    // at the top: the point of a pass is that it hands you things the shop
-    // cannot, so a row of coins at 3x the free rate was never worth buying.
-    let basic;
-    if (i === 30) basic = { weaponTier: 'epic', label: 'STARFORGED WEAPON', grand: true };
-    else if (i === 26) basic = { ...pick(POOLS.basicCos, S), big: true };
-    else if (i === 22) basic = { item: 'potion_luck', n: 4, label: 'Lucky Charm x4' };
-    else if (i === 18) basic = { ...pick(POOLS.basicCrown, S), big: true };
-    else if (i === 14) basic = { item: 'potion_xp', n: 4, label: 'Scholar Brew x4' };
-    else if (i === 10) basic = { ...pick(POOLS.basicTrail, S), big: true };
-    else if (i === 6) basic = { ...pick(POOLS.basicPet, S), big: true };
-    else if (i === 3) basic = { item: 'forge_stone', n: 8, label: 'Forge Stone x8' };
-    else if (i % 2 === 0) basic = { coins: 160 + i * 14, label: (160 + i * 14) + ' coins' };
-    else basic = { item: i % 4 === 1 ? 'potion_xp' : 'potion_luck', n: 2, label: i % 4 === 1 ? 'Scholar Brew x2' : 'Lucky Charm x2' };
-
-    // PREMIUM ROW. Mounts, pets, cosmetics and a MYTHIC weapon at the end, so
-    // the last tier is a trophy rather than a bigger pile of coins. Nothing
-    // here is purchasable with gold anywhere else.
-    let premium;
-    if (i === 30) premium = { weaponTier: 'mythic', label: 'CELESTIUM MYTHIC WEAPON', grand: true };
-    else if (i === 28) premium = { ...pick(POOLS.premMount, S), grand: true };
-    else if (i === 25) premium = { ...pick(POOLS.premPet, S), big: true };
-    else if (i === 21) premium = { weaponTier: 'legendary', label: 'DRAGONFANG WEAPON', big: true };
-    else if (i === 19) premium = { ...pick(POOLS.premCos, S), big: true };
-    else if (i === 16) premium = { ...pick(POOLS.premPet, S, 1), big: true };
-    else if (i === 13) premium = { ...pick(POOLS.premBack, S), big: true };
-    else if (i === 11) premium = { ...pick(POOLS.premPet, S, 2), big: true };
-    else if (i === 8) premium = { ...pick(POOLS.premMount, S, 1), big: true };
-    else if (i === 5) premium = { ...pick(POOLS.premCos, S, 1), big: true };
-    else if (i % 3 === 0) premium = { item: 'potion_luck', n: 3, label: 'Lucky Charm x3' };
-    else premium = { coins: 320 + i * 26, label: (320 + i * 26) + ' coins' };
-
-    t.push({ tier: i, free: name(free), basic: name(basic), premium: name(premium) });
+    const row = (k) => name((SHAPE[k][i] || FILLER[k])(S, i));
+    t.push({ tier: i, free: row('free'), basic: row('basic'), premium: row('premium') });
   }
   return t;
 }
 
-// NOTE there is deliberately NO module-level PASS_TRACK constant any more. One
-// built at import time would be frozen at whatever season the tab was opened in
-// and would not follow a rollover, which is a second source of truth for the one
+// NOTE there is deliberately NO module-level PASS_TRACK constant. One built at
+// import time would be frozen at whatever season the tab was opened in and
+// would not follow a rollover, which is a second source of truth for the one
 // thing the season is supposed to own. Ask the instance: `gamepass.track()`.
 
 export function createGamePass({ grant, onToast, onBanner }) {
@@ -267,13 +385,36 @@ export function createGamePass({ grant, onToast, onBanner }) {
     owned: 'none',        // 'none' | 'basic' | 'premium'
     xp: 0,                // total pass XP earned this season
     claimed: { free: [], basic: [], premium: [] },
+    caches: 0,            // prestige caches already claimed this season
     season: seasonNow().index,
   };
   // the track belongs to the season, not to the module
   let track = buildTrack(state.season);
 
-  const tierOf = () => Math.min(PASS_TIERS, Math.floor(state.xp / XP_PER_TIER) + 1);
-  const progressInTier = () => (state.xp % XP_PER_TIER) / XP_PER_TIER;
+  /** Which tier the XP puts you on. Capped — past it you are in prestige. */
+  function tierOf() {
+    if (state.xp >= TOTAL_XP) return PASS_TIERS;
+    let n = 1;
+    while (n < PASS_TIERS && state.xp >= CUM[n]) n++;
+    return n;
+  }
+  /** 0..1 through the CURRENT tier, or through the current cache past the end. */
+  function progressInTier() {
+    if (state.xp >= TOTAL_XP) return ((state.xp - TOTAL_XP) % PRESTIGE_XP) / PRESTIGE_XP;
+    const t = tierOf();
+    return (state.xp - CUM[t - 1]) / xpForTier(t);
+  }
+  /** XP still needed for the next tier — or the next cache once past the end. */
+  function toNext() {
+    if (state.xp >= TOTAL_XP) return PRESTIGE_XP - ((state.xp - TOTAL_XP) % PRESTIGE_XP);
+    return CUM[tierOf()] - state.xp;
+  }
+  /** How many prestige caches the XP has earned in total. */
+  const cachesEarned = () => (state.xp <= TOTAL_XP ? 0 : Math.floor((state.xp - TOTAL_XP) / PRESTIGE_XP));
+  /** How many are sitting unclaimed. */
+  const cachesReady = () => Math.max(0, cachesEarned() - state.caches);
+  /** True once the curated track is finished and the endless half has begun. */
+  const inPrestige = () => state.xp >= TOTAL_XP;
 
   function load(data) {
     if (!data) return;
@@ -284,11 +425,15 @@ export function createGamePass({ grant, onToast, onBanner }) {
       basic: data.claimed?.basic || [],
       premium: data.claimed?.premium || [],
     };
+    state.caches = data.caches || 0;
     state.season = data.season ?? seasonNow().index;
     rollSeason(true);
   }
   function serialize() {
-    return { owned: state.owned, xp: state.xp, claimed: state.claimed, season: state.season };
+    return {
+      owned: state.owned, xp: state.xp, claimed: state.claimed,
+      caches: state.caches, season: state.season,
+    };
   }
 
   /**
@@ -309,6 +454,7 @@ export function createGamePass({ grant, onToast, onBanner }) {
     state.season = now.index;
     state.xp = 0;
     state.owned = 'none';
+    state.caches = 0;
     state.claimed = { free: [], basic: [], premium: [] };
     track = buildTrack(now.index);
     if (!quiet) {
@@ -323,10 +469,15 @@ export function createGamePass({ grant, onToast, onBanner }) {
     const gain = (PASS_XP[ev] || 0) * amount;
     if (!gain) return false;
     const before = tierOf();
-    state.xp = Math.min(PASS_TIERS * XP_PER_TIER, state.xp + gain);
+    const cachesBefore = cachesEarned();
+    state.xp += gain;                    // deliberately uncapped: prestige is endless
     const after = tierOf();
     if (after > before) {
-      onBanner?.(`GAMEPASS TIER ${after}`);
+      onBanner?.(after >= PASS_TIERS ? 'GAMEPASS TRACK COMPLETE' : `GAMEPASS TIER ${after}`);
+      return true;
+    }
+    if (cachesEarned() > cachesBefore) {
+      onBanner?.("KEEPER'S CACHE READY");
       return true;
     }
     return false;
@@ -350,12 +501,32 @@ export function createGamePass({ grant, onToast, onBanner }) {
     return entry;
   }
 
+  /**
+   * A PRESTIGE CACHE. Endless, and the same every time on purpose — this is the
+   * part of the pass that is a steady wage rather than a surprise, so the
+   * surprise stays in the Vault where it belongs.
+   */
+  function claimCache() {
+    if (cachesReady() <= 0) return null;
+    state.caches++;
+    const n = state.caches;
+    const payout = [
+      { item: PASS_TOKEN, n: 1, label: "Keeper's Token", token: true, big: true },
+      { coins: 600 + n * 40, label: (600 + n * 40) + ' coins' },
+      { item: 'forge_stone', n: 5, label: 'Forge Stone x5' },
+    ];
+    for (const p of payout) grant(p);
+    onBanner?.(`KEEPER'S CACHE ${n}`);
+    return payout;
+  }
+
   /** Claim everything currently available in one go — the button people want. */
   function claimAll() {
     let n = 0;
     for (const row of ['free', 'basic', 'premium']) {
       for (let t = 1; t <= tierOf(); t++) if (canClaim(row, t)) { claim(row, t); n++; }
     }
+    while (cachesReady() > 0) { claimCache(); n++; }
     if (n) onBanner?.(`${n} GAMEPASS REWARD${n > 1 ? 'S' : ''} CLAIMED`);
     return n;
   }
@@ -382,24 +553,57 @@ export function createGamePass({ grant, onToast, onBanner }) {
     return true;
   }
 
+  /**
+   * THE VAULT. One token, one piece of the set you do not already have.
+   *
+   * `owns` is supplied by the caller for the same reason `grant` is: this
+   * module does not get to know what an inventory is.
+   *
+   * @param consume (itemId) => boolean   takes the token
+   * @param owns    (itemId) => boolean   do we already have this piece?
+   */
+  function vaultStatus(owns) {
+    const missing = VAULT_SET.filter((p) => !owns(p.cosmetic));
+    return { total: VAULT_SET.length, have: VAULT_SET.length - missing.length, missing, complete: missing.length === 0 };
+  }
+
+  function spinVault(consume, owns) {
+    const st = vaultStatus(owns);
+    if (!consume(PASS_TOKEN)) { onToast?.("You need a Keeper's Token — earn them on the pass track."); return null; }
+    let prize;
+    if (!st.complete) {
+      const p = st.missing[Math.floor(Math.random() * st.missing.length)];
+      prize = name({ ...p, grand: true, vault: true });
+    } else {
+      let r = Math.random() * VAULT_BONUS.reduce((a, b) => a + b.w, 0);
+      const hit = VAULT_BONUS.find((b) => (r -= b.w) < 0) || VAULT_BONUS[0];
+      prize = { ...hit.make(), vault: true };
+    }
+    grant(prize);
+    return prize;
+  }
+
   /** Anything waiting to be claimed — drives the "!" badge. */
   function pending() {
     let n = 0;
     for (const row of ['free', 'basic', 'premium']) {
       for (let t = 1; t <= tierOf(); t++) if (canClaim(row, t)) n++;
     }
-    return n;
+    return n + cachesReady();
   }
 
   const perks = () => PASS_PERKS[state.owned];
 
   return {
     state, load, serialize, event, claim, claimAll, canClaim, activate, pending,
-    tierOf, progressInTier, perks, rollSeason,
+    tierOf, progressInTier, toNext, perks, rollSeason,
+    claimCache, cachesReady, cachesEarned, inPrestige,
+    vaultStatus, spinVault,
     season: () => seasonNow(),
     track: () => track,
-    totalXp: () => PASS_TIERS * XP_PER_TIER,
-    PASS_TIERS, PASS_PRICES, XP_PER_TIER, PASS_XP, PASS_XP_LABEL, PASS_PERKS, SEASON_DAYS,
-    PASS_ITEMS, PASS_ITEM_NAMES,
+    totalXp: () => TOTAL_XP,
+    xpAt, xpForTier,
+    PASS_TIERS, PASS_PRICES, PASS_XP, PASS_XP_LABEL, PASS_PERKS, SEASON_DAYS,
+    PASS_ITEMS, PASS_ITEM_NAMES, PASS_TOKEN, PRESTIGE_XP, VAULT_SET,
   };
 }

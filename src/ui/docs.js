@@ -476,30 +476,53 @@ export const CATEGORIES = [
 
       S('gamepass', 'The GamePass', `
         <p><b>U</b>, or ☰ → GAMEPASS. A season pass bought with gold you earned,
-        not money. <b>30 tiers</b>, <b>100 pass XP</b> each, three reward rows
-        running side by side.</p>
+        not money. <b>50 tiers</b>, three reward rows running side by side, and
+        past the last tier it keeps going forever.</p>
 
         <h4>THERE ARE NO PASS QUESTS</h4>
         <p>This is the part people expect to be complicated and it is not.
         <b>Everything you already do earns pass XP</b> — there is no separate list
-        of chores to go and tick off. A world boss is worth 120, a quest 60, a
-        forge 20, a chest 25, a fish 10, a monster 4. Every 100 is one tier, and
-        <b>3,000 XP</b> completes the season. The HOW IT WORKS tab in the panel
+        of chores to tick off. A world boss is worth 120, a quest 60, a forge 20,
+        a chest 25, a fish 10, a monster 4. The HOW IT WORKS tab in the panel
         lists every action and what it pays.</p>
+        <p><b>Tiers get more expensive as you climb.</b> Tier 1 costs 120 XP and
+        tier 50 costs 1,198, so the whole track is <b>32,950 XP</b> — roughly
+        twenty minutes a day across a thirty-day season. It is meant to last the
+        season, not the evening.</p>
+
+        <h4>AFTER TIER 50 — KEEPER'S CACHES</h4>
+        <p>The track does not stop. Every <b>1,500 XP</b> past the last tier is a
+        <b>Keeper's Cache</b>: a Keeper's Token, gold and forge stones, with no
+        limit on how many you can open in a season. The last week of a season is
+        still worth playing.</p>
+
+        <h4>KEEPER'S TOKENS AND THE VAULT</h4>
+        <p>Tokens are the pass's own currency. <b>They cannot be bought at any
+        price</b> — the only source is the track and its caches. They are spent in
+        <b>THE VAULT</b>, the second tab of the pass panel, which holds six
+        cosmetics that exist nowhere else in Anavela: the <b>Lumenwreath</b>,
+        <b>Keeper's Regalia</b>, <b>Keeper's Mantle</b>, <b>Constellation
+        Wings</b>, <b>Lumen Trail</b> and <b>Gilded Dust</b>.</p>
+        ${call('do', 'THE VAULT IS NOT THE GACHA', [
+          'It <b>never hands you a duplicate</b>. Every token is a piece you did not have, so <b>six tokens is the whole set</b>, every time.',
+          'Once the set is complete a token rolls a <b>mythic weapon</b>, a large purse of gold, or a stack of forge stones instead.',
+          'A season pays 2 tokens on the free row, 5 with Basic and 10 with Premium — plus one from every cache.',
+        ])}
 
         <h4>SEASONS</h4>
         <p>A season runs <b>30 days</b> and the panel shows the countdown. When it
         ends the track resets to tier 1, <b>the rewards change to the next
         season's set</b>, and any pass you activated expires with it. Claim what
-        you have earned before the clock runs out — nothing carries over. There
-        are four seasons in rotation: <i>The Lantern Road</i>, <i>Tide and
-        Ember</i>, <i>The Long Frost</i> and <i>Hollowtide</i>.</p>
+        you have earned before the clock runs out — progress does not carry over,
+        though anything already in your bag is yours to keep. Four seasons
+        rotate: <i>The Lantern Road</i>, <i>Tide and Ember</i>, <i>The Long
+        Frost</i> and <i>Hollowtide</i>.</p>
 
         <h4>THE THREE ROWS</h4>
         ${kv([
-          ['FREE', 'Always claimable, no purchase, ever. Coins, tonics, forge stones, and a cosmetic or pet on every tenth tier.'],
-          ['BASIC', "Adds a second reward on all 30 tiers — cosmetics, trails, a pet, and an EPIC gacha weapon at tier 30. Perk: +10% XP."],
-          ['PREMIUM', 'Adds a third reward on all 30 tiers — mounts, pets, cosmetics, a legendary weapon at 21 and a MYTHIC weapon at 30. Perk: +25% XP, +15% luck, +10% coins.'],
+          ['FREE', 'Always claimable, no purchase, ever. Cosmetics, a pet, consumables, coins — and 2 Keeper\'s Tokens.'],
+          ['BASIC', 'Adds a second reward on all 50 tiers: more cosmetics, a pet, brews, +3 tokens, and an EPIC gacha weapon at tier 50. Perk: +10% XP.'],
+          ['PREMIUM', 'Adds a third reward on all 50 tiers: mounts, mythic pets, cosmetics, +5 tokens, a legendary weapon at 21 and a MYTHIC weapon at 50. Perk: +25% XP, +15% luck, +10% coins.'],
         ])}
 
         <h4>HOW TO UNLOCK BASIC AND PREMIUM</h4>
@@ -509,9 +532,9 @@ export const CATEGORIES = [
         press <b>USE SEAL</b> / <b>USE SIGIL</b> on the card.</p>
         ${call('do', 'WORTH KNOWING', [
           'Buying the Sigil while you already hold Basic costs only the <b>difference</b>.',
-          'Every tier you have already passed is claimable <b>retroactively</b> — activating a pass at tier 20 immediately hands over all twenty.',
-          '<b>CLAIM ALL</b> takes everything waiting in one press.',
-          'The perk applies for the rest of the season, so the earlier you activate one the more it is worth.',
+          'Every tier you have already passed is claimable <b>retroactively</b> — activating a pass at tier 30 immediately hands over all thirty.',
+          '<b>CLAIM ALL</b> takes every tier reward and every ready cache in one press.',
+          'The perk runs for the rest of the season, so the earlier you activate one the more it is worth.',
         ])}
         ${call('dont', 'AND WHAT IT IS NOT', [
           'It is not real money. Gold you earned in Anavela is the only currency involved.',

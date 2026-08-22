@@ -4713,7 +4713,9 @@ const CAM_PITCH_DEFAULT = 0.98;
     // been shut for weeks lands on the right one at load. Cheap enough to ask
     // on the same beat as the dailies rollover.
     if (gamepass.rollSeason()) { audio.sfx('levelup_big'); panels.refresh?.(); }
-    hud.setMenuBadge?.(dailies.pending() + gamepass.pending() + skilltree.pending());
+    // the number goes on the tile that owns it, not all of it on DAILY
+    const dPend = dailies.pending(), gPend = gamepass.pending();
+    hud.setMenuBadge?.(dPend + gPend + skilltree.pending(), { daily: dPend, pass: gPend });
     hud.setLifeBadge?.(skilltree.pending());
     hud.setIndexBadge?.(index.pending());
     // cosmetic movement trail (wardrobe slot 3)
