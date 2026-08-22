@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Semesta Chronicle</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ================= COVER ================= -->
+<div class="cover">
+  <div class="grid"></div><div class="glow"></div><div class="glow2"></div>
+  <div class="inner">
+    <div class="eyebrow">On-chain architecture &amp; economic design</div>
+    <h1>The Semesta<br><em>Chronicle</em></h1>
+    <div class="sub">
+      Bringing a finished browser action-RPG on-chain on Rialo &mdash;
+      what to put on the ledger, what to leave off it, how the assets should
+      be issued, and what the economy must be able to survive.
+    </div>
+    <div class="hairline"></div>
+    <div class="meta">
+      Prepared for &nbsp;&middot;&nbsp; Semesta / Anavela Universe<br>
+      Target network &nbsp;&middot;&nbsp; Rialo &mdash; testnet live at playground.rialo.io<br>
+      Version 1.0 &nbsp;&middot;&nbsp; August 2026
+    </div>
+    <div class="foot">
+      <div class="badge">Build for Rialo</div>
+      <div class="status">
+        Status of the game today: feature-complete and playable. 203 items, 57 weapons,
+        60 cosmetics, 8 classes, 20 monster species, 12 bosses, a 30-floor dungeon and a
+        50-tier seasonal pass &mdash; all of it live, and <strong style="color:#c9d6d8">none of it on-chain yet</strong>.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= CONTENTS + HOW TO READ ================= -->
+<div class="page">
+  <div class="secnum">Contents</div>
+  <h2>How to read this document</h2>
+  <div class="deck">Each section leads with its conclusion. If you read only the shaded
+  box at the top of a section, you have the argument.</div>
+
+  <div class="toc">
+    <div class="row"><div class="n">01</div><div class="t">The case</div><div class="d">Why this game and this chain are an unusually close fit</div></div>
+    <div class="row"><div class="n">02</div><div class="t">The boundary</div><div class="d">What goes on-chain, what must never go on-chain, and why</div></div>
+    <div class="row"><div class="n">03</div><div class="t">On-chain structure</div><div class="d">Programs, state layout, and the Rialo primitives each one uses</div></div>
+    <div class="row"><div class="n">04</div><div class="t">The asset design</div><div class="d">Three classes of NFT, and the test an asset must pass to become one</div></div>
+    <div class="row"><div class="n">05</div><div class="t">The economy</div><div class="d">Two currencies, one firewall, and the sinks that already exist</div></div>
+    <div class="row"><div class="n">06</div><div class="t">Sequencing</div><div class="d">Four releases, each shippable and each reversible</div></div>
+    <div class="row"><div class="n">07</div><div class="t">Risk</div><div class="d">What kills this, ranked, with the control for each</div></div>
+    <div class="row"><div class="n">A</div><div class="t">Appendix</div><div class="d">Open questions for Rialo engineering; primitive-to-feature map</div></div>
+  </div>
+
+  <h3>A note on what this document does not do</h3>
+  <p>It does not argue that Semesta should be a financial product. The game is finished
+  and it is fun without a token; that is the strongest possible position from which to
+  add one, and the fastest way to lose it is to bolt on mechanics that make the game
+  worse in order to make the asset tradeable. Every recommendation here is tested
+  against one question: <em class="t">does the game survive this change if the token
+  goes to zero?</em> Where the answer is no, the recommendation is not made.</p>
+
+  <div class="callout">
+    <div class="lbl">The discipline this document tries to hold</div>
+    <p>Semesta's own in-game guide currently tells players, in plain language, that
+    nothing is on-chain yet and that anyone asking them to connect a wallet today is not
+    the team. That sentence was written deliberately. Nothing proposed here should be
+    announced before it is true, and the guide should keep saying exactly what is and is
+    not live at every stage.</p>
+  </div>
+</div>
+
+<!-- ================= 01 THE CASE ================= -->
+<div class="page">
+  <div class="secnum">Section 01</div>
+  <h2>Semesta already runs, off-chain, the exact machinery Rialo makes native</h2>
+  <div class="deck">This is not a game looking for a chain. It is a game that has already
+  built &mdash; in JavaScript, in a browser, against a wall clock &mdash; six workarounds
+  that Rialo replaces with primitives.</div>
+
+  <div class="answer">
+    <div class="lbl">The answer, first</div>
+    <p><strong>Go to Rialo, and go for the execution model rather than for the token.</strong>
+    Semesta's distinguishing systems are all <em class="t">asynchronous</em>: a house that
+    finishes building in four hours whether or not the tab is open, a season that rolls
+    over on a fixed calendar with no server told to do it, a world boss on a timer, crops
+    that grow while you are elsewhere. On every other chain those are off-chain keepers,
+    cron jobs and indexers &mdash; the &ldquo;fragile tower&rdquo; Rialo's own research
+    names as the core problem. On Rialo they are conditional transactions and native
+    workflows.</p>
+    <p>The token is the <em class="t">last</em> reason to go, not the first. The first is
+    that the game's architecture already has the right shape.</p>
+  </div>
+
+  <div class="stats">
+    <div class="s"><div class="v">50<span style="font-size:9pt">ms</span></div><div class="l">Rialo block time, parallel multi-concurrent-proposer consensus</div></div>
+    <div class="s"><div class="v">0</div><div class="l">Off-chain keepers a Semesta timer would need on Rialo</div></div>
+    <div class="s"><div class="v">6</div><div class="l">Existing game systems that map one-to-one onto a Rialo primitive</div></div>
+    <div class="s"><div class="v">203</div><div class="l">Items already defined, rarity-tiered and icon-complete</div></div>
+  </div>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 1</div>
+    <div class="xtitle">Every asynchronous system in Semesta is currently a workaround; each has a native Rialo counterpart</div>
+    <table>
+      <tr>
+        <th style="width:23%">Game system, as built today</th>
+        <th style="width:30%">The workaround it uses now</th>
+        <th style="width:24%">Rialo primitive</th>
+        <th style="width:23%">What changes</th>
+      </tr>
+      <tr>
+        <td class="k">Homestead construction<br><span style="font-weight:400;color:#6b757d">cabin 20 min, cottage 4 h, villa 12 h</span></td>
+        <td>An absolute timestamp in <code>localStorage</code>. The client compares it to
+        <code>Date.now()</code> on load. Trivially editable by the player.</td>
+        <td>Conditional transaction on a block-timestamp predicate</td>
+        <td>The build completes because the chain says so, not because a browser tab agreed</td>
+      </tr>
+      <tr>
+        <td class="k">Season rollover<br><span style="font-weight:400;color:#6b757d">30-day pass, 4 seasons in rotation</span></td>
+        <td>Derived client-side from a fixed epoch precisely so that <em class="t">no server
+        is needed</em>. Every client computes the same boundary independently.</td>
+        <td>Time predicate evaluated in-block by every validator</td>
+        <td>The same design, but now the agreement is enforced rather than assumed</td>
+      </tr>
+      <tr>
+        <td class="k">World boss scheduler<br><span style="font-weight:400;color:#6b757d">every 180 s, shared in multiplayer</span></td>
+        <td>A server-side interval on a VPS behind a tunnel. If it dies, the boss stops
+        spawning for everyone.</td>
+        <td>Recurring conditional transaction</td>
+        <td>A shared world event with no single machine responsible for it</td>
+      </tr>
+      <tr>
+        <td class="k">Crop growth &amp; daily reset<br><span style="font-weight:400;color:#6b757d">3 growth stages; midnight rollover</span></td>
+        <td>Wall-clock arithmetic on the client, re-checked once a second.</td>
+        <td>Time predicates; long-running workflow that sleeps and resumes</td>
+        <td>Growth continues across blocks without anything watching it</td>
+      </tr>
+      <tr>
+        <td class="k">Account &amp; three character slots<br><span style="font-weight:400;color:#6b757d">Google sign-in, cloud-merged saves</span></td>
+        <td>Supabase row, custom merge logic. Getting the merge wrong once already risked
+        deleting characters, so it is now a single tested pure function.</td>
+        <td>Rialo IPC &mdash; identity as a first-class capability; the Playground already
+        mints a custodial testnet wallet from a Google sign-in</td>
+        <td>The exact sign-in the game already uses becomes the wallet. No seed phrase is
+        ever shown to a player who does not want one</td>
+      </tr>
+      <tr>
+        <td class="k">Deterministic world<br><span style="font-weight:400;color:#6b757d">&ldquo;the map is never sent&rdquo;</span></td>
+        <td>Every client generates a byte-identical 200-cell world from fixed seeds; the
+        multiplayer server sends only entities.</td>
+        <td>&mdash; already correct &mdash;</td>
+        <td>Nothing. This is the pattern on-chain games converge on, and it is already in
+        place: state stays small because the world is a function of a seed</td>
+      </tr>
+    </table>
+    <div class="xnote">Sources: Semesta codebase, August 2026 &mdash; <code>systems/housing.js</code>,
+    <code>systems/gamepass.js</code>, <code>server/</code>, <code>net/auth.js</code>,
+    <code>world/terrain.js</code>. Rialo primitives per rialo.io Dev Portal and
+    &ldquo;Reactive Transactions&rdquo; (April 2026).</div>
+  </div>
+
+  <h3>Why the fit matters more than it sounds</h3>
+  <p>Most games arriving on-chain are asked to become something they are not: to add a
+  marketplace, a staking screen and a daily-login token in order to justify the ledger.
+  Semesta needs none of that, because the parts of it that are hard to run &mdash; the
+  timers, the shared clock, the season boundary, the account &mdash; are the parts Rialo
+  is built to run. The chain is being asked to do infrastructure work, which is the only
+  job it is unambiguously good at.</p>
+  <p>Put another way: the honest reason to deploy is that the game currently asks players
+  to trust a VPS, a browser's clock and a Postgres row. Every one of those is a promise
+  the team is making personally. On Rialo, three of them stop being promises.</p>
+</div>
+
+<!-- ================= 02 THE BOUNDARY ================= -->
+<div class="page">
+  <div class="secnum">Section 02</div>
+  <h2>The boundary is the design; almost every failed on-chain game drew it wrong</h2>
+  <div class="deck">Nothing that runs at sixty frames per second goes on a ledger. What
+  goes on the ledger is what must survive the studio.</div>
+
+  <div class="answer">
+    <div class="lbl">The answer, first</div>
+    <p><strong>Put ownership, scarcity and the shared clock on-chain. Leave simulation,
+    progression and all per-frame state off it.</strong> The test is not &ldquo;can this
+    be on-chain&rdquo; &mdash; almost anything can. The test is <em class="t">&ldquo;does
+    this need to outlive us, or be provable to a stranger?&rdquo;</em> A player's mythic
+    weapon does. Their current stamina does not.</p>
+  </div>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 2</div>
+    <div class="xtitle">Draw the line at &ldquo;must outlive the studio&rdquo;, not at &ldquo;could technically be written to state&rdquo;</div>
+    <div class="split">
+      <div class="on">
+        <h5>On-chain &mdash; must outlive us</h5>
+        <ul class="tight">
+          <li><strong>Asset ownership.</strong> Which account holds which limited cosmetic, mythic weapon or pass.</li>
+          <li><strong>Issuance &amp; supply.</strong> How many of each limited piece exist, and the rule that mints them.</li>
+          <li><strong>The season clock.</strong> Which season it is, when it ends, and the reward set bound to it.</li>
+          <li><strong>Long timers.</strong> Homestead construction, prestige caches, crop maturity.</li>
+          <li><strong>Achievement proof.</strong> First clears of the Hollow's six bosses; Index category completion.</li>
+          <li><strong>Identity.</strong> The account, its three character slots, and the link to a sign-in.</li>
+          <li><strong>Token ledger.</strong> Balances, sinks, and any transfer.</li>
+        </ul>
+      </div>
+      <div class="off">
+        <h5>Off-chain &mdash; would only make it worse</h5>
+        <ul class="tight">
+          <li><strong>Everything per-frame.</strong> Position, facing, animation, camera, the 8&nbsp;Hz position feed.</li>
+          <li><strong>Combat resolution.</strong> Monster HP, aggro, damage rolls, the 20 species' AI.</li>
+          <li><strong>Hero progression.</strong> Level, XP, attribute points, skill trees. Not scarce, not tradeable, not interesting to a stranger.</li>
+          <li><strong>The world itself.</strong> 200 cells of terrain generated from a seed. Storing it would be paying to keep a pure function.</li>
+          <li><strong>Consumables and gold.</strong> Tonics, brews, forge stones, coins. Unlimited faucet by design.</li>
+          <li><strong>Quest and story state.</strong> Personal, not scarce.</li>
+          <li><strong>Cosmetic <em class="t">appearance</em> data.</strong> The art is procedural and regenerates from an id.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="divider-note" style="margin-top:3mm">
+      The rule that decides the hard cases: if a player would be angry to lose it when the servers close, it goes left.
+      If they would not notice, it goes right.
+    </div>
+    <div class="xnote">Note the asymmetry in cost. Moving something left buys durability and
+    pays in latency, fees and complexity. Moving something right buys speed and pays in
+    trust. Semesta's combat is 60&nbsp;fps client-authoritative today; nothing in this
+    document changes that.</div>
+  </div>
+
+  <div class="callout warn">
+    <div class="lbl">The failure mode to avoid, stated plainly</div>
+    <p>The common mistake is to put <em class="t">progression</em> on-chain because it
+    looks like ownership. It is not. Levels, skill points and quest flags are personal
+    bookkeeping with no counterparty; putting them on a ledger adds a signature prompt to
+    every kill and buys nothing. The games that did this are the ones players describe as
+    &ldquo;a wallet with a game attached&rdquo;. Semesta's own guide already draws this
+    distinction correctly for pass XP versus hero XP; the same instinct applies here.</p>
+  </div>
+
+  <h3>What the boundary implies for the client</h3>
+  <p>Semesta's renderer, physics and combat stay exactly as they are. The on-chain layer
+  sits beside them and is consulted at four moments only: when an asset is <em class="t">granted</em>,
+  when an asset is <em class="t">spent or burned</em>, when a <em class="t">timer</em> is
+  started or read, and when the <em class="t">season</em> turns. Everything else in the
+  game never touches it. That is a small enough surface that it can be added without
+  rewriting the game, and &mdash; equally important &mdash; removed again if the chain is
+  the wrong bet.</p>
+</div>
+
+
+<!-- ================= 03 ON-CHAIN STRUCTURE ================= -->
+<div class="page">
+  <div class="secnum">Section 03</div>
+  <h2>Five programs, not one; the state stays small because the world is a seed</h2>
+  <div class="deck">The whole on-chain footprint of a 200-cell open world with 203 items
+  fits in five programs, because none of them stores a world.</div>
+
+  <div class="answer">
+    <div class="lbl">The answer, first</div>
+    <p><strong>Split by lifetime, not by feature.</strong> Registry and Ledger change
+    rarely and must never be lost. Season and Timers churn every block. Identity is
+    read constantly and written almost never. Bundling them produces one program that is
+    simultaneously hot, precious and unupgradeable &mdash; the shape that forces teams
+    into risky migrations later.</p>
+  </div>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 3</div>
+    <div class="xtitle">Programs are separated by how often they change, so the precious state is never in the hot path</div>
+    <table>
+      <tr>
+        <th style="width:17%">Program</th>
+        <th style="width:28%">Owns</th>
+        <th style="width:22%">Rialo primitive used</th>
+        <th style="width:15%">Write frequency</th>
+        <th style="width:18%">If it fails</th>
+      </tr>
+      <tr>
+        <td class="k">Identity</td>
+        <td>Account, its three character slots, the link from a sign-in to a wallet, 2FA policy</td>
+        <td>Rialo IPC; Omni Account</td>
+        <td>Once per account, then almost never</td>
+        <td>Nobody can log in. Highest blast radius, lowest change rate &mdash; so it ships first and then stops moving</td>
+      </tr>
+      <tr>
+        <td class="k">Registry</td>
+        <td>The item catalogue: 203 ids, rarity, slot, and the supply rule for anything limited</td>
+        <td>Plain state; upgraded via Gauss-style protocol upgrade discipline</td>
+        <td>Once per content release</td>
+        <td>No new items can be defined. Existing holdings unaffected</td>
+      </tr>
+      <tr>
+        <td class="k">Ledger</td>
+        <td>Who owns which limited asset; transfers; burns; the soulbound flag</td>
+        <td>Plain state; Hybrid Concurrency Control for parallel writes</td>
+        <td>On grant, trade or burn only</td>
+        <td>Assets freeze in place. Nothing is lost; the game keeps running off-chain</td>
+      </tr>
+      <tr>
+        <td class="k">Season</td>
+        <td>Current season index, its reward track hash, the pass a player holds, prestige counters</td>
+        <td>Conditional transaction on a time predicate</td>
+        <td>Per player action; one global rollover per 30 days</td>
+        <td>The season stops turning. Players keep their claimed assets</td>
+      </tr>
+      <tr>
+        <td class="k">Timers</td>
+        <td>Homestead builds, crop maturity, prestige caches, the world-boss schedule</td>
+        <td>Conditional transactions; long-running workflows that sleep and resume</td>
+        <td>Continuous, but only on triggers</td>
+        <td>Timers stall. The single most recoverable failure &mdash; and the one that
+        today depends on a browser tab</td>
+      </tr>
+    </table>
+    <div class="xnote">Rialo VM is RISC-V with SVM compatibility today and EVM/MoveVM
+    signalled to follow, so the implementation language is a decision that can be deferred
+    past the architecture. That is a genuine advantage: the split above does not depend on
+    which one is chosen.</div>
+  </div>
+
+  <h3>The state-size argument, quantified</h3>
+  <p>The reason this is affordable is that Semesta already refuses to store its world.
+  Terrain, decor, camps, chests and landmark placement are all derived from fixed seeds,
+  which is why the multiplayer server can be &ldquo;one small box&rdquo; and why the map
+  is never sent over the wire. The same property carries on-chain: the ledger stores
+  <em class="t">which account owns item&nbsp;id&nbsp;X</em>, never what item X looks like,
+  where it is, or what the ground beneath it is made of. The art regenerates from the id
+  on the client, procedurally, in a 16-pixel canvas.</p>
+
+  <div class="callout">
+    <div class="lbl">A consequence worth stating out loud</div>
+    <p>Because the art is procedural and the id is the asset, a Semesta NFT does not need
+    image hosting, IPFS pinning, or a metadata gateway &mdash; the three things that
+    quietly break most NFT collections within a few years. The token points at an id in
+    the Registry; any client that can run the game can draw it. This is an accident of the
+    original &ldquo;never add asset files&rdquo; house rule, and it is worth a great deal.</p>
+  </div>
+
+  <h3>Reactive transactions, in the game's own vocabulary</h3>
+  <div class="exhibit" style="margin-top:2mm">
+    <div class="xnum">Exhibit 4</div>
+    <div class="xtitle">A homestead build is a predicate; nothing watches it and nothing needs to be online</div>
+    <div class="flow">
+      <div class="node">
+        <div class="n">Step 1 &middot; user</div>
+        <div class="t">Materials are taken</div>
+        <p>Player commits 28 hardwood, 12 ore and 200 gold. A predicate is registered:
+        <em class="t">at block timestamp T + 4 h, finish tier 2.</em></p>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="node">
+        <div class="n">Step 2 &middot; chain</div>
+        <div class="t">The chain waits</div>
+        <p>The predicate sits on-chain and is evaluated at the end of each block by every
+        validator. No keeper, no cron, no server. The player closes the tab.</p>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="node">
+        <div class="n">Step 3 &middot; chain</div>
+        <div class="t">It fires itself</div>
+        <p>The condition becomes true. The associated transaction is enqueued by consensus
+        and executed. The house exists whether or not anyone is looking.</p>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="node">
+        <div class="n">Step 4 &middot; client</div>
+        <div class="t">The world catches up</div>
+        <p>Next session, the client reads state directly from validators and raises the
+        villa. The scaffolding it replaces is already in the game.</p>
+      </div>
+    </div>
+    <div class="xnote">The same four steps describe the season rollover, a prestige cache,
+    a crop reaching stage three, and the 180-second world boss. One primitive, four
+    features &mdash; which is what Rialo's research calls supermodularity, and is the
+    practical reason to prefer it here.</div>
+  </div>
+</div>
+
+<!-- ================= 04 ASSET DESIGN ================= -->
+<div class="page">
+  <div class="secnum">Section 04</div>
+  <h2>Three classes of asset, and a four-question test before anything becomes one</h2>
+  <div class="deck">Semesta has 203 items. Roughly twenty-three of them should ever be
+  tokens. The discipline is in the refusals.</div>
+
+  <div class="answer">
+    <div class="lbl">The answer, first</div>
+    <p><strong>Tokenise proof and scarcity; refuse to tokenise inventory.</strong> Three
+    classes: <span class="tag t-sb">soulbound</span> for things that are proof of what a
+    player did, <span class="tag t-tr">tradeable</span> for things that are genuinely
+    scarce and genuinely someone else's to want, and
+    <span class="tag t-no">off-chain</span> for everything else &mdash; which is the large
+    majority, and should stay that way.</p>
+  </div>
+
+  <h4>The on-chain test</h4>
+  <p>An item becomes an NFT only if it passes all four. Any one failure and it stays an
+  ordinary game item.</p>
+  <table class="small" style="margin-bottom:4mm">
+    <tr><td class="k" style="width:6%">1</td><td class="k" style="width:30%">Is supply genuinely limited?</td>
+      <td>Not &ldquo;rare drop&rdquo;. Limited by a rule that can be stated in one sentence and
+      checked by a stranger. Semesta already tags three such sets: <code>Lanterns</code> (8),
+      <code>The Hollow</code> (9), <code>Keeper's Vault</code> (6).</td></tr>
+    <tr><td class="k">2</td><td class="k">Would anyone want it who did not earn it?</td>
+      <td>A cosmetic passes. A stack of forge stones does not &mdash; it is a commodity with an
+      unlimited faucet, and tokenising commodities is how game economies inflate.</td></tr>
+    <tr><td class="k">3</td><td class="k">Does trading it damage the game?</td>
+      <td>If an item is the reward for a fight, and it can be bought instead, the fight is
+      now optional. This is the question that sends most weapons to the off-chain column.</td></tr>
+    <tr><td class="k">4</td><td class="k">Does it still make sense if the market is dead?</td>
+      <td>The asset must be worth owning for what it does in the game, with zero bid. If the
+      only reason to want it is resale, it is not a game asset.</td></tr>
+  </table>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 5</div>
+    <div class="xtitle">Applying the test to Semesta's existing content sends most of it off-chain &mdash; which is the correct result</div>
+    <table>
+      <tr>
+        <th style="width:24%">Asset</th><th style="width:9%">Count</th>
+        <th style="width:15%">Class</th><th style="width:52%">Reasoning</th>
+      </tr>
+
+      <tr class="grp"><td colspan="4">Soulbound &mdash; proof of what a player did. Never transferable.</td></tr>
+      <tr><td class="k">Genesis Lanternkeeper</td><td class="num">1 / account</td><td><span class="tag t-sb">soulbound</span></td>
+        <td>The account itself, minted free on first sign-in during the testnet period. It is
+        an identity, not an asset &mdash; it carries the three character slots and the player's
+        history. Making it tradeable would make accounts a commodity and invite exactly the
+        farming the game does not need.</td></tr>
+      <tr><td class="k">Hollow first-clear seals</td><td class="num">6</td><td><span class="tag t-sb">soulbound</span></td>
+        <td>One per lord defeated, per difficulty. These are the only durable record that a
+        player cleared floor 30 on hard. Worthless to a buyer by construction, which is the
+        point: it is a claim about you.</td></tr>
+      <tr><td class="k">Index completion marks</td><td class="num">7</td><td><span class="tag t-sb">soulbound</span></td>
+        <td>One per collection category completed. The Index already tracks 200 entries and
+        already pays out on completion; this adds a permanent record and no new mechanic.</td></tr>
+
+      <tr class="grp"><td colspan="4">Tradeable &mdash; genuinely scarce, and losing the fight to own it is fair.</td></tr>
+      <tr><td class="k">The Keeper's Vault set</td><td class="num">6 per season</td><td><span class="tag t-tr">tradeable</span></td>
+        <td><strong>The strongest candidate in the game, and it already exists.</strong> The Vault
+        issues each piece exactly once per player, never repeats, and is reachable only through
+        a currency that cannot be bought. Supply per season is therefore a known function of
+        how many players finished the track &mdash; a mint rule you can state in a sentence.</td></tr>
+      <tr><td class="k">Season passes</td><td class="num">2 types</td><td><span class="tag t-tr">tradeable</span></td>
+        <td>Keeper's Seal and Keeper's Sigil are already <em class="t">items bought in a shop and
+        consumed</em>, not a button in a menu. That is precisely a bearer instrument: transferable
+        while sealed, burned on activation. The design work is done.</td></tr>
+      <tr><td class="k">Mythic weapons</td><td class="num">~9</td><td><span class="tag t-tr">tradeable</span></td>
+        <td>Only with the forge history attached, so a +9 blade carries the record of the
+        stones burned into it. Without that provenance they are just stats and fail test 3.</td></tr>
+
+      <tr class="grp"><td colspan="4">Off-chain &mdash; the large majority. Leaving these alone is a decision, not an omission.</td></tr>
+      <tr><td class="k">Ordinary cosmetics</td><td class="num">37</td><td><span class="tag t-no">off-chain</span></td>
+        <td>Unlimited supply from the gacha. Fails test 1.</td></tr>
+      <tr><td class="k">Weapons, tiers 0&ndash;3</td><td class="num">48</td><td><span class="tag t-no">off-chain</span></td>
+        <td>Craftable on demand from common materials. Fails test 1 and 3.</td></tr>
+      <tr><td class="k">Pets &amp; mounts</td><td class="num">25</td><td><span class="tag t-no">off-chain</span></td>
+        <td>Companions are quest and gacha rewards; trading them turns a collection into a
+        shopping list. Fails test 3. Revisit only if a genuinely limited companion is ever made.</td></tr>
+      <tr><td class="k">Consumables, gold, materials</td><td class="num">~80</td><td><span class="tag t-no">off-chain</span></td>
+        <td>Unlimited faucets by design. Tokenising them is the classic inflation error.</td></tr>
+      <tr><td class="k">The homestead</td><td class="num">1 / player</td><td><span class="tag t-no">off-chain</span></td>
+        <td><strong>Deliberately not land.</strong> Semesta has exactly one buildable site per
+        player, on purpose &mdash; the four-parcel version was cut because identical plots are a
+        choice with no content in them. Re-introducing scarce land to sell it would undo a
+        design decision that was made for the game's benefit.</td></tr>
+    </table>
+    <div class="xnote">Counts are from the live item table, August 2026. The tradeable column
+    totals roughly 23 assets against 203 items &mdash; about 11%. If that ratio rises much,
+    it is a sign the test is being applied loosely.</div>
+  </div>
+
+  <div class="callout">
+    <div class="lbl">Why the Vault is the right first collection</div>
+    <p>Most NFT drops have to invent a scarcity story. The Vault's is already true and
+    already shipped: six pieces, no duplicates ever, a currency that has no price because
+    it cannot be bought, and a set that completes in exactly six tokens. A player who owns
+    all six this season owns proof of a finished season. Season two rotates the set, which
+    makes season one's set permanently closed &mdash; without anyone having to promise it
+    will be.</p>
+  </div>
+</div>
+
+<!-- ================= 05 ECONOMY ================= -->
+<div class="page">
+  <div class="secnum">Section 05</div>
+  <h2>Two currencies with a firewall between them, and sinks that already outnumber faucets</h2>
+  <div class="deck">The single most common cause of death in GameFi is an unlimited faucet
+  wired to a market. Semesta's protection is to never connect them.</div>
+
+  <div class="answer">
+    <div class="lbl">The answer, first</div>
+    <p><strong>Gold stays soft, infinite and off-chain. $SEMESTA stays hard, capped and
+    on-chain. There is no exchange rate between them, in either direction, ever.</strong>
+    Gold buys consumables, farm plots, boat keys and season passes. $SEMESTA does exactly
+    three things: it mints limited assets, it settles trades between players, and it pays
+    for seasonal entry. A player who never touches it can still finish the pass, clear the
+    Hollow and complete the Index.</p>
+  </div>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 6</div>
+    <div class="xtitle">The firewall is the whole design: grinding produces gold, and gold can never become the token</div>
+    <div class="split">
+      <div class="off">
+        <h5>Gold &mdash; soft currency, unchanged</h5>
+        <p style="font-size:8pt;margin-bottom:2mm"><strong>Faucets:</strong> monster drops, fishing,
+        farming, chests, quests, the pass track, daily check-in, level rewards. Effectively unlimited.</p>
+        <p style="font-size:8pt;margin-bottom:2mm"><strong>Sinks that already exist:</strong> gacha
+        (100c, or 900c for ten), forging +1&hellip;+9 with failure, seeds, tonics, brews at 220&ndash;260c,
+        farm plots, the 480c Donut Boat key, house tiers at 200c and 600c, and both season passes at
+        1,000c and 3,000c.</p>
+        <p style="font-size:8pt;margin:0"><strong>Status:</strong> a working closed loop. It needs no
+        chain and gets none.</p>
+      </div>
+      <div class="on">
+        <h5>$SEMESTA &mdash; hard currency, capped</h5>
+        <p style="font-size:8pt;margin-bottom:2mm"><strong>Faucets:</strong> seasonal emission only,
+        distributed against the pass track and Hollow clears. Emission per season is fixed in
+        advance and declines on a published schedule.</p>
+        <p style="font-size:8pt;margin-bottom:2mm"><strong>Sinks:</strong> minting a Vault piece,
+        trading fees, seasonal entry for the on-chain track, and burning on pass activation.</p>
+        <p style="font-size:8pt;margin:0"><strong>Status:</strong> does not exist yet. Nothing below
+        should be announced as if it does.</p>
+      </div>
+    </div>
+    <div class="divider-note" style="margin-top:3mm">
+      No swap. No conversion. No &ldquo;gold to token&rdquo; rate at any point &mdash; that single link is what turns a game economy into a farm.
+    </div>
+    <div class="xnote">The asymmetry is deliberate and worth defending under pressure: gold is
+    allowed to inflate because it buys only things the game prints. The token is not allowed to
+    inflate because it buys things the game cannot reprint.</div>
+  </div>
+
+  <h3>The Keeper's Token is already the right bridge, and it was not designed to be</h3>
+  <p>The pass currently pays a currency &mdash; the Keeper's Token &mdash; that
+  <em class="t">cannot be purchased at any price</em>. Its only sources are the reward
+  track (2 on the free row, 5 with Basic, 10 with Premium) and the endless prestige caches
+  past tier 50. It buys only Vault pieces, and the Vault never repeats.</p>
+  <p>That is, structurally, a mint pass. It has a supply that is a function of play, a
+  sink that consumes it, and a distribution curve that already separates free players from
+  paying ones without locking anyone out. The on-chain version should change nothing about
+  how it is earned; it should only make the resulting asset real.</p>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 7</div>
+    <div class="xtitle">Season economics, computed from the live track rather than assumed</div>
+    <table class="small">
+      <tr><th style="width:34%">Quantity</th><th style="width:16%">Free</th><th style="width:16%">Basic</th><th style="width:16%">Premium</th><th style="width:18%">Source</th></tr>
+      <tr><td class="k">Pass XP to finish the track</td><td class="num">32,950</td><td class="num">32,950</td><td class="num">32,950</td><td>50 tiers, 120 &rarr; 1,198 per tier</td></tr>
+      <tr><td class="k">Approx. hours of play to finish</td><td class="num">~9.2</td><td class="num">~8.4</td><td class="num">~7.4</td><td>at ~60 XP/min, before the pass XP perk</td></tr>
+      <tr><td class="k">Keeper's Tokens earned</td><td class="num">2</td><td class="num">5</td><td class="num">10</td><td>track milestones</td></tr>
+      <tr><td class="k">&hellip; plus prestige caches</td><td class="num">1 / 1,500 XP</td><td class="num">1 / 1,500 XP</td><td class="num">1 / 1,500 XP</td><td>endless past tier 50</td></tr>
+      <tr><td class="k">Vault pieces obtainable</td><td class="num">2 of 6</td><td class="num">5 of 6</td><td class="num">6 of 6</td><td>no duplicates, ever</td></tr>
+      <tr><td class="k">Seasons to complete the set, free</td><td class="num">3</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td>and the set rotates each season</td></tr>
+      <tr><td class="k">Gold cost of the pass</td><td class="num">0</td><td class="num">1,000</td><td class="num">3,000</td><td>bought as an item at Pip's Shop</td></tr>
+    </table>
+    <div class="xnote">The important line is the last but one. A free player can complete a
+    Vault set, but it takes three seasons and by then the set has rotated &mdash; so paying buys
+    <em class="t">time and completeness</em>, never power. No number in this table changes a
+    combat outcome.</div>
+  </div>
+
+  <div class="callout warn">
+    <div class="lbl">Where the published roadmap needs revisiting</div>
+    <p>The in-game roadmap currently lists <strong>&ldquo;Hold to Play &mdash; minimum 1,000
+    SEMESTA&rdquo;</strong> as phase two. This should be cut. It contradicts the game's own
+    strongest design principle &mdash; the free reward row exists specifically so that nobody
+    is locked out &mdash; and it converts the top of the funnel into a purchase decision made
+    before the player has seen anything. A holding gate also produces the worst possible
+    first impression in a market already suspicious of exactly this pattern.</p>
+    <p>If holders need a benefit, give them one that is additive rather than exclusionary: a
+    cosmetic frame, priority in a queue, a seasonal title. The difference between
+    &ldquo;holders get something extra&rdquo; and &ldquo;non-holders get nothing&rdquo; is
+    the difference between a game with a token and a token with a game.</p>
+  </div>
+</div>
+
+<!-- ================= 06 SEQUENCING ================= -->
+<div class="page">
+  <div class="secnum">Section 06</div>
+  <h2>Four releases, each of which is worth shipping even if the next one never happens</h2>
+  <div class="deck">The testnet is live now. The correct first release contains no token
+  and no NFT.</div>
+
+  <div class="answer">
+    <div class="lbl">The answer, first</div>
+    <p><strong>Ship identity first, assets second, market third, token last.</strong> Each
+    release is independently valuable, independently reversible, and does not require
+    believing the next one will work. A team that ships the token first has spent its
+    credibility before it has proved it can run a chain integration at all.</p>
+  </div>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 8</div>
+    <div class="xtitle">Sequencing by reversibility: the earliest releases are the ones that can be undone quietly</div>
+    <table>
+      <tr>
+        <th style="width:6%">#</th><th style="width:19%">Release</th><th style="width:26%">Ships</th>
+        <th style="width:24%">Proves</th><th style="width:25%">If it goes wrong</th>
+      </tr>
+      <tr>
+        <td class="k">R1</td><td class="k">Keeper's Passport<br><span style="font-weight:400;color:#6b757d">testnet, now</span></td>
+        <td>Google sign-in mints a custodial Rialo wallet. The account and its three
+        character slots move from Supabase to the Identity program. A free soulbound
+        Genesis Lanternkeeper on first login. <em class="t">No token, no NFT anyone can sell,
+        no wallet UI.</em></td>
+        <td>That the game can read and write chain state at all, and that a non-crypto
+        player can be onboarded without ever seeing a seed phrase</td>
+        <td>Fall back to Supabase. The player never knew. This is the entire reason it
+        goes first</td>
+      </tr>
+      <tr>
+        <td class="k">R2</td><td class="k">The Vault, on-chain<br><span style="font-weight:400;color:#6b757d">testnet</span></td>
+        <td>The six Vault pieces are minted on-chain when the Keeper's Token is spent.
+        Season index, prestige counters and the pass move to the Season program. Homestead
+        timers become conditional transactions. Still non-transferable</td>
+        <td>That issuance is correct under load, and that the season boundary agrees across
+        every client without a server</td>
+        <td>Assets stay minted; trading was never enabled, so nobody is holding a position.
+        Revert the client to local timers</td>
+      </tr>
+      <tr>
+        <td class="k">R3</td><td class="k">Transfer<br><span style="font-weight:400;color:#6b757d">testnet &rarr; mainnet</span></td>
+        <td>Vault pieces, passes and mythic weapons become transferable. Player-to-player
+        trade. Soulbound classes stay soulbound. A published supply page for every limited
+        set</td>
+        <td>That a real market forms and that it does not distort how the game is played</td>
+        <td>Trading can be paused. The assets remain owned; only the transfer function is
+        gated</td>
+      </tr>
+      <tr>
+        <td class="k">R4</td><td class="k">$SEMESTA<br><span style="font-weight:400;color:#6b757d">mainnet</span></td>
+        <td>The token, its emission schedule, and the sinks in Exhibit 6. Genesis
+        Lanternkeeper holders from R1 are recognised. Gacha optionally accepts $SEMESTA
+        <em class="t">alongside</em> gold, never instead of it</td>
+        <td>Nothing new technically &mdash; by this point every mechanism has run for months.
+        That is the point of putting it last</td>
+        <td>This is the release that cannot be quietly undone, which is exactly why it
+        comes after three that can</td>
+      </tr>
+    </table>
+    <div class="xnote">R1 and R2 are the releases that need Rialo specifically. R3 and R4 are
+    ordinary once R1 and R2 work. A useful test of the plan: if Rialo's mainnet slipped a
+    year, R1 and R2 would still be the right work to do on testnet.</div>
+  </div>
+
+  <h3>What can start this week</h3>
+  <p>The Playground already demonstrates the exact onboarding Semesta needs &mdash; sign in
+  with Google, receive a custodial testnet wallet, hold a points balance that persists
+  across apps in a shared catalogue. Semesta's account layer is a near-identical shape and
+  already routes every entry through a sign-in. R1 is therefore not a research project; it
+  is a substitution.</p>
+  <p>The second thing that can start immediately is a supply page. Before any asset is
+  tradeable, publish how many of each limited piece exist and the rule that mints them.
+  Doing this before there is a market is what separates a collection from a promise.</p>
+</div>
+
+<!-- ================= 07 RISK ================= -->
+<div class="page">
+  <div class="secnum">Section 07</div>
+  <h2>What actually kills this, ranked, and what to do about each</h2>
+  <div class="deck">Two of the top three risks are not technical, and none of the top three
+  is &ldquo;the chain goes down&rdquo;.</div>
+
+  <div class="answer">
+    <div class="lbl">The answer, first</div>
+    <p><strong>The largest risk is that the token makes the game worse.</strong> Semesta is
+    finished and enjoyable now; the failure mode is not a hack, it is a series of small
+    concessions that turn a game people play into a yield product people leave. Every
+    control below is a way of noticing that early.</p>
+  </div>
+
+  <div class="exhibit">
+    <div class="xnum">Exhibit 9</div>
+    <div class="xtitle">The risk register is dominated by design and regulatory exposure, not by infrastructure</div>
+    <table>
+      <tr>
+        <th style="width:5%">#</th><th style="width:22%">Risk</th><th style="width:9%">Severity</th>
+        <th style="width:32%">Why it happens</th><th style="width:32%">Control</th>
+      </tr>
+      <tr><td class="k">1</td><td class="k">The economy eats the game</td><td><span class="tag t-risk">critical</span></td>
+        <td>Systems are tuned for token velocity rather than for play. Grind loops get
+        longer because longer grinds emit more. The gacha becomes the main screen.</td>
+        <td>The firewall in Exhibit 6, and a standing rule: no combat, drop or progression
+        number may be changed for a token reason. Publish the tuning diffs each season</td></tr>
+      <tr><td class="k">2</td><td class="k">Gacha + tradeable assets reads as gambling</td><td><span class="tag t-risk">critical</span></td>
+        <td>A paid random draw whose outputs have a cash market is regulated as gambling in
+        a growing number of jurisdictions &mdash; and Indonesia's position on both gambling and
+        crypto is strict and moving.</td>
+        <td>Keep the gacha on <em class="t">gold only</em>. The Vault is deterministic by
+        construction &mdash; no duplicates, six tokens for six pieces &mdash; so the on-chain
+        path contains no random paid draw at all. Take local counsel before R3, not after</td></tr>
+      <tr><td class="k">3</td><td class="k">Tokens or NFTs treated as securities</td><td><span class="tag t-risk">high</span></td>
+        <td>Marketing that implies appreciation, a team allocation with a vesting narrative,
+        or utility described as yield.</td>
+        <td>Describe assets by what they do in the game and nothing else. No projections, no
+        APY language, no &ldquo;floor&rdquo; talk from the team's own accounts</td></tr>
+      <tr><td class="k">4</td><td class="k">Client-authoritative progression is farmed</td><td><span class="tag t-risk">high</span></td>
+        <td>Combat, XP and drops are resolved on the client today. If pass XP mints tokens,
+        forging the client mints tokens.</td>
+        <td>Emission must key off <em class="t">server- or chain-observed</em> events only.
+        This is real work and it is the main engineering cost of R4 &mdash; budget it honestly
+        rather than discovering it late</td></tr>
+      <tr><td class="k">5</td><td class="k">Sybil farming of free rewards</td><td><span class="tag t-risk">medium</span></td>
+        <td>Free tokens per account plus cheap accounts equals a farm.</td>
+        <td>Genesis Lanternkeeper is soulbound and minted once per verified sign-in; emission
+        weights by account age and by Hollow progress, which cannot be botted cheaply</td></tr>
+      <tr><td class="k">6</td><td class="k">Custody and key loss</td><td><span class="tag t-risk">medium</span></td>
+        <td>Players who signed in with Google do not think of themselves as holding keys.</td>
+        <td>Custodial by default, as the Playground already does. Self-custody is an opt-in
+        for players who ask. Rialo's 2FA and social-recovery primitives are the reason this
+        is tenable</td></tr>
+      <tr><td class="k">7</td><td class="k">Chain immaturity</td><td><span class="tag t-risk">medium</span></td>
+        <td>Rialo is young. Testnet is live; mainnet timing is not in the team's control.</td>
+        <td>R1&ndash;R2 are useful on testnet alone. Keep the off-chain path in the codebase
+        behind a flag until R3 &mdash; the game must remain fully playable with the chain
+        switched off</td></tr>
+      <tr><td class="k">8</td><td class="k">Asset permanence claims</td><td><span class="tag t-risk">low</span></td>
+        <td>Most collections break when a metadata host lapses.</td>
+        <td>Structurally avoided: the art is procedural and regenerates from the id. Worth
+        stating publicly, because it is a real differentiator</td></tr>
+    </table>
+    <div class="xnote">Risks 1 and 2 are the ones to re-read before every release. They are
+    also the two that no amount of engineering will fix after the fact.</div>
+  </div>
+
+  <div class="callout">
+    <div class="lbl">A test to apply before each release</div>
+    <p>Show the build to somebody who does not own crypto and does not intend to. If their
+    experience of the game got worse in any way &mdash; an extra click, a wallet prompt, a
+    screen they must dismiss, a reward they can no longer reach &mdash; the release is not
+    ready, regardless of what it does for holders. Semesta's audience is players first;
+    the guide, the prologue and the free reward row all already assume that.</p>
+  </div>
+</div>
+
+<!-- ================= APPENDIX ================= -->
+<div class="page">
+  <div class="secnum">Appendix A</div>
+  <h2>Open questions for Rialo engineering</h2>
+  <div class="deck">These are the answers that would change the architecture above. They
+  are worth asking before R1, not during it.</div>
+
+  <table class="small">
+    <tr><th style="width:5%">#</th><th style="width:44%">Question</th><th style="width:51%">Why it changes the design</th></tr>
+    <tr><td class="k">1</td><td>What is the cost and latency ceiling of a conditional transaction that sleeps for <strong>12 hours</strong>?</td>
+      <td>The villa build is 12 h. If long-lived predicates are priced per block evaluated rather than per trigger, the timer design changes shape entirely</td></tr>
+    <tr><td class="k">2</td><td>How many predicates can one account hold concurrently?</td>
+      <td>A busy player has a house timer, up to 8 crop timers and a prestige counter at once &mdash; roughly 10 per account, times the player base</td></tr>
+    <tr><td class="k">3</td><td>Is there a per-block cap on triggered transactions, and what happens on the season boundary when <em class="t">every</em> player's season predicate fires in the same block?</td>
+      <td>This is the one genuinely adversarial moment in the design: a synchronised global trigger. If it needs smoothing, the season rollover must be staggered per account</td></tr>
+    <tr><td class="k">4</td><td>What are the guarantees and the rate limit on <strong>Rialo Edge</strong> HTTPS calls from a contract?</td>
+      <td>Determines whether the multiplayer server can be retired or must remain</td></tr>
+    <tr><td class="k">5</td><td>Does <strong>Rialo IPC</strong> expose the Playground's Google-to-custodial-wallet flow as a reusable primitive, or is that Playground application code?</td>
+      <td>R1 is a substitution if the former and a build if the latter. This is the single highest-value answer on this page</td></tr>
+    <tr><td class="k">6</td><td>Is on-chain randomness available to contracts, and is it manipulable by a proposer?</td>
+      <td>The gacha stays off-chain in this plan, so this is not blocking &mdash; but it determines whether it ever could move</td></tr>
+    <tr><td class="k">7</td><td>What is the migration story for the Registry as items are added &mdash; does Gauss-style upgrade apply to application programs or only to the protocol?</td>
+      <td>Semesta ships new items regularly. A catalogue that cannot grow is a catalogue that forces a redeploy</td></tr>
+    <tr><td class="k">8</td><td>What does <strong>Rialo Cruise</strong> gasless transaction sponsorship cost the sponsoring application?</td>
+      <td>Players must never see a gas prompt for claiming a pass tier. If sponsorship is affordable, the UX problem disappears</td></tr>
+    <tr><td class="k">9</td><td>Is there a testnet reset schedule, and what survives one?</td>
+      <td>Genesis Lanternkeepers minted in R1 are a promise to early players. If testnet state is wiped, that promise must be honoured off-chain and re-minted</td></tr>
+  </table>
+
+  <h3 style="margin-top:7mm">Appendix B &mdash; primitive to feature map</h3>
+  <p style="margin-bottom:3mm">Read this as the short version of the whole document: the
+  left column is what Rialo publishes, the right is the Semesta feature that consumes it.</p>
+  <table class="small">
+    <tr><th style="width:26%">Rialo component</th><th style="width:36%">Published capability</th><th style="width:38%">Semesta feature that uses it</th></tr>
+    <tr><td class="k">Execution Engine</td><td>Event-driven execution with conditional transactions</td><td>House builds, crop growth, prestige caches, world-boss timer</td></tr>
+    <tr><td class="k">Workflow</td><td>Native automation; workflows that sleep and resume across blocks</td><td>The 30-day season lifecycle, from rollover to reward reset</td></tr>
+    <tr><td class="k">IPC</td><td>Identity, privacy and compliance as first-class capabilities</td><td>Google sign-in &rarr; account &rarr; three character slots; 2FA; recovery</td></tr>
+    <tr><td class="k">Omni Account</td><td>One account transacting across networks</td><td>One Keeper's Passport, three heroes, any client</td></tr>
+    <tr><td class="k">Read Path</td><td>State read directly from validators, ~100 ms, no indexer</td><td>Reading owned assets at world-build time without running infrastructure</td></tr>
+    <tr><td class="k">Edge</td><td>Bidirectional Web2 interactivity without middleware</td><td>Possible retirement of the multiplayer VPS; leaderboards</td></tr>
+    <tr><td class="k">Cruise</td><td>Native gasless transactions</td><td>Claiming a pass tier without a fee prompt</td></tr>
+    <tr><td class="k">Consensus</td><td>Parallel multi-concurrent proposers, 50 ms blocks</td><td>Trades and mints that settle inside a session rather than between them</td></tr>
+    <tr><td class="k">VM</td><td>RISC-V; SVM-compatible, EVM/MoveVM signalled</td><td>Language choice can be deferred past the architecture</td></tr>
+  </table>
+
+  <div class="endnote">
+    <strong>Sources and status.</strong> Rialo capabilities are as published on rialo.io
+    (Dev Portal; &ldquo;Introducing Rialo&rdquo;, September 2025; &ldquo;Reactive
+    Transactions: A Model for Native Automation on Rialo&rdquo;, April 2026) and as
+    observed on the live Playground at playground.rialo.io, August 2026, where the testnet
+    reported <em class="t">online</em> and two applications were listed. Performance figures
+    quoted are Rialo's own published claims and have not been independently benchmarked
+    here; the 50 ms block time is taken from the Dev Portal's Consensus description.
+    Semesta figures are measured directly from the codebase at the same date: 203 items,
+    57 weapons, 60 cosmetics across 6 rarities, 3 limited sets (8 / 9 / 6 pieces), 17 pets,
+    8 mounts, 20 monster species, 12 bosses, 8 classes, a 30-floor dungeon at 3 difficulties,
+    and a 50-tier seasonal pass totalling 32,950 pass XP.
+    <br><br>
+    <strong>Nothing described in this document is live on-chain.</strong> The game is
+    playable and complete off-chain today, and its in-game guide correctly tells players so.
+  </div>
+</div>
+
+</body>
+</html>

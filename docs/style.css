@@ -1,0 +1,268 @@
+/* ===================================================================
+   SEMESTA CHRONICLE — print stylesheet
+   House style borrowed from management-consulting report craft:
+   a narrow measure, one accent colour, action-titled exhibits, and
+   nothing decorative that does not carry information.
+   =================================================================== */
+
+@page { size: A4; margin: 14mm 14mm 13mm 14mm; }
+@page :first { margin: 0; }
+
+:root {
+  --ink:      #101418;
+  --body:     #2b3238;
+  --muted:    #6b757d;
+  --rule:     #d8dde1;
+  --paper:    #ffffff;
+  --accent:   #0b6b6b;   /* Rialo-adjacent deep teal */
+  --accent-2: #c8961e;   /* Semesta lantern gold */
+  --wash:     #f4f7f7;
+  --wash-2:   #fbf7ee;
+  --bad:      #a8332c;
+  --good:     #2f6b3f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 9pt;
+  line-height: 1.37;
+  color: var(--body);
+  background: var(--paper);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+h1, h2, h3, h4, h5, .ui {
+  font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+}
+
+/* ---------- cover ------------------------------------------------ */
+.cover {
+  height: 297mm; width: 210mm; position: relative; overflow: hidden;
+  background: linear-gradient(160deg, #0a1418 0%, #0d2226 46%, #123033 100%);
+  color: #fff; page-break-after: always;
+}
+.cover .grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+  background-size: 14mm 14mm;
+}
+.cover .glow {
+  position: absolute; width: 150mm; height: 150mm; right: -40mm; top: -30mm;
+  background: radial-gradient(circle, rgba(200,150,30,0.30) 0%, rgba(200,150,30,0) 62%);
+}
+.cover .glow2 {
+  position: absolute; width: 130mm; height: 130mm; left: -45mm; bottom: -35mm;
+  background: radial-gradient(circle, rgba(11,150,150,0.26) 0%, rgba(11,150,150,0) 64%);
+}
+.cover .inner { position: absolute; inset: 0; padding: 30mm 22mm 22mm 22mm; display: flex; flex-direction: column; }
+.cover .eyebrow {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; letter-spacing: 0.34em;
+  text-transform: uppercase; color: var(--accent-2); margin-bottom: 4mm;
+}
+.cover h1 {
+  font-family: "Georgia", serif; font-weight: normal;
+  font-size: 40pt; line-height: 1.03; margin: 0 0 6mm 0; color: #fff; letter-spacing: -0.5pt;
+}
+.cover h1 em { font-style: normal; color: var(--accent-2); }
+.cover .sub {
+  font-size: 12.5pt; line-height: 1.45; color: #c9d6d8; max-width: 128mm; margin: 0 0 10mm 0;
+}
+.cover .hairline { height: 1px; background: rgba(255,255,255,0.22); margin: 0 0 6mm 0; }
+.cover .meta {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.6pt; letter-spacing: 0.16em;
+  text-transform: uppercase; color: #8ea6a9; line-height: 2;
+}
+.cover .foot { margin-top: auto; }
+.cover .badge {
+  display: inline-block; border: 1px solid rgba(200,150,30,0.55); color: var(--accent-2);
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.4pt; letter-spacing: 0.26em;
+  padding: 2.6mm 5mm; text-transform: uppercase;
+}
+.cover .status {
+  margin-top: 7mm; font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 7.8pt; color: #9fb3b5; letter-spacing: 0.06em;
+}
+
+/* ---------- running structure ------------------------------------ */
+.page { page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+
+.secnum {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.6pt; letter-spacing: 0.3em;
+  text-transform: uppercase; color: var(--accent); margin: 0 0 2mm 0;
+}
+h2 {
+  font-size: 17.5pt; font-weight: 600; line-height: 1.14; color: var(--ink);
+  margin: 0 0 2mm 0; letter-spacing: -0.3pt;
+}
+h2 + .deck {
+  font-size: 9.9pt; color: var(--muted); font-style: italic; margin: 0 0 4mm 0;
+  padding-bottom: 3mm; border-bottom: 2px solid var(--ink); line-height: 1.4;
+}
+h3 {
+  font-size: 10.1pt; font-weight: 700; color: var(--ink); margin: 4.6mm 0 1.4mm 0;
+  letter-spacing: 0.01em;
+}
+h4 {
+  font-size: 8.4pt; font-weight: 700; color: var(--accent); margin: 3.6mm 0 1.1mm 0;
+  text-transform: uppercase; letter-spacing: 0.11em;
+}
+p { margin: 0 0 2.4mm 0; }
+p.lead { font-size: 10.1pt; line-height: 1.45; color: var(--ink); }
+strong { color: var(--ink); font-weight: 700; }
+em.t { font-style: italic; }
+code {
+  font-family: "Consolas", "SF Mono", monospace; font-size: 8.4pt;
+  background: var(--wash); padding: 0.3mm 1.1mm; border-radius: 1px; color: #0d4f4f;
+}
+
+ul, ol { margin: 0 0 3mm 0; padding-left: 5.5mm; }
+li { margin-bottom: 1.1mm; }
+ul.tight li { margin-bottom: 0.8mm; }
+
+.cols2 { column-count: 2; column-gap: 8mm; }
+.cols2 > *:first-child { margin-top: 0; }
+
+/* ---------- the answer-first box --------------------------------- */
+.answer {
+  background: var(--wash); border-left: 3px solid var(--accent);
+  padding: 4mm 5mm; margin: 0 0 4.5mm 0;
+}
+.answer .lbl {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.2pt; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 2mm;
+}
+.answer p { margin-bottom: 2mm; }
+.answer p:last-child { margin-bottom: 0; }
+
+.callout {
+  border: 1px solid var(--rule); border-top: 3px solid var(--accent-2);
+  background: var(--wash-2); padding: 3.6mm 4.4mm; margin: 3.2mm 0;
+}
+.callout .lbl {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.2pt; letter-spacing: 0.24em;
+  text-transform: uppercase; color: #8a6a12; margin-bottom: 1.8mm;
+}
+.callout p:last-child { margin-bottom: 0; }
+
+.warn { border-top-color: var(--bad); background: #fdf5f4; }
+.warn .lbl { color: var(--bad); }
+
+/* ---------- exhibits --------------------------------------------- */
+.exhibit { margin: 4mm 0 4.5mm 0; page-break-inside: avoid; }
+.exhibit .xnum {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.2pt; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 1.2mm;
+}
+.exhibit .xtitle {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9.8pt; font-weight: 700;
+  color: var(--ink); line-height: 1.26; margin-bottom: 2.4mm;
+  padding-bottom: 1.7mm; border-bottom: 1px solid var(--ink);
+}
+.exhibit .xnote {
+  font-size: 7.6pt; color: var(--muted); margin-top: 2mm; line-height: 1.4;
+  padding-top: 1.6mm; border-top: 1px solid var(--rule);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 8.1pt; }
+th {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7pt; letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--muted); text-align: left; font-weight: 600;
+  padding: 2mm 2.4mm; border-bottom: 1px solid var(--ink); vertical-align: bottom;
+}
+td { padding: 1.45mm 2.1mm; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.36; }
+tr.grp td {
+  background: var(--wash); font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 7.2pt; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
+  font-weight: 700; padding: 1.6mm 2.4mm;
+}
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.k { font-weight: 700; color: var(--ink); width: 26%; }
+.small td, .small th { font-size: 7.6pt; padding: 1.3mm 1.9mm; }
+
+/* ---------- split diagram ---------------------------------------- */
+.split { display: flex; gap: 0; border: 1px solid var(--rule); }
+.split > div { flex: 1; padding: 3.2mm 3.8mm; }
+.split > div + div { border-left: 1px solid var(--rule); }
+.split h5 {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; margin: 0 0 2mm 0;
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+.split .on  { background: #f2f8f8; }
+.split .on h5 { color: var(--accent); }
+.split .off { background: #fafafa; }
+.split .off h5 { color: var(--muted); }
+.split ul { font-size: 8.2pt; padding-left: 4mm; margin: 0; }
+.split li { margin-bottom: 0.8mm; }
+
+.divider-note {
+  text-align: center; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.4pt;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--bad);
+  border: 1px dashed var(--bad); padding: 2mm; margin: 0;
+}
+
+/* ---------- flow / pipeline -------------------------------------- */
+.flow { display: flex; align-items: stretch; gap: 2mm; }
+.flow .node {
+  flex: 1; border: 1px solid var(--rule); border-top: 2.5px solid var(--accent);
+  padding: 3mm 3mm; background: #fff;
+}
+.flow .node .n {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 6.8pt; letter-spacing: 0.2em;
+  color: var(--muted); text-transform: uppercase;
+}
+.flow .node .t {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8.6pt; font-weight: 700;
+  color: var(--ink); margin: 1mm 0 1.4mm 0; line-height: 1.2;
+}
+.flow .node p { font-size: 7.6pt; margin: 0; line-height: 1.38; color: var(--body); }
+.flow .arrow { align-self: center; color: var(--accent); font-size: 12pt; }
+
+/* ---------- stat strip ------------------------------------------- */
+.stats { display: flex; gap: 3mm; margin: 2.5mm 0 4mm 0; }
+.stats .s { flex: 1; border-left: 2.5px solid var(--accent-2); padding: 1mm 0 1mm 3mm; }
+.stats .v {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 15pt; font-weight: 700;
+  color: var(--ink); line-height: 1; letter-spacing: -0.4pt;
+}
+.stats .l { font-size: 7.4pt; color: var(--muted); line-height: 1.35; margin-top: 1.4mm; }
+
+/* ---------- tags -------------------------------------------------- */
+.tag {
+  display: inline-block; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 6.6pt;
+  letter-spacing: 0.1em; text-transform: uppercase; padding: 0.5mm 1.6mm;
+  border: 1px solid currentColor; white-space: nowrap;
+}
+.t-sb { color: #6a3fa0; }
+.t-tr { color: var(--accent); }
+.t-no { color: var(--muted); }
+.t-yes { color: var(--good); }
+.t-risk { color: var(--bad); }
+
+/* ---------- footer ------------------------------------------------ */
+.pfoot {
+  position: running(foot);
+}
+.endnote {
+  margin-top: 6mm; padding-top: 2.5mm; border-top: 1px solid var(--rule);
+  font-size: 7.4pt; color: var(--muted); line-height: 1.45;
+}
+
+/* ---------- contents ---------------------------------------------- */
+.toc { margin-top: 4mm; }
+.toc .row {
+  display: flex; align-items: baseline; gap: 3mm; padding: 2.6mm 0;
+  border-bottom: 1px solid var(--rule);
+}
+.toc .n {
+  font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; color: var(--accent);
+  font-weight: 700; width: 9mm; flex: 0 0 9mm;
+}
+.toc .t { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9.4pt; font-weight: 600; color: var(--ink); }
+.toc .d { font-size: 8.4pt; color: var(--muted); flex: 1; font-style: italic; }

@@ -443,10 +443,19 @@ body.touch #hud .autoflag { top: 200px; font-size: 9px; padding: 5px 10px; }
   animation: lowhp-pulse 1.1s infinite;
 }
 @keyframes lowhp-pulse { 50% { opacity: 0.9; } }
+/* THE BANNER HAS TO FIT THE SCREEN IT IS ON.
+   It was white-space:nowrap at 24px, centred with translateX(-50%), so a
+   long string simply grew off both edges with nothing to stop it. Measured on a
+   360px phone: all 12 boss banners overflowed, the worst ("Tide Warden -
+   Keeper of the Drowned Road") 691px wide in a 360px viewport, spilling 331px
+   across the two sides. Wrapping plus a max-width costs nothing and cannot
+   overflow at any width. */
 #hud .banner {
   position: absolute; left: 50%; top: 24%; transform: translateX(-50%);
   font-family: var(--font-display); font-size: 24px; color: #ffe27a; text-shadow: 0 2px 0 #5e3c10, 0 4px 10px #000, 0 0 24px var(--gold-glow);
-  letter-spacing: 3px; opacity: 0; transition: opacity 0.3s; white-space: nowrap;
+  letter-spacing: 3px; opacity: 0; transition: opacity 0.3s;
+  white-space: normal; text-align: center; line-height: 1.34;
+  max-width: min(720px, 88vw); text-wrap: balance;
 }
 #hud .banner::before, #hud .banner::after {
   content: '◆'; font-size: 14px; color: var(--gold-dim); vertical-align: 4px; margin: 0 12px;
@@ -626,8 +635,27 @@ body.touch #hud .weapon-chip img { width: 14px; height: 14px; }
 body.touch #hud .buffs { top: 168px; left: 12px; bottom: unset; }
 body.touch #hud .buffs .bf { width: 20px; height: 20px; }
 /* toasts float above the button cluster so pickups never hide behind thumbs */
-body.touch #hud .toasts { bottom: 235px; }
-body.touch #hud .toast { font-size: 10px; }
+body.touch #hud .toasts { bottom: 235px; max-width: calc(100vw - 24px); }
+body.touch #hud .toast { font-size: 10px; max-width: 100%; word-break: break-word; }
+
+/* THE TOP STRIP IS ONLY 375px WIDE AND THREE THINGS WANTED THE MIDDLE OF IT.
+   Measured on a 375px phone, all at y 12-68: the player plate runs x 16-187,
+   the Hollow's run banner x 187-363, and the waypoint beacon -- centred with
+   left:50% -- x 100-276. So the beacon lay across BOTH of them, which is the
+   "WAY OUT" chip sitting on top of the health bar in the report.
+
+   The beacon is a status chip, not a headline, so on touch it joins the left
+   column under the buffs instead of fighting for the centre. Left-aligned and
+   width-capped, it clears the quest tracker (x 237+) as well. */
+body.touch #hud .pinbeacon {
+  left: 12px; right: auto; top: 196px; transform: none;
+  max-width: 62vw; font-size: 10px; padding: 4px 9px; gap: 6px;
+}
+body.touch #hud .pinbeacon .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* and the run banner gives the plate a gap rather than touching it edge-to-edge */
+body.touch #hud .hollow { width: 150px; top: 10px; right: 8px; padding: 7px 9px 8px; }
+body.touch #hud .hollow .fl { font-size: 18px; }
+body.touch #hud .hollow .band { font-size: 10px; }
 
 @media (max-width: 760px) {
   #hud .mapbox { width: 96px; }
@@ -643,7 +671,8 @@ body.touch #hud .toast { font-size: 10px; }
   #hud .qtrack { top: 172px; right: 6px; width: 132px; max-height: 42vh; }
   #hud .quests { max-height: 34vh; overflow-y: auto; }
   #hud .quests .q { font-size: 8px; padding: 4px 6px; }
-  #hud .banner { font-size: 18px; }
+  #hud .banner { font-size: 15px; letter-spacing: 1px; max-width: 90vw; top: 20%; }
+  #hud .banner::before, #hud .banner::after { font-size: 10px; margin: 0 6px; vertical-align: 2px; }
 }
 `;
 

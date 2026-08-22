@@ -58,7 +58,7 @@ import { createHousing, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js'
 import { createIndex } from './systems/index.js';
 import { createDungeon } from './systems/dungeon.js';
 import { createDungeonWorld, buildHollowGate, DUNGEON_Y } from './world/dungeonworld.js';
-import { showDungeonGate, hollowLockedText } from './ui/dungeonpanel.js';
+import { showDungeonGate, hollowLockedText, isDungeonGateOpen, closeDungeonGate } from './ui/dungeonpanel.js';
 import { playDescent } from './ui/descent.js';
 import { createFriends } from './systems/friends.js';
 import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
@@ -1968,6 +1968,10 @@ async function init(character, saved, audio, online = false) {
   }
 
   async function enterHollow(difficulty, floor) {
+    // INVARIANT: never inside the Hollow with a gate overlay on screen. Cheap,
+    // and it closes the whole class rather than the one route that produced it
+    // — the same reasoning as forceSurface().
+    closeDungeonGate();
     hollowReturn = player.state.pos.clone();
     // AUTO-BATTLE IS REFUSED DOWN HERE, and this is where it is switched off
     // rather than merely ignored: the Hollow is the one place in the game that
@@ -2323,6 +2327,11 @@ async function init(character, saved, audio, online = false) {
 
   /** The gate in Anavela: asks, then sends you down. */
   async function openHollowGate() {
+    // ONE GATE. `gatherInteractions` does not test `busy` -- deliberately, since
+    // fishing and the work poses set it and still need their own button -- so
+    // two taps on the mobile star opened two overlays. Entering closed the top
+    // one and left the other over the dungeon, undismissable on a phone.
+    if (isDungeonGateOpen() || dungeon.state.active) return;
     const lv = leveling.state.level;
     if (!dungeon.unlocked(lv)) {
       hud.toastText(hollowLockedText(lv, dungeon.UNLOCK_LEVEL));

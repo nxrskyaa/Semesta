@@ -14,9 +14,12 @@ const CSS = `
 .dgate { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center;
   justify-content: center; background: rgba(6,4,10,0.82); backdrop-filter: blur(2px);
   font-family: var(--font-body, monospace); }
-.dgate .card { width: min(680px, 94vw); max-height: 92vh; overflow: auto;
+.dgate .card { width: min(680px, 94vw); max-height: 92vh; overflow-y: auto; overflow-x: hidden;
   background: #14101c; border: var(--pix-frame, 3px solid #4a4060); padding: 18px 20px 20px;
-  box-shadow: 0 0 0 3px #0a0810, 0 14px 40px rgba(0,0,0,0.6); }
+  box-shadow: 0 0 0 3px #0a0810, 0 14px 40px rgba(0,0,0,0.6);
+  /* the game sets touch-action:none on BODY for pinch-zoom, so a scrollable
+     child has to opt back IN or a phone cannot scroll this card at all */
+  touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; }
 .dgate h2 { font-family: var(--font-display, monospace); font-size: 22px; margin: 0 0 2px;
   color: #e8d8ff; letter-spacing: 1px; }
 .dgate .sub { color: #9a8ab8; font-size: 12px; margin-bottom: 14px; line-height: 1.5; }
@@ -54,7 +57,49 @@ const CSS = `
 .dgate .warn { margin-top: 12px; font-size: 11px; color: #ffb07a; line-height: 1.5; }
 .dgate .note { margin-top: 10px; padding: 8px 11px; background: #1a1526; border-left: 3px solid #d8b45c;
   font-size: 11px; color: #c8bce0; line-height: 1.55; }
-.dgate .row { display: flex; gap: 9px; margin-top: 16px; }
+/* THE ACTION ROW IS PINNED, and this is the bug that made MEDIUM unreachable.
+   Measured on a 360x640 phone: the card came out 589px tall with 129px of
+   content below the fold, which put DESCEND at y=668 in a 640px viewport --
+   entirely off screen. You could select a difficulty and then had no way to
+   confirm it. WALK AWAY sits in the same row, so the panel could not be
+   dismissed either. Sticky keeps both on screen at any height. */
+.dgate .row { display: flex; gap: 9px; margin-top: 16px;
+  position: sticky; bottom: -20px; z-index: 2;
+  margin-left: -20px; margin-right: -20px; padding: 10px 20px 20px;
+  background: linear-gradient(180deg, rgba(20,16,28,0) 0%, #14101c 26%, #14101c 100%); }
+/* a dismiss that is never below the fold, whatever happens to the layout */
+.dgate .x { position: absolute; top: 8px; right: 10px; z-index: 3; width: 30px; height: 30px;
+  background: #241d33; color: #bfb2d8; border: 0; box-shadow: 0 0 0 2px #3d3454;
+  cursor: pointer; font-size: 14px; line-height: 1; font-family: inherit; }
+.dgate .x:hover { color: #fff; box-shadow: 0 0 0 2px #6a4ba8; }
+
+/* ---- PHONES. The card has to fit a 640px-tall viewport with room to spare. */
+@media (max-width: 560px), (max-height: 720px) {
+  .dgate .card { padding: 14px 13px 14px; width: min(680px, 96vw); max-height: 94vh; }
+  .dgate h2 { font-size: 17px; }
+  .dgate .sub { font-size: 10px; margin-bottom: 10px; line-height: 1.45; }
+  .dgate .lbl { font-size: 9px; margin: 10px 0 5px; letter-spacing: 1px; }
+  .dgate .diffs { gap: 5px; }
+  .dgate .diff { padding: 7px 6px; }
+  .dgate .diff .t { font-size: 11px; }
+  .dgate .diff .n { font-size: 9px; margin-top: 2px; }
+  /* the blurb is three lines of flavour per card and it is what makes the
+     difficulty row 172px tall; the tag and the progress line are the parts you
+     choose with */
+  .dgate .diff .b { display: none; }
+  .dgate .fl { min-width: 46px; padding: 6px 4px; }
+  .dgate .fl .n { font-size: 13px; }
+  .dgate .fl .k { font-size: 8px; }
+  .dgate .band { margin-top: 8px; padding: 7px 9px; }
+  .dgate .band .bn { font-size: 11px; }
+  .dgate .band .bb { font-size: 10px; line-height: 1.4; }
+  .dgate .warn { margin-top: 8px; font-size: 10px; line-height: 1.4; }
+  .dgate .note { margin-top: 8px; padding: 7px 9px; font-size: 10px; }
+  .dgate .row { margin-top: 10px; padding: 8px 13px 14px; margin-left: -13px; margin-right: -13px;
+    bottom: -14px; }
+  .dgate button.go { padding: 13px 8px; font-size: 12px; }
+  .dgate button.back { padding: 13px 12px; font-size: 11px; }
+}
 .dgate button.go { flex: 1; padding: 11px; background: #6a4ba8; color: #fff; border: 0;
   box-shadow: var(--pix-btn, 0 0 0 2px #8a6ac8);
   font-family: var(--font-display, monospace); font-size: 13px; letter-spacing: 1px; cursor: pointer; }
@@ -70,8 +115,27 @@ const KIND_LABEL = { hall: 'HALL', warden: 'WARDEN', great: 'LORD' };
  * @param level     the hero's level, for the gate
  * @returns Promise<{difficulty, floor} | null>   null = walked away
  */
+/**
+ * ONE GATE AT A TIME, ENFORCED HERE AS WELL AS AT THE CALLER.
+ *
+ * Two taps on the mobile interact button opened two overlays. Pressing DESCEND
+ * on the top one entered the dungeon and left the other sitting over the hall
+ * for the rest of the session -- and because its WALK AWAY was below the fold
+ * on a phone, it could not be dismissed. That is the "popup pilihan floor tetap
+ * muncul" report, and it is why the guard is in both places: the caller stops
+ * the second call, and this stops a second overlay however it was reached.
+ */
+let gateOpen = false;
+export function isDungeonGateOpen() { return gateOpen; }
+/** Remove any gate overlay, whatever opened it. Safe to call at any time. */
+export function closeDungeonGate() {
+  document.querySelectorAll('.dgate').forEach((g) => g.dispatchEvent(new Event('force-close')));
+}
+
 export function showDungeonGate(dj, level) {
   return new Promise((resolve) => {
+    if (gateOpen) { resolve(null); return; }
+    gateOpen = true;
     if (!document.getElementById('dgate-css')) {
       const st = document.createElement('style');
       st.id = 'dgate-css';
@@ -140,6 +204,7 @@ export function showDungeonGate(dj, level) {
 
       el.innerHTML = `
       <div class="card">
+        <button class="x back" aria-label="close">&#10005;</button>
         <h2>THE HOLLOW</h2>
         <div class="sub">Under the shrine, where the lights went out first.
           Nothing down here wanders off, and the way out is forward.</div>
@@ -215,10 +280,14 @@ export function showDungeonGate(dj, level) {
     document.addEventListener('keydown', onKey);
 
     function close(res) {
+      gateOpen = false;
       document.removeEventListener('keydown', onKey);
       el.remove();
       resolve(res);
     }
+    // an escape hatch the game can pull from outside -- resolves the promise, so
+    // whoever is awaiting it is never left hanging with `busy` set
+    el.addEventListener('force-close', () => close(null));
     paint();
   });
 }
