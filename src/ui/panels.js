@@ -1439,139 +1439,333 @@ export function createPanels(hudRoot, {
     });
   }
 
-  // --- GAMEPASS: a single ladder of tiers with three reward rows -----------
+  // --- GAMEPASS: a season, three tracks, and a ladder you can read ---------
   // A representative blade per exotic family, purely so the ladder has
   // something to draw before the reward is resolved to your class.
   const WEAPON_TIER_ICON = {
     epic: 'star_blade', legendary: 'dragon_edge', mythic: 'celestial_saber',
   };
+  // Which tab of the pass panel is open. Module-level so a re-render (every
+  // claim re-renders) does not throw the player back to the top.
+  let passTab = 'track';
 
   function renderPass() {
     if (!gamepass) return;
     const st = gamepass.state;
     const tier = gamepass.tierOf();
-    const prog = gamepass.progressInTier();
     const owned = st.owned;
     const perk = gamepass.perks();
+    const track = gamepass.track();
+    const season = gamepass.season();
+    const per = gamepass.XP_PER_TIER;
+    const total = gamepass.totalXp();
+    const toNext = tier >= gamepass.PASS_TIERS ? 0 : per - (st.xp % per);
+    const prog = gamepass.progressInTier();
+    const waiting = gamepass.pending();
+    const acc = season.accent;
 
-    const rowCell = (row, t) => {
-      const e = gamepass.PASS_TRACK[t - 1][row];
+    // The panel is wider than the rest — a battlepass is a comparison table and
+    // a ladder side by side, and at 500px the reward names had nowhere to go.
+    panels.pass.style.width = 'min(600px, calc(100vw - 20px))';
+    panels.pass.style.maxHeight = '88vh';
+
+    const iconFor = (e) => itemIconUrl(e.coins ? 'coin'
+      : (e.item || e.cosmetic || e.mount || e.petCharm
+        || (e.weaponTier ? WEAPON_TIER_ICON[e.weaponTier] : null) || 'forge_stone'));
+
+    // ---- the three track cards: what each row actually gives you ----------
+    const countRow = (row, key) => track.filter((t) => t[row][key]).length;
+    const bigOf = (row) => track.filter((t) => t[row].big || t[row].grand).length;
+    const CARDS = [
+      {
+        row: 'free', name: 'FREE', tone: '#8ac86a',
+        cost: 'ALWAYS YOURS',
+        perk: 'No bonus',
+        lines: [
+          bigOf('free') + ' cosmetic &amp; pet rewards',
+          'Coins, tonics and forge stones',
+          'Every third tier is a real item',
+        ],
+        state: 'active',
+      },
+      {
+        row: 'basic', name: 'BASIC', tone: '#79c8e8',
+        cost: 'Keeper&#39;s Seal — ' + gamepass.PASS_PRICES.basic + 'c',
+        perk: gamepass.PASS_PERKS.basic.label,
+        lines: [
+          'Everything in FREE, plus:',
+          bigOf('basic') + ' cosmetics, trails &amp; a pet',
+          'An EPIC gacha weapon at tier ' + gamepass.PASS_TIERS,
+        ],
+        state: owned === 'none' ? 'buy' : 'active',
+      },
+      {
+        row: 'premium', name: 'PREMIUM', tone: '#c08aff',
+        cost: owned === 'basic'
+          ? 'Keeper&#39;s Sigil — ' + (gamepass.PASS_PRICES.premium - gamepass.PASS_PRICES.basic) + 'c to upgrade'
+          : 'Keeper&#39;s Sigil — ' + gamepass.PASS_PRICES.premium + 'c',
+        perk: gamepass.PASS_PERKS.premium.label,
+        lines: [
+          'Everything in FREE and BASIC, plus:',
+          countRow('premium', 'mount') + ' mounts, ' + countRow('premium', 'petCharm') + ' pets, ' + countRow('premium', 'cosmetic') + ' cosmetics',
+          'A MYTHIC weapon at tier ' + gamepass.PASS_TIERS,
+        ],
+        state: owned === 'premium' ? 'active' : 'buy',
+      },
+    ];
+
+    const cardBtn = (c) => {
+      if (c.state === 'active') return '<div class="pcbtn on">✓ ACTIVE</div>';
+      const itemId = c.row === 'basic' ? 'pass_seal' : 'pass_sigil';
+      return inventory.count(itemId) > 0
+        ? `<button class="act pcbtn go" data-activate="${c.row}">USE ${c.row === 'basic' ? 'SEAL' : 'SIGIL'}</button>`
+        : '<div class="pcbtn buy">BUY AT PIP&#39;S SHOP</div>';
+    };
+
+    const cards = CARDS.map((c) => `
+      <div class="pcard ${c.state}" style="--tone:${c.tone}">
+        <div class="pcn">${c.name}</div>
+        <div class="pcc">${c.cost}</div>
+        <div class="pcp">${c.perk}</div>
+        <ul class="pcl">${c.lines.map((l) => `<li>${l}</li>`).join('')}</ul>
+        ${cardBtn(c)}
+      </div>`).join('');
+
+    // ---- the ladder, with names ------------------------------------------
+    const chip = (row, t) => {
+      const e = track[t - 1][row];
       const claimed = st.claimed[row].includes(t);
       const can = gamepass.canClaim(row, t);
-      const locked = (row === 'basic' && owned === 'none')
-        || (row === 'premium' && owned !== 'premium');
-      // A weaponTier reward has no item id of its own — it resolves to whatever
-      // suits your class at CLAIM time. Passing undefined in here threw inside
-      // the icon painter and took the entire panel down with it, which is why
-      // the gamepass rendered as a black rectangle.
-      const iconId = e.coins ? 'coin'
-        : (e.item || e.cosmetic || e.mount || e.petCharm
-          || (e.weaponTier ? WEAPON_TIER_ICON[e.weaponTier] : null)
-          || 'forge_stone');
-      const icon = itemIconUrl(iconId);
-      return `<div class="pcell ${claimed ? 'got' : ''} ${can ? 'can' : ''} ${locked ? 'lock' : ''} ${e.grand ? 'grand' : e.big ? 'big' : ''}"
-        data-row="${row}" data-tier="${t}" title="${e.label}">
-        <img src="${icon}">
-        ${claimed ? '<span class="tick">✓</span>' : ''}
-        ${locked && !claimed ? '<span class="lk">🔒</span>' : ''}
+      const locked = (row === 'basic' && owned === 'none') || (row === 'premium' && owned !== 'premium');
+      const cls = [claimed ? 'got' : '', can ? 'can' : '', locked && !claimed ? 'lock' : '',
+        e.grand ? 'grand' : e.big ? 'big' : ''].filter(Boolean).join(' ');
+      const mark = claimed ? '<span class="pcmk">✓</span>'
+        : can ? '<span class="pcmk got2">CLAIM</span>'
+          : locked ? '<span class="pcmk">🔒</span>' : '';
+      return `<div class="pchip ${cls}" data-row="${row}" data-tier="${t}">
+        <img src="${iconFor(e)}">
+        <span class="pcname">${e.label}</span>${mark}
       </div>`;
     };
 
     let ladder = '';
     for (let t = 1; t <= gamepass.PASS_TIERS; t++) {
       const reached = t <= tier;
-      ladder += `<div class="pcol ${reached ? 'on' : ''}">
-        <div class="pt">${t}</div>
-        ${rowCell('free', t)}
-        ${rowCell('basic', t)}
-        ${rowCell('premium', t)}
+      ladder += `<div class="trow ${reached ? 'on' : ''} ${t === tier ? 'cur' : ''}">
+        <div class="tno"><b>${t}</b><i>${t * per}</i></div>
+        <div class="tcs">${chip('free', t)}${chip('basic', t)}${chip('premium', t)}</div>
       </div>`;
     }
 
-    const buyRow = owned === 'premium'
-      ? '<div class="pown">★ PREMIUM GAMEPASS ACTIVE — every row unlocked</div>'
-      : `<div class="pbuy">
-          <button class="act" data-buypass="basic" ${owned !== 'none' ? 'disabled' : ''}>
-            ${owned === 'basic' ? '✓ BASIC OWNED' : `BASIC — ${gamepass.PASS_PRICES.basic}c`}
-          </button>
-          <button class="act prem" data-buypass="premium">
-            ${owned === 'basic'
-              ? `UPGRADE — ${gamepass.PASS_PRICES.premium - gamepass.PASS_PRICES.basic}c`
-              : `PREMIUM — ${gamepass.PASS_PRICES.premium}c`}
-          </button>
-        </div>`;
+    // ---- how it works ----------------------------------------------------
+    const xpRows = Object.entries(gamepass.PASS_XP)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `<tr><td>${gamepass.PASS_XP_LABEL[k] || k}</td><td>+${v}</td></tr>`).join('');
 
-    const waiting = gamepass.pending();
+    const howto = `
+      <div class="pdoc">
+        <h5>HOW PASS XP WORKS</h5>
+        <p>There are no separate pass quests to hunt down. <b>Everything you already
+        do earns pass XP</b> — fighting, fishing, farming, cooking, forging, spinning
+        the gacha. Every <b>${per} XP</b> is one tier, and ${gamepass.PASS_TIERS} tiers
+        (<b>${total.toLocaleString()} XP</b>) completes the season.</p>
+        <table class="pxt"><tr><th>ACTION</th><th>PASS XP</th></tr>${xpRows}</table>
+        <h5>WHAT THE SEASON MEANS</h5>
+        <p>A season runs <b>${gamepass.SEASON_DAYS} days</b>. When it ends the track
+        resets to tier 1, the rewards change to the next season&#39;s set, and any pass
+        you activated expires with it. <b>Claim what you have earned before the clock
+        runs out</b> — nothing carries over.</p>
+        <h5>FREE vs BASIC vs PREMIUM</h5>
+        <p>The <b>FREE</b> row is always claimable and always will be — you are never
+        locked out of the pass. <b>BASIC</b> and <b>PREMIUM</b> add a second and third
+        reward on every tier, plus a bonus that runs all season. They are unlocked with
+        an item from <b>Pip&#39;s Shop</b> in the plaza: the <b>Keeper&#39;s Seal</b>
+        and the <b>Keeper&#39;s Sigil</b>. Buying the Sigil while you already hold Basic
+        only costs the difference.</p>
+      </div>`;
 
     panels.pass.innerHTML = `<h3>GAMEPASS <small>[Esc] close</small></h3>
       <style>
-        .phead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .ptier { font-family: var(--font-display); font-size: 22px; color: var(--gold);
-          text-shadow: 0 0 10px var(--gold-glow); }
-        .phead small { font-size: 8px; color: var(--muted); letter-spacing: 2px; display: block; }
-        .pxp { flex: 1; height: 9px; background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; }
+        .psrow { display: flex; align-items: flex-start; gap: 10px; position: relative; z-index: 1; }
+        .pseason { position: relative; overflow: hidden; padding: 10px 12px 9px; margin-bottom: 9px;
+          background: linear-gradient(120deg, rgba(0,0,0,0.5), var(--sacc-dim));
+          box-shadow: inset 0 0 0 2px var(--sacc), inset 0 0 26px rgba(0,0,0,0.55); }
+        .pseason::after { content: ''; position: absolute; inset: 0;
+          background: var(--dither) 0 0/4px 4px; opacity: 0.5; pointer-events: none; }
+        .psno { font-size: 8px; letter-spacing: 3px; color: var(--sacc); }
+        .psname { font-family: var(--font-display); font-size: 17px; letter-spacing: 2px;
+          color: #fff5dd; text-shadow: 0 0 14px var(--sacc); margin: 2px 0 4px; }
+        .psblurb { font-size: 9px; color: #cfd6c4; line-height: 1.5; }
+        .psclock { margin-left: auto; text-align: right; flex: 0 0 auto; }
+        .psclock b { display: block; font-family: var(--font-display); font-size: 19px; color: var(--sacc); }
+        .psclock i { font-size: 7px; letter-spacing: 2px; color: var(--muted); font-style: normal; }
+
+        .phead { display: flex; align-items: center; gap: 10px; margin-top: 9px; position: relative; z-index: 1; }
+        .ptier { font-family: var(--font-display); font-size: 24px; color: var(--gold);
+          text-shadow: 0 0 10px var(--gold-glow); line-height: 1; text-align: center; }
+        .ptier small { font-size: 7px; color: var(--muted); letter-spacing: 2px; display: block; margin-top: 3px; }
+        .pxp { flex: 1; height: 11px; background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; }
         .pxp > div { height: 100%; background: linear-gradient(90deg, #d8b866, #ffe9a8); }
-        .pperk { font-size: 9px; color: #b8e89a; letter-spacing: 1px; margin-bottom: 8px; }
-        .pbuy { display: flex; gap: 6px; margin-bottom: 10px; }
-        .pbuy .act { flex: 1; font-size: 10px !important; padding: 10px 4px !important; letter-spacing: 2px !important; }
-        .pbuy .prem { background: linear-gradient(180deg, #6a4a86, #402c52); }
-        .pown { font-size: 10px; color: var(--gold); letter-spacing: 2px; text-align: center;
-          padding: 8px; margin-bottom: 10px; box-shadow: inset 0 0 0 2px var(--gold); }
-        .ptrack { display: flex; gap: 3px; overflow-x: auto; padding: 4px 2px 8px; }
-        .pcol { display: flex; flex-direction: column; gap: 3px; align-items: center; flex: 0 0 auto; }
-        .pcol .pt { font-size: 8px; color: #6a7a5f; }
-        .pcol.on .pt { color: var(--gold); }
-        .pcell { width: 38px; height: 38px; position: relative; background: #141a12;
-          box-shadow: inset 0 0 0 2px #2c352c; display: flex; align-items: center; justify-content: center; }
-        .pcell img { width: 24px; height: 24px; image-rendering: pixelated; }
-        .pcell.big { box-shadow: inset 0 0 0 2px #b06ae8; }
-        .pcell.grand { box-shadow: inset 0 0 0 2px #f0c455, 0 0 10px rgba(240,196,85,0.45); }
-        .pcell.can { box-shadow: inset 0 0 0 2px var(--gold), 0 0 10px var(--gold-glow);
+        .pxpn { font-size: 8px; color: var(--muted); margin-top: 4px; display: flex; justify-content: space-between; gap: 8px; }
+        .pperk { font-size: 8px; color: #b8e89a; letter-spacing: 1px; margin-top: 6px;
+          position: relative; z-index: 1; }
+
+        .pcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+        .pcard { padding: 9px 8px 8px; background: rgba(0,0,0,0.28); display: flex; flex-direction: column;
+          box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tone) 40%, transparent); }
+        .pcard.active { box-shadow: inset 0 0 0 2px var(--tone), 0 0 12px color-mix(in srgb, var(--tone) 35%, transparent); }
+        .pcn { font-family: var(--font-display); font-size: 12px; letter-spacing: 2px; color: var(--tone); }
+        .pcc { font-size: 8px; color: #e8dcc0; margin: 4px 0 3px; line-height: 1.4; }
+        .pcp { font-size: 8px; color: #b8e89a; letter-spacing: 1px; margin-bottom: 5px; line-height: 1.4; }
+        .pcl { list-style: none; padding: 0; margin: 0 0 8px; flex: 1; }
+        .pcl li { font-size: 8px; color: var(--muted); line-height: 1.5; padding-left: 8px; position: relative; }
+        .pcl li::before { content: '▪'; position: absolute; left: 0; color: var(--tone); }
+        .pcbtn { font-size: 8px !important; letter-spacing: 1px !important; text-align: center;
+          padding: 6px 3px !important; width: 100%; }
+        .pcbtn.on { color: var(--tone); box-shadow: inset 0 0 0 1px var(--tone); }
+        .pcbtn.buy { color: var(--muted); box-shadow: inset 0 0 0 1px #3a4438; }
+
+        .ptabs { display: flex; gap: 4px; margin-bottom: 8px; }
+        .ptabs button { flex: 1; font-size: 9px !important; letter-spacing: 2px !important; padding: 7px 3px !important; }
+        .ptabs button.sel { color: var(--gold); box-shadow: inset 0 0 0 2px var(--gold); }
+
+        .thead { display: flex; gap: 6px; margin-bottom: 4px; padding-right: 3px; }
+        .thead .tno { font-family: var(--font-body); font-size: 6px; letter-spacing: 1px;
+          color: var(--muted); background: none; box-shadow: none; }
+        .thead .tcs span { font-size: 7px; letter-spacing: 2px; color: var(--tone);
+          text-align: center; padding: 3px 0;
+          box-shadow: inset 0 -2px 0 0 color-mix(in srgb, var(--tone) 45%, transparent); }
+        .ptrack { max-height: 38vh; overflow-y: auto; padding-right: 3px;
+          scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
+        .trow { display: flex; gap: 6px; align-items: stretch; margin-bottom: 4px; opacity: 0.55; }
+        .trow.on { opacity: 1; }
+        .trow.cur { box-shadow: 0 0 0 2px var(--gold); }
+        .tno { flex: 0 0 34px; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; }
+        .trow.on .tno { box-shadow: inset 0 0 0 2px var(--gold-dim); }
+        .tno b { font-family: var(--font-display); font-size: 13px; color: #d8ceb0; }
+        .tno i { font-size: 6px; color: #6a7a5f; font-style: normal; }
+        .tcs { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; min-width: 0; }
+        .pchip { position: relative; display: flex; align-items: center; gap: 5px; padding: 4px 5px;
+          background: #141a12; box-shadow: inset 0 0 0 2px #2c352c; min-width: 0; }
+        .pchip img { width: 20px; height: 20px; image-rendering: pixelated; flex: 0 0 20px; }
+        .pcname { font-size: 7px; color: #b6c0aa; line-height: 1.25; overflow: hidden; min-width: 0;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .pchip.big { box-shadow: inset 0 0 0 2px #b06ae8; }
+        .pchip.big .pcname { color: #dcc0ff; }
+        .pchip.grand { box-shadow: inset 0 0 0 2px #f0c455, 0 0 10px rgba(240,196,85,0.4); }
+        .pchip.grand .pcname { color: #ffe9a8; }
+        .pchip.can { box-shadow: inset 0 0 0 2px var(--gold), 0 0 10px var(--gold-glow);
           cursor: pointer; animation: pc 1.3s ease-in-out infinite; }
-        @keyframes pc { 50% { filter: brightness(1.35); } }
-        .pcell.got { opacity: 0.35; }
-        .pcell.lock { opacity: 0.45; }
-        .pcell .tick { position: absolute; inset: 0; display: flex; align-items: center;
-          justify-content: center; font-size: 17px; color: #8ac86a; text-shadow: 0 0 6px #000; }
-        .pcell .lk { position: absolute; bottom: 0; right: 1px; font-size: 9px; }
-        .prowlbl { display: flex; flex-direction: column; gap: 3px; font-size: 7px;
-          color: var(--muted); letter-spacing: 1px; }
-        .prowlbl span { height: 38px; display: flex; align-items: center; }
+        @keyframes pc { 50% { filter: brightness(1.3); } }
+        .pchip.got { opacity: 0.3; }
+        .pchip.lock { opacity: 0.4; }
+        .pcmk { margin-left: auto; font-size: 8px; color: #8ac86a; flex: 0 0 auto; }
+        .pcmk.got2 { color: var(--gold); letter-spacing: 1px; }
+
+        .pdoc { font-size: 9px; color: var(--muted); line-height: 1.6; max-height: 38vh; overflow-y: auto;
+          padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent; }
+        .pdoc h5 { font-family: var(--font-display); font-size: 10px; letter-spacing: 2px;
+          color: var(--gold-dim); margin: 12px 0 5px; }
+        .pdoc h5:first-child { margin-top: 0; }
+        .pdoc b { color: #e8dcc0; }
+        .pxt { width: 100%; border-collapse: collapse; margin: 6px 0 2px; }
+        .pxt th { font-size: 7px; letter-spacing: 2px; color: var(--gold-dim); text-align: left;
+          padding: 3px 5px; border-bottom: 1px solid #2c352c; }
+        .pxt th:last-child, .pxt td:last-child { text-align: right; color: #e8dcc0; }
+        .pxt td { font-size: 8px; padding: 3px 5px; border-bottom: 1px solid rgba(44,53,44,0.5); }
+
+        @media (max-width: 560px) {
+          .pcards { grid-template-columns: 1fr; }
+          .tcs { grid-template-columns: 1fr; }
+          .psblurb { max-width: 100%; }
+        }
       </style>
-      <div class="phead">
-        <div class="ptier">${tier}<small>TIER</small></div>
-        <div style="flex:1">
-          <div class="pxp"><div style="width:${Math.round(prog * 100)}%"></div></div>
-          <div style="font-size:8px;color:var(--muted);margin-top:3px">
-            ${st.xp} PASS XP · earn it from anything you do
+      <div class="pseason" style="--sacc:${acc};--sacc-dim:${acc}22">
+        <div class="psrow">
+          <div style="min-width:0">
+            <div class="psno">SEASON ${season.number}</div>
+            <div class="psname">${season.name}</div>
+            <div class="psblurb">${season.blurb}</div>
+          </div>
+          <div class="psclock"><b>${season.daysLeft}</b><i>${season.daysLeft === 1 ? 'DAY LEFT' : 'DAYS LEFT'}</i></div>
+        </div>
+        <div class="phead">
+          <div class="ptier">${tier}<small>TIER</small></div>
+          <div style="flex:1;min-width:0">
+            <div class="pxp"><div style="width:${Math.round(prog * 100)}%"></div></div>
+            <div class="pxpn">
+              <span>${st.xp.toLocaleString()} / ${total.toLocaleString()} PASS XP</span>
+              <span>${toNext ? `${toNext} to tier ${tier + 1}` : 'SEASON COMPLETE'}</span>
+            </div>
           </div>
         </div>
+        <div class="pperk">ACTIVE PASS: ${perk.label}</div>
       </div>
-      <div class="pperk">ACTIVE: ${perk.label}</div>
-      ${buyRow}
-      ${waiting ? `<button class="act" data-claimall style="width:100%;margin-bottom:8px">◆ CLAIM ALL (${waiting})</button>` : ''}
-      <div style="display:flex;gap:5px">
-        <div class="prowlbl"><span style="height:14px"></span><span>FREE</span><span>BASIC</span><span>PREM</span></div>
-        <div class="ptrack">${ladder}</div>
-      </div>`;
+      <div class="pcards">${cards}</div>
+      ${waiting ? `<button class="act" data-claimall style="width:100%;margin-bottom:9px">◆ CLAIM ALL (${waiting})</button>` : ''}
+      <div class="ptabs">
+        <button class="act ${passTab === 'track' ? 'sel' : ''}" data-ptab="track">⛓ REWARD TRACK</button>
+        <button class="act ${passTab === 'how' ? 'sel' : ''}" data-ptab="how">✦ HOW IT WORKS</button>
+      </div>
+      ${passTab === 'track' ? `
+        <div class="thead">
+          <div class="tno">TIER</div>
+          <div class="tcs">
+            <span style="--tone:#8ac86a">FREE</span>
+            <span style="--tone:#79c8e8">BASIC${owned === 'none' ? ' 🔒' : ''}</span>
+            <span style="--tone:#c08aff">PREMIUM${owned === 'premium' ? '' : ' 🔒'}</span>
+          </div>
+        </div>
+        <div class="ptrack">${ladder}</div>` : howto}`;
 
-    panels.pass.querySelectorAll('.pcell.can').forEach((c) => {
+    panels.pass.querySelectorAll('.pchip.can').forEach((c) => {
       c.addEventListener('click', () => {
         if (gamepass.claim(c.dataset.row, +c.dataset.tier)) audio.sfx('quest_done');
         renderPass();
       });
     });
-    panels.pass.querySelectorAll('[data-buypass]').forEach((b) => {
+    panels.pass.querySelectorAll('[data-activate]').forEach((b) => {
       b.addEventListener('click', () => {
-        if (gamepass.buy(b.dataset.buypass, (n) => inventory.spendCoins(n))) audio.sfx('levelup_big');
+        if (gamepass.activate(b.dataset.activate, (id) => inventory.remove(id, 1))) audio.sfx('levelup_big');
         else audio.sfx('deny');
         renderPass();
       });
+    });
+    panels.pass.querySelectorAll('[data-ptab]').forEach((b) => {
+      b.addEventListener('click', () => { passTab = b.dataset.ptab; audio.sfx('ui'); renderPass(); });
     });
     panels.pass.querySelector('[data-claimall]')?.addEventListener('click', () => {
       if (gamepass.claimAll()) audio.sfx('quest_done');
       renderPass();
     });
+
+    // THE TRACK TAKES EXACTLY THE SPACE THAT IS LEFT, and it has to be measured
+    // rather than guessed: a CSS vh cap does not know how tall the header above
+    // it came out, so any fixed value leaves the panel scrolling INSIDE its own
+    // scrolling list — two nested scrollers that fight each other at the seam.
+    // Measured 151px of outer overflow before this, 0 after.
+    // ON A PHONE THE CARDS STACK AND THERE IS NO ROOM FOR TWO PANES. Below
+    // ~200px of space the inner scroller is dropped entirely and the panel
+    // becomes the single scroller — one list you can flick, rather than a
+    // letterbox inside a box that also scrolls.
+    const fill = panels.pass.querySelector('.ptrack, .pdoc');
+    let scroller = panels.pass;
+    if (fill) {
+      const top = fill.getBoundingClientRect().top - panels.pass.getBoundingClientRect().top;
+      const avail = panels.pass.clientHeight - top - 30;
+      if (avail < 200) { fill.style.maxHeight = 'none'; fill.style.overflowY = 'visible'; }
+      else { fill.style.maxHeight = avail + 'px'; scroller = fill; }
+    }
+
+    // Land on the tier you are actually on. Measured off getBoundingClientRect
+    // rather than scrollIntoView: smooth scrolling is silently inert in a
+    // throttled tab, and offsetTop here is measured against the wrong parent.
+    const cur = panels.pass.querySelector('.trow.cur');
+    if (cur && scroller.contains(cur)) {
+      scroller.scrollTop = (cur.getBoundingClientRect().top - scroller.getBoundingClientRect().top)
+        + scroller.scrollTop - scroller.clientHeight * 0.35;
+    }
   }
 
   // --- GRAPHICS: the same panel the opening screen uses, in a game panel ---

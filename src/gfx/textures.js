@@ -697,6 +697,43 @@ const ICON_MAPS = {
     ],
     legend: { s: '#575c58', S: '#7b807c', o: '#c97a2e', O: '#f0a848' },
   },
+  // gamepass keys: a stamped wax seal on a ribbon, and the gilded sigil above it
+  pass_seal: {
+    map: [
+      '................',
+      '.....ssssss.....',
+      '...ssSSSSSSss...',
+      '..sSSSllllSSSs..',
+      '..sSSlLLLLlSSs..',
+      '..sSSlLwwLlSSs..',
+      '..sSSlLLLLlSSs..',
+      '..sSSSllllSSSs..',
+      '...ssSSSSSSss...',
+      '.....ssssss.....',
+      '....rr....rr....',
+      '....rr....rr....',
+      '................',
+    ],
+    legend: { s: '#7a5a2e', S: '#a8813f', l: '#5a4020', L: '#e8b552', w: '#fff2c0', r: '#8a3b3b' },
+  },
+  pass_sigil: {
+    map: [
+      '.......gg.......',
+      '.....g.gg.g.....',
+      '......gggg......',
+      '...ggGGGGGGgg...',
+      '..gGGGppppGGGg..',
+      '..gGGpPPPPpGGg..',
+      '..gGGpPwwPpGGg..',
+      '..gGGpPPPPpGGg..',
+      '..gGGGppppGGGg..',
+      '...ggGGGGGGgg...',
+      '......gggg......',
+      '.....g.gg.g.....',
+      '.......gg.......',
+    ],
+    legend: { g: '#8a6a1e', G: '#f0c24e', p: '#4a2a6a', P: '#8a4fd0', w: '#e8d0ff' },
+  },
   forge_stone: {
     map: [
       '................',

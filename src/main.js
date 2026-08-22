@@ -1153,6 +1153,22 @@ async function init(character, saved, audio, online = false) {
         { id: 'craft_dinghy', name: 'Dinghy Oars', desc: 'Unlocks the Bobbin Dinghy at the marina.', price: ITEMS.craft_dinghy.buy, soldout: inventory.count('craft_dinghy') > 0 },
         { id: 'craft_jetski', name: 'Jetski Key', desc: 'Unlocks the Wavedash Jetski at the marina.', price: ITEMS.craft_jetski.buy, soldout: inventory.count('craft_jetski') > 0 },
         { id: 'plot', name: 'Extra Farm Plot', desc: 'Expand your field by one plot.', icon: 'crop_wheat', price: plotPrice ?? PLOT_PRICE, soldout: plotPrice === null },
+        // THE PASS KEYS. Priced as an upgrade when you already hold Basic, so
+        // nobody pays twice for the half they already own.
+        {
+          id: 'pass_seal', name: "Keeper's Seal",
+          desc: 'Unlocks the BASIC gamepass track for this season. Activate it in the GAMEPASS panel.',
+          price: PASS_PRICES.basic,
+          soldout: gamepass.state.owned !== 'none' || inventory.count('pass_seal') > 0,
+        },
+        {
+          id: 'pass_sigil', name: "Keeper's Sigil",
+          desc: gamepass.state.owned === 'basic'
+            ? 'Upgrades your BASIC track to PREMIUM for this season. You only pay the difference.'
+            : 'Unlocks the PREMIUM gamepass track for this season — both reward rows, and the mythic weapon.',
+          price: gamepass.state.owned === 'basic' ? PASS_PRICES.premium - PASS_PRICES.basic : PASS_PRICES.premium,
+          soldout: gamepass.state.owned === 'premium' || inventory.count('pass_sigil') > 0,
+        },
       ];
     },
     buy(id) {
@@ -4693,6 +4709,10 @@ const CAM_PITCH_DEFAULT = 0.98;
       bloomPass.strength = 0.72 - dayness * 0.32;
     }
     dailies.tick(dt);
+    // A season boundary can pass while the game is open, and a save that has
+    // been shut for weeks lands on the right one at load. Cheap enough to ask
+    // on the same beat as the dailies rollover.
+    if (gamepass.rollSeason()) { audio.sfx('levelup_big'); panels.refresh?.(); }
     hud.setMenuBadge?.(dailies.pending() + gamepass.pending() + skilltree.pending());
     hud.setLifeBadge?.(skilltree.pending());
     hud.setIndexBadge?.(index.pending());

@@ -466,23 +466,58 @@ export const CATEGORIES = [
         in your bag the first time you load it, so a hero who has been playing for
         weeks opens it with their fish, pets and weapons already logged.</p>`),
 
-      S('daily', 'Daily, Play-time & GamePass', `
+      S('daily', 'Daily & Play-time', `
         <p>Three retention systems, all opened with <b>J</b>:</p>
         ${ul([
           '<b>30-day check-in</b> — one claim per day, escalating rewards, cosmetics at days 7/14/20/21/26/29 and the <b>Pebble mount at day 30</b>. Miss more than a day and the streak resets.',
           '<b>Play-time milestones</b> — at 5, 15, 30, 45 and 60 minutes of each session.',
           '<b>Daily quests</b> — three drawn from a pool of twelve, re-rolled at local midnight. Refreshing the page will not reroll them.',
-        ])}
-        <p><b>GamePass</b> is a season pass bought with gold you earned, not money.
-        30 tiers, three reward rows:</p>
+        ])}`),
+
+      S('gamepass', 'The GamePass', `
+        <p><b>U</b>, or ☰ → GAMEPASS. A season pass bought with gold you earned,
+        not money. <b>30 tiers</b>, <b>100 pass XP</b> each, three reward rows
+        running side by side.</p>
+
+        <h4>THERE ARE NO PASS QUESTS</h4>
+        <p>This is the part people expect to be complicated and it is not.
+        <b>Everything you already do earns pass XP</b> — there is no separate list
+        of chores to go and tick off. A world boss is worth 120, a quest 60, a
+        forge 20, a chest 25, a fish 10, a monster 4. Every 100 is one tier, and
+        <b>3,000 XP</b> completes the season. The HOW IT WORKS tab in the panel
+        lists every action and what it pays.</p>
+
+        <h4>SEASONS</h4>
+        <p>A season runs <b>30 days</b> and the panel shows the countdown. When it
+        ends the track resets to tier 1, <b>the rewards change to the next
+        season's set</b>, and any pass you activated expires with it. Claim what
+        you have earned before the clock runs out — nothing carries over. There
+        are four seasons in rotation: <i>The Lantern Road</i>, <i>Tide and
+        Ember</i>, <i>The Long Frost</i> and <i>Hollowtide</i>.</p>
+
+        <h4>THE THREE ROWS</h4>
         ${kv([
-          ['Free', 'Always claimable. Nobody is locked out of the track.'],
-          ['Basic — 1,000c', '+10% XP'],
-          ['Premium — 3,000c', '+25% XP, +15% luck, +10% coins'],
+          ['FREE', 'Always claimable, no purchase, ever. Coins, tonics, forge stones, and a cosmetic or pet on every tenth tier.'],
+          ['BASIC', "Adds a second reward on all 30 tiers — cosmetics, trails, a pet, and an EPIC gacha weapon at tier 30. Perk: +10% XP."],
+          ['PREMIUM', 'Adds a third reward on all 30 tiers — mounts, pets, cosmetics, a legendary weapon at 21 and a MYTHIC weapon at 30. Perk: +25% XP, +15% luck, +10% coins.'],
         ])}
-        <p>Upgrading basic → premium only costs the difference, and every tier you
-        have already passed is claimable retroactively. The track ends at
-        <b>Aurora</b>, a mythic spirit-elk mount, on premium tier 30.</p>`),
+
+        <h4>HOW TO UNLOCK BASIC AND PREMIUM</h4>
+        <p>Not from a button in the menu — from <b>Pip's Shop</b> in the plaza.
+        Buy the <b>Keeper's Seal</b> (1,000c) for the Basic track or the
+        <b>Keeper's Sigil</b> (3,000c) for Premium, then open the pass panel and
+        press <b>USE SEAL</b> / <b>USE SIGIL</b> on the card.</p>
+        ${call('do', 'WORTH KNOWING', [
+          'Buying the Sigil while you already hold Basic costs only the <b>difference</b>.',
+          'Every tier you have already passed is claimable <b>retroactively</b> — activating a pass at tier 20 immediately hands over all twenty.',
+          '<b>CLAIM ALL</b> takes everything waiting in one press.',
+          'The perk applies for the rest of the season, so the earlier you activate one the more it is worth.',
+        ])}
+        ${call('dont', 'AND WHAT IT IS NOT', [
+          'It is not real money. Gold you earned in Anavela is the only currency involved.',
+          'It is not a second XP bar for your character — pass XP and hero XP are separate, and pass XP never levels you up.',
+          'It is not permanent. When the season ends the pass ends with it.',
+        ])}`),
 
       S('gacha', 'Wonder Capsules', `
         <p>The capsule machine on the third avenue. <b>100c</b> a pull, or

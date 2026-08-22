@@ -224,6 +224,13 @@ export const ITEMS = {
   craft_dinghy:  { name: 'Dinghy Oars', craftId: 'dinghy', buy: 120, rarity: 'common' },
   craft_jetski:  { name: 'Donut Boat Key', craftId: 'jetski', buy: 480, rarity: 'rare' },
 
+  // GAMEPASS KEYS. Pip sells these; the pass panel consumes one to unlock a
+  // track. They are items rather than a button in a menu so that unlocking a
+  // pass is something you walked to the shop and got, and so the same flow can
+  // later be fed by a token purchase without touching the pass itself.
+  pass_seal:  { name: "Keeper's Seal",  buy: 1000, rarity: 'epic' },
+  pass_sigil: { name: "Keeper's Sigil", buy: 3000, rarity: 'legendary' },
+
   // consumables
   tonic: { name: 'Health Tonic', consumable: true, heal: 40 },
   // hour-long boosters: the two things players actually want to double
