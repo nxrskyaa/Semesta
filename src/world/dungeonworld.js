@@ -88,15 +88,21 @@ const HALF_GREAT = 22;
 // bottom of the view. The room is closed by the dark above it and by fog, not by
 // building higher — which is the trade every top-down dungeon makes.
 const WALL_H = 4.6;
-/** How far the corners are cut off. An octagon reads as ARCHITECTURE; a square
- *  box reads as a box, and no amount of texture fixes that.
+/**
+ * THE ROOM IS A REGULAR OCTAGON, described by ONE number: the apothem, the
+ * distance from the middle to the middle of any face. Every other quantity --
+ * the side length, the corner radius, where collision stops -- is derived from
+ * it, which is the whole reason the walls can no longer disagree with the
+ * collision or with each other.
  *
- *  0.30 cut too hard. Measured on a hall: you could walk to 16.05 along the
- *  axes but only 13.75 on the diagonals, so the playable shape was a plus-sign
- *  rather than a room, and moving diagonally -- which is most of the time --
- *  walked you into a corner that was not where the corner looked. At 0.20 the
- *  corners still read as cut and the diagonals gain about 1.1 units each. */
-const CHAMFER = 0.20;
+ * There used to be a CHAMFER knob that pulled the four diagonal faces closer in
+ * than the four flats. It produced an irregular eight-sided shape nobody had
+ * measured: at 0.30 you could walk to 16.05 along the axes but only 13.30 on
+ * the diagonals, so the playable area was a plus-sign rather than a room. A
+ * regular octagon reaches the same distance in all eight directions, which is
+ * what a room is supposed to do.
+ */
+export const apothem = (half) => half + 0.7;
 
 export function halfFor(kind) {
   return kind === 'warden' ? HALF_WARDEN : kind === 'great' ? HALF_GREAT : HALF;
@@ -127,12 +133,16 @@ export function halfFor(kind) {
  * `diagPad` defaults to `pad` so the tile and prop callers are unchanged; only
  * collision passes both, each derived from its own plinth face.
  */
-function insideRoom(x, z, half, pad = 0, diagPad = pad) {
-  const R = half + 0.7;
-  const flat = R - 0.5 - pad;                          // the four axis faces
-  if (Math.abs(x) > flat || Math.abs(z) > flat) return false;
-  const diag = R * (1 - CHAMFER * 0.62) - diagPad;     // the four cut corners
-  return Math.abs(x) + Math.abs(z) < diag * Math.SQRT2;
+function insideRoom(x, z, half, pad = 0) {
+  // A regular octagon with apothem A is exactly these three constraints. One
+  // pad now leaves the SAME clearance on all eight faces, which the old
+  // two-radius shape made impossible -- it needed a second pad to stop you
+  // being held 1.3 units off the stone on the axes and flush against it on the
+  // diagonals, and even then the two edges never matched.
+  const A = apothem(half) - pad;
+  if (A <= 0) return false;
+  if (Math.abs(x) > A || Math.abs(z) > A) return false;
+  return Math.abs(x) + Math.abs(z) <= A * Math.SQRT2;
 }
 
 /** A flagged floor: real courses, a border band and an inlaid centre. */
@@ -141,7 +151,10 @@ function buildFloor(g, half, t) {
   // tiles spanned -0.13..0.09, so the two solids overlapped and the shared
   // surfaces flickered against each other as the camera moved. That is the
   // "kedip-kedip" — z-fighting, not a texture problem.
-  const bed = boxMesh(half * 2 + 1.4, 0.5, half * 2 + 1.4, shade(t.wall, 0.8));
+  // wide enough to reach under the CORNERS, not just the faces: a regular
+  // octagon's vertices sit at A / cos(PI/8), about 8% further out than its
+  // apothem, and a bed cut to the apothem leaves eight triangles of nothing
+  const bed = boxMesh(half * 2 + 5, 0.5, half * 2 + 5, shade(t.wall, 0.8));
   // Top at -0.20, a clear 0.07 BELOW the tiles underside at -0.13. Ending it
   // exactly level with them would leave two coplanar faces, and coplanar is
   // precisely what z-fighting needs — "touching" is not "separated".
@@ -161,9 +174,15 @@ function buildFloor(g, half, t) {
       // floor with a middle has somewhere to stand and fight over.
       const inner = r < 4.2;
       const border = !insideRoom(x, z, half, 3.4);
+      // A 10% checker step is invisible from the game camera -- the floor read
+      // as one flat grid, which is most of what "terlalu sederhana" was. The
+      // step is 22% now, and one flag in seven is a WORN one, dressed darker,
+      // picked deterministically so the pattern is the same on every machine.
+      const worn = ((ix * 7 + iz * 13) % 7) === 0;
       const col = inner ? shade(t.trim, 0.75)
-        : border ? shade(t.floor, 0.82)
-          : ((ix + iz) % 2 === 0 ? t.floor : shade(t.floor, 1.1));
+        : border ? shade(t.floor, 0.8)
+          : worn ? shade(t.floor, 0.72)
+            : ((ix + iz) % 2 === 0 ? shade(t.floor, 0.9) : shade(t.floor, 1.12));
       const f = boxMesh(step - 0.22, 0.22, step - 0.22, col);
       f.position.set(x, -0.02, z);
       f.receiveShadow = true;
@@ -187,61 +206,130 @@ function shade(hex, mul) {
 }
 
 /**
- * AN EIGHT-SIDED HALL, not a crate.
+ * AN EIGHT-SIDED HALL, and this time it is actually an octagon.
  *
- * Four flat walls meeting at right angles is the single thing that made this
- * read as "kotak": from a top-down camera a square room is a rectangle with a
- * rectangle of floor in it, and every corner looks the same. Chamfering the
- * corners gives eight faces, three visible depths at any time, and somewhere to
- * put the braziers that is not simply "against a wall".
+ * THE DOUBLE WALL AT THE CORNERS WAS A GEOMETRY BUG, not a style choice. Each
+ * face was placed on its own plane and then given an ARBITRARY length: the four
+ * flats got `half * 1.5` and the four chamfers `half * CHAMFER * 2.5`. Neither
+ * has anything to do with where the faces actually meet. Measured on a hall,
+ * against the true vertices of the polygon those eight planes describe:
  *
- * Each face is a base plinth, the wall itself, a recessed panel and a cornice —
- * four bands of depth, which is what makes masonry read as built rather than as
- * a painted plane.
+ *     flat side    true 8.46   built 25.50   3.02x too long
+ *     chamfer side true 19.05  built  8.50   0.45x, less than half
+ *
+ * So every flat overhung its corner by nine units while the chamfer beside it
+ * fell four units short of meeting it — and because the chamfer plane also sat
+ * closer in, you saw the short slab in front and the overhanging flat behind it
+ * at a different depth. Two walls, one corner, no join. That is the "tembok
+ * penghalang double di sisi ujung-ujungnya", and it is also most of why the
+ * room read as crude: the walls never actually enclosed anything.
+ *
+ * It is a REGULAR octagon now — one apothem for all eight faces — so the shape
+ * is described by a single number and the sides cannot drift apart again. The
+ * side length is derived, never chosen: `2 * A * tan(PI/8)`.
+ *
+ * On top of the fix, the architecture the room was missing. A face is now a
+ * plinth, the wall, a string course at mid height, a blind arcade of two
+ * stepped arches, and a cornice; the eight corners carry engaged PILASTERS with
+ * a base and a capital, which is what a real octagonal hall does and which also
+ * puts something deliberate on the join instead of a seam.
  */
 function buildWalls(g, half, t) {
-  const R = half + 0.7;
+  const A = apothem(half);
   const SIDES = 8;
+  const SIDE_L = 2 * A * Math.tan(Math.PI / SIDES);   // derived, never chosen
+  const VERT = A / Math.cos(Math.PI / SIDES);         // corner radius
+
   for (let i = 0; i < SIDES; i++) {
     // NO offset: this puts the four FLAT faces on the axes (0/90/180/270) and
     // the four chamfers on the diagonals. The stair and the way out sit on the
     // -Z and +Z flats, so a door is always centred on a wall rather than
-    // straddling a cut corner, and the alcoves land on the diagonals where the
-    // braziers go.
+    // straddling a cut corner, and the alcoves land on the diagonals.
     const a = (i / SIDES) * Math.PI * 2;
     const cx = Math.cos(a), cz = Math.sin(a);
-    // the chamfers sit closer in than the flats, which is what cuts the corners
     const diag = i % 2 === 1;
-    const d = diag ? R * (1 - CHAMFER * 0.62) : R;
-    const L = diag ? half * CHAMFER * 2.5 : half * 1.5;
+    // a hair of overlap at each end so the joins never show a hairline gap
+    const L = SIDE_L + 0.5;
 
-    const put = (w, h, dep, col, y, out) => {
+    const put = (w, h, dep, col, y, out, side = 0) => {
       const m = boxMesh(w, h, dep, col);
-      m.position.set(cx * (d + out), y, cz * (d + out));
+      m.position.set(cx * (A + out) - Math.sin(a) * side, y, cz * (A + out) + Math.cos(a) * side);
       m.rotation.y = -a + Math.PI / 2;
       m.receiveShadow = true;
       g.add(m);
       return m;
     };
 
-    put(L, 0.55, 1.5, shade(t.wall, 1.25), 0.27, 0);       // plinth
-    put(L, WALL_H, 1.0, t.wall, WALL_H / 2 + 0.4, 0.2);     // the wall
-    // a recessed panel, inset so its edges catch a highlight
-    put(L * 0.72, WALL_H * 0.55, 0.24, shade(t.wall, 0.72), WALL_H * 0.5, -0.28);
-    put(L, 0.42, 1.35, t.trim, WALL_H + 0.6, 0);            // cornice
+    // EIGHT PLANES PAINTED ONE COLOUR READ AS ONE PLANE. Faceted geometry is
+    // legible because each face catches the light differently; with a single
+    // flat tone the octagon collapsed into a continuous tan band and the room
+    // looked like a tub. A small deterministic step per side (0.94 / 1.00 /
+    // 1.06) is enough for the eye to count the faces, and costs no meshes.
+    const faceTone = 1 + ((i % 3) - 1) * 0.06;
+    const faceCol = shade(t.wall, faceTone);
+    put(L, 0.55, 1.5, shade(t.wall, 1.25 * faceTone), 0.27, 0);   // plinth
+    put(L, WALL_H, 1.0, faceCol, WALL_H / 2 + 0.4, 0.2);          // the wall
+    // two coursing bands: stone laid in courses, not poured as a slab
+    put(L, 0.14, 1.06, shade(t.wall, faceTone * 0.86), WALL_H * 0.32, 0.19);
+    put(L, 0.14, 1.06, shade(t.wall, faceTone * 0.86), WALL_H * 0.86, 0.19);
+    // A BLIND ARCADE. One flat recessed rectangle per face read as a panel;
+    // two arched recesses read as a wall somebody built. The heads are stepped
+    // rather than curved because every other surface in this game is pixel art
+    // and a smooth arc beside a blocky one looks like a mistake.
+    const bays = diag ? 2 : 1;
+    const bayW = Math.min(2.6, (SIDE_L - 1.2) / bays);
+    if (bayW > 1.1) {
+      for (let b = 0; b < bays; b++) {
+        const off = (b - (bays - 1) / 2) * (bayW + 0.9);
+        const H = WALL_H * 0.52;
+        // deep and dark, or it is a painted rectangle rather than a hole
+        put(bayW, H, 0.3, shade(t.wall, 0.34), 0.55 + H / 2, -0.42, off);
+        // three shortening courses make the head read as an arch
+        for (let k = 0; k < 3; k++) {
+          put(bayW - 0.28 * (k + 1), 0.2, 0.3, shade(t.wall, 0.42),
+            0.55 + H + 0.1 + k * 0.2, -0.42, off);
+        }
+        // a lit reveal down each jamb, so the recess has an edge to catch
+        for (const sx of [-1, 1]) {
+          put(0.16, H + 0.5, 0.34, shade(t.wall, faceTone * 1.3),
+            0.55 + (H + 0.5) / 2, -0.3, off + sx * (bayW / 2 + 0.08));
+        }
+      }
+    }
+    put(L, 0.26, 1.22, shade(t.trim, 0.9), WALL_H * 0.62, 0.02);   // string course
+    put(L, 0.42, 1.35, t.trim, WALL_H + 0.6, 0);                    // cornice
 
     // ALCOVES on the chamfers only: a lit niche is worth more than eight of
     // them, and putting them on the diagonals means they never fight a door.
     if (diag) {
       const niche = boxMesh(1.5, 2.1, 0.4, '#0a0810');
-      niche.position.set(cx * (d - 0.32), 1.6, cz * (d - 0.32));
+      niche.position.set(cx * (A - 0.32), 1.6, cz * (A - 0.32));
       niche.rotation.y = -a + Math.PI / 2;
       g.add(niche);
       const arch = boxMesh(1.9, 0.3, 0.6, t.trim);
-      arch.position.set(cx * (d - 0.3), 2.8, cz * (d - 0.3));
+      arch.position.set(cx * (A - 0.3), 2.8, cz * (A - 0.3));
       arch.rotation.y = -a + Math.PI / 2;
       g.add(arch);
     }
+  }
+
+  // ---- ENGAGED PILASTERS ON THE EIGHT CORNERS ----
+  // A corner is where two planes meet at 135 degrees; left bare it is a seam.
+  // A pilaster is what actually stands there in a stone hall, and it turns the
+  // join into the thing you were meant to be looking at.
+  for (let i = 0; i < SIDES; i++) {
+    const a = ((i + 0.5) / SIDES) * Math.PI * 2;        // halfway between faces
+    const px = Math.cos(a) * (VERT - 0.35), pz = Math.sin(a) * (VERT - 0.35);
+    const base = boxMesh(1.15, 0.7, 1.15, shade(t.trim, 0.82));
+    base.position.set(px, 0.35, pz); base.rotation.y = -a;
+    const shaft = boxMesh(0.9, WALL_H + 0.5, 0.9, shade(t.wall, 1.12));
+    shaft.position.set(px, 0.7 + (WALL_H + 0.5) / 2, pz); shaft.rotation.y = -a;
+    const collar = boxMesh(1.02, 0.18, 1.02, shade(t.trim, 0.95));
+    shaft.receiveShadow = true;
+    collar.position.set(px, WALL_H * 0.62, pz); collar.rotation.y = -a;
+    const cap = boxMesh(1.28, 0.5, 1.28, t.trim);
+    cap.position.set(px, WALL_H + 1.35, pz); cap.rotation.y = -a;
+    g.add(base, shaft, collar, cap);
   }
 }
 
@@ -945,13 +1033,11 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     // pillar was. A monster standing inside stone reads exactly as one that is
     // hiding, and it is one you cannot hit. Collision is the only place this
     // can be fixed once for the player and everything that hunts them.
-    // THE TWO PADS ARE MEASURED OFF THE TWO PLINTHS, not guessed at once.
-    // A flat's plinth is 1.5 deep centred on R, so its inner face is R-0.75;
-    // 0.6 leaves the hero's body a 0.35 clearance against it and no more.
-    // The chamfer's plinth sits further in, so it keeps the larger pad.
-    // Measured on a hall: walkable area up ~14%, and the gap between where you
-    // stop and where the stone is went 1.3 -> ~0.3 on the axes.
-    terrain.walkable = (x, z) => insideRoom(x, z, state.half, 0.6, 1.1)
+    // ONE PAD, MEASURED OFF THE PLINTH. Every face is now the same distance
+    // out, so a single margin leaves the same clearance everywhere: the plinth
+    // is 1.5 deep centred on the apothem, so its inner face is A - 0.75, and
+    // 1.1 leaves the hero's body 0.35 against it and no more.
+    terrain.walkable = (x, z) => insideRoom(x, z, state.half, 1.1)
       && !nearPillar(x, z, state.half, 1.15);
     // There is no water in the Hollow, and saying so switches off swimming, the
     // boats, the shore rescue and the weather in one line each.
