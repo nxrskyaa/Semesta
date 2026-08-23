@@ -89,8 +89,14 @@ const HALF_GREAT = 22;
 // building higher — which is the trade every top-down dungeon makes.
 const WALL_H = 4.6;
 /** How far the corners are cut off. An octagon reads as ARCHITECTURE; a square
- *  box reads as a box, and no amount of texture fixes that. */
-const CHAMFER = 0.30;
+ *  box reads as a box, and no amount of texture fixes that.
+ *
+ *  0.30 cut too hard. Measured on a hall: you could walk to 16.05 along the
+ *  axes but only 13.75 on the diagonals, so the playable shape was a plus-sign
+ *  rather than a room, and moving diagonally -- which is most of the time --
+ *  walked you into a corner that was not where the corner looked. At 0.20 the
+ *  corners still read as cut and the diagonals gain about 1.1 units each. */
+const CHAMFER = 0.20;
 
 export function halfFor(kind) {
   return kind === 'warden' ? HALF_WARDEN : kind === 'great' ? HALF_GREAT : HALF;
@@ -101,17 +107,31 @@ export function halfFor(kind) {
 // ---------------------------------------------------------------------------
 
 /** A flagged floor slab: real courses, not one flat plane. */
-/** True inside the octagon, with `pad` of margin. The room's real shape. */
-function insideRoom(x, z, half, pad = 0) {
-  // Derived from where buildWalls actually PUTS the faces, not from a tidy
-  // guess. A first version used half*(2-CHAMFER) as the diagonal limit, which
-  // is far looser than the real chamfer wall: measured, you could stand at the
-  // cut corner and walk straight through it. Collision has to be read off the
-  // same numbers the geometry is built from or the two drift apart silently.
+/**
+ * True inside the octagon, with `pad` of margin. The room's real shape.
+ *
+ * Derived from where buildWalls actually PUTS the faces, not from a tidy guess.
+ * A first version used half*(2-CHAMFER) as the diagonal limit, which is far
+ * looser than the real chamfer wall: measured, you could stand at the cut
+ * corner and walk straight through it. Collision has to be read off the same
+ * numbers the geometry is built from or the two drift apart silently.
+ *
+ * ONE PAD WAS DOING TWO DIFFERENT JOBS, and that is the invisible wall people
+ * kept walking into. The flats and the chamfers are seated at different radii,
+ * so a single `pad` cannot leave the same clearance at both: measured on a hall
+ * you were stopped **1.3 units short of the stone on the axes** -- with 0.7 of
+ * lit floor tile still ahead of you that you simply could not stand on -- while
+ * on the diagonals you were flush against it. Floor you can see and cannot walk
+ * on IS a wall; it is just an invisible one, which is worse.
+ *
+ * `diagPad` defaults to `pad` so the tile and prop callers are unchanged; only
+ * collision passes both, each derived from its own plinth face.
+ */
+function insideRoom(x, z, half, pad = 0, diagPad = pad) {
   const R = half + 0.7;
   const flat = R - 0.5 - pad;                          // the four axis faces
   if (Math.abs(x) > flat || Math.abs(z) > flat) return false;
-  const diag = R * (1 - CHAMFER * 0.62) - pad;         // the four cut corners
+  const diag = R * (1 - CHAMFER * 0.62) - diagPad;     // the four cut corners
   return Math.abs(x) + Math.abs(z) < diag * Math.SQRT2;
 }
 
@@ -925,7 +945,13 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     // pillar was. A monster standing inside stone reads exactly as one that is
     // hiding, and it is one you cannot hit. Collision is the only place this
     // can be fixed once for the player and everything that hunts them.
-    terrain.walkable = (x, z) => insideRoom(x, z, state.half, 1.1)
+    // THE TWO PADS ARE MEASURED OFF THE TWO PLINTHS, not guessed at once.
+    // A flat's plinth is 1.5 deep centred on R, so its inner face is R-0.75;
+    // 0.6 leaves the hero's body a 0.35 clearance against it and no more.
+    // The chamfer's plinth sits further in, so it keeps the larger pad.
+    // Measured on a hall: walkable area up ~14%, and the gap between where you
+    // stop and where the stone is went 1.3 -> ~0.3 on the axes.
+    terrain.walkable = (x, z) => insideRoom(x, z, state.half, 0.6, 1.1)
       && !nearPillar(x, z, state.half, 1.15);
     // There is no water in the Hollow, and saying so switches off swimming, the
     // boats, the shore rescue and the weather in one line each.

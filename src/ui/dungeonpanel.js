@@ -39,10 +39,6 @@ const CSS = `
 .dgate .floors.grid .fl { min-width: 0; padding: 6px 3px; }
 .dgate .floors.grid .fl .n { font-size: 13px; }
 .dgate .floors.grid .fl .k { font-size: 8px; }
-.dgate .allbtn { margin-left: 10px; padding: 2px 8px; background: #241d33; color: #bfb2d8;
-  border: 0; box-shadow: 0 0 0 1px #3d3454; cursor: pointer; font-family: inherit;
-  font-size: 9px; letter-spacing: 1px; }
-.dgate .allbtn:hover { color: #e8d8ff; box-shadow: 0 0 0 1px #55486f; }
 .dgate .fl { min-width: 62px; background: #1d1830; border: 2px solid #2e2745; padding: 8px 6px;
   cursor: pointer; text-align: center; color: #cfc4e4; }
 .dgate .fl:hover { border-color: #55486f; }
@@ -157,7 +153,6 @@ export function showDungeonGate(dj, level) {
     let floor = dj.highestOpen(diff);
     // the curated row is right while you are CLIMBING and a wall once you have
     // finished — see the note on floorChoices
-    let showAll = false;
 
     const el = document.createElement('div');
     el.className = 'dgate';
@@ -165,33 +160,28 @@ export function showDungeonGate(dj, level) {
 
     /**
      * The floors worth offering: the deepest you have cleared, the next one
-     * down, and the landmark floors on the way. Never thirty boxes.
+     * down, and the landmark floors on the way.
      */
     /**
-     * THE CURATED ROW IS RIGHT UNTIL YOU FINISH, AND THEN IT IS A WALL.
+     * EVERY FLOOR YOU HAVE OPENED, LISTED. No toggle, no hidden half.
      *
-     * Six boxes answers "how far did I get and what is next", which is the only
-     * question a player still climbing has. But a player who has cleared the
-     * bottom is asking a different one — "let me farm floor twelve" — and the
-     * row physically could not express it: measured with easy cleared to 30,
-     * the rules said all 30 floors were enterable and the panel offered 6, so
-     * **24 floors you had earned the right to replay could not be picked at
-     * all**. That is what "replay does not work" actually was.
+     * The first version showed six curated boxes on the theory that "how far
+     * did I get and what is next" is the only question a climber has. Replay
+     * was then added behind a SHOW ALL button — and that button is **80x15
+     * pixels at 9px font**, tucked inline in a label. On a phone that is far
+     * below a usable tap target, which is why "replay does not work" came back
+     * a second time after it had supposedly been fixed: with easy cleared to 30
+     * the panel offered 6 floors and the road to the other 24 was invisible.
      *
-     * So both questions get an answer: the short row stays the default, and
-     * SHOW ALL opens every floor you have opened. Thirty boxes is a spreadsheet
-     * — but a spreadsheet you asked for is not the same as one you were handed.
+     * The toggle was never worth its complexity. Below seven open floors the
+     * two views are IDENTICAL — the short row only differs for somebody who has
+     * opened more than six, and that is exactly the player who came to replay.
+     * So there is one view, it is the full ladder, and it lays out as a grid as
+     * soon as there are enough boxes to need one.
      */
     function floorChoices() {
       const open = dj.highestOpen(diff);
-      if (showAll) {
-        return Array.from({ length: open }, (_, i) => i + 1);
-      }
-      const set = new Set([1, open]);
-      if (open > 1) set.add(open - 1);
-      // the last warden and lord you have already earned the right to revisit
-      for (let n = 5; n <= open; n += 5) set.add(n);
-      return [...set].filter((n) => n >= 1 && n <= open).sort((a, b) => a - b).slice(-6);
+      return Array.from({ length: open }, (_, i) => i + 1);
     }
 
     function paint() {
@@ -225,10 +215,9 @@ export function showDungeonGate(dj, level) {
           }).join('')}
         </div>
 
-        <div class="lbl">WHERE TO ENTER &nbsp;·&nbsp; deepest open: ${open}${
-          open > 6 ? `<button class="allbtn" data-all>${
-            showAll ? 'SHOW FEWER' : `SHOW ALL ${open}`}</button>` : ''}</div>
-        <div class="floors ${showAll ? 'grid' : ''}">
+        <div class="lbl">WHERE TO ENTER &nbsp;&middot;&nbsp; ${
+          open === 1 ? 'floor 1' : `all ${open} floors you have opened`}</div>
+        <div class="floors ${choices.length > 8 ? 'grid' : ''}">
           ${choices.map((n) => {
             const k = dj.floorKind(n);
             return `<div class="fl ${k} ${n === floor ? 'on' : ''}" data-f="${n}">
@@ -266,7 +255,6 @@ export function showDungeonGate(dj, level) {
       // each difficulty is its own ladder, so switching jumps to where THAT
       // one left off rather than carrying a number across that means nothing
       if (d) { diff = d.dataset.d; floor = dj.highestOpen(diff); paint(); return; }
-      if (e.target.closest('[data-all]')) { showAll = !showAll; paint(); return; }
       const f = e.target.closest('[data-f]');
       if (f) { floor = Number(f.dataset.f); paint(); return; }
       if (e.target.closest('.back') || e.target === el) { close(null); return; }
