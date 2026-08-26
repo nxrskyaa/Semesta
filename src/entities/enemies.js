@@ -750,6 +750,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       const heroBonus = Math.floor((hooks.getPlayerLevel?.() || 1) / 5);
       const level = Math.max(1, levelFor(x, z) + heroBonus + (def.boss ? 2 : 0));
       const mesh = BUILDERS[type]();
+      attachVis(mesh);
       // ELITE variant: rarer, bigger, gilded aura ring — much tougher, pays more
       const elite = !def.boss && level >= 2 && Math.random() < 0.08;
       let hpMax = Math.round(def.hp * (1 + (level - 1) * 0.35));
@@ -778,6 +779,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         dmg, xp,
         state: 'wander', wanderT: 0, dir: Math.random() * Math.PI * 2,
         attackCd: 0, hurtFlash: 0, anim: Math.random() * 10,
+        swing: 0, swingPending: false, recoil: 0,
         knock: new THREE.Vector2(0, 0),
         stunT: 0, frozenT: 0,
         chargeT: 0, windupT: 0, chargeDir: new THREE.Vector2(), chargeHit: false, // boarling
@@ -813,6 +815,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     const meshType = boss ? boss.base : type;
     const mesh = BUILDERS[meshType]?.();
     if (!mesh) return null;
+    attachVis(mesh);
 
     // THE CALLER'S MULTIPLIER IS THE WHOLE MULTIPLIER.
     //
@@ -846,6 +849,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       state: 'aggro',                            // nothing in the Hollow wanders
       wanderT: 0, dir: Math.random() * Math.PI * 2,
       attackCd: 0, hurtFlash: 0, anim: Math.random() * 10,
+        swing: 0, swingPending: false, recoil: 0,
       knock: new THREE.Vector2(0, 0),
       stunT: 0, frozenT: 0,
       chargeT: 0, windupT: 0, chargeDir: new THREE.Vector2(), chargeHit: false,
@@ -895,6 +899,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
           mesh.add(spike);
         }
       }
+      attachVis(mesh);          // after the crown, before the nameplate
       const np = makeNameplate(kind.name, '★', true);
       np.sprite.position.y = 2.6 / kind.scale + 0.6;
       np.sprite.scale.multiplyScalar(1 / kind.scale);
@@ -910,6 +915,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
         dmg: kind.dmg, xp: kind.xp,
         state: 'aggro', wanderT: 0, dir: 0,
         attackCd: 1, hurtFlash: 0, anim: 0,
+        swing: 0, swingPending: false, recoil: 0,
         knock: new THREE.Vector2(0, 0),
         stunT: 0, frozenT: 0,
         chargeT: 0, windupT: 0, chargeDir: new THREE.Vector2(), chargeHit: false,
@@ -1039,6 +1045,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
 
       e.anim += dt;
       e.attackCd -= dt;
+      if (e.recoil > 0) e.recoil -= dt;
 
       // sanctuaries (village / camps / player homes): regular monsters can
       // NEVER be inside the safe radius. They retreat, and if they somehow end
@@ -1147,34 +1154,122 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
 
       applyKnock(e, dt);
 
-      // --- per-species animation ---
+      // THE SWING LANDS AT THE END OF ITS OWN ANIMATION, not at the start.
+      // Resolved here rather than inside meleeAI because a player who backs off
+      // mid-swing drops the creature out of that branch entirely, and a pending
+      // blow that nothing ever resolves would leave it frozen mid-rear forever.
+      if (e.swing > 0) {
+        e.swing -= dt;
+        if (e.swing <= 0) {
+          // a small forgiveness margin: stepping back during the wind-up should
+          // beat it, but not by a hair's breadth on one frame's worth of movement
+          if (e.swingPending && !e.peaceful && e.stunT <= 0
+              && distP < e.def.attackRange * 1.25) {
+            hooks.onPlayerHit(e, e.dmg);
+          }
+          e.swingPending = false;
+        }
+      }
+
+      // ================= ANIMATION =================
+      // Two layers. The GAIT applies to every species and is driven by what the
+      // creature is actually doing; the per-species block after it adds the one
+      // flourish that makes that species itself.
+      //
+      // Only 9 of 20 species had any animation at all, and none of it read the
+      // creature's state: a monster charging you was posed identically to one
+      // asleep in a field, because every pose ran off `e.anim`, which is just a
+      // clock. That is what "stiff" was.
+      const vis = e.mesh.userData.vis;
+      if (vis) {
+        // SPEED FROM DISTANCE MOVED, not from a state flag. It costs two
+        // subtractions, it is automatically right for every species and every
+        // behaviour, and it stays right for ones added later -- the same reason
+        // remote players derive their walk from movement rather than from
+        // anything sent over the wire.
+        const mx = p.x - (e.px ?? p.x), mz = p.z - (e.pz ?? p.z);
+        e.px = p.x; e.pz = p.z;
+        const step = Math.hypot(mx, mz);
+        const inst = dt > 0 ? step / dt : 0;
+        // smoothed, or one blocked frame reads as a dead stop mid-stride
+        e.spd = (e.spd ?? 0) + (inst - (e.spd ?? 0)) * Math.min(1, dt * 9);
+        const run = Math.min(1, e.spd / (e.def.speed || 2));
+
+        // THE PHASE ADVANCES WITH DISTANCE, NOT WITH TIME. Tie it to the clock
+        // and the feet skate whenever the creature is slowed, knocked back or
+        // walking uphill; tie it to the ground and the bounce matches the
+        // stride at any speed, for free.
+        e.gait = (e.gait ?? Math.random() * 6.28) + step * 4.2;
+
+        const g = e.gait;
+        // a hop, a lean into the run, and a roll -- what a small four-legged
+        // thing does. All scaled by `run`, so standing still is genuinely still
+        // rather than jogging on the spot.
+        vis.position.y = Math.abs(Math.sin(g)) * 0.085 * run;
+        vis.rotation.x = -0.13 * run;
+        vis.rotation.z = Math.sin(g) * 0.085 * run;
+        // ...and when it is NOT moving it breathes, so idle is not a statue.
+        const br = 1 + Math.sin(e.anim * 1.9) * 0.038 * (1 - run);
+        const w = 1 / Math.sqrt(br);
+        vis.scale.set(w, br, w);
+
+        // THE TELL. A melee blow used to be dealt on the same frame it was
+        // decided, with nothing on screen before it -- unreadable, and the main
+        // reason fights felt like walking into an invisible wall. `e.swing`
+        // rears the creature back and drops it through the blow; the damage is
+        // resolved at the bottom of that arc, in the block below.
+        if (e.swing > 0) {
+          const k = 1 - e.swing / SWING_TIME;          // 0 -> 1 across the swing
+          // ease back slowly, snap forward: that asymmetry is the weight
+          const lean = k < 0.55 ? -(k / 0.55) * 0.42 : ((k - 0.55) / 0.45) * 0.5 - 0.42;
+          vis.rotation.x += lean;
+          vis.position.y += Math.sin(k * Math.PI) * 0.06;
+        }
+        // and a RECOIL when hit -- a colour flash alone never reads as impact
+        if (e.recoil > 0) {
+          const k = e.recoil / RECOIL_TIME;
+          vis.rotation.x += k * 0.34;
+          const sq = 1 - k * 0.16;
+          vis.scale.set(vis.scale.x / sq, vis.scale.y * sq, vis.scale.z / sq);
+        }
+      }
+
+      // --- per-species flourish ---
+      const V = vis || e.mesh;
       if (e.type === 'slime') {
-        const s = 1 + Math.sin(e.anim * 6) * 0.12;
-        e.mesh.scale.set(1 / Math.sqrt(s), s, 1 / Math.sqrt(s));
+        // a slime has no legs, so the gait bob is wrong for it: it PULSES
+        const sq = 1 + Math.sin(e.anim * 6) * (0.09 + 0.06 * Math.min(1, e.spd || 0));
+        const w = 1 / Math.sqrt(sq);
+        V.scale.set(w, sq, w);
+        V.position.y = Math.max(0, Math.sin(e.anim * 6)) * 0.05;
       } else if (e.type === 'nibbit') {
-        e.mesh.position.y += Math.max(0, Math.sin(e.anim * 9)) * 0.06;
         if (e.mesh.userData.wings) {
           const flap = Math.max(0, Math.sin(e.anim * 9)) * 0.7;
           e.mesh.userData.wings[0].rotation.z = flap;
           e.mesh.userData.wings[1].rotation.z = -flap;
         }
       } else if (e.type === 'wisp') {
+        // floaters own their own height: the root is theirs, the pivot is not
         e.mesh.position.y = terrain.surfaceY(p.x, p.z) + 0.7 + Math.sin(e.anim * 2.3) * 0.22;
+        V.position.y = 0; V.rotation.z = Math.sin(e.anim * 1.3) * 0.12;
         if (e.mesh.userData.spinning) e.mesh.userData.spinning.rotation.y += dt * 1.8;
       } else if (e.type === 'treant' || e.type === 'golem') {
-        const sw = Math.sin(e.anim * (e.type === 'golem' ? 1.4 : 2.2)) * 0.3;
+        // big things swing their arms with the STRIDE, not with a clock
+        const sw = Math.sin(e.gait ?? 0) * 0.34 * Math.min(1, 0.35 + (e.spd || 0));
         if (e.mesh.userData.armL) {
           e.mesh.userData.armL.rotation.x = sw;
           e.mesh.userData.armR.rotation.x = -sw;
         }
       } else if (e.type === 'boarling' && e.chargeT > 0) {
-        e.mesh.position.y += Math.abs(Math.sin(e.anim * 22)) * 0.03;
+        // a charge is a flat-out gallop: low, fast, head down
+        V.position.y += Math.abs(Math.sin(e.anim * 22)) * 0.05;
+        V.rotation.x -= 0.2;
       } else if (e.type === 'sparkit') {
-        // twitchy hop + crackling tail wiggle
-        e.mesh.position.y += Math.max(0, Math.sin(e.anim * 13)) * 0.05;
+        V.position.y += Math.max(0, Math.sin(e.anim * 13)) * 0.05;
         if (e.mesh.userData.tail) e.mesh.userData.tail.rotation.y = Math.sin(e.anim * 18) * 0.4;
       } else if (e.type === 'puffowl') {
         e.mesh.position.y = terrain.surfaceY(p.x, p.z) + 0.55 + Math.sin(e.anim * 2.0) * 0.18;
+        V.position.y = 0;
         if (e.mesh.userData.wings) {
           const flap = Math.sin(e.anim * 7) * 0.55;
           e.mesh.userData.wings[0].rotation.z = flap;
@@ -1211,9 +1306,11 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       moveEnemy(e, (dx / l) * e.def.speed, (dz / l) * e.def.speed, dt);
     }
     e.mesh.rotation.y = Math.atan2(dx, dz);
-    if (distP < e.def.attackRange && e.attackCd <= 0 && !e.peaceful) {
+    if (distP < e.def.attackRange && e.attackCd <= 0 && !e.peaceful && e.swing <= 0) {
+      // decide now, LAND later -- see the resolve block in update()
       e.attackCd = e.def.attackCd;
-      hooks.onPlayerHit(e, e.dmg);
+      e.swing = SWING_TIME;
+      e.swingPending = true;
     }
     e.np.sprite.visible = true;
   }
@@ -1294,6 +1391,34 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       moveEnemy(e, e.knock.x, e.knock.y, dt);
       e.knock.multiplyScalar(Math.max(0, 1 - dt * 8));
     }
+  }
+
+  /**
+   * Give a monster a pivot to be posed on.
+   *
+   * `moveEnemy` writes the ROOT's y directly to follow the ground, and the old
+   * animation did `mesh.position.y += hop` on that very value -- so each frame's
+   * hop was folded into the height the ground-follow then eased away from, and
+   * the two quietly fought each other all the way down a hill. Worse, the
+   * slime's squash was applied to the root, which scaled its nameplate and its
+   * elite aura ring along with it.
+   *
+   * Everything that poses a creature now writes to `vis`; the root is left to
+   * the ground, the facing and the nameplate, which are the three things that
+   * must NOT bounce.
+   */
+  // How long a melee creature rears back before its blow lands. Short on
+  // purpose: long enough to read and to step out of, short enough that it
+  // barely moves the difficulty.
+  const SWING_TIME = 0.26;
+  const RECOIL_TIME = 0.18;
+
+  function attachVis(mesh) {
+    const vis = new THREE.Group();
+    for (const c of [...mesh.children]) vis.add(c);
+    mesh.add(vis);
+    mesh.userData.vis = vis;
+    return vis;
   }
 
   function moveEnemy(e, vx, vz, dt) {
