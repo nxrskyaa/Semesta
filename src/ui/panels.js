@@ -7,6 +7,7 @@ import { machineUrl, crankUrl, capsuleUrl, capsuleHalfUrl, CAPSULE_COLORS } from
 import { buildCharacterMesh } from '../entities/player.js';
 import { buildCosmetic } from '../systems/cosmetics.js';
 import { drawChronicleCard, shareText, CARD_THEMES } from './sharecard.js';
+import { showItem, hasModel, stopItem } from './itemshow.js';
 import { CLASSES } from '../systems/classes.js';
 import { recipesFor, canCraft, craft } from '../systems/crafting.js';
 import { createCraftShow } from './craftshow.js';
@@ -807,25 +808,42 @@ export function createPanels(hudRoot, {
       stage = `${machineHtml(true)}
         <div class="g-hint">The capsule tumbles...</div>`;
     } else if (phase === 'drop' && result) {
-      // the won capsule falls out, bounces, and cracks open in rarity light
+      // THE ANTICIPATION BEAT. This is the part a gacha lives on and the part
+      // this one did not have: the capsule simply fell and opened, so the pull
+      // was over before you had time to want anything. Now the light around it
+      // PULSES, and how many times it pulses is the rarity tell -- one ring for
+      // a common, five for a mythic, each brighter and faster than the last.
+      // The player learns to count them, which is the entire mechanic.
       const R = RARITY[result.rarity];
-      stage = `<div class="g-dropzone" style="--rc:${R.color}">
+      const tier = RARITY_ORDER.indexOf(result.rarity);          // 0..5
+      const rings = Array.from({ length: tier + 1 }, (_, i) =>
+        `<i class="g-ring" style="animation-delay:${i * 0.17}s"></i>`).join('');
+      // legendary and mythic get the beam as well, because at that point the
+      // player has already read the rings and the payoff should exceed the tell
+      const beam = tier >= 4 ? '<i class="g-beam"></i>' : '';
+      stage = `<div class="g-dropzone t${tier}" style="--rc:${R.color}">
+          ${beam}${rings}
           <div class="g-fallcap">
             <img class="g-half t" src="${capsuleHalfUrl(R.color, true)}">
             <img class="g-half b" src="${capsuleHalfUrl('#f2f2ea', false)}">
           </div>
           <div class="g-crackglow"></div>
         </div>
-        <div class="g-hint" style="color:${R.color}">It's opening...</div>`;
+        <div class="g-hint" style="color:${R.color}">${
+          tier >= 4 ? 'Something is glowing...' : "It's opening..."}</div>`;
     } else if (phase === 'reveal' && result) {
       const R = RARITY[result.rarity];
       const high = result.rarity === 'legendary' || result.rarity === 'mythic';
       const confetti = high ? Array.from({ length: 14 }, (_, i) =>
         `<i class="g-conf" style="left:${6 + Math.random() * 88}%;background:${['#ffd23e', R.color, '#f0f0e8'][i % 3]};animation-delay:${Math.random() * 0.5}s;animation-duration:${0.9 + Math.random() * 0.8}s"></i>`).join('') : '';
+      // A 16px icon blown up to 90px is sixteen fat squares and looks the same
+      // whatever you pulled. If the thing has a model, turn the model.
+      const solid = hasModel(result.iconId);
       stage = `<div class="g-flash" style="--rc:${R.color}"></div>${confetti}
         <div class="g-card flip ${high ? 'high' : ''} r-${result.rarity}" style="--rc:${R.color}">
           <div class="g-rarity">${'◆'.repeat(RARITY_ORDER.indexOf(result.rarity) + 1)} ${R.name.toUpperCase()}</div>
-          <div class="g-icoframe"><img src="${itemIconUrl(result.iconId)}"></div>
+          <div class="g-icoframe ${solid ? 'solid' : ''}">${
+            solid ? '<span data-show3d></span>' : `<img src="${itemIconUrl(result.iconId)}">`}</div>
           <div class="g-name">${result.name}</div>
           ${result.note ? `<div class="g-note">${result.note}</div>` : ''}
         </div>`;
@@ -949,6 +967,34 @@ export function createPanels(hudRoot, {
         .g-icoframe { width: 58px; height: 58px; margin: 0 auto; display: flex; align-items: center; justify-content: center;
           border: 2px solid var(--rc); background: rgba(0,0,0,0.4); }
         .g-icoframe img { width: 44px; height: 44px; image-rendering: pixelated; }
+        /* a real model needs room to turn in, and a lit floor to turn on */
+        .g-icoframe.solid { width: 150px; height: 150px; position: relative; overflow: hidden;
+          background: radial-gradient(ellipse at 50% 78%, color-mix(in srgb, var(--rc) 34%, transparent), rgba(0,0,0,0.55) 70%); }
+        .g-icoframe.solid canvas { width: 150px; height: 150px; display: block; }
+        .g-icoframe.solid::after { content: ''; position: absolute; left: 14%; right: 14%; bottom: 8px; height: 9px;
+          background: radial-gradient(ellipse, var(--rc), transparent 70%); opacity: 0.75; }
+
+        /* ---- THE ANTICIPATION RINGS ----
+           One per rarity tier, staggered. They expand out of the capsule and
+           fade, so a mythic throws five and a common throws one -- the count IS
+           the tell, and it lands before the card does. */
+        .g-ring { position: absolute; left: 50%; top: 52%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+          border: 2px solid var(--rc); border-radius: 50%; opacity: 0; pointer-events: none;
+          animation: g-ringout 0.62s ease-out forwards; }
+        @keyframes g-ringout {
+          0% { transform: scale(0.35); opacity: 0.95; }
+          100% { transform: scale(5.2); opacity: 0; }
+        }
+        /* legendary+ only: a column of light standing behind the capsule */
+        .g-beam { position: absolute; left: 50%; top: -6%; width: 46px; margin-left: -23px; height: 108%;
+          background: linear-gradient(180deg, transparent, var(--rc) 26%, #fff 62%, var(--rc) 84%, transparent);
+          opacity: 0; filter: blur(1px); pointer-events: none;
+          animation: g-beamin 0.9s ease-out 0.28s forwards; }
+        @keyframes g-beamin {
+          0% { opacity: 0; transform: scaleX(0.2); }
+          22% { opacity: 0.9; transform: scaleX(1); }
+          100% { opacity: 0; transform: scaleX(1.5); }
+        }
         .g-name { font-size: 13px; color: var(--text); margin-top: 8px; }
         .g-note { font-size: 9px; color: var(--gold); margin-top: 5px; }
         .g-hist { font-size: 9px; line-height: 1.9; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
@@ -972,6 +1018,24 @@ export function createPanels(hudRoot, {
       <div class="g-pitylbl">LUCK CHARGE ${Math.min(gacha.pity, 9)}/9 — charged spins pull higher tiers · dupes refund coins</div>
       <div class="g-odds">${oddsLine}</div>
       ${hist ? `<div class="g-hist">${hist}</div>` : ''}`;
+    // MOUNT THE SHOWCASE. The canvas is a single reused element, so it has to be
+    // moved into whatever card is on screen now -- and stopped whenever it is
+    // not, because a detached canvas that keeps calling rAF is a frame nobody
+    // will ever see, paid for on every render.
+    const slot3d = panels.gacha.querySelector('[data-show3d]');
+    if (slot3d && result && !Array.isArray(result)) {
+      const cv = showItem(result.iconId, result.rarity);
+      if (cv) slot3d.replaceWith(cv);
+      else {
+        // the model refused to build; the icon is the honest picture, but the
+        // frame must shrink back with it or a 44px sprite floats in a 150px box
+        slot3d.parentElement?.classList.remove('solid');
+        slot3d.replaceWith(Object.assign(document.createElement('img'),
+          { src: itemIconUrl(result.iconId) }));
+      }
+    } else {
+      stopItem();
+    }
     panels.gacha.querySelector('[data-prizes]')?.addEventListener('click', () => {
       gachaView = 'prizes'; audio.sfx('ui'); renderGacha();
     });
@@ -2284,7 +2348,7 @@ export function createPanels(hudRoot, {
   }
 
   function anyOpen() { return Object.values(panels).some((p) => p.classList.contains('show')); }
-  function closeAll() { heroPreview.stop(); for (const p of Object.values(panels)) p.classList.remove('show'); }
+  function closeAll() { heroPreview.stop(); stopItem(); for (const p of Object.values(panels)) p.classList.remove('show'); }
 
   inventory.onChange(refresh);
 
