@@ -766,6 +766,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="daily"><span class="mi">🎁</span>DAILY<small>J</small></button>
         <button class="mtile" data-menu="pass"><span class="mi">★</span>GAMEPASS<small>U</small></button>
         <button class="mtile" data-menu="gfx"><span class="mi">⚙</span>GRAPHICS<small></small></button>
+        <button class="mtile" data-menu="share"><span class="mi">🖼</span>SHARE CARD<small>P</small></button>
         <button class="mtile" data-menu="about"><span class="mi">✦</span>ABOUT<small></small></button>
         <button class="mtile" data-menu="stats"><span class="mi">◈</span>STATS<small>Z</small></button>
         <button class="mtile quit" data-menu="quit"><span class="mi">⏻</span>MAIN MENU<small></small></button>

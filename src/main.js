@@ -2376,6 +2376,8 @@ async function init(character, saved, audio, online = false) {
     weaponType: () => CLASSES[character.cls]?.weaponType || 'sword',
     economy, cooking, estate, gacha, wardrobe: wardrobeApi, dailies, gamepass,
     skilltree, index,
+    // the Chronicle Card reads progress straight off these
+    dungeon, leveling, lore,
     // the panel asks for rows; main owns the live player list it needs
     friendsApi: {
       rows: () => friends.rows(net?.state.players),
@@ -3973,6 +3975,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     if (e.code === 'KeyL') { audio.sfx('ui'); panels.toggle('life'); }
     if (e.code === 'KeyJ') { audio.sfx('ui'); panels.toggle('daily'); }
     if (e.code === 'KeyU') { audio.sfx('ui'); panels.toggle('pass'); }
+    if (e.code === 'KeyP') { audio.sfx('ui'); panels.toggle('share'); }
     if (e.code === 'KeyT') teleportHome('home');
     if (e.code === 'KeyY') teleportHome('village');
     if (e.code === 'KeyF') doInteract();

@@ -6,6 +6,7 @@ import { itemIconUrl } from '../gfx/textures.js';
 import { machineUrl, crankUrl, capsuleUrl, capsuleHalfUrl, CAPSULE_COLORS } from '../gfx/gachaart.js';
 import { buildCharacterMesh } from '../entities/player.js';
 import { buildCosmetic } from '../systems/cosmetics.js';
+import { drawChronicleCard, shareText, CARD_THEMES } from './sharecard.js';
 import { CLASSES } from '../systems/classes.js';
 import { recipesFor, canCraft, craft } from '../systems/crafting.js';
 import { createCraftShow } from './craftshow.js';
@@ -146,6 +147,7 @@ export function createPanels(hudRoot, {
   onCraft, onForged, onSummonPet, onSummonMount, mountsRef, skillsApi,
   economy, cooking, estate, gacha, wardrobe, dailies, gamepass, gfxPanelFactory,
   onDrink, onBoostActive, skilltree, onWorkStart, onWorkEnd, index, friendsApi,
+  dungeon, leveling, lore,
 }) {
   // THE WORKBENCH SHOW. Cooking and crafting both run through it, so it lives
   // here rather than in main.js — both buttons are already in this file, and a
@@ -174,6 +176,7 @@ export function createPanels(hudRoot, {
     life: document.createElement('div'),
     index: document.createElement('div'),
     friends: document.createElement('div'),
+    share: document.createElement('div'),
   };
   for (const p of Object.values(panels)) {
     p.className = 'panel';
@@ -1992,6 +1995,125 @@ export function createPanels(hudRoot, {
     }
   }
 
+  // --- THE CHRONICLE CARD: a share image worth posting --------------------
+  // Kept OUT of the render loop: the card is drawn once when something that
+  // appears on it actually changes, because a 3D portrait plus a full canvas
+  // repaint on every keystroke of the message box is a stutter you can feel.
+  let cardTheme = 'lantern';
+  let cardMsg = '';
+  let cardBusy = false;
+
+  function cardStats() {
+    const dj = dungeon;
+    const best = dj ? Math.max(...Object.values(dj.state.cleared || { a: 0 })) : 0;
+    const bestDiff = dj ? (Object.entries(dj.state.cleared || {})
+      .sort((a, b) => b[1] - a[1])[0] || [''])[0] : '';
+    const idx = index;
+    let found = 0, total = 0;
+    if (idx?.cats) for (const cat of idx.cats) {
+      const pr = idx.progress(cat.id); found += pr.have; total += pr.total;
+    }
+    return {
+      name: character.name || 'Adventurer',
+      cls: character.cls,
+      level: leveling?.state.level ?? 1,
+      kills: lore?.kills ?? 0,
+      deepestFloor: best > 0 ? best : 0,
+      difficulty: best > 0 ? bestDiff : '',
+      bosses: dj ? Object.keys(dj.state.bossesBeaten || {}).length : 0,
+      indexFound: found, indexTotal: total || 200,
+      appearance: wardrobe.appearance.config,
+      weaponId: inventory.state.equipped || CLASSES[character.cls]?.startWeapon,
+      cosmetics: { hat: wardrobe.state.hat, back: wardrobe.state.back },
+      message: cardMsg,
+    };
+  }
+
+  function repaintCard() {
+    const host = panels.share.querySelector('#cardcanvas');
+    if (!host || cardBusy) return;
+    cardBusy = true;
+    try {
+      drawChronicleCard(cardStats(), { theme: cardTheme, canvas: host });
+    } catch (e) {
+      // a card that fails to draw must not take the panel down with it
+      console.warn('[chronicle card]', e);
+    }
+    cardBusy = false;
+  }
+
+  function renderShare() {
+    const st = cardStats();
+    panels.share.style.width = 'min(760px, calc(100vw - 18px))';
+    panels.share.innerHTML = `<h3>CHRONICLE CARD <small>[Esc] close</small></h3>
+      <style>
+        .cardwrap { background: #0b0d10; box-shadow: inset 0 0 0 2px #2c352c; padding: 8px; }
+        .cardwrap canvas { width: 100%; height: auto; display: block; image-rendering: auto; }
+        .clbl { font-size: 9px; letter-spacing: 2px; color: var(--gold-dim); margin: 11px 0 5px; }
+        .themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .themes button { font-size: 9px !important; letter-spacing: 1px !important; padding: 9px 3px !important; }
+        .themes button.sel { color: var(--gold); box-shadow: inset 0 0 0 2px var(--gold); }
+        .cmsg { width: 100%; box-sizing: border-box; background: #141a12; color: #e8dcc0;
+          border: 0; box-shadow: inset 0 0 0 2px #2c352c; padding: 9px 10px;
+          font-family: var(--font-body); font-size: 11px; }
+        .cmsg:focus { outline: none; box-shadow: inset 0 0 0 2px var(--gold-dim); }
+        .crow { display: flex; gap: 6px; margin-top: 11px; }
+        .crow .act { flex: 1; font-size: 11px !important; padding: 12px 4px !important; }
+        .cnote { font-size: 9px; color: var(--muted); line-height: 1.6; margin-top: 9px; }
+        .cstat { display: flex; gap: 12px; font-size: 9px; color: var(--muted); margin-top: 7px; flex-wrap: wrap; }
+        .cstat b { color: #e8dcc0; }
+      </style>
+      <div class="cardwrap"><canvas id="cardcanvas" width="1200" height="675"></canvas></div>
+      <div class="cstat">
+        <span>Lv <b>${st.level}</b></span>
+        <span><b>${st.kills.toLocaleString()}</b> felled</span>
+        <span>Hollow <b>${st.deepestFloor || '—'}</b></span>
+        <span>Index <b>${st.indexFound}/${st.indexTotal}</b></span>
+      </div>
+      <div class="clbl">CARD DESIGN</div>
+      <div class="themes">
+        ${Object.entries(CARD_THEMES).map(([k, t]) => `
+          <button class="act ${k === cardTheme ? 'sel' : ''}" data-theme="${k}">${t.name.replace(/^THE /, '')}</button>`).join('')}
+      </div>
+      <div class="clbl">YOUR LINE &nbsp;<span style="color:var(--muted);letter-spacing:0">optional, 64 characters</span></div>
+      <input class="cmsg" maxlength="64" placeholder="e.g. cleared the Hollow without dying once"
+             value="${(cardMsg || '').replace(/"/g, '&quot;')}">
+      <div class="crow">
+        <button class="act" data-dl>&#11015; DOWNLOAD PNG</button>
+        <button class="act" data-x>&#120143; SHARE ON X</button>
+      </div>
+      <div class="cnote">The card is drawn on your machine and never uploaded anywhere.
+        <b style="color:#e8dcc0">Download it first</b>, then attach it to the post — X cannot
+        pick up an image the page did not send it.</div>`;
+
+    repaintCard();
+
+    panels.share.querySelectorAll('[data-theme]').forEach((b) => {
+      b.addEventListener('click', () => { cardTheme = b.dataset.theme; audio.sfx('ui'); renderShare(); });
+    });
+    const inp = panels.share.querySelector('.cmsg');
+    let t = 0;
+    inp?.addEventListener('input', () => {
+      cardMsg = inp.value;
+      clearTimeout(t);
+      t = setTimeout(repaintCard, 220);   // debounce: a 3D repaint per keystroke stutters
+    });
+    panels.share.querySelector('[data-dl]')?.addEventListener('click', () => {
+      const host = panels.share.querySelector('#cardcanvas');
+      const a = document.createElement('a');
+      a.download = `semesta-${(character.name || 'hero').toLowerCase().replace(/[^a-z0-9]/g, '')}-lv${st.level}.png`;
+      a.href = host.toDataURL('image/png');
+      a.click();
+      audio.sfx('quest_done');
+      hud?.toastText?.('Card saved. Attach it to your post!');
+    });
+    panels.share.querySelector('[data-x]')?.addEventListener('click', () => {
+      const url = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareText(st));
+      window.open(url, '_blank', 'noopener,noreferrer');
+      audio.sfx('ui');
+    });
+  }
+
   // --- GRAPHICS: the same panel the opening screen uses, in a game panel ---
   let gfxInstance = null;
   function renderGfx() {
@@ -2133,7 +2255,7 @@ export function createPanels(hudRoot, {
     inv: renderInventory, cra: renderCrafting, forge: renderForge, pets: renderPets,
     skills: renderSkills, shop: renderShop, cook: renderCook, estate: renderEstate,
     gacha: () => renderGacha(), ward: renderWardrobe, help: renderHelp, about: renderAbout,
-    daily: renderDaily, pass: renderPass, gfx: renderGfx, life: renderLife,
+    daily: renderDaily, pass: renderPass, gfx: renderGfx, life: renderLife, share: renderShare,
     index: () => indexPanel?.render(),
     friends: renderFriends,
   };
