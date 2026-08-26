@@ -325,6 +325,8 @@ export function createSkillSystem(deps) {
       const p = deps.player.state;
       const dir = new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing));
       const at = p.pos.clone().add(dir.multiplyScalar(1.4));
+      // a swing leaves an ARC, not a circle centred on the thing you hit
+      deps.particles.slash?.(p.pos, p.facing, '#ffd08a', 2.5, Math.PI * 0.8, 0.26);
       deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.6, 0)), '#e8a33d', 20, 3.8);
       deps.particles.shockwave(at, '#e8a33d', 2.6, 0.35);
       deps.particles.flash(at, '#ffb055', 7, 0.25);
@@ -335,6 +337,16 @@ export function createSkillSystem(deps) {
     },
     whirlwind() {
       const p = deps.player.state;
+      // THREE BLADES, NOT A RING. The first attempt fired three 162-degree arcs
+      // 120 degrees apart at one radius, and three arcs that long simply close
+      // into a torus — it came out looking like the nova it was meant to
+      // replace. Short arcs at DIFFERENT radii, staggered in time, stay
+      // separate: you read three sweeps chasing each other round.
+      for (let i = 0; i < 3; i++) {
+        setTimeout(() => deps.particles.slash?.(
+          p.pos, p.facing + i * 2.1, '#ffa070', 2.5 + i * 0.7, Math.PI * 0.5, 0.3,
+        ), i * 60);
+      }
       deps.particles.ring?.(p.pos, '#c76b4a');
       deps.particles.shockwave(p.pos, '#e08a5a', 3.4, 0.45);
       deps.audio.sfx('whirl');
@@ -476,6 +488,10 @@ export function createSkillSystem(deps) {
     icenova() {
       const p = deps.player.state;
       deps.audio.sfx('icenova');
+      // ice is SHARDS. Dots expanding in a circle is a puff of smoke whatever
+      // colour it is tinted, which is why Ice Nova and every other nova in the
+      // game were the same effect.
+      deps.particles.spikes?.(p.pos, '#bfeaff', 3.2, 0.7);
       deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.4, 0)), '#8fd8f0', 34, 5, 3);
       deps.particles.shockwave(p.pos, '#8fd8f0', 3.6, 0.5);
       deps.particles.flash(p.pos, '#aee0f0', 6, 0.35);
@@ -588,6 +604,7 @@ export function createSkillSystem(deps) {
       const p = deps.player.state;
       const dir = new THREE.Vector3(Math.sin(p.facing), 0, Math.cos(p.facing));
       const at = p.pos.clone().add(dir.multiplyScalar(1.6));
+      deps.particles.slash?.(p.pos, p.facing, '#e8eef4', 3.0, Math.PI * 1.05, 0.3);
       deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.6, 0)), '#c8ccd0', 18, 3.6);
       deps.particles.shockwave(at, '#c8ccd0', 3, 0.4);
       deps.audio.sfx('whirl');
@@ -696,6 +713,9 @@ export function createSkillSystem(deps) {
       if (nearest) {
         const at = nearest.mesh.position;
         p.facing = Math.atan2(at.x - p.pos.x, at.z - p.pos.z);
+        // Smite comes DOWN on the target — it should look like something
+        // struck from above, not like a firework going off at ankle height.
+        deps.particles.beam?.(at, '#ffe9a0', 0.8, 7, 0.34);
         deps.particles.flash(at, '#fff2c0', 8, 0.35);
         deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.8, 0)), '#f8e8a8', 26, 4, 5);
         deps.particles.shockwave(at, '#f8e8a8', 2.2, 0.4);
@@ -762,6 +782,8 @@ export function createSkillSystem(deps) {
         const w = 1.0 + i * 0.22;
         setTimeout(() => {
           deps.particles.shockwave(at, '#c07a3a', w, 0.3);
+          // it is called Earthsplitter: the ground has to come UP
+          deps.particles.spikes?.(at, '#a86a34', 1.5 + w * 0.4, 0.55);
           deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.3, 0)), '#8a5a2a', 9, 3.2);
           for (const e of enemiesWithin(w, at)) hitEnemy(e, 0.6);
         }, i * 45);
@@ -818,15 +840,11 @@ export function createSkillSystem(deps) {
         if (!best) break;
         struck.add(best);
         const to = best.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0));
-        // The arc is drawn as a jittered line of sparks. A bolt with no visible
-        // path just looks like unrelated things taking damage at once.
-        const steps = Math.max(3, Math.round(bd * 2));
-        for (let k = 0; k <= steps; k++) {
-          const at = from.clone().lerp(to, k / steps);
-          at.x += (Math.random() - 0.5) * 0.35;
-          at.z += (Math.random() - 0.5) * 0.35;
-          deps.particles.burst(at, '#8fd8f0', 2, 1.2);
-        }
+        // The arc used to be a chain of dot-bursts along the line — up to ten
+        // particles per link, which read as a dotted trail rather than as
+        // lightning. One tapered ribbon is a continuous jagged line, and it is
+        // also far cheaper than the sparks it replaces.
+        deps.particles.bolt?.(from, to, '#bfeaff', 0.24, 0.5);
         deps.particles.flash(to, '#c8f0ff', 3.4, 0.18);
         hitEnemy(best, mult);
         mult *= 0.78;
@@ -864,6 +882,8 @@ export function createSkillSystem(deps) {
       // TELEGRAPH FIRST. A 620% hit with no warning is not a skill, it is a
       // dice roll on whatever happened to be standing there.
       deps.particles.runeCircle?.(at, '#ff5a22', 7, 0.9);
+      // the column IS the meteor arriving; the burst below is only the impact
+      deps.particles.beam?.(at, '#ff7a30', 1.9, 11, 0.5);
       deps.audio.sfx('fireball');
       for (let i = 0; i < 14; i++) {
         setTimeout(() => deps.particles.burst(
@@ -942,6 +962,9 @@ export function createSkillSystem(deps) {
       const at = deps.aimPoint() || p.pos.clone().add(facingDir().multiplyScalar(6));
       at.y = deps.terrain.surfaceY(at.x, at.z);
       deps.particles.runeCircle?.(at, '#fffbe0', 5, 1.0);
+      // A skill called Pillar of Light had no pillar in it — a sigil, a cloud
+      // of dots and a point light, which is what every other spell already was.
+      deps.particles.beam?.(at, '#fff2b8', 1.5, 9, 0.9);
       deps.audio.sfx('smite');
       // A real column: stacked bursts up the Y axis, not one puff on the floor.
       for (let i = 0; i < 10; i++) {
@@ -967,6 +990,7 @@ export function createSkillSystem(deps) {
       deps.shake?.(0.3);
       for (let pass = 0; pass < 3; pass++) {
         setTimeout(() => {
+          deps.particles.slash?.(p.pos, p.facing + pass * 1.7, '#cfe4ff', 3.0 + pass * 0.6, Math.PI * 0.55, 0.3);
           deps.particles.shockwave(p.pos, '#a8c4e0', 4.0, 0.3);
           deps.player.playSpin();
           for (const e of enemiesWithin(4.0)) hitEnemy(e, 1.3, { stun: pass === 2 ? 1.0 : 0 });
@@ -999,6 +1023,9 @@ export function createSkillSystem(deps) {
       targets.forEach((e, i) => setTimeout(() => {
         if (e.dead) return;
         const at = e.mesh.position.clone();
+        // a cut across the target, aimed from where the assassin actually is
+        deps.particles.slash?.(at, Math.atan2(p.pos.x - at.x, p.pos.z - at.z) + Math.PI,
+          '#f2f6ff', 1.5, Math.PI * 0.7, 0.2);
         deps.particles.burst(at.clone().add(new THREE.Vector3(0, 0.9, 0)), '#e0e8f4', 14, 3.4);
         deps.particles.flash(at, '#ffffff', 4, 0.14);
         hitEnemy(e, 2.6, { crit: true });
