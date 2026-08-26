@@ -45,17 +45,163 @@ function rngFrom(seed) {
 // a sky gradient, layered silhouette ridges, one focal element, one particle
 // system. Same grammar, five different moods.
 // ---------------------------------------------------------------------------
-function ridge(ctx, rnd, baseY, amp, color, step = 8) {
+function ridge(ctx, rnd, baseY, amp, color, step = 8, off = 0) {
   ctx.fillStyle = color;
+  // one extra span each side so a drifting ridge never shows its ends
+  const n = Math.ceil(W / step) + 3;
   const pts = [];
-  for (let x = 0; x <= W + step; x += step) pts.push(baseY + (rnd() - 0.5) * amp);
+  for (let i = 0; i < n; i++) pts.push(baseY + (rnd() - 0.5) * amp);
+  const span = (n - 1) * step;
+  const shift = ((off % span) + span) % span;
   ctx.beginPath();
-  ctx.moveTo(0, H);
-  let i = 0;
-  for (let x = 0; x <= W + step; x += step, i++) ctx.lineTo(x, Math.round(pts[i]));
-  ctx.lineTo(W, H);
+  ctx.moveTo(-step, H);
+  for (let i = 0; i < n; i++) ctx.lineTo(Math.round(i * step - shift) - step, Math.round(pts[i]));
+  ctx.lineTo(W + step, H);
   ctx.closePath();
   ctx.fill();
+}
+
+// ---------------------------------------------------------------------------
+// THE NEAR FIELD.
+//
+// Every scene here used to be a sky gradient over a low ridge with props a few
+// pixels tall, and that is exactly why they read as flat: there were only two
+// planes and BOTH were far away. Nothing was close to you, so nothing had any
+// scale to be judged against, and the top half of every frame was an empty
+// wash.
+//
+// A dark shape CROPPED BY THE FRAME is what tells the eye something is near --
+// cropping is the whole trick, because a thing that runs off the edge must be
+// closer than the edge. And the moment there is a near plane, the ridge behind
+// it becomes middle distance for free, without a pixel being moved.
+//
+// Everything below is PRECOMPUTED from the painter's seeded rnd and then only
+// read in the draw closure. Calling rnd() per frame would redraw a different
+// clump of grass sixty times a second, which does not read as wind; it reads as
+// static.
+// ---------------------------------------------------------------------------
+
+/**
+ * Blades along the bottom edge, in CLUMPS.
+ *
+ * Evenly spaced blades of random height read as a brush -- a solid hedge ruled
+ * across the frame. Grass grows in tufts with gaps between them, and each tuft
+ * is tall in the middle and short at its edges, so the silhouette has a rhythm
+ * instead of a flat top. Every blade keeps its own phase: the row must never
+ * pulse as one object.
+ */
+function makeGrass(rnd, hMin, hMax) {
+  const out = [];
+  let x = -6;
+  while (x < W + 6) {
+    const clump = 3 + Math.floor(rnd() * 6);
+    const peak = hMin + rnd() * (hMax - hMin);
+    for (let i = 0; i < clump && x < W + 6; i++) {
+      out.push({
+        x: x + rnd() * 1.6,
+        h: Math.max(3, peak * (0.42 + Math.sin((i / clump) * Math.PI) * 0.64) + rnd() * 3),
+        ph: rnd() * 6.28,
+        sp: 0.7 + rnd() * 0.8,
+      });
+      x += 1.5 + rnd() * 2.2;
+    }
+    x += 1 + rnd() * 5;                      // the gap between tufts
+  }
+  return out;
+}
+
+function drawGrass(ctx, t, blades, color, base = H + 1) {
+  ctx.fillStyle = color;
+  for (const b of blades) {
+    const lean = Math.sin(t * b.sp + b.ph) * (b.h * 0.18);
+    for (let y = 0; y < b.h; y++) {
+      // a blade tapers because each step up is drawn one pixel narrower
+      const w = y > b.h * 0.72 ? 1 : (y > b.h * 0.4 ? 2 : 3);
+      ctx.fillRect(Math.round(b.x + (lean * y) / b.h), Math.round(base - y), w, 1);
+    }
+  }
+}
+
+/**
+ * A branch reaching in from a top corner. `side` -1 enters left, +1 enters right.
+ *
+ * Two things make this read as a branch rather than as a caterpillar, and the
+ * first version had neither: it must TAPER (thick where it leaves the trunk,
+ * fine at the tip) and it must BEND DOWNWARD as it reaches, because a limb
+ * carrying its own weight does. Even spacing and equal blob radii are what
+ * produced a string of beads.
+ */
+function makeBough(rnd, side, nodes = 6, spread = 1) {
+  const out = [];
+  let x = side < 0 ? -10 : W + 10;
+  let y = -8;
+  let drop = 2;
+  const w0 = 5.5 + rnd() * 2;
+  for (let i = 0; i < nodes; i++) {
+    const k = i / Math.max(1, nodes - 1);
+    x += -side * (13 + rnd() * 17) * spread;
+    drop += 1.5 + rnd() * 2.4;                       // the bend accumulates
+    y += drop;
+    const r = (11 - k * 4.5) + rnd() * 5;
+    out.push({
+      x, y, r, ph: rnd() * 6.28, sp: 0.6 + rnd() * 0.6,
+      w: Math.max(0.9, w0 * (1 - k * 0.84)),
+      // a cluster of three unequal blobs, never one circle
+      blobs: Array.from({ length: 3 }, () => ({
+        dx: (rnd() - 0.5) * r * 1.6,
+        dy: (rnd() - 0.5) * r * 1.1,
+        r: r * (0.48 + rnd() * 0.58),
+      })),
+    });
+  }
+  return { nodes: out, sx: side < 0 ? -10 : W + 10, side, w0 };
+}
+
+function drawBough(ctx, t, b, bark, leaf, leafHi) {
+  // a cantilever sways more the further it reaches, so the tip moves most
+  const sway = (n, i) => Math.sin(t * n.sp + n.ph) * (0.8 + i * 0.85);
+  const pts = [{ x: b.sx, y: -8, w: b.w0 }];
+  b.nodes.forEach((n, i) => pts.push({ x: n.x + sway(n, i), y: n.y, w: n.w }));
+  ctx.fillStyle = bark;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], c = pts[i + 1];
+    const dx = c.x - a.x, dy = c.y - a.y;
+    const l = Math.hypot(dx, dy) || 1;
+    const nx = -dy / l, ny = dx / l;
+    ctx.beginPath();
+    ctx.moveTo(a.x + nx * a.w, a.y + ny * a.w);
+    ctx.lineTo(c.x + nx * c.w, c.y + ny * c.w);
+    ctx.lineTo(c.x - nx * c.w, c.y - ny * c.w);
+    ctx.lineTo(a.x - nx * a.w, a.y - ny * a.w);
+    ctx.closePath(); ctx.fill();
+  }
+  for (let i = 0; i < b.nodes.length; i++) {
+    const n = b.nodes[i];
+    const dx = sway(n, i);
+    ctx.fillStyle = leaf;
+    for (const o of n.blobs) {
+      ctx.beginPath(); ctx.arc(n.x + dx + o.dx, n.y + o.dy, o.r, 0, 6.283); ctx.fill();
+    }
+    if (leafHi) {
+      // snow (or a lit edge) sits ON TOP of a clump -- a full bright circle is
+      // what turned the winter branch into a string of white beads
+      ctx.fillStyle = leafHi;
+      for (const o of n.blobs) {
+        ctx.beginPath();
+        ctx.arc(n.x + dx + o.dx, n.y + o.dy - o.r * 0.38, o.r * 0.78, Math.PI, 0);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+/** A soft radial pool. Never a fillRect -- a square halo kills the illusion of light. */
+function glow(ctx, x, y, r, inner, outer = 'rgba(0,0,0,0)') {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, inner);
+  g.addColorStop(1, outer);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
 }
 
 function sky(ctx, stops) {
@@ -80,6 +226,8 @@ function paintDawn(rnd) {
   }));
   const birds = Array.from({ length: 5 }, () => ({ x: rnd() * W, y: 34 + rnd() * 30, sp: 7 + rnd() * 5 }));
   const huts = [[92, 150, 1.5], [126, 154, 1.2], [66, 155, 1.1], [152, 149, 1.35]];
+  const bough = makeBough(rnd, -1, 6);
+  const grass = makeGrass(rnd, 10, 26);
   return (ctx, t) => {
     sky(ctx, [[0, '#f8c98a'], [0.35, '#ffdcae'], [0.62, '#c9e2c0'], [1, '#a8cf9c']]);
     // sun climbing behind the hills
@@ -112,11 +260,15 @@ function paintDawn(rnd) {
       ctx.fillStyle = `rgba(230,230,220,${0.4 * (1 - p)})`;
       ctx.fillRect(94 + Math.sin(p * 6 + i) * 4, 142 - p * 34, 3, 3);
     }
+    // NEAR FIELD: a leafy bough overhead and a meadow you are standing in
+    drawBough(ctx, t, bough, '#2f3a24', '#35502c', '#41613a');
+    drawGrass(ctx, t, grass, '#24401f');
   };
 }
 
 function paintNight(rnd) {
   const stars = Array.from({ length: 70 }, () => ({ x: rnd() * W, y: rnd() * 110, p: rnd() * 6 }));
+  const nightGrass = makeGrass(rnd, 9, 24);
   const flies = Array.from({ length: 34 }, () => ({
     x: rnd() * W, y: 90 + rnd() * 80, a: rnd() * 6, r: 4 + rnd() * 12, sp: 0.5 + rnd(),
   }));
@@ -161,10 +313,35 @@ function paintNight(rnd) {
       ctx.fillRect((x | 0) - 1, (y | 0) - 1, 4, 4);
     }
     ridge(ctx, rngFrom(67), 172, 6, '#0d1a26', 10);
+
+    // NEAR FIELD: one of Anavela's stone lanterns, close enough to read, with
+    // the pool of light it actually casts. Built from the same parts the world
+    // ones are -- base, pillar, lit PANE, wide roof -- because that silhouette
+    // is the single most recognisable object in the game.
+    const lx = 254, ly = 176;
+    const flick = 0.72 + Math.abs(Math.sin(t * 6.1)) * 0.16 + Math.sin(t * 13.3) * 0.06;
+    glow(ctx, lx + 1, ly - 34, 62, `rgba(255,206,120,${0.15 * flick})`);
+    ctx.fillStyle = '#101c26';
+    ctx.fillRect(lx - 11, ly - 8, 22, 10);            // two-step base
+    ctx.fillRect(lx - 8, ly - 14, 16, 7);
+    ctx.fillRect(lx - 4, ly - 40, 8, 27);             // pillar
+    ctx.fillRect(lx - 10, ly - 45, 20, 6);            // collar
+    // the lit pane: this is what bloom would catch, so it is the brightest thing
+    glow(ctx, lx, ly - 54, 20, `rgba(255,196,104,${0.5 * flick})`);
+    ctx.fillStyle = `rgba(255,226,158,${0.86 * flick})`;
+    ctx.fillRect(lx - 8, ly - 62, 16, 16);
+    ctx.fillStyle = '#101c26';
+    ctx.fillRect(lx - 9, ly - 63, 18, 2);
+    for (let i = 0; i < 9; i++) {                     // broad overhanging roof
+      ctx.fillRect(lx - 15 + i, ly - 64 - i, 30 - i * 2, 1);
+    }
+    ctx.fillRect(lx - 2, ly - 76, 4, 4);              // finial
+    drawGrass(ctx, t, nightGrass, '#0a1420');
   };
 }
 
 function paintWinter(rnd) {
+  const snowBough = makeBough(rnd, 1, 6, 1.15);   // reaches well into frame
   const flakes = Array.from({ length: 90 }, () => ({
     x: rnd() * W, y: rnd() * H, sp: 6 + rnd() * 14, dr: rnd() * 6, s: rnd() < 0.3 ? 2 : 1,
   }));
@@ -198,16 +375,31 @@ function paintWinter(rnd) {
       }
     }
     ridge(ctx, rngFrom(103), 172, 5, '#eaf4f8', 10);
+    // NEAR FIELD, drawn BEFORE the snowfall so the flakes fall in front of it
+    // as well as behind -- that is what puts the branch inside the weather
+    // rather than behind a curtain of it.
+    drawBough(ctx, t, snowBough, '#1b2733', '#22323f', '#dceaf2');
     for (const f of flakes) {
       const y = (f.y + t * f.sp) % (H + 8);
       const x = f.x + Math.sin(t * 1.1 + f.dr) * 8;
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.fillRect(x % W | 0, y | 0, f.s, f.s);
     }
+    // a drift banked up against the bottom edge, so the ground has a near lip
+    ctx.fillStyle = '#f4fbff';
+    ctx.beginPath();
+    ctx.moveTo(-4, H + 2);
+    for (let x = -4; x <= W + 4; x += 10) {
+      ctx.lineTo(x, H - 8 - Math.sin(x * 0.045) * 5 - Math.sin(x * 0.11) * 2.5);
+    }
+    ctx.lineTo(W + 4, H + 2);
+    ctx.closePath(); ctx.fill();
   };
 }
 
 function paintSea(rnd) {
+  // two mooring posts and the rope between them: the near plane the sea lacked
+  const posts = [{ x: 26, top: 118, w: 9 }, { x: 74, top: 128, w: 7 }];
   const bands = Array.from({ length: 12 }, (_, i) => ({
     y: 116 + i * 5.4, sp: 5 + i * 2.2, off: rnd() * W,
   }));
@@ -263,10 +455,37 @@ function paintSea(rnd) {
       ctx.fillRect(x - 2, g.y - flap, 2, 1);
       ctx.fillRect(x + 1, g.y - flap, 2, 1);
     }
+    // NEAR FIELD: you are standing on the jetty, not floating above the water.
+    // The posts are cropped by the bottom edge and the rope hangs in a real
+    // catenary between them, sagging on the swell.
+    ctx.strokeStyle = '#1a2430';
+    ctx.lineWidth = 2;
+    const sagT = Math.sin(t * 0.9) * 2;
+    ctx.beginPath();
+    ctx.moveTo(posts[0].x + posts[0].w / 2, posts[0].top + 6);
+    ctx.quadraticCurveTo((posts[0].x + posts[1].x) / 2 + 4,
+      posts[0].top + 30 + sagT, posts[1].x + posts[1].w / 2, posts[1].top + 5);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    for (const q of posts) {
+      ctx.fillStyle = '#22303e';
+      ctx.fillRect(q.x, q.top, q.w, H - q.top + 2);
+      ctx.fillStyle = '#33475a';                       // lit edge, sun side
+      ctx.fillRect(q.x + q.w - 2, q.top + 2, 2, H - q.top);
+      ctx.fillStyle = '#141d27';                       // capped top
+      ctx.fillRect(q.x - 1, q.top - 2, q.w + 2, 3);
+    }
+    // and the deck boards running off the bottom of the frame
+    ctx.fillStyle = '#1a2430';
+    ctx.fillRect(0, H - 9, W, 9);
+    ctx.fillStyle = '#243243';
+    for (let x = -6; x < W; x += 17) ctx.fillRect(x + 2, H - 9, 13, 3);
   };
 }
 
 function paintFestival(rnd) {
+  const festGrass = makeGrass(rnd, 8, 20);
+  const festBough = makeBough(rnd, -1, 4, 0.8);
   const embers = Array.from({ length: 46 }, () => ({
     x: 150 + (rnd() - 0.5) * 60, y: rnd() * H, sp: 8 + rnd() * 16, dr: rnd() * 6,
   }));
@@ -326,6 +545,23 @@ function paintFestival(rnd) {
       ctx.fillRect(x | 0, y | 0, 2, 2);
     }
     ridge(ctx, rngFrom(149), 174, 5, '#1f1520', 10);
+    // NEAR FIELD: a bough with a paper lantern strung under it, and grass. The
+    // lantern is what makes the corner read as festival rather than as a tree.
+    drawBough(ctx, t, festBough, '#241826', '#2b1f2e', null);
+    const swing = Math.sin(t * 1.05) * 4;
+    const cx2 = 52 + swing, cy2 = 46;
+    ctx.strokeStyle = '#241826'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(52, 24); ctx.lineTo(cx2, cy2 - 9); ctx.stroke();
+    glow(ctx, cx2, cy2, 34, 'rgba(255,150,90,0.30)');
+    ctx.fillStyle = '#f06a3c';
+    ctx.beginPath(); ctx.ellipse(cx2, cy2, 10, 12, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(255,214,150,0.55)';
+    ctx.beginPath(); ctx.ellipse(cx2 - 3, cy2 - 2, 4, 6, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#241826';
+    ctx.fillRect(cx2 - 5, cy2 - 11, 10, 2);
+    ctx.fillRect(cx2 - 5, cy2 + 9, 10, 2);
+    ctx.fillRect(cx2 - 1, cy2 + 11, 2, 4);
+    drawGrass(ctx, t, festGrass, '#150e18');
   };
 }
 
@@ -462,13 +698,25 @@ export function createLoadScreen({ logoSrc = '', vignette = null } = {}) {
 
   // the scene animates on its own clock so it keeps moving through long stages
   const t0 = performance.now();
-  let raf = 0, alive = true;
+  let raf = 0, alive = true, lastDraw = 0;
+  function paint() {
+    lastDraw = performance.now();
+    draw(ctx, (lastDraw - t0) / 1000);
+  }
   function loop() {
     if (!alive) return;
-    draw(ctx, (performance.now() - t0) / 1000);
+    paint();
     raf = requestAnimationFrame(loop);
   }
   loop();
+  // rAF ONLY DRAWS. It stops dead in a background tab, and a loading screen is
+  // precisely the screen people alt-tab away from -- so the scene froze mid-boot
+  // and was still frozen when they came back to it. Same fault, same fix and
+  // same reasoning as the prologue: a slow interval repaints whenever rAF has
+  // gone quiet, so the picture keeps moving whether anyone is watching or not.
+  const keepAlive = setInterval(() => {
+    if (alive && performance.now() - lastDraw > 250) paint();
+  }, 120);
 
   let shownPct = 0;
   /** Report real progress. `label` is what is actually happening right now. */
@@ -484,6 +732,7 @@ export function createLoadScreen({ logoSrc = '', vignette = null } = {}) {
     alive = false;
     cancelAnimationFrame(raf);
     clearInterval(tipTimer);
+    clearInterval(keepAlive);
     root.remove();
   }
 
