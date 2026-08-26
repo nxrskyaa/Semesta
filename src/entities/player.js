@@ -634,13 +634,13 @@ export function buildCharacterMesh(config) {
       // The first attempt reached further than it spanned, which reads as a
       // glaive. A real bit is roughly as tall as it is long.
       const bit = new THREE.Mesh(axeBitGeometry(`bit${tier}`,
-        0.52 * s, 0.50 * s + tier * 0.025 * s, 0.038 * s, 0.5), headMat);
+        0.36 * s, 0.42 * s + tier * 0.02 * s, 0.032 * s, 0.5), headMat);
       // hung slightly low on the haft, the way a bearded axe is
       bit.position.set(0, 0.90 * s, 0.03 * s);
       // the bright cutting edge, matching every other blade in the game
       const edge = new THREE.Mesh(sweepGeometry(`axedge${tier}`,
-        [[0, -0.35 * s, 0.475 * s], [0, 0, 0.52 * s], [0, 0.35 * s, 0.475 * s]],
-        () => 0.014 * s, 5, 8),
+        [[0, -0.29 * s, 0.33 * s], [0, 0, 0.36 * s], [0, 0.29 * s, 0.33 * s]],
+        () => 0.013 * s, 5, 8),
         new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.9 }));
       edge.position.set(0, 0.90 * s, 0.03 * s);
       // counterweight spike on the poll, so it is not lopsided
@@ -803,8 +803,8 @@ export function buildCharacterMesh(config) {
         // drawn out to a fine point, which is the knife silhouette.
         const dl = 0.5 * (s / 0.72);
         const blade = new THREE.Mesh(bladeGeometry(`dg${tier}`, dl,
-          (t) => 0.055 * (1 + 0.3 * Math.sin(t * Math.PI * 0.8)) * (1 - t * t * 0.85),
-          (t) => 0.021 * (1 - t * 0.5), 6), bladeMat);
+          (t) => 0.072 * (1 + 0.3 * Math.sin(t * Math.PI * 0.8)) * (1 - t * t * 0.8),
+          (t) => 0.029 * (1 - t * 0.45), 6), bladeMat);
         blade.position.y = 0.13;
         // the whole blade leans forward: a curved knife, not a spike
         blade.rotation.x = -0.16;
@@ -861,13 +861,13 @@ export function buildCharacterMesh(config) {
         // thickest at the grip, tapering to the nocks -- and flattened in Z,
         // because a bow limb is a leaf spring, not a rod
         const m = 1 - Math.abs(t - 0.5) * 2;
-        return (0.016 + 0.026 * m) * s;
+        return (0.030 + 0.036 * m) * s;
       }, 6, 22), limbMat);
-      limb.scale.z = 0.62;
+      limb.scale.z = 0.78;
       limb.castShadow = true;
       g.add(limb);
       for (const sy of [-1, 1]) {
-        const tip = new THREE.Mesh(sharedSphere(0.022 * s, 6, 5),
+        const tip = new THREE.Mesh(sharedSphere(0.032 * s, 6, 5),
           def.glow ? new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow) }) : goldMat);
         if (def.glow) tip.scale.setScalar(1.7); // gacha bows: glowing limb tips
         tip.position.set(-rc, sy * TY, 0);
