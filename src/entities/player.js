@@ -9,6 +9,12 @@ import { WATER_Y } from '../world/terrain.js';
 import {
   CLASSES, SKIN_TONES, HAIR_COLORS, OUTFIT_COLORS, EYE_COLORS, CAPE_COLORS, BALD_STYLE,
 } from '../systems/classes.js';
+// player.js was one of the modules that never imported the shared cache at all
+// (242 raw allocation sites). The weapon builders route through it now.
+import {
+  bladeGeometry, axeBitGeometry, sweepGeometry,
+  sharedBox, sharedCyl, sharedSphere, sharedTorus,
+} from '../gfx/meshcache.js';
 
 const ROLL_TIME = 0.42;
 const ROLL_SPEED = 8.5;
@@ -543,37 +549,56 @@ export function buildCharacterMesh(config) {
         g.userData.anim = ex.anim;
       }
     } else if (def.type === 'sword' || !def.type) {
-      // tapered blade: wide base, narrow top, pyramid tip + fuller line
+      // THE BLADE IS ONE SWEPT SOLID, not three stacked boxes.
+      //
+      // It used to be a 0.24-deep box, a 0.18 box and a 0.10 box for the "tip",
+      // which is why all six swords read as the same rectangular slab in a
+      // different colour and not one of them came to a point. bladeGeometry
+      // sweeps a real cross-section, so the taper is continuous and the last
+      // ring is a single vertex.
+      //
+      // The PROFILE is what makes one sword differ from another, so it is
+      // derived per tier: an early blade is a broad, blunt, cheap thing that
+      // widens toward the middle, a late one is slimmer and reaches further.
       const bladeMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.55 * s, 0.24 * s), bladeMat);
-      lower.position.y = 0.42 * s;
-      lower.castShadow = true;
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.07 * s, 0.4 * s, 0.18 * s), bladeMat);
-      upper.position.y = 0.88 * s;
-      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.06 * s, 0.14 * s, 0.1 * s), lam(lightC));
-      tip.position.y = 1.14 * s;
-      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.085 * s, 0.7 * s, 0.03 * s), lam(shadeHex(darkC, -0.25)));
-      fuller.position.y = 0.55 * s;
-      // curved guard (3 pieces) + gold pommel
-      const guardMid = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.06, 0.3 * s), lam('#5a4630'));
-      guardMid.position.y = 0.15;
-      const guardL = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.05, 0.08 * s), goldMat);
-      guardL.position.set(0, 0.18, 0.16 * s);
-      const guardR = guardL.clone(); guardR.position.z = -0.16 * s;
-      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.2, 0.07), lam(PALETTE.torchWood));
-      grip.position.y = 0.02;
-      const pommel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.09), goldMat);
-      pommel.position.y = -0.09;
-      g.add(lower, upper, tip, fuller, guardMid, guardL, guardR, grip, pommel);
-      // bright cutting edge — a thin glint strip along the blade's front
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.92 * s, 0.02),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.85 }));
-      edge.position.set(0, 0.62 * s, 0.115 * s);
-      g.add(edge);
-      if (tier >= 2) { // rune glow stripe
-        const rune = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.5 * s, 0.02),
+      const bl = 1.16 * s;                       // blade length above the guard
+      const belly = 0.34 - tier * 0.06;          // where it is widest, 0 = base
+      const w0 = 0.125 * s, th0 = 0.040 * s - tier * 0.002;
+      const blade = new THREE.Mesh(bladeGeometry(
+        `sw${tier}`, bl,
+        // widest a little above the ricasso, then a long clean run to the point
+        (t) => w0 * (1 + belly * Math.sin(t * Math.PI * 0.9)) * (1 - t * t * 0.72),
+        (t) => th0 * (1 - t * 0.55),
+      ), bladeMat);
+      blade.position.y = 0.2;
+      blade.castShadow = true;
+      g.add(blade);
+      // a fuller cut down the flat: a real groove reads as forged steel
+      const fuller = new THREE.Mesh(sharedBox(0.055 * s, bl * 0.62, 0.028 * s),
+        lam(shadeHex(darkC, -0.3)));
+      fuller.position.y = 0.2 + bl * 0.34;
+      g.add(fuller);
+      // CROSSGUARD: quillons that sweep forward, not a plain bar
+      const guardMid = new THREE.Mesh(sharedBox(0.1 * s, 0.055, 0.16 * s), goldMat);
+      guardMid.position.y = 0.16;
+      g.add(guardMid);
+      for (const sz of [1, -1]) {
+        const quill = new THREE.Mesh(sharedBox(0.075 * s, 0.05, 0.13 * s), goldMat);
+        quill.position.set(0, 0.175, sz * 0.14 * s);
+        quill.rotation.x = sz * -0.34;
+        g.add(quill);
+      }
+      const ricasso = new THREE.Mesh(sharedBox(0.07 * s, 0.07, 0.1 * s), lam('#5a4630'));
+      ricasso.position.y = 0.2;
+      const grip = new THREE.Mesh(sharedCyl(0.036, 0.042, 0.2, 8), lam(PALETTE.torchWood));
+      grip.position.y = 0.03;
+      const pommel = new THREE.Mesh(sharedSphere(0.052, 8, 6), goldMat);
+      pommel.position.y = -0.08;
+      g.add(ricasso, grip, pommel);
+      if (tier >= 2) { // rune glow stripe down the fuller
+        const rune = new THREE.Mesh(sharedBox(0.05 * s, bl * 0.44, 0.02),
           new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
-        rune.position.set(0, 0.6 * s, 0);
+        rune.position.set(0, 0.2 + bl * 0.3, 0);
         g.add(rune);
       }
       if (def.glow) { // gacha blade: glowing guard gem + twin rune notches
@@ -595,20 +620,29 @@ export function buildCharacterMesh(config) {
       // stats give it. A crescent bit built from three tapering slabs, a
       // counterweight spike on the back, and a leather-wrapped haft.
       const headMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
-      const haft = new THREE.Mesh(new THREE.BoxGeometry(0.07 * s, 1.15 * s, 0.075 * s), lam(PALETTE.torchWood));
-      haft.position.y = 0.5 * s;
+      // THE HAFT IS SLIGHTLY TAPERED AND SWEPT, not a plain stick: a straight
+      // box of even width was half of why this read as a flag on a pole.
+      const haft = new THREE.Mesh(sweepGeometry(`haft${tier}`,
+        [[0, -0.16 * s, 0], [0, 0.3 * s, 0.006 * s], [0, 0.72 * s, 0.004 * s], [0, 1.06 * s, 0]],
+        (t) => (0.042 - t * 0.008) * s, 6, 8), lam(PALETTE.torchWood));
       haft.castShadow = true;
-      // the bit: three slabs of falling height, so the edge reads as a crescent
-      const bit1 = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.44 * s, 0.2 * s), headMat);
-      bit1.position.set(0, 0.95 * s, 0.17 * s);
-      const bit2 = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.34 * s, 0.16 * s), headMat);
-      bit2.position.set(0, 0.95 * s, 0.33 * s);
-      const bit3 = new THREE.Mesh(new THREE.BoxGeometry(0.045 * s, 0.2 * s, 0.11 * s), lam(lightC));
-      bit3.position.set(0, 0.95 * s, 0.45 * s);
+      // THE BIT IS ONE CRESCENT SOLID. Three slabs of falling height do not make
+      // a crescent -- they make a staircase, and the end of the outermost slab
+      // is a flat rectangle where the cutting edge should be. axeBitGeometry
+      // sweeps the cheek from a narrow eye at the haft out to a real edge arc.
+      // BROAD, not pointed: an axe is tall at the edge and close to the haft.
+      // The first attempt reached further than it spanned, which reads as a
+      // glaive. A real bit is roughly as tall as it is long.
+      const bit = new THREE.Mesh(axeBitGeometry(`bit${tier}`,
+        0.52 * s, 0.50 * s + tier * 0.025 * s, 0.038 * s, 0.5), headMat);
+      // hung slightly low on the haft, the way a bearded axe is
+      bit.position.set(0, 0.90 * s, 0.03 * s);
       // the bright cutting edge, matching every other blade in the game
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.46 * s, 0.09 * s),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.85 }));
-      edge.position.set(0.028 * s, 0.95 * s, 0.42 * s);
+      const edge = new THREE.Mesh(sweepGeometry(`axedge${tier}`,
+        [[0, -0.35 * s, 0.475 * s], [0, 0, 0.52 * s], [0, 0.35 * s, 0.475 * s]],
+        () => 0.014 * s, 5, 8),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.9 }));
+      edge.position.set(0, 0.90 * s, 0.03 * s);
       // counterweight spike on the poll, so it is not lopsided
       const poll = new THREE.Mesh(new THREE.BoxGeometry(0.06 * s, 0.16 * s, 0.16 * s), lam(darkC));
       poll.position.set(0, 0.95 * s, -0.1 * s);
@@ -620,7 +654,7 @@ export function buildCharacterMesh(config) {
       wrap.position.y = 0.16 * s;
       const buttcap = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.06, 0.1 * s), goldMat);
       buttcap.position.y = -0.06 * s;
-      g.add(haft, bit1, bit2, bit3, edge, poll, spike, collar, wrap, buttcap);
+      g.add(haft, bit, edge, poll, spike, collar, wrap, buttcap);
       if (tier >= 2) {
         const rune = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24 * s, 0.1 * s),
           new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
@@ -687,36 +721,61 @@ export function buildCharacterMesh(config) {
       const mk = (isOff) => {
         const h = new THREE.Group();
         h.userData.isWeapon = true;
-        // the padded knuckle mass
-        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.17 * s, 0.15 * s, 0.19 * s), clothMat);
-        pad.position.set(0, 0.02, 0.03);
-        h.add(pad);
-        // three bands wound across the back of the hand, each offset a little
+        // A FIST IS A ROUND MASS WITH KNUCKLES ON IT, not a stack of slabs.
+        // The old wrap was a pad box, three band boxes and a wrist box, all of
+        // similar size, which read as a sandwich -- four bricks in a pile. The
+        // hand is one squashed sphere now, the knuckles are four bumps along its
+        // leading edge, and the wrap is TORUS rings wound round the whole thing,
+        // which is what cloth does and what a flat box can never look like.
+        const fist = new THREE.Mesh(sharedSphere(0.105 * s, 8, 6), clothMat);
+        fist.scale.set(0.92, 0.95, 1.06);
+        fist.position.set(0, 0.01, 0.03);
+        h.add(fist);
+        // four knuckles across the striking face, the middle two proud
+        for (let i = 0; i < 4; i++) {
+          const kn = new THREE.Mesh(sharedSphere(0.030 * s, 6, 5), clothMat);
+          const out = i === 1 || i === 2 ? 1 : 0.86;
+          kn.position.set((i - 1.5) * 0.048 * s, 0.045 * s, 0.098 * s * out);
+          h.add(kn);
+        }
+        // the thumb, folded across the front -- it is what makes a closed fist
+        // read as a fist rather than as a ball
+        const thumb = new THREE.Mesh(sharedCyl(0.026 * s, 0.03 * s, 0.1 * s, 6), clothMat);
+        thumb.rotation.z = Math.PI / 2;
+        thumb.rotation.y = isOff ? -0.4 : 0.4;
+        thumb.position.set(isOff ? 0.04 * s : -0.04 * s, -0.025 * s, 0.075 * s);
+        h.add(thumb);
+        // WOUND, not stacked: rings round the hand, each tilted off the last
         for (let i = 0; i < 3; i++) {
-          const band = new THREE.Mesh(new THREE.BoxGeometry(0.185 * s, 0.032 * s, 0.2 * s), bandMat);
-          band.position.set(0, 0.06 - i * 0.05, 0.03);
-          band.rotation.z = (i - 1) * 0.12;          // wound, not stacked
+          const band = new THREE.Mesh(sharedTorus(0.098 * s, 0.016 * s, 5, 12), bandMat);
+          band.position.set(0, 0.045 * s - i * 0.045 * s, 0.03);
+          band.rotation.x = Math.PI / 2;
+          band.rotation.z = (i - 1) * 0.22;
           h.add(band);
         }
-        // the tail of the wrap running back over the wrist
-        const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.13 * s, 0.13 * s, 0.11 * s), clothMat);
-        wrist.position.set(0, -0.02, -0.09);
+        // the cuff and the loose tail of the wrap over the wrist
+        const wrist = new THREE.Mesh(sharedCyl(0.062 * s, 0.07 * s, 0.11 * s, 8), clothMat);
+        wrist.rotation.x = Math.PI / 2;
+        wrist.position.set(0, -0.02, -0.085);
         h.add(wrist);
-        const tail = new THREE.Mesh(new THREE.BoxGeometry(0.04 * s, 0.03 * s, 0.16 * s), bandMat);
-        tail.position.set(isOff ? -0.07 : 0.07, -0.04, -0.14);
-        tail.rotation.x = 0.3;
+        const tail = new THREE.Mesh(sharedBox(0.032 * s, 0.022 * s, 0.15 * s), bandMat);
+        tail.position.set(isOff ? -0.06 : 0.06, -0.045, -0.14);
+        tail.rotation.x = 0.34;
         h.add(tail);
-        // tier 2+: a hard plate across the knuckles, which is what turns a wrap
-        // into a weapon you would not want to be hit by
+        // tier 2+: a hard plate ARCHED over the knuckles -- it has to follow the
+        // curve of the hand or it reads as a brick balanced on top of it
         if (tier >= 2) {
-          const plate = new THREE.Mesh(new THREE.BoxGeometry(0.15 * s, 0.06 * s, 0.05 * s), goldMat);
-          plate.position.set(0, 0.03, 0.13);
-          h.add(plate);
-          for (const sx of [-1, 0, 1]) {
-            const stud = new THREE.Mesh(new THREE.BoxGeometry(0.035 * s, 0.035 * s, 0.03 * s), goldMat);
-            stud.position.set(sx * 0.05 * s, 0.03, 0.155);
-            h.add(stud);
+          for (let i = 0; i < 4; i++) {
+            const a = (i - 1.5) * 0.34;
+            const plate = new THREE.Mesh(sharedBox(0.042 * s, 0.052 * s, 0.03 * s), goldMat);
+            plate.position.set(Math.sin(a) * 0.078 * s, 0.045 * s, Math.cos(a) * 0.115 * s);
+            plate.rotation.y = a;
+            h.add(plate);
           }
+          const guard = new THREE.Mesh(sharedTorus(0.1 * s, 0.014 * s, 5, 12), goldMat);
+          guard.rotation.x = Math.PI / 2;
+          guard.position.set(0, -0.005, 0.03);
+          h.add(guard);
         }
         if (def.glow) {
           // gacha fists: the knuckles themselves burn
@@ -738,19 +797,24 @@ export function buildCharacterMesh(config) {
         const d = new THREE.Group();
         d.userData.isWeapon = true;
         const bladeMat = new THREE.MeshLambertMaterial({ map: makeBladeTexture(def.blade) });
-        // curved blade: two offset segments
-        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28 * (s / 0.72), 0.11), bladeMat);
-        b1.position.y = 0.22;
-        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.2 * (s / 0.72), 0.08), bladeMat);
-        b2.position.set(0, 0.42, 0.03);
-        b2.rotation.x = -0.3;
-        const tip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.05), lam(lightC));
-        tip.position.set(0, 0.54, 0.06);
-        tip.rotation.x = -0.4;
-        const guard = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.04, 0.13), goldMat);
-        guard.position.y = 0.08;
-        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.07), lam('#4a3626'));
-        d.add(b1, b2, tip, guard, grip);
+        // A SWEPT BLADE, curved and pointed. It was two offset boxes with a
+        // third box for a "tip", so the curve was two flat facets meeting at a
+        // corner and the point was a rectangle. The sweep is bellied low and
+        // drawn out to a fine point, which is the knife silhouette.
+        const dl = 0.5 * (s / 0.72);
+        const blade = new THREE.Mesh(bladeGeometry(`dg${tier}`, dl,
+          (t) => 0.055 * (1 + 0.3 * Math.sin(t * Math.PI * 0.8)) * (1 - t * t * 0.85),
+          (t) => 0.021 * (1 - t * 0.5), 6), bladeMat);
+        blade.position.y = 0.13;
+        // the whole blade leans forward: a curved knife, not a spike
+        blade.rotation.x = -0.16;
+        const guard = new THREE.Mesh(sharedBox(0.075, 0.035, 0.115), goldMat);
+        guard.position.y = 0.1;
+        const grip = new THREE.Mesh(sharedCyl(0.026, 0.03, 0.14, 6), lam('#4a3626'));
+        grip.position.y = 0.02;
+        const butt = new THREE.Mesh(sharedSphere(0.032, 6, 5), goldMat);
+        butt.position.y = -0.06;
+        d.add(blade, guard, grip, butt);
         // glinting edge along the curve
         const edge = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.26 * (s / 0.72), 0.02),
           new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.85 }));
@@ -778,26 +842,54 @@ export function buildCharacterMesh(config) {
       g.userData.offhand = off;
     } else if (def.type === 'bow') {
       const limbMat = lam(darkC);
-      // smooth curved limbs (9 segments) with curled tips
-      for (let i = 0; i < 9; i++) {
-        const t = i / 8 - 0.5;
-        const seg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.13 * s, 0.055), i === 4 ? lam(lightC) : limbMat);
-        seg.position.set(Math.cos(t * Math.PI) * 0.16 * s, t * 0.86 * s, 0);
-        seg.rotation.z = -t * 1.1;
-        g.add(seg);
-      }
+      // ONE CONTINUOUS LIMB, thick at the riser and fine at the nock.
+      //
+      // It used to be nine separate boxes posted along an arc and rotated
+      // individually, which opens a gap on the outside of every joint -- so the
+      // bow read as beads threaded on a string. And the string was a three-point
+      // V whose middle bulged FURTHER OUT than its ends, i.e. strung backwards.
+      // An unnocked string is straight between the tips; it is the limbs that
+      // curve away from it.
+      const RE = 0.2 * s;                       // how far the riser stands proud
+      const TY = 0.5 * s;                       // nock height
+      // recurve: the tips flick back toward the string on the better bows
+      const rc = tier >= 2 ? 0.055 * s : 0.015 * s;
+      const limb = new THREE.Mesh(sweepGeometry(`limb${tier}`, [
+        [-rc, TY, 0], [RE * 0.42, TY * 0.72, 0], [RE, TY * 0.22, 0],
+        [RE, -TY * 0.22, 0], [RE * 0.42, -TY * 0.72, 0], [-rc, -TY, 0],
+      ], (t) => {
+        // thickest at the grip, tapering to the nocks -- and flattened in Z,
+        // because a bow limb is a leaf spring, not a rod
+        const m = 1 - Math.abs(t - 0.5) * 2;
+        return (0.016 + 0.026 * m) * s;
+      }, 6, 22), limbMat);
+      limb.scale.z = 0.62;
+      limb.castShadow = true;
+      g.add(limb);
       for (const sy of [-1, 1]) {
-        const tip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.04),
+        const tip = new THREE.Mesh(sharedSphere(0.022 * s, 6, 5),
           def.glow ? new THREE.MeshBasicMaterial({ color: new THREE.Color(def.glow) }) : goldMat);
-        if (def.glow) tip.scale.setScalar(1.5); // gacha bows: glowing limb tips
-        tip.position.set(-0.06 * s, sy * 0.47 * s, 0);
+        if (def.glow) tip.scale.setScalar(1.7); // gacha bows: glowing limb tips
+        tip.position.set(-rc, sy * TY, 0);
         g.add(tip);
       }
-      const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14 * s, 0.075), lam('#8a6a48'));
-      wrap.position.set(0.16 * s, 0, 0);
+      // the grip: a leather-bound riser, round in the hand
+      const wrap = new THREE.Mesh(sharedCyl(0.036 * s, 0.036 * s, 0.16 * s, 8), lam('#8a6a48'));
+      wrap.position.set(RE, 0, 0);
       g.add(wrap);
+      for (const sy of [-1, 1]) {
+        const band = new THREE.Mesh(sharedTorus(0.038 * s, 0.007 * s, 4, 10), leatherMat);
+        band.rotation.y = Math.PI / 2;
+        band.position.set(RE, sy * 0.075 * s, 0);
+        g.add(band);
+      }
+      // an arrow rest, so the arrow has somewhere to sit
+      const rest = new THREE.Mesh(sharedBox(0.05 * s, 0.012 * s, 0.02 * s), leatherMat);
+      rest.position.set(RE - 0.03 * s, 0.03 * s, 0.03 * s);
+      g.add(rest);
+      // STRING: straight from nock to nock, which is what a strung bow is
       const stringGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-0.06 * s, 0.47 * s, 0), new THREE.Vector3(-0.13 * s, 0, 0), new THREE.Vector3(-0.06 * s, -0.47 * s, 0),
+        new THREE.Vector3(-rc, TY, 0), new THREE.Vector3(-rc, -TY, 0),
       ]);
       g.add(new THREE.Line(stringGeo, new THREE.LineBasicMaterial({ color: 0xd8d8c8 })));
       bowArrow = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.55),
@@ -808,26 +900,74 @@ export function buildCharacterMesh(config) {
       g.rotation.y = Math.PI / 2;
       handL.add(g);
     } else if (def.type === 'staff') {
-      const rod = new THREE.Mesh(new THREE.BoxGeometry(0.055, 1.3 * s, 0.055), lam('#5a4630'));
-      rod.position.y = 0.38;
-      const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.07), leatherMat);
+      // A KNOTTED SHAFT AND A DIFFERENT HEAD PER TIER.
+      //
+      // All six staves were one straight box with a gem on top, so the only
+      // thing separating an Apprentice Staff from a Treant Staff was the colour
+      // of the gem. The shaft now bends slightly and thickens toward the head
+      // (a cut branch, not dowel), and each tier gets its own crown.
+      const rod = new THREE.Mesh(sweepGeometry(`rod${tier}`,
+        [[0, -0.3, 0], [0.012, 0.14, 0.006], [-0.01, 0.55, -0.004], [0.006, 0.96, 0]],
+        (t) => 0.024 + t * 0.011, 6, 10), lam('#5a4630'));
+      const wrap = new THREE.Mesh(sharedCyl(0.036, 0.036, 0.13, 8), leatherMat);
       wrap.position.y = 0.05;
-      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.1), goldMat);
+      const collar = new THREE.Mesh(sharedCyl(0.045, 0.05, 0.07, 8), goldMat);
       collar.position.y = 0.96;
-      // twin prongs cradling the orb
-      const prongL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.04), lam(darkC));
-      prongL.position.set(-0.08, 1.1, 0); prongL.rotation.z = 0.35;
-      const prongR = prongL.clone(); prongR.position.x = 0.08; prongR.rotation.z = -0.35;
-      staffOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11 * s, 0),
+      staffOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1 * s, 0),
         new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
       staffOrb.position.y = 1.18;
-      g.add(rod, wrap, collar, prongL, prongR, staffOrb);
-      if (tier >= 2) {
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16 * s, 0.015, 4, 10),
-          new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.7 }));
+      g.add(rod, wrap, collar, staffOrb);
+      const butt = new THREE.Mesh(sharedSphere(0.034, 6, 5), goldMat);
+      butt.position.y = -0.3;
+      g.add(butt);
+      if (tier === 0) {
+        // bound: the crystal is simply lashed into a fork of the branch
+        for (const sx of [-1, 1]) {
+          // wide enough to clear the orb: a fork hidden inside the stone it is
+          // meant to be holding is a fork nobody can see
+          const prong = new THREE.Mesh(sweepGeometry(`fork${sx}`,
+            [[0, 0, 0], [sx * 0.1, 0.11, 0], [sx * 0.125, 0.24, 0], [sx * 0.08, 0.33, 0]],
+            (t) => 0.022 - t * 0.011, 5, 8), lam(darkC));
+          prong.position.y = 0.96;
+          g.add(prong);
+        }
+        for (let i = 0; i < 2; i++) {
+          const cord = new THREE.Mesh(sharedTorus(0.055, 0.008, 4, 10), leatherMat);
+          cord.rotation.x = Math.PI / 2;
+          cord.position.y = 1.06 + i * 0.05;
+          g.add(cord);
+        }
+      } else if (tier === 1) {
+        // three claws closing over the stone
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2;
+          const claw = new THREE.Mesh(sweepGeometry(`claw${i}`,
+            [[0, 0, 0], [Math.sin(a) * 0.09, 0.13, Math.cos(a) * 0.09],
+             [Math.sin(a) * 0.05, 0.25, Math.cos(a) * 0.05]],
+            (t) => 0.02 - t * 0.011, 5, 7), lam(darkC));
+          claw.position.y = 0.97;
+          g.add(claw);
+        }
+      } else {
+        // tier 2+: the head opens into a halo the orb floats inside
+        const ring = new THREE.Mesh(sharedTorus(0.17 * s, 0.016, 5, 14),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC), transparent: true, opacity: 0.72 }));
         ring.position.y = 1.18;
         ring.rotation.x = Math.PI / 2;
         g.add(ring);
+        const arc = new THREE.Mesh(sweepGeometry('halo', [
+          [-0.16, 1.06, 0], [-0.11, 1.3, 0], [0, 1.37, 0], [0.11, 1.3, 0], [0.16, 1.06, 0],
+        ], () => 0.017, 5, 12), goldMat);
+        g.add(arc);
+        if (tier >= 3) {
+          for (let i = 0; i < 4; i++) {
+            const a = (i / 4) * Math.PI * 2 + 0.4;
+            const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.032, 0),
+              new THREE.MeshBasicMaterial({ color: new THREE.Color(lightC) }));
+            shard.position.set(Math.sin(a) * 0.2, 1.18 + Math.cos(a) * 0.05, Math.cos(a) * 0.2);
+            g.add(shard);
+          }
+        }
         g.userData.anim = { ring, orb: staffOrb }; // spins & pulses in update
       }
       handR.add(g);
