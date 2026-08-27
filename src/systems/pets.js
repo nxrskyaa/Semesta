@@ -3,6 +3,7 @@
 // perk while active. Pets trot along behind you with happy little bounces.
 import * as THREE from 'three';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
+import { sweepGeometry, sharedSphere, sharedCyl } from '../gfx/meshcache.js';
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 
@@ -108,35 +109,71 @@ function petFace(id, opts) {
   return faceCache.get(id);
 }
 
+/**
+ * The shared critter. FIFTEEN of the seventeen pets are built from this, which
+ * is why they all looked like the same toy in a different colour: the body was
+ * a 0.3 x 0.24 x 0.34 BOX with a bigger box fused on top of it, four stub legs
+ * buried inside the body, and nothing else. The art direction for this game is
+ * explicitly "cute critter, big glossy eyes, NOT minecraft proportions" -- and
+ * a cube with a cube on it is exactly minecraft proportions.
+ *
+ * Now: the body is SWEPT along its own length, narrow at the chest and full at
+ * the haunches, which is the single thing that makes a shape read as an animal
+ * rather than as luggage. The head is a squashed sphere. The legs are real,
+ * they hang BELOW the body where they can be seen, and each one is a pivot at
+ * the hip so the walk can actually swing them.
+ *
+ * One geometry key for all of them, so fifteen pets share one body mesh.
+ */
 function basePet(bodyColor, bellyColor, faceKey, faceOpts) {
   const g = new THREE.Group();
   const fur = lam(bodyColor);
   const belly = lam(bellyColor);
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.24, 0.34), fur);
-  body.position.y = 0.2;
+  const body = new THREE.Mesh(sweepGeometry('petbody',
+    [[0, 0, 0.2], [0, 0.02, 0.07], [0, 0.015, -0.07], [0, -0.02, -0.21]],
+    (t) => 0.105 + Math.sin(t * Math.PI) * 0.062, 8, 12), fur);
+  body.position.y = 0.23;
+  body.scale.set(1, 0.9, 1);            // a touch flatter than round
   body.castShadow = true;
-  const tummy = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.06), belly);
-  tummy.position.set(0, 0.16, 0.16);
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.3), fur);
+  // a pale tummy patch, curved onto the chest instead of a slab stuck on it
+  const tummy = new THREE.Mesh(sharedSphere(0.1, 8, 6), belly);
+  tummy.scale.set(0.92, 0.72, 0.62);
+  tummy.position.set(0, 0.18, 0.115);
+
+  const head = new THREE.Mesh(sharedSphere(0.185, 10, 8), fur);
+  head.scale.set(1, 0.94, 0.96);
   head.position.y = 0.44;
   head.castShadow = true;
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.22),
     new THREE.MeshBasicMaterial({ map: petFace(faceKey, faceOpts), transparent: true }));
-  face.position.set(0, 0.01, 0.16);
+  // proud of the sphere, or the curve clips through the middle of the face
+  face.position.set(0, 0.01, 0.172);
   head.add(face);
 
-  for (const sx of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.09), fur);
-    leg.position.set(sx * 0.09, 0.06, 0.08);
-    g.add(leg);
-    const legB = leg.clone(); legB.position.z = -0.1;
-    g.add(legB);
+  // LEGS ON HIP PIVOTS, and long enough to see. They used to sit at y 0.06
+  // under a body whose underside was at 0.08 -- inside it, in other words.
+  const legs = [];
+  for (const sz of [1, -1]) {
+    for (const sx of [-1, 1]) {
+      const hip = new THREE.Group();
+      hip.position.set(sx * 0.085, 0.135, sz * 0.105);
+      const shin = new THREE.Mesh(sharedCyl(0.032, 0.038, 0.115, 6), fur);
+      shin.position.y = -0.058;
+      const paw = new THREE.Mesh(sharedSphere(0.042, 6, 5), fur);
+      paw.scale.set(1, 0.7, 1.15);
+      paw.position.y = -0.115;
+      hip.add(shin, paw);
+      g.add(hip);
+      legs.push(hip);
+    }
   }
 
   g.add(body, tummy, head);
-  g.userData = { head, body };
+  // the breath multiplies this rather than assuming it: the Tideling sets
+  // `body` to its own bell, and hard-coding a rest scale here would squash it
+  g.userData = { head, body, legs, bodyRest: body.scale.clone() };
   return { g, fur, belly, head };
 }
 
@@ -680,20 +717,39 @@ export function createPets(scene, terrain, particles) {
       particles.burst(p.clone().add(new THREE.Vector3(0, 0.3, 0)), PET_DEFS[state.active].color, 6, 1.5);
       return;
     }
+    const u = state.mesh.userData;
     if (d > 0.25) {
       const sp = Math.min(7, 2.2 + d * 2.2);
       p.x += (dx / d) * sp * dt;
       p.z += (dz / d) * sp * dt;
       state.mesh.rotation.y = Math.atan2(dx, dz);
-      // trot bounce
-      p.y = terrain.surfaceY(p.x, p.z) + Math.abs(Math.sin(state.anim * 10)) * 0.08;
+      // A TROT, not a hop. The whole pet used to just move up and down on a
+      // sine while four legs it did have stayed rigid -- the same "stiff" the
+      // monsters had. The phase advances with SPEED so the stride matches the
+      // ground, and the diagonal pairs swing together, which is what a trot is.
+      state.gait = (state.gait || 0) + sp * dt * 5.2;
+      const sw = Math.sin(state.gait);
+      if (u.legs) {
+        u.legs[0].rotation.x = sw * 0.62;        // front-left  \  diagonal
+        u.legs[3].rotation.x = sw * 0.62;        // back-right  /   pair
+        u.legs[1].rotation.x = -sw * 0.62;       // front-right \  the other
+        u.legs[2].rotation.x = -sw * 0.62;       // back-left   /   pair
+      }
+      p.y = terrain.surfaceY(p.x, p.z) + Math.abs(Math.sin(state.gait)) * 0.045;
+      // lean into the run -- but not if it floats; a jellyfish does not lean
+      if (!u.floats) state.mesh.rotation.x = -0.09 * Math.min(1, sp / 5);
+      if (u.head) u.head.position.y = 0.44 + Math.sin(state.gait * 2) * 0.012;
     } else {
-      // idle: sit & bob
+      // idle: settle, breathe, and let the legs come back under it
       p.y = terrain.surfaceY(p.x, p.z);
-      const u = state.mesh.userData;
+      state.mesh.rotation.x += (0 - state.mesh.rotation.x) * Math.min(1, dt * 6);
+      if (u.legs) {
+        for (const hip of u.legs) hip.rotation.x += (0 - hip.rotation.x) * Math.min(1, dt * 8);
+      }
       if (u.head) u.head.position.y = 0.44 + Math.sin(state.anim * 2.6) * 0.02;
-      if (Math.random() < dt * 0.15) { // occasional happy hop
-        p.y += 0.001; // noop-ish; the bounce below sells it
+      if (u.body && u.bodyRest) {
+        const br = 1 + Math.sin(state.anim * 2.6) * 0.03;
+        u.body.scale.set(u.bodyRest.x, u.bodyRest.y * br, u.bodyRest.z);
       }
     }
   }
