@@ -8,6 +8,7 @@ import { buildCharacterMesh } from '../entities/player.js';
 import { buildCosmetic } from '../systems/cosmetics.js';
 import { drawChronicleCard, shareText, CARD_THEMES } from './sharecard.js';
 import { showItem, hasModel, stopItem } from './itemshow.js';
+import { seasonBannerUrl } from '../gfx/seasonart.js';
 import { CLASSES } from '../systems/classes.js';
 import { recipesFor, canCraft, craft } from '../systems/crafting.js';
 import { createCraftShow } from './craftshow.js';
@@ -1562,6 +1563,30 @@ export function createPanels(hudRoot, {
     const owned = st.owned;
     const perk = gamepass.perks();
     const track = gamepass.track();
+    // THE SEASON'S HEADLINE PRIZE: the deepest `grand` on the track that has a
+    // model worth turning.
+    //
+    // A track entry does NOT keep its id in one field -- it is `item`,
+    // `cosmetic`, `mount`, `petCharm` or a `weaponTier` that has no id at all
+    // until it is claimed against your class. Reading only `.item` found
+    // nothing in any of the four seasons, which would have shipped as a
+    // headline that never once appeared. `weaponTier` resolves through the same
+    // WEAPON_TIER_ICON map the chips already use, so the headline and the chip
+    // beneath it can never disagree about what the prize is.
+    let grandId = null, grandLabel = '';
+    for (let i = track.length - 1; i >= 0 && !grandId; i--) {
+      for (const row of ['premium', 'basic', 'free']) {
+        const e = track[i]?.[row];
+        if (!e?.grand) continue;
+        const id = e.item || e.cosmetic || e.mount || e.petCharm
+          || (e.weaponTier ? WEAPON_TIER_ICON[e.weaponTier] : null);
+        if (id && ITEMS[id] && hasModel(id)) {
+          grandId = id;
+          grandLabel = e.weaponTier ? e.label : (ITEMS[id].name || e.label || '');
+          break;
+        }
+      }
+    }
     const season = gamepass.season();
     const total = gamepass.totalXp();
     const maxTier = gamepass.PASS_TIERS;
@@ -1794,7 +1819,17 @@ export function createPanels(hudRoot, {
     panels.pass.innerHTML = `<h3>GAMEPASS <small>[Esc] close</small></h3>
       <style>
         /* ---- season hero: the one block that has to look expensive ---- */
-        .pseason { position: relative; overflow: hidden; padding: 14px 16px 12px; margin-bottom: 11px;
+        /* THE BANNER. A season was being announced by a coloured rectangle --
+           the one screen in the game whose whole job is to make somebody want
+           something, and it was the only headline surface that was not painted
+           pixel art. The scene sits behind the type, scaled and pixelated, with
+           a gradient over it so the words stay readable on any of the four. */
+        .psart { position: absolute; inset: 0; background-size: cover;
+          background-position: 50% 62%; image-rendering: pixelated; opacity: 0.92; }
+        .psveil { position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(100deg, rgba(6,9,6,0.9) 8%, rgba(6,9,6,0.5) 52%, rgba(6,9,6,0.72)); }
+        .pseason { position: relative; overflow: hidden; padding: 16px 16px 13px; margin-bottom: 11px;
+          min-height: 104px;
           background:
             radial-gradient(120% 150% at 88% -20%, var(--sacc-dim), transparent 62%),
             linear-gradient(135deg, rgba(0,0,0,0.62), rgba(0,0,0,0.28));
@@ -1804,7 +1839,20 @@ export function createPanels(hudRoot, {
           background: var(--dither) 0 0/4px 4px; opacity: 0.45; pointer-events: none; }
         .pseason::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
           background: linear-gradient(90deg, transparent, var(--sacc), transparent); opacity: 0.8; }
-        .psrow { display: flex; align-items: flex-start; gap: 14px; position: relative; z-index: 1; }
+        /* the season's headline prize, turning, next to its own name. A 30px
+           chip of a 16px sprite says nothing about what the prize IS -- it is
+           the same picture whether the track ends in a mythic blade or a stack
+           of stones, which is exactly what made the ladder read as flat. */
+        .psprize { position: absolute; right: 12px; bottom: 8px; z-index: 2;
+          display: flex; flex-direction: column; align-items: center; width: 106px; }
+        .psprize canvas { width: 92px; height: 92px; display: block;
+          filter: drop-shadow(0 3px 10px rgba(0,0,0,0.8)); }
+        .psprize i { font-style: normal; font-size: 7px; letter-spacing: 2px;
+          color: var(--sacc); opacity: 0.85; margin-top: -6px; }
+        .psprize b { font-size: 8px; color: #e8e0c8; text-align: center; line-height: 1.3;
+          margin-top: 2px; max-width: 106px; }
+        .psrow { display: flex; align-items: flex-start; gap: 14px; position: relative; z-index: 1;
+          padding-right: 112px; }
         .psno { font-size: 10px; letter-spacing: 4px; color: var(--sacc); }
         .psname { font-family: var(--font-display); font-size: 23px; letter-spacing: 2px;
           color: #fff8e6; text-shadow: 0 2px 0 rgba(0,0,0,0.5), 0 0 20px var(--sacc); margin: 3px 0 5px; }
@@ -1993,6 +2041,10 @@ export function createPanels(hudRoot, {
         }
       </style>
       <div class="pseason" style="--sacc:${acc};--sacc-dim:${acc}33">
+        <div class="psart" style="background-image:url(${seasonBannerUrl(season.index ?? 0)})"></div>
+        <div class="psveil"></div>
+        ${grandId ? `<div class="psprize"><span data-passprize></span>
+          <i>SEASON PRIZE</i><b>${grandLabel}</b></div>` : ''}
         <div class="psrow">
           <div style="min-width:0">
             <div class="psno">SEASON ${season.number}</div>
@@ -2030,6 +2082,18 @@ export function createPanels(hudRoot, {
         </div>
       </div>
       ${passTab === 'track' ? trackTab : passTab === 'vault' ? vaultTab : howto}`;
+
+    // mount the turning headline prize. The showcase canvas is a single reused
+    // element, so it has to be moved into whichever panel is on screen now --
+    // and the gacha reveal will take it back the moment one is opened, which is
+    // correct: only one of the two can be visible at a time.
+    const pslot = panels.pass.querySelector('[data-passprize]');
+    if (pslot && grandId) {
+      const cv = showItem(grandId, ITEMS[grandId]?.rarity || 'legendary');
+      if (cv) pslot.replaceWith(cv);
+      else pslot.replaceWith(Object.assign(document.createElement('img'),
+        { src: itemIconUrl(grandId), style: 'width:48px;height:48px;image-rendering:pixelated' }));
+    }
 
     panels.pass.querySelectorAll('.pchip.can').forEach((c) => {
       c.addEventListener('click', () => {
