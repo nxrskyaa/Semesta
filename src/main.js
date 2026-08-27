@@ -1810,7 +1810,18 @@ async function init(character, saved, audio, online = false) {
     return { x, z, mesh: g };
   })();
 
-  const dungeon = createDungeon();
+  // THE FLOORS ARE BUILT FOR THE HERO STANDING IN THEM.
+  //
+  // A callback, not a value: this runs at boot and the numbers it needs change
+  // every level, every forge and every weapon swap. It is only ever CALLED when
+  // a floor is planned, long after init, so naming `totalMult`/`forgeMult` here
+  // is safe -- they are hoisted function declarations, and `inventory` is a
+  // const from far above. (Reading them EAGERLY here would be the seventh TDZ
+  // bite in this file.)
+  const dungeon = createDungeon(() => {
+    const def = inventory.equippedDef();
+    return (def?.dmg || 10) * totalMult() * forgeMult();
+  });
   dungeon.load(saved?.dungeon);
   // NO CATCH-ALL BAKE SWEEP HERE, and the reason is worth keeping.
   //
@@ -2106,7 +2117,7 @@ async function init(character, saved, audio, online = false) {
     if (alive > 0 || run.cleared) return;
 
     // --- the floor is clear ---
-    dungeon.markCleared();
+    const clr = dungeon.markCleared();
     dungeonWorld.openStair();
 
     // SAY WHAT THE FLOOR PAID, or it reads as paying nothing.
@@ -2121,14 +2132,28 @@ async function init(character, saved, audio, online = false) {
     // concerned.
     const paid = dungeon.floorReward(run.plan);
     grantDungeon(paid);
-    const paidLine = paid.map((r) => {
-      if (r.kind === 'coins') return `+${Math.round(r.amount * coinMult())} coins`;
-      if (r.kind === 'xp') return `+${r.amount} XP`;
+    // ...and SHOW it rather than writing it. A run-on line of text is the same
+    // fault the banner was added to fix one level up: the chips carry the real
+    // item icon, so what you got is a picture of the thing.
+    const chips = paid.map((r) => {
+      if (r.kind === 'coins') return { icon: 'coin', label: `+${Math.round(r.amount * coinMult())}` };
+      if (r.kind === 'xp') return { icon: null, label: `+${r.amount} XP` };
       const n = r.amount || 1;
-      return `${ITEMS[r.id]?.name || r.id}${n > 1 ? ` x${n}` : ''}`;
-    }).join('   ·   ');
-    hud.banner?.(`FLOOR ${run.floor} CLEARED`);
-    hud.toastText(paidLine);
+      return { icon: r.id, label: `${ITEMS[r.id]?.name || r.id}${n > 1 ? ` x${n}` : ''}` };
+    });
+    const th = dungeon.THEMES[run.plan.theme];
+    hud.floorClear?.({
+      floor: run.floor, of: dungeon.MAX_FLOOR, kind: run.plan.kind,
+      bandName: `${th?.name || ''} · ${dungeon.DIFFICULTIES[run.difficulty].tag}`,
+      accent: dungeon.DIFFICULTIES[run.difficulty].color,
+      timeText: `${dungeon.fmtTime(clr.floorMs)}   run ${dungeon.fmtTime(clr.runMs)}`,
+      record: !!clr.floorRecord,
+      rewards: chips,
+      next: run.floor >= dungeon.MAX_FLOOR
+        ? 'The Hollow has no deeper floor. Take the arch home.'
+        : 'The stair unseals — DESCEND when you are ready.',
+    });
+    if (clr.floorRecord) audio.sfx('levelup_big');
     particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ffd23e', 22);
 
     if (run.plan.boss) {
@@ -4521,6 +4546,20 @@ const CAM_PITCH_DEFAULT = 0.98;
   const bossState = { timer: 180, current: null, killed: false };
   const BOSS_KINDS = Object.keys(WORLD_BOSSES);
   function tickWorldBoss(dt) {
+    // THE WILDS DO NOT FOLLOW YOU UNDERGROUND -- and neither does their boss.
+    //
+    // The ambient spawner already stops at the door (`ambientPaused`), but this
+    // scheduler is separate and had no guard at all, so a world boss rose every
+    // 180 seconds INSIDE the Hollow: `spawnWorldBoss` places it relative to
+    // `player.state.pos`, which underground is the sealed hall. An Anavela boss
+    // in a composed dungeon encounter is not a surprise, it is a bug -- it
+    // ignores the floor plan, the band, and the difficulty you picked.
+    //
+    // The timer is PAUSED rather than merely suppressed: the 180s cadence is
+    // meant to measure time spent in Anavela, and letting it run down while you
+    // are forty floors under just means a boss is standing on you the moment
+    // you step out of the arch.
+    if (dungeon?.state.active) return;
     const alive = bossState.current && !bossState.current.dead;
     if (!alive && bossState.current) {
       // it either died (banner handled in onKill) or wandered off

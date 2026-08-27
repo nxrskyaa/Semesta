@@ -575,6 +575,58 @@ body.touch #hud .onboard .go { font-size: 11px; padding: 11px; letter-spacing: 2
 }
 @keyframes lvl-ring { 0% { transform: scale(0.4); opacity: 0.9; } 100% { transform: scale(5); opacity: 0; } }
 #hud .lvlup .lu-rewards { display: flex; flex-direction: column; gap: 5px; align-items: center; margin-top: 8px; }
+
+/* ---- THE FLOOR CLEAR CARD ----
+   Deliberately built from the level-up overlay's parts -- rays, a big number,
+   reward chips -- because the game has already taught that this shape means
+   "you earned something", and a second visual language for the same idea just
+   makes both weaker. */
+#hud .fclear { position: absolute; inset: 0; display: none; align-items: center;
+  justify-content: center; pointer-events: none; z-index: 24; }
+#hud .fclear.show { display: flex; }
+#hud .fclear .fc-card { position: relative; text-align: center; padding: 22px 30px 20px;
+  min-width: 300px; max-width: min(440px, 88vw);
+  background: linear-gradient(180deg, rgba(20,26,18,0.96), rgba(10,14,10,0.97));
+  box-shadow: 0 0 0 2px var(--fc), 0 0 0 5px rgba(0,0,0,0.75), 0 0 42px -6px var(--fc);
+  animation: fc-in 0.42s cubic-bezier(.2,1.5,.4,1) both; }
+@keyframes fc-in {
+  0% { transform: scale(0.7) translateY(14px); opacity: 0; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+#hud .fclear .fc-rays { position: absolute; left: 50%; top: 50%; width: 460px; height: 460px;
+  margin: -230px 0 0 -230px; pointer-events: none; opacity: 0.3;
+  background: repeating-conic-gradient(from 0deg, var(--fc) 0deg 5deg, transparent 5deg 20deg);
+  -webkit-mask-image: radial-gradient(circle, #000 12%, transparent 62%);
+  mask-image: radial-gradient(circle, #000 12%, transparent 62%);
+  animation: fc-spin 14s linear infinite; }
+@keyframes fc-spin { to { transform: rotate(360deg); } }
+#hud .fclear .fc-band { position: relative; font-size: 9px; letter-spacing: 3px; color: var(--fc); opacity: 0.8; }
+#hud .fclear .fc-kind { position: relative; font-family: var(--font-display);
+  font-size: 13px; letter-spacing: 3px; color: #f4ecd4; margin-top: 4px;
+  text-shadow: 0 2px 0 #000; }
+#hud .fclear .fc-big { position: relative; font-family: var(--font-display);
+  font-size: 46px; line-height: 1.05; color: var(--fc); margin: 2px 0 4px;
+  text-shadow: 0 3px 0 #000, 0 0 22px var(--fc);
+  animation: fc-pop 0.5s cubic-bezier(.2,1.7,.4,1) 0.1s both; }
+@keyframes fc-pop { 0% { transform: scale(0.5); } 100% { transform: scale(1); } }
+#hud .fclear .fc-time { position: relative; font-size: 12px; color: #cfe0c0; letter-spacing: 2px; }
+#hud .fclear .fc-time b { display: inline-block; margin-left: 7px; font-size: 9px; letter-spacing: 2px;
+  color: #12180f; background: var(--fc); padding: 2px 6px;
+  animation: fc-flash 0.9s ease-in-out infinite; }
+@keyframes fc-flash { 50% { opacity: 0.45; } }
+#hud .fclear .fc-rewards { position: relative; display: flex; flex-wrap: wrap; gap: 6px;
+  justify-content: center; margin-top: 12px; }
+#hud .fclear .fc-r { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #e8e0c8;
+  background: rgba(0,0,0,0.42); box-shadow: inset 0 0 0 1px rgba(240,196,85,0.35);
+  padding: 5px 9px 5px 5px;
+  animation: fc-chip 0.34s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes fc-chip { 0% { transform: translateY(9px) scale(0.8); opacity: 0; } }
+#hud .fclear .fc-r img { width: 22px; height: 22px; image-rendering: pixelated; }
+#hud .fclear .fc-gl { color: var(--fc); font-size: 15px; width: 22px; }
+#hud .fclear .fc-next { position: relative; margin-top: 11px; font-size: 9px;
+  letter-spacing: 2px; color: var(--muted); }
+body.touch #hud .fclear .fc-card { padding: 17px 18px 15px; min-width: 240px; }
+body.touch #hud .fclear .fc-big { font-size: 34px; }
 #hud .lvlup .lu-r {
   display: flex; align-items: center; gap: 7px; font-size: 11px; color: #ffe9a8;
   background: rgba(16,14,6,0.9); padding: 5px 14px;
@@ -1229,6 +1281,59 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     lvlT = setTimeout(() => lvlEl.classList.remove('show'), 3400);
   }
 
+  // ---- THE FLOOR CLEAR CARD ---------------------------------------------
+  //
+  // Clearing a floor used to be a one-line banner and a run-on string of text
+  // -- "+124 coins · +480 XP · Forge Stone x2" -- which is the same problem the
+  // banner itself was added to fix, one level up: a reward that is only WRITTEN
+  // is a reward nobody registers. Thirty floors of that and the deepest dungeon
+  // in the game pays out like a receipt.
+  //
+  // So it is a card, built on the level-up overlay's vocabulary because the
+  // game already teaches that language: gold rays, a big number, and reward
+  // chips that carry the item's REAL icon rather than its name.
+  const clearEl = document.createElement('div');
+  clearEl.className = 'fclear';
+  clearEl.innerHTML = `
+    <div class="fc-card">
+      <div class="fc-rays"></div>
+      <div class="fc-band"></div>
+      <div class="fc-kind"></div>
+      <div class="fc-big"></div>
+      <div class="fc-time"><span class="fc-t"></span><b class="fc-rec">NEW RECORD</b></div>
+      <div class="fc-rewards"></div>
+      <div class="fc-next"></div>
+    </div>`;
+  root.appendChild(clearEl);
+  let clearT = 0;
+
+  /**
+   * @param o { floor, of, kind, bandName, accent, timeText, record, rewards, next }
+   *   `rewards` is [{ icon, label }] -- the icon is an item id, so the chip
+   *   shows the thing you actually got.
+   */
+  function floorClear(o) {
+    const card = clearEl.querySelector('.fc-card');
+    card.style.setProperty('--fc', o.accent || '#f0c455');
+    clearEl.querySelector('.fc-band').textContent = o.bandName || '';
+    clearEl.querySelector('.fc-kind').textContent =
+      o.kind === 'great' ? 'GREAT LORD FELLED' : o.kind === 'warden' ? 'WARDEN FELLED' : 'FLOOR CLEARED';
+    clearEl.querySelector('.fc-big').textContent = `${o.floor}${o.of ? ` / ${o.of}` : ''}`;
+    clearEl.querySelector('.fc-t').textContent = o.timeText || '';
+    clearEl.querySelector('.fc-rec').style.display = o.record ? 'inline-block' : 'none';
+    clearEl.querySelector('.fc-rewards').innerHTML = (o.rewards || []).map((r, i) =>
+      `<div class="fc-r" style="animation-delay:${0.42 + i * 0.14}s">
+        ${r.icon ? `<img src="${itemIconUrl(r.icon)}">` : '<span class="fc-gl">✦</span>'}
+        <span>${r.label}</span>
+      </div>`).join('');
+    clearEl.querySelector('.fc-next').textContent = o.next || '';
+    clearEl.classList.remove('show');
+    void clearEl.offsetWidth;
+    clearEl.classList.add('show');
+    clearTimeout(clearT);
+    clearT = setTimeout(() => clearEl.classList.remove('show'), 5200);
+  }
+
   // first-run "how to play" overlay — platform-aware controls + first steps
   const onboardEl = root.querySelector('.onboard');
   function showOnboarding(touch, onDone) {
@@ -1311,7 +1416,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   return {
     setSkills, setClassName, setOnline,
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
-    showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, closeMenu, setBeacon,
+    showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, floorClear,
+    closeMenu, setBeacon,
     setHollow,
     refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge, setIndexBadge,
   };

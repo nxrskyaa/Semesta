@@ -80,20 +80,20 @@ export const THEMES = {
 export const DIFFICULTIES = {
   easy: {
     id: 'easy', name: 'Descent', tag: 'EASY', color: '#7fd06a',
-    enemyLv: 0, hp: 0.8, dmg: 0.55, xp: 1.0, coins: 1.0,
+    enemyLv: 0, hp: 0.85, dmg: 0.6, xp: 1.0, coins: 1.0,
     packs: 0.8, maxLoot: 'rare',
     blurb: 'The whole Hollow, at a pace you can learn it at. Every floor, every boss.',
   },
   medium: {
     id: 'medium', name: 'Deep Descent', tag: 'MEDIUM', color: '#ffc95c',
-    enemyLv: 6, hp: 1.2, dmg: 0.95, xp: 1.7, coins: 1.6,
-    packs: 1.0, maxLoot: 'epic',
+    enemyLv: 6, hp: 1.5, dmg: 1.1, xp: 1.9, coins: 1.7,
+    packs: 1.15, maxLoot: 'epic',
     blurb: 'They hit back properly, and they do not come one at a time.',
   },
   hard: {
     id: 'hard', name: 'The Unlit', tag: 'HARD', color: '#ff6b5e',
-    enemyLv: 14, hp: 1.7, dmg: 1.45, xp: 2.8, coins: 2.4,
-    packs: 1.25, maxLoot: 'mythic',
+    enemyLv: 14, hp: 2.4, dmg: 1.75, xp: 3.2, coins: 2.7,
+    packs: 1.45, maxLoot: 'mythic',
     blurb: 'No mercy, no second chances, and the only place the Unlit gear drops.',
   },
 };
@@ -114,8 +114,39 @@ function hallPopulation(n) {
   return Math.round(4 + Math.min(7, (n - 1) * 0.26));
 }
 
-/** The full plan for one floor. Everything the world builder needs. */
-export function planFloor(n, diffId) {
+// THE HOLLOW MEASURES THE HERO, NOT THE LEVEL NUMBER.
+//
+// A fixed curve can only ever be tuned for one hero, and measured, the two ends
+// are 7.3x apart: at the unlock point a Lv20 hero hits for 113, and a maxed one
+// -- Lv30, all 90 points in MIGHT, a +9 mythic weapon -- hits for 827. The
+// curve was necessarily tuned for the weaker of the two (an earlier pass had to
+// flatten it precisely because Easy was killing people), and the consequence is
+// exactly what was reported: at max level the deepest floor of HARD, the
+// hardest thing in the game, was a 1,306 HP monster that died in 0.8 seconds
+// and a final lord with 7,820 HP that died in FIVE.
+//
+// So the floor scales with the hero's actual damage, the same way the overworld
+// already grows monsters off `getPlayerLevel`. Two deliberate choices:
+//
+//  - HEALTH takes the scale almost in full, so a fight lasts a real length
+//    whatever you are carrying.
+//  - DAMAGE takes only a weak root of it. Gear must still make you harder to
+//    kill -- if incoming damage rose as fast as your output, every upgrade you
+//    ever earned would cancel out and the dungeon would feel identical forever,
+//    which is the other way to make difficulty meaningless.
+const POWER_BASE = 113;      // the Lv20 hero the floor curve is written for
+const POWER_CAP = 8;
+
+export function powerScale(power) {
+  const raw = (power || POWER_BASE) / POWER_BASE;
+  return Math.min(POWER_CAP, Math.max(1, Math.pow(raw, 0.9)));
+}
+
+/**
+ * The full plan for one floor. Everything the world builder needs.
+ * @param power the hero's damage per swing; omit for the untuned baseline.
+ */
+export function planFloor(n, diffId, power) {
   const d = DIFFICULTIES[diffId] || DIFFICULTIES.easy;
   const kind = floorKind(n);
   const theme = floorTheme(n);
@@ -123,6 +154,7 @@ export function planFloor(n, diffId) {
   // and floor 30 is well past the cap, because the cap is 30 and the last floor
   // should be something a maxed hero can still lose to.
   const level = Math.round(UNLOCK_LEVEL + n * 1.25) + d.enemyLv;
+  const P = powerScale(power);
   return {
     floor: n, kind, theme, difficulty: d.id, level,
     count: kind === 'hall' ? Math.max(3, Math.round(hallPopulation(n) * d.packs)) : 0,
@@ -144,16 +176,20 @@ export function planFloor(n, diffId) {
     // So the floor supplies the whole multiplier and the level is only a label.
     // Health climbs faster than damage on purpose: deeper floors should take
     // longer to chew through, not delete you quicker.
-    hpMult: (1 + n * 0.18) * d.hp,
-    dmgMult: (1 + n * 0.10) * d.dmg,
+    hpMult: (1 + n * 0.18) * d.hp * P,
+    dmgMult: (1 + n * 0.10) * d.dmg * Math.pow(P, 0.35),
     xpMult: (1 + n * 0.25) * d.xp,
     coinMult: d.coins,
     // A BOSS TAKES THE DIFFICULTY AND NOT THE FLOOR CURVE. Its health is
     // already written per floor in the boss table — 900 for the first warden,
     // 4,600 for the last lord — so multiplying by depth as well would have made
     // Emberheart a fifty-thousand-point health bar you hit for four minutes.
-    bossHpMult: d.hp,
-    bossDmgMult: d.dmg,
+    // A BOSS TAKES A GENTLE FLOOR CURVE AS WELL. Its health is already written
+    // per floor in the boss table, so this stays small -- but with none at all
+    // the last lord had the same multiplier as the first warden, which is why
+    // thirty floors of climbing ended in a five-second fight.
+    bossHpMult: d.hp * P * (1 + n * 0.02),
+    bossDmgMult: d.dmg * Math.pow(P, 0.35),
     bossXpMult: d.xp,
   };
 }
@@ -247,7 +283,12 @@ export function bossDrops(plan, { firstClear, owned, rand = Math.random }) {
 // STATE
 // ---------------------------------------------------------------------------
 
-export function createDungeon() {
+/**
+ * @param heroPower a callback returning the hero's damage per swing, so the
+ *   floors can be built for the hero who is actually standing in them. Omitted
+ *   in tests and tools, where the untuned baseline curve is what you want.
+ */
+export function createDungeon(heroPower = null) {
   const state = {
     // deepest floor CLEARED per difficulty — you may re-enter anything up to
     // deepest+1, so a run is never a re-grind of what you have already beaten
@@ -255,6 +296,15 @@ export function createDungeon() {
     // bosses beaten per difficulty, so first-clear rewards fire exactly once
     bossesBeaten: {},          // `${diff}:${bossId}` -> true
     runs: 0, deaths: 0,
+    // PERSONAL RECORDS. `${diff}:${floor}` -> fastest clear of that floor in ms,
+    // and the fastest DESCENT, meaning the whole run from entering the gate to
+    // clearing that floor. Kept separate on purpose: one is a fight, the other
+    // is a route, and a leaderboard that cannot tell them apart rewards the
+    // wrong thing. Stored as plain integers so this blob can be handed straight
+    // to a contract later without a second format.
+    bestFloor: {},             // `${diff}:${floor}` -> ms
+    bestRun: {},               // `${diff}:${floor}` -> ms from the gate
+    totalTime: 0,              // lifetime ms spent inside the Hollow
     active: null,              // the run in progress, or null
   };
 
@@ -288,11 +338,13 @@ export function createDungeon() {
       difficulty: diffId,
       floor,
       startedFloor: floor,
-      plan: planFloor(floor, diffId),
+      plan: planFloor(floor, diffId, heroPower?.()),
       cleared: false,
       killed: 0,
       startedAt: Date.now(),
+      floorAt: Date.now(),     // this floor's own clock, restarted on descent
       earned: [],              // everything the run has paid, for the summary
+      splits: [],              // { floor, ms, runMs } per cleared floor
     };
     return state.active;
   }
@@ -303,20 +355,57 @@ export function createDungeon() {
     if (!r) return null;
     if (r.floor >= MAX_FLOOR) return null;
     r.floor++;
-    r.plan = planFloor(r.floor, r.difficulty);
+    r.plan = planFloor(r.floor, r.difficulty, heroPower?.());
     r.cleared = false;
     r.killed = 0;
+    r.floorAt = Date.now();
     return r.plan;
   }
 
-  /** Record a cleared floor. Returns true if this was new progress. */
+  /**
+   * Record a cleared floor.
+   * @returns { deeper, floorMs, runMs, floorRecord, runRecord } -- `deeper` is
+   *   the old boolean (new depth reached), and the rest is the timing, so the
+   *   caller can say "NEW RECORD" at the moment it happens rather than having
+   *   to go and ask afterwards.
+   */
   function markCleared() {
     const r = state.active;
-    if (!r || r.cleared) return false;
+    if (!r || r.cleared) return { deeper: false };
     r.cleared = true;
+    const now = Date.now();
+    const floorMs = Math.max(0, now - (r.floorAt || now));
+    const runMs = Math.max(0, now - (r.startedAt || now));
+    const key = `${r.difficulty}:${r.floor}`;
+    const floorRecord = !state.bestFloor[key] || floorMs < state.bestFloor[key];
+    if (floorRecord) state.bestFloor[key] = floorMs;
+    const runRecord = !state.bestRun[key] || runMs < state.bestRun[key];
+    if (runRecord) state.bestRun[key] = runMs;
+    r.splits.push({ floor: r.floor, ms: floorMs, runMs });
     const best = state.cleared[r.difficulty] || 0;
-    if (r.floor > best) { state.cleared[r.difficulty] = r.floor; return true; }
-    return false;
+    const deeper = r.floor > best;
+    if (deeper) state.cleared[r.difficulty] = r.floor;
+    return { deeper, floorMs, runMs, floorRecord, runRecord,
+      prevFloorBest: floorRecord ? null : state.bestFloor[key] };
+  }
+
+  /** mm:ss.d — short enough for a banner, precise enough for a record. */
+  function fmtTime(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return '--:--';
+    const t = Math.round(ms / 100) / 10;
+    const m = Math.floor(t / 60);
+    const sec = (t - m * 60).toFixed(1).padStart(4, '0');
+    return `${m}:${sec}`;
+  }
+
+  /** Everything a leaderboard (or a contract) would want, as plain numbers. */
+  function records(diffId) {
+    const out = [];
+    for (let f = 1; f <= MAX_FLOOR; f++) {
+      const k = `${diffId}:${f}`;
+      if (state.bestFloor[k]) out.push({ floor: f, floorMs: state.bestFloor[k], runMs: state.bestRun[k] || 0 });
+    }
+    return out;
   }
 
   const bossKey = (diff, boss) => `${diff}:${boss}`;
@@ -326,6 +415,7 @@ export function createDungeon() {
   function leave(died = false) {
     if (died) state.deaths++;
     const r = state.active;
+    if (r?.startedAt) state.totalTime += Math.max(0, Date.now() - r.startedAt);
     state.active = null;
     return r;
   }
@@ -349,6 +439,7 @@ export function createDungeon() {
   const serialize = () => ({
     cleared: state.cleared, bossesBeaten: state.bossesBeaten,
     runs: state.runs, deaths: state.deaths,
+    bestFloor: state.bestFloor, bestRun: state.bestRun, totalTime: state.totalTime,
   });
 
   function load(d) {
@@ -363,11 +454,28 @@ export function createDungeon() {
     state.bossesBeaten = (d.bossesBeaten && typeof d.bossesBeaten === 'object') ? { ...d.bossesBeaten } : {};
     state.runs = Number(d.runs) || 0;
     state.deaths = Number(d.deaths) || 0;
+    // records are validated the same way the floor numbers are: a junk time
+    // here would print as a record nobody could ever beat
+    const ms = (o) => {
+      const out = {};
+      if (o && typeof o === 'object') {
+        for (const [k, v] of Object.entries(o)) {
+          const n = Number(v);
+          if (Number.isFinite(n) && n > 0 && n < 86400000) out[k] = Math.round(n);
+        }
+      }
+      return out;
+    };
+    state.bestFloor = ms(d.bestFloor);
+    state.bestRun = ms(d.bestRun);
+    const tt = Number(d.totalTime);
+    state.totalTime = Number.isFinite(tt) && tt >= 0 ? Math.round(tt) : 0;
   }
 
   return {
     state, unlocked, canEnter, highestOpen, begin, descend, markCleared,
     bossBeaten, markBossBeaten, leave, overview, serialize, load,
+    fmtTime, records,
     planFloor, floorReward, bossDrops, floorKind, floorTheme,
     THEMES, DIFFICULTIES, DIFF_ORDER, UNLOCK_LEVEL, MAX_FLOOR,
   };
