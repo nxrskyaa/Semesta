@@ -848,15 +848,34 @@ export function createPanels(hudRoot, {
           ${result.note ? `<div class="g-note">${result.note}</div>` : ''}
         </div>`;
     } else if (phase === 'multi' && result) {
-      // 10-pull results: a staggered grid of mini cards, best rarity crowned
+      // THE 10x PULL SHOWED NONE OF THE SHOW.
+      //
+      // It went spin -> grid, skipping the drop phase and the reveal entirely,
+      // so the anticipation rings and the turning 3D prize -- the whole point of
+      // the single-pull rework -- never once appeared on the button most people
+      // actually press. A ten-pull deserves MORE ceremony than a single, not
+      // less: it costs nine times as much.
+      //
+      // So the best pull is lifted out and shown the way a single reveal is,
+      // with the other nine as a grid beneath it.
       const bestIdx = Math.max(...result.map((p) => RARITY_ORDER.indexOf(p.rarity)));
+      const bestR = RARITY[RARITY_ORDER[bestIdx]];
+      const hero = result.find((p) => RARITY_ORDER.indexOf(p.rarity) === bestIdx);
       const confetti = bestIdx >= 3 ? Array.from({ length: 16 }, (_, i) =>
-        `<i class="g-conf" style="left:${4 + Math.random() * 92}%;background:${['#ffd23e', RARITY[RARITY_ORDER[bestIdx]].color, '#f0f0e8'][i % 3]};animation-delay:${Math.random() * 0.6}s;animation-duration:${0.9 + Math.random() * 0.8}s"></i>`).join('') : '';
-      stage = `${confetti}<div class="g-grid">
+        `<i class="g-conf" style="left:${4 + Math.random() * 92}%;background:${['#ffd23e', bestR.color, '#f0f0e8'][i % 3]};animation-delay:${Math.random() * 0.6}s;animation-duration:${0.9 + Math.random() * 0.8}s"></i>`).join('') : '';
+      const solid = hasModel(hero.iconId);
+      stage = `${confetti}
+        <div class="g-hero" style="--rc:${bestR.color}">
+          <div class="g-rarity">${'◆'.repeat(bestIdx + 1)} BEST PULL — ${bestR.name.toUpperCase()}</div>
+          <div class="g-icoframe ${solid ? 'solid' : ''}">${
+            solid ? '<span data-show3d></span>' : `<img src="${itemIconUrl(hero.iconId)}">`}</div>
+          <div class="g-name">${hero.name}</div>
+        </div>
+        <div class="g-grid">
         ${result.map((p, i) => {
           const R = RARITY[p.rarity];
           const best = RARITY_ORDER.indexOf(p.rarity) === bestIdx && bestIdx >= 2;
-          return `<div class="g-mini ${best ? 'best' : ''}" style="--rc:${R.color};animation-delay:${i * 0.09}s">
+          return `<div class="g-mini ${best ? 'best' : ''}" style="--rc:${R.color};animation-delay:${0.35 + i * 0.075}s">
             <img src="${itemIconUrl(p.iconId)}">
             <span class="g-mini-n">${p.name}</span>
           </div>`;
@@ -995,6 +1014,14 @@ export function createPanels(hudRoot, {
           22% { opacity: 0.9; transform: scaleX(1); }
           100% { opacity: 0; transform: scaleX(1.5); }
         }
+        /* the 10x hero: the best of the ten, shown the way a single is */
+        .g-hero { border: 2px solid var(--rc); background: rgba(0,0,0,0.35); padding: 8px 6px 10px;
+          margin-bottom: 10px; animation: g-heroin 0.5s ease-out both; }
+        @keyframes g-heroin {
+          0% { transform: scale(0.82); opacity: 0; }
+          60% { transform: scale(1.04); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
         .g-name { font-size: 13px; color: var(--text); margin-top: 8px; }
         .g-note { font-size: 9px; color: var(--gold); margin-top: 5px; }
         .g-hist { font-size: 9px; line-height: 1.9; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
@@ -1023,15 +1050,20 @@ export function createPanels(hudRoot, {
     // not, because a detached canvas that keeps calling rAF is a frame nobody
     // will ever see, paid for on every render.
     const slot3d = panels.gacha.querySelector('[data-show3d]');
-    if (slot3d && result && !Array.isArray(result)) {
-      const cv = showItem(result.iconId, result.rarity);
+    // a 10x result is an ARRAY, and its hero is the best of the ten
+    const shown = Array.isArray(result)
+      ? result.reduce((a, b) =>
+        (RARITY_ORDER.indexOf(b.rarity) > RARITY_ORDER.indexOf(a.rarity) ? b : a), result[0])
+      : result;
+    if (slot3d && shown) {
+      const cv = showItem(shown.iconId, shown.rarity);
       if (cv) slot3d.replaceWith(cv);
       else {
         // the model refused to build; the icon is the honest picture, but the
         // frame must shrink back with it or a 44px sprite floats in a 150px box
         slot3d.parentElement?.classList.remove('solid');
         slot3d.replaceWith(Object.assign(document.createElement('img'),
-          { src: itemIconUrl(result.iconId) }));
+          { src: itemIconUrl(shown.iconId) }));
       }
     } else {
       stopItem();
@@ -1067,16 +1099,21 @@ export function createPanels(hudRoot, {
       audio.sfx('gacha_crank');
       audio.sfx('gacha_riser');
       renderGacha('spin');
-      setTimeout(() => { audio.sfx('gacha_drop'); }, 900);
+      const best = prizes.reduce((a, b) =>
+        RARITY_ORDER.indexOf(b.rarity) > RARITY_ORDER.indexOf(a.rarity) ? b : a);
+      // the capsule falls and PULSES for the best of the ten, so the rings still
+      // tell you what is coming -- ten pulls should not have less show than one
+      setTimeout(() => {
+        audio.sfx('gacha_drop');
+        renderGacha('drop', best);
+      }, 900);
       setTimeout(() => {
         gachaHistory.push(...prizes);
         if (gachaHistory.length > 24) gachaHistory.splice(0, gachaHistory.length - 24);
         gachaBusy = false;
-        const best = prizes.reduce((a, b) =>
-          RARITY_ORDER.indexOf(b.rarity) > RARITY_ORDER.indexOf(a.rarity) ? b : a);
         audio.sfx(`reveal_${best.rarity}`);
         renderGacha('multi', prizes);
-      }, 1300);
+      }, 2400);
     });
   }
 
