@@ -3946,6 +3946,24 @@ const CAM_PITCH_DEFAULT = 0.98;
   // --- keyboard/mouse ---
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    // TYPING IS NOT PLAYING.
+    //
+    // Not one of the hotkeys below checked WHERE the keystroke actually went,
+    // so every text field in the game doubled as a control pad: renaming a hero
+    // to anything with a Y in it teleported them home mid-word, and writing a
+    // caption on a Chronicle Card opened half the menu behind it. The bug is as
+    // old as the wardrobe's rename box; the share card just made it obvious.
+    //
+    // The guard belongs HERE, on the receiving end, and not as a flag each
+    // panel sets while its input is focused: one test covers every field in the
+    // game including ones added later, and a per-caller opt-in is precisely the
+    // kind of thing somebody forgets. Escape is deliberately still let through,
+    // so a panel opened over a focused field can always be dismissed.
+    const t = e.target;
+    if (e.code !== 'Escape' && t && (t.isContentEditable === true
+        || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) {
+      return;
+    }
     input.keys.add(e.code);
     if (e.code === 'Tab') { e.preventDefault(); audio.sfx('ui'); panels.toggle('inv'); }
     if (e.code === 'KeyC') { audio.sfx('ui'); panels.toggle('cra'); }
