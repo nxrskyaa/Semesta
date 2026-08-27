@@ -346,25 +346,76 @@ export function drawChronicleCard(stats, opts = {}) {
     c.fillText(quoted, colX, sy + 14);
   }
 
-  // ---- frame + footer ----------------------------------------------------
+  // ---- THE FOOTER --------------------------------------------------------
+  //
+  // It used to be four scraps of text jammed into the two bottom corners, and
+  // the lower pair sat at y = CARD_H - 18 while the inner frame rule runs at
+  // y = CARD_H - 24 -- so the type crossed the border it was supposed to sit
+  // inside. Measured, not guessed: that collision is why the bottom of the card
+  // read as messy.
+  //
+  // It is a BAND now. One darkened strip the full width of the inner frame, a
+  // hairline above it, and three things placed on a single baseline: the mark
+  // and wordmark left, the scene name centred, the call to action right. The
+  // URL is the reason the card exists -- somebody has to be able to find the
+  // game from a screenshot -- so it is stated as an invitation rather than
+  // dropped in bare like a signature nobody asked for.
+  const FB = 62;                          // band height
+  const fy = CARD_H - 24 - FB;            // band top, flush inside the frame
+  const fx = 24, fw = CARD_W - 48;
+  const fg = c.createLinearGradient(0, fy, 0, fy + FB);
+  fg.addColorStop(0, 'rgba(0,0,0,0)');
+  fg.addColorStop(1, 'rgba(0,0,0,0.42)');
+  c.fillStyle = fg;
+  c.fillRect(fx, fy, fw, FB);
+  c.strokeStyle = theme.accent + '44';
+  c.lineWidth = 1;
+  c.beginPath(); c.moveTo(fx + 22, fy + 0.5); c.lineTo(fx + fw - 22, fy + 0.5); c.stroke();
+
+  const base = fy + FB / 2 + 7;           // one shared baseline for all three
+
+  // the mark: the lantern this whole world is named for, drawn not written
+  const mx = fx + 34, my = fy + FB / 2;
+  c.fillStyle = theme.accent;
+  c.fillRect(mx - 8, my + 7, 16, 3);            // base
+  c.fillRect(mx - 3, my - 1, 6, 8);             // pillar
+  c.fillStyle = theme.accent2;
+  c.fillRect(mx - 7, my - 10, 14, 9);           // the lit pane
+  c.fillStyle = theme.accent;
+  c.fillRect(mx - 10, my - 13, 20, 3);          // roof
+  c.fillRect(mx - 2, my - 17, 4, 3);            // finial
+
+  c.textAlign = 'left';
+  c.font = '700 20px "Silkscreen", Consolas, monospace';
+  c.fillStyle = theme.accent;
+  c.fillText('SEMESTA', mx + 20, base);
+
+  // centred: which scene this card was cut from
+  c.textAlign = 'center';
+  c.font = '500 13px "Silkscreen", Consolas, monospace';
+  c.fillStyle = theme.dim;
+  c.fillText(theme.name.toUpperCase(), CARD_W / 2, base - 1);
+
+  // right: the invitation, shrunk to fit rather than allowed to run into the
+  // centre label -- the same rule the name at the top follows
+  c.textAlign = 'right';
+  const cta = 'PLAY FREE AT SEMESTA-GRAY.VERCEL.APP';
+  let ctaSize = 14;
+  const ctaRoom = (fx + fw - 34) - (CARD_W / 2 + 90);
+  for (;;) {
+    c.font = '500 ' + ctaSize + 'px "Silkscreen", Consolas, monospace';
+    if (c.measureText(cta).width <= ctaRoom || ctaSize <= 9) break;
+    ctaSize -= 1;
+  }
+  c.fillStyle = theme.ink + 'cc';
+  c.fillText(cta, fx + fw - 34, base);
+  c.textAlign = 'left';
+
+  // ---- frame, drawn LAST so nothing can be printed over it ---------------
   c.strokeStyle = theme.accent + '99'; c.lineWidth = 3;
   roundRect(c, 14, 14, CARD_W - 28, CARD_H - 28, 6); c.stroke();
   c.strokeStyle = theme.accent + '33'; c.lineWidth = 1;
   roundRect(c, 24, 24, CARD_W - 48, CARD_H - 48, 4); c.stroke();
-
-  c.font = '600 18px "Silkscreen", Consolas, monospace';
-  c.fillStyle = theme.accent;
-  c.textAlign = 'left';
-  c.fillText('SEMESTA', 84, CARD_H - 38);
-  c.font = '500 14px "Silkscreen", Consolas, monospace';
-  c.fillStyle = theme.dim;
-  c.fillText(theme.name, 84, CARD_H - 18);
-  c.textAlign = 'right';
-  c.fillText('semesta-gray.vercel.app', colR, CARD_H - 18);
-  c.font = '600 16px "Silkscreen", Consolas, monospace';
-  c.fillStyle = theme.ink;
-  c.fillText('ANAVELA UNIVERSE', colR, CARD_H - 38);
-  c.textAlign = 'left';
 
   return cv;
 }

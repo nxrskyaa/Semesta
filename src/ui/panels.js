@@ -2171,6 +2171,9 @@ export function createPanels(hudRoot, {
         <span>Hollow <b>${st.deepestFloor || '—'}</b></span>
         <span>Index <b>${st.indexFound}/${st.indexTotal}</b></span>
       </div>
+      <div class="clbl">HERO NAME</div>
+      <input class="cmsg cname" maxlength="14" placeholder="name your hero"
+        value="${(st.name === 'Adventurer' ? '' : st.name).replace(/"/g, '&quot;')}">
       <div class="clbl">CARD DESIGN</div>
       <div class="themes">
         ${Object.entries(CARD_THEMES).map(([k, t]) => `
@@ -2189,6 +2192,12 @@ export function createPanels(hudRoot, {
 
     repaintCard();
 
+    panels.share.querySelector('.cname')?.addEventListener('input', (e) => {
+      // one rename path, shared with the wardrobe -- the card must never hold a
+      // second copy of the name that can drift from the plate and the save
+      wardrobe.appearance?.rename?.(e.target.value.trim() || 'Adventurer');
+      repaintCard();
+    });
     panels.share.querySelectorAll('[data-theme]').forEach((b) => {
       b.addEventListener('click', () => { cardTheme = b.dataset.theme; audio.sfx('ui'); renderShare(); });
     });
