@@ -254,6 +254,55 @@ export function sweepGeometry(key, pts, radiusAt, sides = 6, steps = 18) {
   return g;
 }
 
+/**
+ * A DRAPED PANEL — cloaks, mantles, capes.
+ *
+ * Every cloak in the wardrobe was a flat box: `BoxGeometry(0.42, 0.5, 0.05)`
+ * hung behind the shoulders. A cloak is the one garment defined entirely by how
+ * it FALLS, and a slab has none of that -- it reads as a signboard strapped to
+ * the back. Three of them shared the fault.
+ *
+ * This wraps a panel around the wearer through `arc` radians, flares it from
+ * `topR` at the collar to `botR` at the hem, and cuts the hem on a wave so it
+ * does not end in a ruled line. Built double-sided in the caller's material,
+ * since the inside of a cloak is visible whenever the wearer turns.
+ *
+ * @param arc    radians the panel wraps around the body
+ * @param waves  how many scallops along the hem
+ */
+export function mantleGeometry(key, topR, botR, h, arc = Math.PI * 1.05, waves = 4, rings = 8, cols = 14) {
+  const ck = `mantle:${key}:${topR.toFixed(3)},${botR.toFixed(3)},${h.toFixed(3)},${arc.toFixed(3)},${waves},${rings},${cols}`;
+  const hit = geos.get(ck);
+  if (hit) return hit;
+  const pos = [], uv = [];
+  const at = (ri, ci) => {
+    const v = ri / rings, u = ci / cols;
+    const a = (u - 0.5) * arc;
+    // flare accelerates toward the hem: cloth hangs close at the shoulder and
+    // swings out at the bottom, it does not widen in a straight cone
+    const r = topR + (botR - topR) * (v * v * 0.65 + v * 0.35);
+    // the hem rides a wave, and the wave dies out toward the collar
+    const hem = Math.sin(u * Math.PI * 2 * waves) * 0.035 * v * v;
+    return [Math.sin(a) * r, -v * h + hem, -Math.cos(a) * r];
+  };
+  const push = (v3, u, v) => { pos.push(v3[0], v3[1], v3[2]); uv.push(u, v); };
+  for (let ri = 0; ri < rings; ri++) {
+    for (let ci = 0; ci < cols; ci++) {
+      const a = at(ri, ci), b = at(ri + 1, ci), c = at(ri + 1, ci + 1), d = at(ri, ci + 1);
+      const u0 = ci / cols, u1 = (ci + 1) / cols, v0 = ri / rings, v1 = (ri + 1) / rings;
+      push(a, u0, v0); push(b, u0, v1); push(c, u1, v1);
+      push(a, u0, v0); push(c, u1, v1); push(d, u1, v0);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+  g.computeVertexNormals();
+  tag(g);
+  geos.set(ck, g);
+  return g;
+}
+
 export function sharedTorus(r, tube, rSeg = 6, tSeg = 12) {
   const key = k('t', r, tube, rSeg, tSeg);
   let g = geos.get(key);

@@ -16,7 +16,7 @@ import { ITEMS } from './items.js';
 // Measured by building all 54 cosmetics: 6 threw, and every one of them is a
 // late addition — the older pieces use this file's own `lam()` helper, which is
 // why the wardrobe worked at all and why nobody caught it.
-import { sharedMat } from '../gfx/meshcache.js';
+import { sharedMat, mantleGeometry, sweepGeometry, sharedSphere } from '../gfx/meshcache.js';
 
 function lam(color) { return new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }); }
 function glow(color) { return new THREE.MeshBasicMaterial({ color: new THREE.Color(color) }); }
@@ -604,11 +604,13 @@ const BACK_BUILDERS = {
     // rather than being welded to the cloth, which is what stops the hem from
     // reading as a painted stripe.
     const g = new THREE.Group();
-    for (let i = 0; i < 4; i++) {
-      const w = 0.46 - i * 0.06;
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 0.56 - i * 0.04, 0.025),
-        lam(i % 2 ? '#2b2438' : '#352c46'));
-      panel.position.set(0, -0.1 - i * 0.015, -0.02 - i * 0.028);
+    // three draped layers, each narrower and a shade lighter, so the mantle has
+    // depth at its edges instead of being a stack of boards
+    for (let i = 0; i < 3; i++) {
+      const panel = drape(`keeper${i}`, i % 2 ? '#2b2438' : '#352c46',
+        0.17 - i * 0.015, 0.36 - i * 0.055, 0.58 - i * 0.05,
+        Math.PI * (1.14 - i * 0.2), 5);
+      panel.position.set(0, 0.2 - i * 0.012, -0.02 + i * 0.018);
       g.add(panel);
     }
     const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.25, 0.11, 12), lam('#c8a03a'));
@@ -689,11 +691,12 @@ const BACK_BUILDERS = {
     // A heavy cloak stiff with rime: three overlapping panels rather than one
     // sheet, so it hangs in folds, with icicles along the hem.
     const g = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const w = 0.42 - i * 0.07;
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5 - i * 0.05, 0.03),
-        lam(i === 0 ? '#3d5a70' : '#4f7288'));
-      panel.position.set(0, -0.08 - i * 0.02, -0.02 - i * 0.03);
+    // two draped layers rather than three flat slabs: an outer that swings wide
+    // and a stiffer inner one, so the fold reads at the edges
+    for (let i = 0; i < 2; i++) {
+      const panel = drape(`frost${i}`, i === 0 ? '#3d5a70' : '#4f7288',
+        0.16 - i * 0.02, 0.33 - i * 0.07, 0.5 - i * 0.06, Math.PI * (1.12 - i * 0.22), 4);
+      panel.position.set(0, 0.16 - i * 0.01, -0.02 + i * 0.02);
       g.add(panel);
     }
     const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.1, 10), lam('#cdeeff'));
@@ -740,13 +743,29 @@ const BACK_BUILDERS = {
     return g;
   },
   back_pack() {
+    // A packed bag BULGES -- that is the whole silhouette, and a rectangular
+    // box has none of it. Swept along its height so it is narrow at the straps
+    // and full at the bottom, with a rounded flap over the top.
     const g = new THREE.Group();
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.32, 0.14), lam('#8a6a48'));
-    const flap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.16), lam('#6e5438'));
-    flap.position.y = 0.14;
-    const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 6), lam('#b0503f'));
+    const pack = new THREE.Mesh(sweepGeometry('packbody',
+      [[0, 0.19, 0], [0, 0.06, 0.012], [0, -0.07, 0.016], [0, -0.18, 0]],
+      (t) => 0.1 + Math.sin(t * Math.PI) * 0.055, 8, 10), lam('#8a6a48'));
+    pack.scale.z = 0.68;
+    const flap = new THREE.Mesh(sharedSphere(0.155, 8, 6), lam('#6e5438'));
+    flap.scale.set(1, 0.5, 0.72);
+    flap.position.y = 0.13;
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.03), lam('#c8a03a'));
+    buckle.position.set(0, 0.04, 0.115);
+    const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.3, 8), lam('#b0503f'));
     roll.rotation.z = Math.PI / 2; roll.position.y = 0.24;
-    g.add(pack, flap, roll);
+    g.add(pack, flap, buckle, roll);
+    // the straps, without which it is a bag floating behind somebody
+    for (const sx of [-1, 1]) {
+      const strap = new THREE.Mesh(sweepGeometry(`strap${sx}`,
+        [[sx * 0.09, 0.2, 0.02], [sx * 0.12, 0.06, 0.1], [sx * 0.1, -0.1, 0.13]],
+        () => 0.022, 5, 6), lam('#5a4630'));
+      g.add(strap);
+    }
     return g;
   },
   back_sprout() { return wing('#7ac866', '#b8e8a8'); },
@@ -826,16 +845,25 @@ const BACK_BUILDERS = {
   },
   // --- SEASON ONE additions -------------------------------------------------
   back_cloakfeather() {
+    // It was ONE FLAT BOX with sixteen little boxes stuck to the front of it --
+    // a signboard, not a cloak. The panel drapes round the wearer now, and the
+    // feathers are laid on it in overlapping courses like real plumage: each
+    // row shorter and set inside the one above.
     const g = new THREE.Group();
-    const cloak = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.05), lam('#5a6478'));
-    cloak.position.set(0, 0.34, -0.16);
+    const cloak = drape('feather', '#5a6478', 0.17, 0.34, 0.56, Math.PI * 1.1, 5);
+    cloak.position.set(0, 0.3, -0.04);
     g.add(cloak);
     for (let r = 0; r < 4; r++) {
-      for (let i = 0; i < 4; i++) {
-        const f = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.03),
+      const n = 6 - r;
+      for (let i = 0; i < n; i++) {
+        const f = new THREE.Mesh(sharedSphere(0.055, 6, 5),
           lam(r % 2 ? '#8d9aae' : '#6f7c90'));
-        f.position.set(-0.15 + i * 0.1, 0.5 - r * 0.12, -0.19);
-        f.rotation.z = (i - 1.5) * 0.12;
+        f.scale.set(0.85, 1.55 - r * 0.13, 0.42);
+        const a = ((i / (n - 1)) - 0.5) * Math.PI * (0.86 - r * 0.08);
+        const rad = 0.2 + r * 0.036;
+        f.position.set(Math.sin(a) * rad, 0.26 - r * 0.108, 0.04 - Math.cos(a) * rad);
+        f.rotation.y = a;
+        f.rotation.x = -0.16;
         g.add(f);
       }
     }
@@ -904,6 +932,18 @@ const BACK_BUILDERS = {
 };
 
 // build a cosmetic mesh by item id (hat or back)
+/**
+ * A cloak panel that actually hangs. Double-sided on purpose: the inside of a
+ * cloak is visible the moment the wearer turns, and a single-sided panel simply
+ * vanishes from behind.
+ */
+function drape(key, color, topR, botR, h, arc, waves, opts = {}) {
+  const m = new THREE.MeshLambertMaterial({
+    color: new THREE.Color(color), side: THREE.DoubleSide, ...opts,
+  });
+  return new THREE.Mesh(mantleGeometry(key, topR, botR, h, arc, waves), m);
+}
+
 export function buildCosmetic(id) {
   if (HAT_BUILDERS[id]) return { mesh: HAT_BUILDERS[id](), slot: 'hat' };
   if (BACK_BUILDERS[id]) return { mesh: BACK_BUILDERS[id](), slot: 'back' };
