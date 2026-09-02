@@ -4544,6 +4544,7 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   // --- world boss scheduler: one rises every 3 minutes ---
   const bossState = { timer: 180, current: null, killed: false };
+  let stuckT = 0;              // cooldown on the stuck-in-a-wall rescue
   const BOSS_KINDS = Object.keys(WORLD_BOSSES);
   function tickWorldBoss(dt) {
     // THE WILDS DO NOT FOLLOW YOU UNDERGROUND -- and neither does their boss.
@@ -4625,7 +4626,24 @@ const CAM_PITCH_DEFAULT = 0.98;
     // The out-of-world rescue must not fire five hundred units up: while a run
     // is live the terrain override reports the hall as in-bounds, so this is
     // simply skipped rather than made to understand dungeons.
-    if (!dungeon.state.active) rescueIfOutOfWorld();
+    if (!dungeon.state.active) {
+      rescueIfOutOfWorld();
+      // AND THE HERO IS NEVER INSIDE A BUILDING. Same shape of invariant, and
+      // for the same reason: five separate teleports could each put you in a
+      // cell ordinary movement refuses to leave, and a building can also be
+      // raised on top of you (`estate.build`), or a knockback can shove you
+      // into one. Fixing the five call sites closes the causes I found; this
+      // closes the class. One cell lookup a frame, and it only ever does work
+      // when something has already gone wrong.
+      if (stuckT > 0) stuckT -= dt;
+      else if (!player.canStandAt?.(player.state.pos.x, player.state.pos.z)) {
+        stuckT = 0.5;                       // do not fight the physics every frame
+        if (player.unstick?.()) {
+          particles.burst(player.state.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#b89af0', 12, 2);
+          hud.toastText('Pulled you clear of the wall.');
+        }
+      }
+    }
     autoBattleTick(dt);
 
     // moving cancels an in-progress fishing session

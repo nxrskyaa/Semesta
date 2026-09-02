@@ -1627,6 +1627,58 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     }
   }
 
+  /**
+   * CAN THE HERO STAND HERE? The one predicate, and every way of moving must
+   * go through it.
+   *
+   * Walking always did -- `tryMove` checks `decorBlocked` first, which is the
+   * set every building writes its footprint into. But the TELEPORTS did not:
+   * blink, shadowstep, dashstrike and two others each tested
+   * `terrain.walkable`, which knows only about water and slope and has never
+   * heard of a building. So a Mage could blink into a hut that ordinary
+   * movement refuses to enter, and then every step back out was refused too --
+   * stuck inside the walls with nothing to do but teleport home.
+   *
+   * Exported so a skill cannot accidentally use a weaker test. Five sites were
+   * getting this wrong independently, which is what a duplicated predicate
+   * always turns into.
+   */
+  function canStandAt(nx, nz, fromY = state.pos.y) {
+    const [ix, iz] = terrain.cellOf(nx, nz);
+    if (!terrain.inBounds?.(ix, iz)) return false;
+    if (decorBlocked.has(`${ix},${iz}`)) return false;
+    if (terrain.swimmable?.(nx, nz)) return true;
+    return terrain.walkable(nx, nz, fromY);
+  }
+
+  /**
+   * Get the hero out of somewhere they should never have been.
+   *
+   * An invariant rather than a fix for any one cause: a building can be raised
+   * on top of you (`estate.build`), a knockback can shove you into one, and a
+   * save from before this fix can load with the hero already inside a wall.
+   * Spirals out to the nearest cell they CAN stand on.
+   *
+   * @returns true if the hero was moved.
+   */
+  function unstick(maxR = 9) {
+    if (canStandAt(state.pos.x, state.pos.z)) return false;
+    for (let r = 1; r <= maxR; r++) {
+      // 12 bearings a ring: enough to find a gap, cheap enough to run rarely
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        const nx = state.pos.x + Math.sin(a) * r;
+        const nz = state.pos.z + Math.cos(a) * r;
+        if (canStandAt(nx, nz, terrain.surfaceY(nx, nz))) {
+          state.pos.x = nx; state.pos.z = nz;
+          state.pos.y = terrain.surfaceY(nx, nz);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   const tryMove = (nx, nz) => {
     const [ix, iz] = terrain.cellOf(nx, nz);
     if (decorBlocked.has(`${ix},${iz}`)) return false;
@@ -2457,5 +2509,7 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     // watercraft.js steers with the same camera-relative vector the legs use
     moveVecFor: (input, camYaw) => moveVec(input, camYaw),
     playSwing, playSpin, playBowDraw, playStaffCast, playCast, setNightGlow,
+    // the one collision predicate, and the way out of a bad landing
+    canStandAt, unstick,
   };
 }

@@ -402,7 +402,7 @@ export function createSkillSystem(deps) {
         const step = Math.min(d - 1.1, 6);
         if (step > 0) {
           const nx = p.pos.x + (dx / d) * step, nz = p.pos.z + (dz / d) * step;
-          if (deps.terrain.walkable(nx, nz, p.pos.y)) {
+          if (stand(nx, nz, p.pos.y)) {
             p.pos.x = nx; p.pos.z = nz;
             p.pos.y = deps.terrain.surfaceY(nx, nz);
           }
@@ -509,9 +509,11 @@ export function createSkillSystem(deps) {
       deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#b89af0', 16, 2.5);
       deps.particles.shockwave(p.pos, '#b89af0', 1.6, 0.3);
       // find the farthest walkable point along the line
+      // BUILDING-AWARE, walking back from the farthest point: blink must never
+      // put you somewhere ordinary movement would refuse to leave.
       for (let d = dist; d > 0.5; d -= 0.5) {
         const nx = p.pos.x + dir.x * d, nz = p.pos.z + dir.z * d;
-        if (deps.terrain.walkable(nx, nz, deps.terrain.surfaceY(nx, nz))) {
+        if (stand(nx, nz, deps.terrain.surfaceY(nx, nz))) {
           p.pos.x = nx; p.pos.z = nz;
           p.pos.y = deps.terrain.surfaceY(nx, nz);
           break;
@@ -533,7 +535,7 @@ export function createSkillSystem(deps) {
         for (const e of enemiesWithin(1.2, new THREE.Vector3(nx, 0, nz))) {
           if (!hitSet.has(e)) { hitSet.add(e); hitEnemy(e, 2.2); }
         }
-        if (!deps.terrain.walkable(nx, nz, deps.terrain.surfaceY(nx, nz))) break;
+        if (!stand(nx, nz, deps.terrain.surfaceY(nx, nz))) break;
         p.pos.x = nx; p.pos.z = nz;
       }
       p.pos.y = deps.terrain.surfaceY(p.pos.x, p.pos.z);
@@ -578,7 +580,7 @@ export function createSkillSystem(deps) {
       if (nearest) {
         const behind = nearest.mesh.position.clone()
           .add(new THREE.Vector3(Math.sin(nearest.mesh.rotation.y + Math.PI), 0, Math.cos(nearest.mesh.rotation.y + Math.PI)).multiplyScalar(1.0));
-        if (deps.terrain.walkable(behind.x, behind.z, deps.terrain.surfaceY(behind.x, behind.z))) {
+        if (stand(behind.x, behind.z, deps.terrain.surfaceY(behind.x, behind.z))) {
           p.pos.x = behind.x; p.pos.z = behind.z;
           p.pos.y = deps.terrain.surfaceY(behind.x, behind.z);
         }
@@ -635,7 +637,7 @@ export function createSkillSystem(deps) {
       const dist = Math.min(6, dir.length()); dir.normalize();
       for (let d = dist; d > 0.5; d -= 0.5) {
         const nx = p.pos.x + dir.x * d, nz = p.pos.z + dir.z * d;
-        if (deps.terrain.walkable(nx, nz, deps.terrain.surfaceY(nx, nz))) {
+        if (stand(nx, nz, deps.terrain.surfaceY(nx, nz))) {
           p.pos.x = nx; p.pos.z = nz; p.pos.y = deps.terrain.surfaceY(nx, nz); break;
         }
       }
@@ -1132,6 +1134,16 @@ export function createSkillSystem(deps) {
     deps.shake?.(0.4);
     for (const e of enemiesWithin(radius, pos)) hitEnemy(e, mult);
   }
+
+  /**
+   * Where the hero may LAND. Routes to the player's own collision predicate so
+   * a teleport can never reach a cell walking would refuse -- the falling-back
+   * `terrain.walkable` knows nothing about buildings, which is exactly how five
+   * separate skills could each drop you inside one.
+   */
+  const stand = (x, z, fromY) => (deps.player.canStandAt
+    ? deps.player.canStandAt(x, z, fromY)
+    : deps.terrain.walkable(x, z, fromY));
 
   function facingDir() {
     const f = deps.player.state.facing;

@@ -377,8 +377,19 @@ body.touch #hud .quests::before { display: none; }
 #hud .menupop .mtile .dbadge {
   margin-left: 4px; font-size: 8px; color: #241c0a; background: #e8574a; padding: 0 4px;
 }
+/* WIDE ENOUGH FOR THE LONGEST LABEL, measured rather than guessed.
+   At 264px five labels wrapped to two lines -- SKILL TREE, SKILL LEVELS,
+   AUTO-BATTLE, LIFE SKILLS, SHARE CARD -- and because grid rows stretch to
+   their tallest item, that gave the popup tiles of TWO different heights (37px
+   and 44px). A ragged grid with text sitting at different heights is what reads
+   as "keluar dari frame". Swept 264 / 280 / 296 / 304 / 312 / 328: 304 is the
+   smallest width at which nothing wraps and every tile is 37px.
+   Capped against the viewport so it can never exceed a narrow phone, and it
+   scrolls rather than running off the top of a short one. */
 #hud .menupop {
-  position: absolute; right: 8px; bottom: 54px; width: 264px;
+  position: absolute; right: 8px; bottom: 54px;
+  width: min(304px, calc(100vw - 16px));
+  max-height: calc(100vh - 66px); overflow-y: auto;
   display: none; grid-template-columns: 1fr 1fr; gap: 7px; padding: 12px;
   background:
     var(--dither) 0 0/4px 4px,
@@ -392,7 +403,13 @@ body.touch #hud .quests::before { display: none; }
   display: flex; align-items: center; gap: 8px; padding: 9px 10px; cursor: pointer;
   background: #141a12; border: 0; box-shadow: inset 0 0 0 2px #2c352c;
   color: #cfd8c8; font-family: inherit; font-size: 10px; letter-spacing: 1px; text-align: left;
+  /* and the belt-and-braces, so ONE long label added later cannot bring the
+     ragged grid back: every tile keeps the same height whatever is in it, and
+     nothing can paint outside its own box. */
+  min-height: 37px; min-width: 0; overflow: hidden; line-height: 1.15;
 }
+#hud .menupop .mtile .mi { flex: none; }
+#hud .menupop .mtile small { flex: none; }
 #hud .menupop .mtile:hover { box-shadow: inset 0 0 0 2px var(--gold); color: #ffe9b0; }
 #hud .menupop .mtile .mi { font-size: 14px; width: 18px; text-align: center; }
 #hud .menupop .mtile small { margin-left: auto; color: var(--gold-dim); font-size: 8px; }
