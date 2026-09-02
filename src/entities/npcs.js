@@ -1132,7 +1132,22 @@ function buildPlazaFloor() {
   for (let i = 0; i < 44; i++) {
     const a = (i / 44) * Math.PI * 2;
     const geo = new THREE.BoxGeometry(1.7, 0.22, 0.5);
-    geo.rotateY(-a);
+    // TANGENTIAL, NOT RADIAL -- the facing convention this codebase already
+    // warns about, and the kerb had it 90 degrees out.
+    //
+    // The piece is 1.7 long in X and 0.5 deep in Z, and it is placed at
+    // (cos a, sin a) * R, so the outward radial direction there is (cos a,
+    // sin a). `rotateY(t)` sends +X to (cos t, -sin t) -- and with t = -a that
+    // is (cos a, sin a), which is EXACTLY the radius. So all 44 stones were
+    // laid pointing straight out of the plaza like spokes on a wheel, each one
+    // sticking 0.85u past the paving onto the grass. Measured: 1.70 along the
+    // radius and 0.50 along the tangent, when a kerb wants the opposite.
+    // That ring of outward planks is what read as slabs dropped round the town.
+    //
+    // -a - PI/2 sends +X to (-sin a, cos a): the tangent. After: 0.50 radial,
+    // 1.70 tangential, and 44 x 1.7 = 74.8 against a 72.3 circumference, so
+    // they close into a continuous kerb with a little overlap.
+    geo.rotateY(-a - Math.PI / 2);
     geo.translate(Math.cos(a) * R, 0.11, Math.sin(a) * R);
     const c = i % 2 ? PZ.stone : PZ.stoneDark;
     if (!kerbBuckets.has(c)) kerbBuckets.set(c, []);
