@@ -15,6 +15,7 @@ import { createCamps, CAMP_SAFE_R, CAMP_HEAL_R } from './world/camps.js';
 import { createGathering } from './world/gather.js';
 import { createSpider } from './world/spider.js';
 import { createRialoHub } from './world/rialohub.js';
+import { showChronicleGate, isChronicleOpen } from './ui/chronicle.js';
 // The one image asset outside logoasset's two branding files. The project rule
 // is that art is procedural, and it holds for everything the game GENERATES —
 // this is a supplied promotional banner hung on a board in the world, which is
@@ -2292,6 +2293,34 @@ async function init(character, saved, audio, online = false) {
    * seconds, nothing is holding it and the flag is simply stuck.
    */
   let busyStuckT = 0;
+  // The way to Semesta City. The gate surges, the crossing card comes up, and
+  // ENTER (a real link — see ui/chronicle.js) opens the other world in a new
+  // tab after the game has been saved, so nothing here is ever lost.
+  async function openChronicle() {
+    if (isChronicleOpen() || player.state.busy) return;
+    player.state.busy = true;
+    audio.sfx('teleport');
+    rialoHub?.gate.surge();
+    const g = rialoHub?.gateWorld;
+    if (g) {
+      const at = new THREE.Vector3(g.x, player.state.pos.y + rialoHub.gate.ringY, g.z);
+      particles.burst(at, '#78ecff', 30, 3.2, -1.2, 0.9);
+      particles.shockwave(new THREE.Vector3(g.x, player.state.pos.y + 0.2, g.z), '#78ecff', 4.5, 0.6);
+    }
+    try {
+      const entered = await showChronicleGate({
+        onEnter: () => {
+          save();
+          audio.sfx('teleport');
+          rialoHub?.gate.surge();
+        },
+      });
+      if (entered) hud.toastText('Semesta City opened in a new tab — Anavela is saved and waiting.');
+    } finally {
+      player.state.busy = false;
+    }
+  }
+
   function busyWatchdog(dt) {
     if (!player.state.busy) { busyStuckT = 0; return; }
     // Two layers on purpose. The module checks are the truth, but this watchdog
@@ -2305,7 +2334,7 @@ async function init(character, saved, audio, online = false) {
       || worldmap.isOpen()
       || document.querySelector('[data-yes]')          // a confirm box
       || document.querySelector('#dialog.show')        // an NPC talking
-      || document.querySelector('.cshow.show, .dgate, .awk, #statspanel, .descent')
+      || document.querySelector('.cshow.show, .dgate, .awk, #statspanel, .descent, .cgate')
       || fishing.state.active || fishing.state.afk
       || player.state.dead
       || workFx;
@@ -3772,6 +3801,13 @@ const CAM_PITCH_DEFAULT = 0.98;
       add('pet', 'Pet Spider', () => petSpider());
     }
 
+    // THE CHRONICLE GATE, on the Hub. It outranks the cast: Baster stands 7.5
+    // units away and can never be close enough to steal it, but a wandering
+    // Dikzzy could, and the gate is the thing you crossed the sea for.
+    if (rialoHub?.nearGate(player.state.pos) && !isChronicleOpen()) {
+      add('portal', 'Step through — Semesta City', () => openChronicle());
+    }
+
     // The Hub's cast talk about Rialo itself. Their lines come from the Temple
     // sheet verbatim, so somebody who played that recognises them.
     const hubNpc = rialoHub?.nearest(player.state.pos, 2.4);
@@ -3971,6 +4007,9 @@ const CAM_PITCH_DEFAULT = 0.98;
   // --- keyboard/mouse ---
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    // The Chronicle crossing owns the keyboard while it is up (it swallows
+    // keys itself too; this covers events that land on the window directly).
+    if (isChronicleOpen()) return;
     // TYPING IS NOT PLAYING.
     //
     // Not one of the hotkeys below checked WHERE the keystroke actually went,

@@ -21,6 +21,7 @@ import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { paintRialoMark } from './landmarks.js';
 import { createSpider } from './spider.js';
 import { bakeStatic } from '../gfx/bake.js';
+import { buildChronicleGate } from './chroniclegate.js';
 
 const TAU = Math.PI * 2;
 
@@ -454,6 +455,16 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
     posts.push(p);
   }
 
+  // THE CHRONICLE GATE — the way to Semesta City. South side of the plaza,
+  // opposite the banner and away from the landing pier (which faces the
+  // mainland, north-west), so sailing in you walk the length of the plaza
+  // toward it. Its steps face the monument. 10.2 out keeps the dais (r 3.05)
+  // inside the colonnade at 13.8 and 7.5 clear of the cast at 6.5.
+  const gate = buildChronicleGate();
+  gate.root.position.set(0, 0.06, 10.2);
+  root.add(gate.root);
+  const gateWorld = { x: cx, z: cz + 10.2 };
+
   // ---- the cast -----------------------------------------------------------
   const agents = [];
   CAST.forEach((def, i) => {
@@ -499,6 +510,8 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
     const far = playerPos
       ? Math.hypot(playerPos.x - cx, playerPos.z - cz) > island.r + 45
       : true;
+    gate.update(dt, playerPos
+      ? Math.hypot(playerPos.x - gateWorld.x, playerPos.z - gateWorld.z) : Infinity, night);
     if (far) return;
 
     spider.update(dt, playerPos);
@@ -555,6 +568,10 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
   // under the board looking like the island had swallowed them.
   const solids = [
     { x: cx, z: cz, r: 3.6 },                                    // monument steps
+    // the gate's dais. Solid as a whole: the ground under it is the plaza
+    // floor, so a hero allowed onto it would stand half a unit INSIDE the
+    // stone. You walk up to the foot of the steps and the gate takes you.
+    { x: gateWorld.x, z: gateWorld.z, r: 3.0 },
   ];
   if (banner) {
     const bz = cz + banner.position.z;
@@ -624,8 +641,14 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
   const bakeAfter = (() => { let n = 0; root.traverse((o) => { if (o.isMesh) n++; }); return n; })();
   console.info(`[semesta] Rialo Hub baked: ${bakeBefore} -> ${bakeAfter} meshes`);
 
+  /** True when `pos` is close enough to the gate to step through it. */
+  function nearGate(pos, r = 4.6) {
+    return Math.hypot(pos.x - gateWorld.x, pos.z - gateWorld.z) < r;
+  }
+
   return {
     root, agents, spider, banner, update, nearest, blocked, solids, signFaults,
+    gate, gateWorld, nearGate,
     centre: { x: cx, z: cz }, radius: island.r,
     count: agents.length,
   };
