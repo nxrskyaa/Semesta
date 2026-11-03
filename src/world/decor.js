@@ -3,6 +3,7 @@
 // faceted rocks, grass tufts, flowers, bushes, torches — plus living ambience:
 // butterflies by day, fireflies by night. All instanced for cheap draw calls.
 import * as THREE from 'three';
+import { ChunkedInstanced } from '../gfx/chunked.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
 import { WATER_LEVEL } from './terrain.js';
 import {
@@ -205,12 +206,18 @@ export function buildDecor(terrain, scene) {
     treeBPT = BPT;
 
     const tGeo = new THREE.CylinderGeometry(0.14, 0.22, 1, 6);
-    const trunk = new THREE.InstancedMesh(tGeo, trunkMat, trees.length);
-    trunk.castShadow = true; trunk.receiveShadow = true;
-    const canopy = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 9, 7), leafMat, trees.length * BPT);
-    canopy.castShadow = true;
+    // CHUNKED (see gfx/chunked.js): one grid cell per mesh, so the trees you
+    // cannot see are not drawn — they used to be ~200k triangles everywhere
+    const trunk = new ChunkedInstanced(tGeo, trunkMat, trees).setShadows(true, true);
+    const canopy = new ChunkedInstanced(new THREE.SphereGeometry(1, 9, 7), leafMat,
+      trees.flatMap((t) => Array(BPT).fill(t))).setShadows(true, false);
     const accented = trees.filter((t) => t.seed > 0.5);
-    const acc = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 5, 4), leafMat, Math.max(1, accented.length * 3));
+    // accents are written in tree order for DRAWN trees only, and the unused
+    // tail is parked — so the drawn ones come first in the position list too
+    const accPts = [...accented.filter((t) => t.draw), ...accented.filter((t) => !t.draw)]
+      .flatMap((t) => [t, t, t]);
+    const acc = new ChunkedInstanced(new THREE.SphereGeometry(0.1, 5, 4), leafMat,
+      accPts.length ? accPts : [{ x: 0, z: 0 }]);
     let ai = 0, ci = 0;
 
     trees.forEach((tr, ti) => {
@@ -241,7 +248,10 @@ export function buildDecor(terrain, scene) {
       }
     });
     while (ai < accented.length * 3) setInst(acc, ai++, 0, -999, 0, 1, 1, 1, 0, C('#ffffff'));
-    [trunk, canopy, acc].forEach((mesh) => { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; });
+    [trunk, canopy, acc].forEach((mesh) => {
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.finalize();
+    });
     group.add(trunk, canopy);
     if (accented.length) group.add(acc);
     treeTrunk = trunk; treeCanopy = canopy; treeAcc = acc;
@@ -251,8 +261,7 @@ export function buildDecor(terrain, scene) {
   if (rocks.length) {
     const rockGeo = new THREE.IcosahedronGeometry(0.62, 0);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-    rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, rocks.length);
-    rockMesh.castShadow = true; rockMesh.receiveShadow = true;
+    rockMesh = new ChunkedInstanced(rockGeo, rockMat, rocks).setShadows(true, true);
     const rockColors = [PALETTE.stone[0], PALETTE.stone[1], PALETTE.stone[2]].map((c) => new THREE.Color(c));
     rocks.forEach((rk, i) => {
       if (!rk.draw) { rockMesh.setMatrixAt(i, GONE_M); return; }
@@ -262,6 +271,7 @@ export function buildDecor(terrain, scene) {
       rockMesh.setColorAt(i, rockColors[Math.floor(rk.seed * 3)]);
     });
     if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
+    rockMesh.finalize();
     group.add(rockMesh);
   }
 
@@ -275,12 +285,13 @@ export function buildDecor(terrain, scene) {
     const tuftMat = new THREE.MeshLambertMaterial({
       map: tuftTex, transparent: false, alphaTest: 0.5, side: THREE.DoubleSide,
     });
-    const tuftMesh = new THREE.InstancedMesh(tuftGeo, tuftMat, tufts.length);
+    const tuftMesh = new ChunkedInstanced(tuftGeo, tuftMat, tufts);
     tufts.forEach((tf, i) => {
       q.setFromAxisAngle(YUP, (i * 0.37) % Math.PI);
       m.compose(v.set(tf.x, tf.y + tf.s * 0.35, tf.z), q, sc.set(tf.s, tf.s, tf.s));
       tuftMesh.setMatrixAt(i, m);
     });
+    tuftMesh.finalize();
     groundCover.push({ mesh: tuftMesh, list: tufts });
     group.add(tuftMesh);
   }
@@ -301,12 +312,13 @@ export function buildDecor(terrain, scene) {
       const fMat = new THREE.MeshLambertMaterial({
         map: tex, transparent: false, alphaTest: 0.5, side: THREE.DoubleSide,
       });
-      const fMesh = new THREE.InstancedMesh(fGeo, fMat, list.length);
+      const fMesh = new ChunkedInstanced(fGeo, fMat, list);
       list.forEach((f, i) => {
         q.setFromAxisAngle(YUP, (i * 0.61) % Math.PI);
         m.compose(v.set(f.x, f.y + f.s * 0.4, f.z), q, sc.set(f.s, f.s, f.s));
         fMesh.setMatrixAt(i, m);
       });
+      fMesh.finalize();
       groundCover.push({ mesh: fMesh, list });
       group.add(fMesh);
     }
@@ -316,8 +328,7 @@ export function buildDecor(terrain, scene) {
   if (bushes.length) {
     const bGeo = new THREE.IcosahedronGeometry(0.6, 0);
     const bMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-    bushMesh = new THREE.InstancedMesh(bGeo, bMat, bushes.length);
-    bushMesh.castShadow = true;
+    bushMesh = new ChunkedInstanced(bGeo, bMat, bushes).setShadows(true, false);
     const bushColors = ['#4a8a50', '#3e7d47'].map((c) => new THREE.Color(c));
     bushes.forEach((b, i) => {
       q.setFromAxisAngle(YUP, b.seed * 9);
@@ -326,6 +337,7 @@ export function buildDecor(terrain, scene) {
       bushMesh.setColorAt(i, bushColors[Math.floor(b.seed * 2)]);
     });
     if (bushMesh.instanceColor) bushMesh.instanceColor.needsUpdate = true;
+    bushMesh.finalize();
     group.add(bushMesh);
   }
 
