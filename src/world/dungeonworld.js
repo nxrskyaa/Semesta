@@ -33,6 +33,7 @@ import { boxMesh, cylMesh, sphereMesh, sharedMat, sharedBox } from '../gfx/meshc
 import { bakeStatic } from '../gfx/bake.js';
 import { THEMES } from '../systems/dungeon.js';
 import { drawText, textWidth } from '../gfx/signs.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * A LIT PLAQUE OVER A DOORWAY.
@@ -67,6 +68,10 @@ function buildPlaque(label, color) {
   const mat = new THREE.MeshBasicMaterial({
     map: tex, transparent: true, depthWrite: false, toneMapped: false,
   });
+  // built fresh for every floor, so the hall teardown must free it — texture
+  // included. Unflagged, two canvases leaked per floor for the whole session.
+  mat.userData.owned = true;
+  mat.userData.ownsMap = true;
   const aspect = w / h;
   const height = 0.62;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(height * aspect, height), mat);
@@ -331,6 +336,155 @@ function buildWalls(g, half, t) {
     cap.position.set(px, WALL_H + 1.35, pz); cap.rotation.y = -a;
     g.add(base, shaft, collar, cap);
   }
+}
+
+/**
+ * ONE MESH FROM MANY BOXES. The hall is deliberately NOT run through
+ * bakeStatic (it deleted the room; see buildFloorHall), so anything added here
+ * that is made of many identical-material pieces is merged by hand instead:
+ * each box is placed, baked into its own geometry, and the lot become one
+ * draw call. Non-indexed throughout, which is what mergeGeometries needs.
+ */
+function mergedBoxes(boxes, color) {
+  const parts = boxes.map(({ w, h, d, x, y, z, ry = 0, rx = 0, rz = 0 }) => {
+    const b = new THREE.BoxGeometry(w, h, d).toNonIndexed();
+    b.applyMatrix4(new THREE.Matrix4().compose(
+      new THREE.Vector3(x, y, z),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)),
+      new THREE.Vector3(1, 1, 1)));
+    return b;
+  });
+  const geo = mergeGeometries(parts, false);
+  parts.forEach((p) => p.dispose());
+  const m = new THREE.Mesh(geo, sharedMat(color));
+  m.receiveShadow = true;
+  return m;
+}
+
+/**
+ * A CRENELLATED PARAPET along every wall top. From the game's camera the wall
+ * you are standing beside is mostly its TOP — and that was one long flat strip
+ * of the band's brightest colour, the single largest shape on screen. Merlons
+ * cut it into a rhythm, read instantly as "fortified hall", and give the
+ * silhouette of the room an edge against the dark beyond it.
+ */
+function buildParapet(half, t) {
+  const A = apothem(half);
+  const SIDES = 8;
+  const SIDE_L = 2 * A * Math.tan(Math.PI / SIDES);
+  const y = WALL_H + 0.81 + 0.3;
+  const boxes = [];
+  for (let i = 0; i < SIDES; i++) {
+    const a = (i / SIDES) * Math.PI * 2;
+    const cx = Math.cos(a), cz = Math.sin(a);
+    const tx = -Math.sin(a), tz = Math.cos(a);
+    const n = Math.max(2, Math.floor(SIDE_L / 1.7));
+    for (let k = 0; k < n; k++) {
+      const off = ((k + 0.5) / n - 0.5) * (SIDE_L - 0.9);
+      boxes.push({ w: 0.78, h: 0.6, d: 1.1, x: cx * (A + 0.1) + tx * off, y, z: cz * (A + 0.1) + tz * off, ry: -a + Math.PI / 2 });
+    }
+  }
+  return mergedBoxes(boxes, shade(t.trim, 0.72));
+}
+
+/**
+ * RUBBLE ALONG THE WALL FOOT. A wall that meets a floor in a perfect line
+ * reads as two primitives touching. Real halls collect broken stone where the
+ * two meet, and a scatter of small blocks there is what makes the room look
+ * old rather than freshly modelled. Kept small (it has no collision, and the
+ * hero walks right up to the plinth) and outside the walkable pad.
+ */
+function buildRubble(half, t, rnd) {
+  const A = apothem(half);
+  const boxes = [];
+  const N = Math.round(half * 3.2);
+  for (let i = 0; i < N; i++) {
+    const a = rnd() * Math.PI * 2;
+    // the octagon's inner face at this bearing, minus the plinth
+    // faces sit every 45 degrees with a normal ON the axes, so the angle to
+    // the nearest normal is this, and the boundary is the apothem over its cos
+    const P4 = Math.PI / 4, P8 = Math.PI / 8;
+    const delta = (((a + P8) % P4) + P4) % P4 - P8;
+    const face = (A - 0.85) / Math.cos(delta);
+    // keep the two doorways clear
+    if (Math.abs(Math.cos(a)) < 0.2) continue;
+    const r = face - 0.15 - rnd() * 0.5;
+    const s = 0.16 + rnd() * 0.32;
+    boxes.push({ w: s * (1 + rnd()), h: s * 0.7, d: s, x: Math.cos(a) * r, y: s * 0.3, z: Math.sin(a) * r,
+      ry: rnd() * 3.14, rx: (rnd() - 0.5) * 0.4, rz: (rnd() - 0.5) * 0.4 });
+  }
+  return mergedBoxes(boxes, shade(t.wall, 1.15));
+}
+
+/**
+ * SHAFTS OF LIGHT from the dark above. The hall has no ceiling (the camera is
+ * above it), so it had no sense of a world above it either. Three slanted
+ * columns of the band's colour falling onto the floor say "there is a way up
+ * there, and something leaks through it", give the room a light direction, and
+ * cost three quads each. They breathe slowly in update(). The texture and the
+ * per-colour materials are cached: a hall is rebuilt every floor.
+ */
+let shaftTex = null;
+const shaftMats = new Map();
+function shaftMaterial(color) {
+  if (!shaftTex) {
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 128;
+    const x = c.getContext('2d');
+    const v = x.createLinearGradient(0, 0, 0, 128);
+    v.addColorStop(0, 'rgba(255,255,255,0)');
+    v.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+    v.addColorStop(0.9, 'rgba(255,255,255,0.8)');
+    v.addColorStop(1, 'rgba(255,255,255,0.15)');
+    x.fillStyle = v; x.fillRect(0, 0, 32, 128);
+    // soft edges, so it is a beam and not a slab
+    x.globalCompositeOperation = 'destination-in';
+    const h = x.createLinearGradient(0, 0, 32, 0);
+    h.addColorStop(0, 'rgba(0,0,0,0)'); h.addColorStop(0.5, 'rgba(0,0,0,1)'); h.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = h; x.fillRect(0, 0, 32, 128);
+    shaftTex = new THREE.CanvasTexture(c);
+  }
+  let m = shaftMats.get(color);
+  if (!m) {
+    m = new THREE.MeshBasicMaterial({
+      map: shaftTex, color, transparent: true, opacity: 0.22, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    });
+    shaftMats.set(color, m);
+  }
+  return m;
+}
+function buildShafts(half, t, rnd) {
+  const g = new THREE.Group();
+  g.userData.dynamic = true;
+  // short enough that the top fades out INSIDE the walls: a beam that runs on
+  // above the parapet into the void reads as a searchlight, not as daylight
+  const geo = new THREE.PlaneGeometry(3.2, 10);
+  geo.translate(0, 5, 0);                 // pivot at the floor
+  const shafts = [];
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + rnd() * 1.2;
+    const d = half * (0.25 + rnd() * 0.3);
+    const s = new THREE.Group();
+    s.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+    s.rotation.y = rnd() * Math.PI;
+    s.rotation.z = 0.32;                  // all lean the same way: one source
+    // its own material, so each shaft breathes on its own phase; disposed
+    // with the hall (`owned`), while the texture stays cached
+    const mat = shaftMaterial(shade(t.accent, 1.2)).clone();
+    mat.userData.owned = true;
+    for (const ry of [0, Math.PI / 2]) {
+      const q = new THREE.Mesh(geo, mat);
+      q.rotation.y = ry;
+      q.renderOrder = 2;
+      s.add(q);
+    }
+    s.userData.phase = rnd() * 6.28;
+    g.add(s);
+    shafts.push(s);
+  }
+  // the floor where each lands catches it
+  return { g, shafts, geo };
 }
 
 /** A brazier: bowl, coals and a real flame that flickers on its own phase. */
@@ -922,11 +1076,17 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     if (!hall) return;
     root.remove(hall);
     hall.traverse((o) => {
+      // the dust/ember/snow motes are Points, not a Mesh: their geometry and
+      // material are built fresh per floor and leaked one of each every floor
+      if (o.isPoints) { o.geometry?.dispose?.(); o.material?.dispose?.(); return; }
       if (o.isMesh) {
         // shared geometry and materials are tagged and must survive — freeing
         // them would take every other object built from the cache with them
         if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose?.();
-        if (o.material && o.material.userData?.owned) o.material.dispose?.();
+        if (o.material && o.material.userData?.owned) {
+          if (o.material.userData.ownsMap) o.material.map?.dispose?.();
+          o.material.dispose?.();
+        }
       }
     });
     hall = null;
@@ -946,6 +1106,10 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     const motes = buildMotes(t, half, plan.theme);
     motes.position.y = 0;
     g.add(motes);
+    g.add(buildParapet(half, t));
+    g.add(buildRubble(half, t, rnd));
+    const shafts = buildShafts(half, t, rnd);
+    g.add(shafts.g);
 
     // braziers around the room: the only light down here, and the reason the
     // walls read as stone rather than as a flat colour
@@ -992,7 +1156,7 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
     g.position.set(0, DUNGEON_Y, 0);
     root.add(g);
     hall = g;
-    hall.userData = { braziers, lamps, motes, stair, exit, half, theme: plan.theme };
+    hall.userData = { braziers, lamps, motes, stair, exit, half, theme: plan.theme, shafts };
 
     state.half = half;
     state.theme = plan.theme;
@@ -1163,6 +1327,14 @@ export function createDungeonWorld(scene, terrain, opts = {}) {
         f.material.opacity = 0.7 + Math.sin(time * 12 + ph) * 0.22;
       }
       l.userData.light.intensity = 1.9 + Math.sin(time * 5.3 + sd) * 0.25;
+    }
+    // the light shafts breathe, each on its own slow phase
+    if (u.shafts) {
+      for (const s of u.shafts.shafts) {
+        const k = 0.13 + 0.05 * Math.sin(time * 0.6 + s.userData.phase)
+          + 0.02 * Math.sin(time * 1.7 + s.userData.phase * 2);
+        s.children[0].material.opacity = k;
+      }
     }
     // dust rising through the light, each speck on its own speed, wrapping at
     // the top so the column never empties
