@@ -20,7 +20,7 @@ import { boxMesh, cylMesh, sphereMesh } from '../gfx/meshcache.js';
 import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { paintRialoMark } from './landmarks.js';
 import { createSpider } from './spider.js';
-import { bakeStatic } from '../gfx/bake.js';
+import { bakeStatic, protectRefs } from '../gfx/bake.js';
 import { buildChronicleGate } from './chroniclegate.js';
 
 const TAU = Math.PI * 2;
@@ -635,7 +635,10 @@ export function createRialoHub(scene, terrain, island, opts = {}) {
   monument.userData.finial.userData.dynamic = true;
   for (const p of posts) p.userData.lamp.userData.dynamic = true;
   if (banner) for (const b of banner.userData.bulbs) b.userData.dynamic = true;
-  for (const a of agents) a.mesh.userData.dynamic = true;
+  // Each agent wanders, so it stays dynamic as a whole — and its LIMBS must be
+  // protected inside it, or the recursive bake merges legs and arms into the
+  // torso and the walk cycle rotates empty pivots (which is what it was doing).
+  for (const a of agents) { protectRefs(a.mesh); a.mesh.userData.dynamic = true; }
   const bakeBefore = (() => { let n = 0; root.traverse((o) => { if (o.isMesh) n++; }); return n; })();
   bakeStatic(root);
   const bakeAfter = (() => { let n = 0; root.traverse((o) => { if (o.isMesh) n++; }); return n; })();

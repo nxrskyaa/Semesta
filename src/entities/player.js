@@ -16,6 +16,7 @@ import {
   sharedBox, sharedCyl, sharedSphere, sharedTorus, SHARED,
 } from '../gfx/meshcache.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { bakeStatic } from '../gfx/bake.js';
 
 // SOFT CLOTH. Every garment was a stack of hard axis-aligned boxes, so a robe,
 // a coat and a breastplate all had the same razor edges and the hero read as
@@ -1127,6 +1128,18 @@ export function buildCharacterMesh(config) {
       g.userData.auraLight = aura; // breathes in update
     }
     weaponGroup = g;
+  }
+
+  // BAKE THE OUTFIT. Measured, the hero alone was 44 draw calls — every belt,
+  // buckle, collar, trim, pauldron and pleat its own mesh. Everything the
+  // animator poses (and everything cosmetics and weapons hang from) is
+  // protected; the decoration on each is merged into the part it rides on, in
+  // that part's own frame, so the whole rig still moves exactly as before.
+  {
+    const keep = [head, body, legL, legR, armL, armR, handR, handL, shieldMesh, capeMesh, ...(hairParts || [])];
+    for (const o of keep) if (o?.isObject3D) o.userData.dynamic = true;
+    vis.traverse((o) => { if (o.isSprite || o.isLight || o.isPoints) o.userData.dynamic = true; });
+    bakeStatic(vis);
   }
 
   return {

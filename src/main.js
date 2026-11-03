@@ -26,6 +26,7 @@ import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
 import { buildWind } from './world/wind.js';
 import { createAmbience } from './world/ambience.js';
+import { bakeRig } from './gfx/bake.js';
 import { createHollowtide } from './world/hollowtide.js';
 import { createNetClient, serverConfigured } from './net/client.js';
 import { createRemotePlayers } from './net/remote.js';
@@ -1825,6 +1826,7 @@ async function init(character, saved, audio, online = false) {
     g.position.set(x, y, z);
     g.rotation.y = Math.atan2(terrain.spawn.x - x, terrain.spawn.z - z);
     scene.add(g);
+    bakeRig(g);
 
     // THE NAME IS ON THE GATE ITSELF NOW.
     //

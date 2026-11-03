@@ -3,7 +3,7 @@
 // tends the market stall, Rio patrols, Elder Maple putters in the herb garden.
 // Also builds the village itself: huts, a well, stalls, fences, crops, lamps.
 import * as THREE from 'three';
-import { bakeStatic } from '../gfx/bake.js';
+import { bakeStatic, bakeRig, protectRefs } from '../gfx/bake.js';
 import { makeSignTexture } from '../gfx/signs.js';
 import { makeCritterFaceTexture, PALETTE } from '../gfx/textures.js';
 import { WATER_LEVEL } from '../world/terrain.js';
@@ -1364,7 +1364,11 @@ function buildCenterShrine() {
   g.add(mist);
 
   g.userData.shrine = { spouts, splashes, basin, basinGeo, mist, orb, baseY: y };
-  g.userData.dynamic = true;   // the baker must not freeze any of this
+  // Only what MOVES is protected — the jets, rings, basin, mist (marked above)
+  // and the turning orb. The whole fountain used to be marked dynamic, so its
+  // forty-odd plinth stones, pillar bands and spouts never merged: 42 draw calls
+  // in the middle of the one square everybody stands in.
+  orb.userData.dynamic = true;
   return g;
 }
 
@@ -2312,11 +2316,28 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
   // culled. The lamps are excluded: their flame tongues, glow, pane and pool all
   // animate every frame.
   {
-    for (const lamp of villageLamps) lamp.userData.dynamic = true;
+    // THE LAMPS: only the flame moves. They used to be marked dynamic whole,
+    // which left base, pillar, roof and cap as separate meshes — 16 draw calls a
+    // lamp, 128 for the eight round the square. protectRefs keeps the tongues,
+    // glow, pane, pool and light (everything tickFlame touches) and the rest bakes.
+    for (const lamp of villageLamps) protectRefs(lamp);
     let before = 0, after = 0;
     for (const mesh of placed) {
       if (mesh.userData.dynamic) continue;
       const r = bakeStatic(mesh);
+      before += r.before; after += r.after;
+    }
+    for (const lamp of villageLamps) {
+      if (placed.includes(lamp)) continue;
+      const r = bakeStatic(lamp);
+      before += r.before; after += r.after;
+    }
+    // THE VILLAGERS. Measured at the plaza, one of them alone cost 64 draw
+    // calls — a body part carrying 52 separate decoration meshes. Each rig is
+    // baked with its posed parts protected, so the decoration merges onto the
+    // limb it rides on and every animation keeps working.
+    for (const n of npcs) {
+      const r = bakeRig(n.mesh);
       before += r.before; after += r.after;
     }
     bakeReport = { before, after };

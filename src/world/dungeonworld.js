@@ -977,7 +977,8 @@ export function buildHollowGate() {
   light.position.set(0, py + 1.6, 0.9);
   g.add(light);
 
-  g.userData = { glyph, light, fires, dynamic: true };
+  // the arch's stonework merges; the glyph, the light and the flames do not
+  g.userData = { glyph, light, fires };
   return g;
 }
 

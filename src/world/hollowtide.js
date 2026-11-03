@@ -22,6 +22,7 @@ import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { bakeStatic } from '../gfx/bake.js';
 import { sharedMat, SHARED } from '../gfx/meshcache.js';
 import { WATER_LEVEL } from './terrain.js';
+import { ChunkedInstanced } from '../gfx/chunked.js';
 
 const FORCE_KEY = 'semesta.hollowtide';
 
@@ -42,7 +43,7 @@ export function hollowtideActive() {
 function pumpkinGeometry() {
   // a sphere with eight ribs pushed in, squashed: reads as a pumpkin at any
   // distance where a plain orange ball reads as a ball
-  const g = new THREE.SphereGeometry(0.5, 18, 12);
+  const g = new THREE.SphereGeometry(0.5, 14, 8);
   const p = g.attributes.position;
   const v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {
@@ -324,17 +325,22 @@ export function createHollowtide({ scene, terrain, landmarks, decor, npcs }) {
   // --- pumpkins, instanced ---------------------------------------------------
   const N = spots.length;
   const bodyMat = new THREE.MeshLambertMaterial({ color: '#e8742a' });
-  const bodies = new THREE.InstancedMesh(pumpkinGeometry(), bodyMat, N);
-  const stems = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.06, 0.18, 5), new THREE.MeshLambertMaterial({ color: '#4a6a2a' }), N);
+  // CHUNKED, like the decor. As one InstancedMesh the pumpkins spanned the whole
+  // map, were never frustum-culled, and cost 68k triangles in every frame
+  // (main pass plus shadow pass) wherever you stood. They no longer cast
+  // shadows either: they are small, and the glow pool already seats them.
+  const pts = spots.map((s) => ({ x: s.x, z: s.z }));
+  const bodies = new ChunkedInstanced(pumpkinGeometry(), bodyMat, pts);
+  const stems = new ChunkedInstanced(new THREE.CylinderGeometry(0.04, 0.06, 0.18, 5), new THREE.MeshLambertMaterial({ color: '#4a6a2a' }), pts);
   const faceMat = new THREE.MeshBasicMaterial({ map: faceTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
-  const faces = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.62, 0.62), faceMat, N);
+  const faces = new ChunkedInstanced(new THREE.PlaneGeometry(0.62, 0.62), faceMat, pts);
   const glowMat = new THREE.MeshBasicMaterial({
     map: softDisc(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   const glowGeo = new THREE.PlaneGeometry(1.5, 1.5);
   glowGeo.rotateX(-Math.PI / 2);
-  const glows = new THREE.InstancedMesh(glowGeo, glowMat, N);
+  const glows = new ChunkedInstanced(glowGeo, glowMat, pts);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
   const col = new THREE.Color();
   spots.forEach((s, i) => {
@@ -356,9 +362,10 @@ export function createHollowtide({ scene, terrain, landmarks, decor, npcs }) {
     glows.setMatrixAt(i, m);
     s.phase = rnd() * 50;
   });
-  for (const im of [bodies, stems]) { im.castShadow = true; im.receiveShadow = true; }
-  faces.renderOrder = 2; glows.renderOrder = 1;
-  for (const im of [bodies, stems, faces, glows]) { im.computeBoundingSphere(); scene.add(im); }
+  bodies.setShadows(false, true);
+  for (const c of faces.chunks) c.renderOrder = 2;
+  for (const c of glows.chunks) c.renderOrder = 1;
+  for (const im of [bodies, stems, faces, glows]) { im.finalize(); scene.add(im); }
   api.pumpkins = N;
 
   // --- bats, instanced ---------------------------------------------------------

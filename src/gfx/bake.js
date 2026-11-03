@@ -61,7 +61,11 @@ export function bakeStatic(root) {
     // came here to merge stays untouched. That single missing condition is why
     // a 20-petal rose head merged to nothing.
     const dyn = dynamic || (obj !== root && obj.userData?.dynamic === true);
-    if (obj.isMesh && !obj.isInstancedMesh && !obj.isSkinnedMesh) {
+    // THE ROOT IS NEVER MERGED AWAY. When the recursion bakes a posed pivot that
+    // is itself a MESH (a villager's head, an arm with a sleeve on it), merging
+    // the root would remove it from its parent — and every animator holding it
+    // would go on posing a mesh that is no longer in the scene.
+    if (obj.isMesh && obj !== root && !obj.isInstancedMesh && !obj.isSkinnedMesh) {
       before++;
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       // multi-material meshes carry groups; not worth the complexity here
@@ -126,6 +130,47 @@ export function bakeStatic(root) {
     before += r.before; after += r.after;
   }
   return { before, after };
+}
+
+/**
+ * PROTECT WHAT GETS POSED. Every rig in this game (villagers, the Hub's cast,
+ * the hero) keeps the parts it animates in its root's `userData` — head, arms,
+ * legs, pivots, ears, tails, arrays of them. Mark each of those (and every
+ * sprite, light and particle system, which animate on their own) as dynamic,
+ * so a following bakeStatic merges only the decoration that rides on them:
+ * a villager whose hat, collar and buttons were 50 separate draw calls becomes
+ * one per material, and nothing that moves is frozen.
+ */
+export function protectRefs(root, { kids = false } = {}) {
+  const seen = new Set();
+  const visit = (v, depth = 0) => {
+    if (!v || depth > 3 || seen.has(v)) return;
+    if (v.isObject3D) {
+      seen.add(v);
+      if (v !== root) v.userData.dynamic = true;
+      // `kids`: some animators reach a container and pose each CHILD of it
+      // (wildlife does `userData.legs.children.forEach(...)`), so the children
+      // of a referenced group have to be protected too, or the bake merges four
+      // legs into one and the trot freezes
+      if (kids && !v.isMesh) for (const c of v.children) c.userData.dynamic = true;
+      return;
+    }
+    if (Array.isArray(v)) { for (const x of v) visit(x, depth + 1); return; }
+    if (typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
+      seen.add(v);
+      for (const x of Object.values(v)) visit(x, depth + 1);
+    }
+  };
+  visit(root.userData);
+  root.traverse((o) => {
+    if (o !== root && (o.isSprite || o.isLight || o.isPoints || o.isLine)) o.userData.dynamic = true;
+  });
+  return root;
+}
+
+/** protectRefs + bakeStatic: bake a posable rig without freezing it. */
+export function bakeRig(root, opts) {
+  return bakeStatic(protectRefs(root, opts));
 }
 
 /** Bake each child of `parent` separately, so they stay independently cullable. */

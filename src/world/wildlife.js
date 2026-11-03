@@ -14,6 +14,7 @@ import { makeCritterFaceTexture } from '../gfx/textures.js';
 import { getQuality } from '../gfx/quality.js';
 import { disposeObject } from '../util/dispose.js';
 import { boxMesh, sphereMesh, sharedPlane, sharedMat as sharedMatLocal } from '../gfx/meshcache.js';
+import { bakeRig } from '../gfx/bake.js';
 
 const box = (w, h, d, c) => boxMesh(w, h, d, c);
 
@@ -420,6 +421,15 @@ export function createWildlife(scene, terrain, particles) {
   }
   const _sv = new THREE.Vector3();
 
+  // BAKE EVERY CRITTER. A crab is ~20 little meshes, a bunny a dozen; each one
+  // keeps the parts its animator poses (and their children) and merges the rest
+  // per material. Same models, same motion, a fraction of the draw calls.
+  let bakeBefore = 0, bakeAfter = 0;
+  for (const m of group.children) {
+    const r = bakeRig(m, { kids: true });
+    bakeBefore += r.before; bakeAfter += r.after;
+  }
+
   function update(dt, playerPos, time) {
     // Animals well outside view are simulated at zero cost: their pose is
     // frozen and they simply wait. Nothing is visible to pop back in.
@@ -725,6 +735,6 @@ export function createWildlife(scene, terrain, particles) {
   return {
     group, update, dispose,
     count: land.length + sea.length + fish.length + birds.length + shoal.length + crabs.length + song.reduce((a, f) => a + f.birds.length, 0),
-    crabs, song,
+    crabs, song, bakeReport: { before: bakeBefore, after: bakeAfter },
   };
 }
