@@ -116,7 +116,7 @@ export function setupLighting(scene) {
     const mist = hr > 4.5 && hr < 8.5 ? Math.sin(((hr - 4.5) / 4) * Math.PI) : 0;
     // base density comes from the WORLD DETAIL knob (thicker fog on low, so a
     // near draw distance still reads as haze rather than a hard cut)
-    scene.fog.density = state.fogBase + mist * 0.014 + state.weatherDim * 0.012;
+    scene.fog.density = state.fogBase + mist * 0.009 + state.weatherDim * 0.012;
 
     // sun follows the player so the shadow frustum stays relevant
     const ang = ((hr - 6) / 12) * Math.PI; // rise -> set

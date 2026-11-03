@@ -25,6 +25,7 @@ import { createLandmarks } from './world/landmarks.js';
 import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
 import { buildWind } from './world/wind.js';
+import { createAmbience } from './world/ambience.js';
 import { createNetClient, serverConfigured } from './net/client.js';
 import { createRemotePlayers } from './net/remote.js';
 import { createChat } from './ui/chat.js';
@@ -54,6 +55,8 @@ import { createQuests } from './systems/quests.js';
 import { createPets, PET_DEFS } from './systems/pets.js';
 import { createMounts, MOUNT_DEFS } from './systems/mounts.js';
 import { createFishing } from './systems/fishing.js';
+import { createFishGauge } from './ui/fishgauge.js';
+import { createCinematics, orbit, dolly, easeOut } from './systems/cinematic.js';
 import { createFarming, PLOT_PRICE } from './systems/farming.js';
 import { createHousing, HOUSE_SAFE_R, HOUSE_HEAL_R } from './systems/housing.js';
 import { createIndex } from './systems/index.js';
@@ -741,6 +744,8 @@ async function init(character, saved, audio, online = false) {
   const isles = createIsles(scene, terrain, decor.blocked);
   // ambient wildlife: things that REACT to you, so the map isn't just decorated
   const wildlife = createWildlife(scene, terrain, particles);
+  // chimney smoke off every hut and off your own house once it has a chimney
+  const ambience = createAmbience({ scene, wind, sources: () => [...(npcs.chimneys || []), housing.chimney?.()] });
   const watercraft = createWatercraft(scene, terrain, particles, {
     owns: (item) => inventory.count(item) > 0,
     onBoard: (def) => {
@@ -1324,8 +1329,14 @@ async function init(character, saved, audio, online = false) {
    * checking your bag is not a promise to stand still, and monsters carry on
    * hitting you for it on purpose.
    */
+  // CINEMATICS — created next to the camera further down; declared here
+  // because defenceless() reads it and is defined first
+  let cine = null;
+  // places already discovered on this save: the cinematic plays once, ever
+  const cineSeen = new Set(Array.isArray(saved?.cineSeen) ? saved.cineSeen : []);
   function defenceless() {
-    return !!player.state.busy || !!fishing.state.afk || dialog.isOpen();
+    // nobody gets hit during their own boss intro
+    return !!player.state.busy || !!fishing.state.afk || dialog.isOpen() || !!cine?.active();
   }
 
   /**
@@ -1924,17 +1935,17 @@ async function init(character, saved, audio, online = false) {
       // The boss stands on the medallion in the middle of the floor, not at
       // -2 toward the stair: that put it half inside the stair frame on the
       // tighter warden rooms, where the wall is only thirteen units out.
-      enemyMgr.spawnAt(null, 0, DUNGEON_Y, 0, plan.level, {
+      hollowBoss = enemyMgr.spawnAt(null, 0, DUNGEON_Y, 0, plan.level, {
         boss: plan.boss,
         hpMult: plan.bossHpMult, dmgMult: plan.bossDmgMult, xpMult: plan.bossXpMult,
       });
-      const b = WORLD_BOSSES[plan.boss];
-      hud.banner?.(`${b.name} — ${b.title}`);
-      audio.sfx('boss_spawn');
-    }
+      // the name card now belongs to the boss's entrance (hollowBossIntro),
+      // which plays once the descent has finished
+    } else hollowBoss = null;
   }
 
   const KIND_WORD = { hall: 'HALL', warden: 'WARDEN', great: 'LORD' };
+  let hollowBoss = null;
 
   /**
    * THE DESCENT IS AN ASYNC GAP, AND THAT GAP IS WHERE THE HOLLOW BROKE.
@@ -2039,6 +2050,7 @@ async function init(character, saved, audio, online = false) {
     // possible — no minimap, two identical-looking arches, and a prompt you
     // only see once you are already standing on the right tile.
     hud.toastText('The lit arch marked WAY OUT takes you home — the chip at the top points to it.');
+    if (run.plan.boss) hollowBossIntro(run.plan);
     return run;
   }
 
@@ -2153,7 +2165,7 @@ async function init(character, saved, audio, online = false) {
       return { icon: r.id, label: `${ITEMS[r.id]?.name || r.id}${n > 1 ? ` x${n}` : ''}` };
     });
     const th = dungeon.THEMES[run.plan.theme];
-    hud.floorClear?.({
+    const showClear = () => hud.floorClear?.({
       floor: run.floor, of: dungeon.MAX_FLOOR, kind: run.plan.kind,
       bandName: `${th?.name || ''} · ${dungeon.DIFFICULTIES[run.difficulty].tag}`,
       accent: dungeon.DIFFICULTIES[run.difficulty].color,
@@ -2164,6 +2176,12 @@ async function init(character, saved, audio, online = false) {
         ? 'The Hollow has no deeper floor. Take the arch home.'
         : 'The stair unseals — DESCEND when you are ready.',
     });
+    // THE STAIR GRINDS OPEN ON CAMERA. The seal was rising behind the hero's
+    // back, at the far end of a dark room with the minimap off — so "the stair
+    // unseals" was a sentence about something nobody saw. Last floor excepted:
+    // there is no stair worth showing.
+    if (run.floor < dungeon.MAX_FLOOR && hollowStairShot(run, th, showClear)) { /* card after */ }
+    else showClear();
     if (clr.floorRecord) audio.sfx('levelup_big');
     particles.fountain(player.state.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#ffd23e', 22);
 
@@ -2386,7 +2404,8 @@ async function init(character, saved, audio, online = false) {
       },
     });
     hollowFilling = false;
-    if (epoch !== hollowEpoch || dungeon.state.active !== run) forceSurface();
+    if (epoch !== hollowEpoch || dungeon.state.active !== run) { forceSurface(); return; }
+    if (plan.boss) hollowBossIntro(plan);
   }
 
   /** The gate in Anavela: asks, then sends you down. */
@@ -2680,6 +2699,8 @@ async function init(character, saved, audio, online = false) {
 
   // --- input ---
   const input = { keys: new Set(), mouse: { x: innerWidth / 2, y: innerHeight / 2 }, joy: { active: false, x: 0, y: 0 } };
+  // what the hero hears while a cinematic holds the camera: nothing
+  const NO_INPUT = { keys: new Set(), mouse: input.mouse, joy: { active: false, x: 0, y: 0 } };
 
   // --- camera (with shake) ---
 // THE CAMERA CAN LOOK UP NOW.
@@ -2708,7 +2729,204 @@ const CAM_PITCH_DEFAULT = 0.98;
     hitStopT = Math.max(hitStopT, Math.min(0.1, s));
     hitStopCool = hitStopT + 0.16;
   }
+  /** Where the gameplay camera wants to be right now — the pose a cinematic
+   *  eases back into, so the hand-back never jumps. Mirrors updateCamera. */
+  function followPose(outPos, outLook) {
+    const p = player.state.pos;
+    outPos.set(
+      p.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist,
+      p.y + Math.sin(cam.pitch) * cam.dist,
+      p.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist);
+    outLook.set(p.x, p.y + 0.6 + Math.max(0, (CAM_PITCH_DEFAULT - cam.pitch) * 7.5), p.z);
+  }
+  cine = createCinematics({ camera, followPose });
+
+  // --- WHAT EARNS A CINEMATIC ------------------------------------------------
+  //
+  // Big shots for big first times — reaching an island, the frozen north, a
+  // world boss, a Hollow warden — and a small title with no camera move for
+  // everything else worth naming. Nothing plays mid-fight, in a menu, with a
+  // rod in your hands or while you are dead; it waits for a quiet moment.
+  const ISLE_SUB = {
+    palm: 'A sandbar and a few leaning palms', shrine: 'An old gate stands on the rock',
+    wreck: 'Something big ran aground here', lantern: 'A beacon somebody still tends',
+    rock: 'The bones of an old reef', home: 'Your island. Build here, it is yours from the start',
+    hub: 'Thirty-five builders and one plaza',
+  };
+  const _cp = new THREE.Vector3(), _cl = new THREE.Vector3();
+  const boxH = (obj) => { const b = new THREE.Box3().setFromObject(obj); return Math.max(1.5, b.max.y - b.min.y); };
+  function quietMoment() {
+    if (!cine || cine.busy() || player.state.dead || player.state.busy || dialog.isOpen() || panels.anyOpen()) return false;
+    if (fishing.state.phase !== 'idle' || worldmap.isOpen?.()) return false;
+    const p = player.state.pos;
+    for (const e of enemyMgr.enemies) {
+      if (e.dead || e.isWorldBoss || e.state !== 'aggro') continue;
+      if ((e.mesh.position.x - p.x) ** 2 + (e.mesh.position.z - p.z) ** 2 < 18 * 18) return false;
+    }
+    return true;
+  }
+
+  function islandShot(I) {
+    const c = new THREE.Vector3(I.x, I.y, I.z);
+    const p = player.state.pos;
+    const a0 = Math.atan2(p.x - I.x, p.z - I.z);
+    const hub = I.kind === 'hub';
+    const R = hub ? 34 : Math.max(13, I.r * 1.7 + 6);
+    const H = hub ? 17 : I.r * 0.55 + 6.5;
+    followPose(_cp, _cl);
+    const startPos = _cp.clone(), startLook = _cl.clone();
+    const firstPos = new THREE.Vector3(c.x + Math.sin(a0) * R, c.y + H, c.z + Math.cos(a0) * R);
+    cine.play({
+      slow: 0.25,
+      shots: [
+        { dur: 1.2, path: dolly(startPos, firstPos, startLook, c.clone().setY(c.y + 1.5)) },
+        { dur: 3.6, path: orbit(c, R, H, a0, a0 + (hub ? 0.8 : 1.1), 1.5, R * 0.92, H * 0.9) },
+      ],
+      card: {
+        kicker: I.kind === 'home' ? 'YOUR ISLAND' : hub ? 'THE BUILDERS’ ISLAND' : 'DISCOVERED',
+        title: (hub ? 'THE RIALO HUB' : I.name).toUpperCase(), sub: ISLE_SUB[I.kind] || '',
+        accent: hub ? '#8ff0d0' : '#ffd36a',
+      },
+      onStart: () => audio.sfx('quest_accept'),
+    });
+  }
+
+  function biomeShot(title, sub, kicker = 'ENTERING') {
+    const p = player.state.pos;
+    const f = player.state.facing;
+    followPose(_cp, _cl);
+    const ahead = new THREE.Vector3(p.x + Math.sin(f) * 22, p.y + 2, p.z + Math.cos(f) * 22);
+    const high = new THREE.Vector3(p.x - Math.sin(f) * 6, p.y + 15, p.z - Math.cos(f) * 6);
+    cine.play({
+      slow: 0.25,
+      shots: [{ dur: 3.8, path: dolly(_cp.clone(), high, _cl.clone(), ahead, easeOut) }],
+      card: { kicker, title, sub, accent: '#cfe8ff' },
+    });
+  }
+
+  function worldBossIntro(e) {
+    const def = WORLD_BOSSES[e.bossKind] || {};
+    const c = e.mesh.position.clone();
+    const H = boxH(e.mesh);
+    const p = player.state.pos;
+    const to = new THREE.Vector3(p.x - c.x, 0, p.z - c.z).normalize();
+    const R = H * 1.7 + 3;
+    const a0 = Math.atan2(to.x, to.z);
+    followPose(_cp, _cl);
+    const low = new THREE.Vector3(c.x + to.x * R, c.y + H * 0.35, c.z + to.z * R);
+    cine.play({
+      slow: 0.1,
+      shots: [
+        { dur: 1.4, path: dolly(_cp.clone(), low, _cl.clone(), c.clone().setY(c.y + H * 0.7), easeOut) },
+        { dur: 2.2, path: orbit(c, R, H * 0.35, a0, a0 + 0.6, H * 0.7, R * 1.15, H * 0.5) },
+      ],
+      card: { kicker: '⚠ WORLD BOSS', title: (e.bossName || def.name || 'BOSS').toUpperCase(), sub: def.title || '', accent: '#ff8a6a' },
+      onStart: () => { audio.sfx('roar'); addShake(0.35); },
+    });
+  }
+
+  function hollowBossIntro(plan) {
+    const e = hollowBoss;
+    if (!e || e.dead || !cine) return;
+    const b = WORLD_BOSSES[plan.boss] || {};
+    const c = e.mesh.position.clone();
+    const H = boxH(e.mesh);
+    const p = player.state.pos;
+    const to = new THREE.Vector3(p.x - c.x, 0, p.z - c.z).normalize();
+    const R = H * 1.6 + 2.5;
+    const a0 = Math.atan2(to.x, to.z);
+    followPose(_cp, _cl);
+    const low = new THREE.Vector3(c.x + to.x * R, c.y + H * 0.4, c.z + to.z * R);
+    cine.play({
+      slow: 0.08,
+      shots: [
+        { dur: 1.5, path: dolly(_cp.clone(), low, _cl.clone(), c.clone().setY(c.y + H * 0.65), easeOut) },
+        { dur: 2.3, path: orbit(c, R, H * 0.4, a0, a0 - 0.7, H * 0.65, R * 1.1, H * 0.55) },
+      ],
+      card: {
+        kicker: `FLOOR ${plan.floor} · ${KIND_WORD[plan.kind] || ''}`,
+        title: (b.name || 'THE WARDEN').toUpperCase(), sub: b.title || '',
+        accent: dungeon.DIFFICULTIES[plan.difficulty]?.color || '#ffd36a',
+      },
+      onStart: () => { audio.sfx('boss_spawn'); addShake(0.3); },
+    });
+  }
+
+  /** The stair's seal grinding open, on camera. Returns false if it cannot play. */
+  function hollowStairShot(run, th, then) {
+    const sp = dungeonWorld.stairSpot();
+    if (!sp || !cine || cine.busy() || player.state.dead) return false;
+    followPose(_cp, _cl);
+    const at = new THREE.Vector3(sp.x, sp.y, sp.z);
+    const eye = new THREE.Vector3(sp.x + 2.5, sp.y + 4.2, sp.z + 8.5);
+    const aim = new THREE.Vector3(sp.x, sp.y + 2.6, sp.z - 2.4);
+    cine.play({
+      slow: 0.2,
+      shots: [
+        { dur: 1.1, path: dolly(_cp.clone(), eye, _cl.clone(), aim, easeOut) },
+        { dur: 1.6, path: dolly(eye, eye.clone().add(new THREE.Vector3(-2.5, -0.6, -2.2)), aim, aim.clone().setY(at.y + 2.2)) },
+      ],
+      card: { kicker: `FLOOR ${run.floor} CLEARED`, title: 'THE STAIR UNSEALS', sub: th?.name || '', accent: '#ffd36a' },
+      onEnd: then,
+    });
+    return true;
+  }
+
+  let discover = null;
+  let cineT = 0;
+  const placeShown = new Map();      // repeatable small titles: id -> last time
+  function cineTick(dt) {
+    cineT -= dt;
+    if (cineT > 0 || !cine) return;
+    cineT = 0.3;
+    const p = player.state.pos;
+    // world boss: the first time you come within sight of each one
+    const wb = bossState.current;
+    if (wb && !wb.dead && !wb.cineDone && !inHollow) {
+      const d = Math.hypot(wb.mesh.position.x - p.x, wb.mesh.position.z - p.z);
+      if (d < 26 && !cine.busy() && !player.state.dead && !dialog.isOpen()) { wb.cineDone = true; worldBossIntro(wb); return; }
+    }
+    if (inHollow || !quietMoment()) return;
+    if (!discover) {
+      discover = [];
+      for (const I of terrain.islands || []) discover.push({ id: `isle:${I.name}`, x: I.x, z: I.z, r: I.r + 7, big: () => islandShot(I) });
+      for (const n of landmarks.named || []) {
+        discover.push({ id: `place:${n.title}:${Math.round(n.x)}`, x: n.x, z: n.z, r: n.r,
+          small: () => cine.placeTitle('DISCOVERED', n.title, n.sub) });
+      }
+    }
+    for (const d of discover) {
+      if (cineSeen.has(d.id)) continue;
+      if ((d.x - p.x) ** 2 + (d.z - p.z) ** 2 > d.r * d.r) continue;
+      cineSeen.add(d.id);
+      if (d.big) d.big(); else d.small();
+      return;
+    }
+    // the frozen north, once
+    if (!cineSeen.has('biome:snow') && terrain.inSnow?.(p.x, p.z)) {
+      cineSeen.add('biome:snow');
+      biomeShot('THE FROSTED NORTH', 'Where the snow stays, and so do the Frostlings');
+      return;
+    }
+    // the open sea, once, as a title: you are usually steering
+    if (!cineSeen.has('biome:sea') && terrain.inOcean?.(p.x, p.z) && (watercraft.state.active || player.state.swimming)) {
+      cineSeen.add('biome:sea');
+      cine.placeTitle('ENTERING', 'THE SOUTHERN SEA', 'Nine islands, and whatever lives under them');
+      return;
+    }
+    // coming home to the plaza: a small title, at most every five minutes
+    const sp = terrain.spawn;
+    const inPlaza = (sp.x - p.x) ** 2 + (sp.z - p.z) ** 2 < 12.5 * 12.5;
+    const lastPlaza = placeShown.get('plaza') ?? -1e9;
+    if (inPlaza && !placeShown.get('inPlaza') && time - lastPlaza > 300) {
+      placeShown.set('plaza', time);
+      cine.placeTitle('ANAVELA', 'THE TEMPLE PLAZA', 'Where every road begins');
+    }
+    placeShown.set('inPlaza', inPlaza);
+  }
+
   function updateCamera(dt) {
+    if (cine.update(dt)) return;
     const p = player.state.pos;
     if (input.keys.has('KeyQ')) cam.yaw += dt * 1.8;
     if (input.keys.has('KeyE')) cam.yaw -= dt * 1.8;
@@ -3481,18 +3699,24 @@ const CAM_PITCH_DEFAULT = 0.98;
   }
 
   // --- fishing ---
+  const fishGauge = createFishGauge();
   const fishing = createFishing({
-    scene, terrain, player, particles, audio,
+    scene, terrain, player, particles, audio, camera,
     hooks: {
       isNight: () => { const hr = lighting.state.minutes / 60; return hr >= 19.5 || hr < 5.5; },
       skillBonus: (key) => skilltree.bonus('fishing', key),
-      onCatch(fishId, xp, rarity = 'common', extra = false) {
+      // REELING is a HOLD: F on a keyboard, the star button on a phone
+      isReeling: () => input.keys.has('KeyF') || !!touchUI?.isCtxHeld?.(),
+      touch: () => touch,
+      camYaw: () => cam.yaw,
+      gauge: (d) => fishGauge.set(d),
+      onCatch(fishId, xp, rarity = 'common', extra = false, info = null) {
         inventory.add(fishId, 1);
         const gained = Math.round(xp * xpMult());
         // A CATCH CARD, not a toast. "You got something" told the player
         // nothing — not the species, not whether it was worth keeping.
         if (extra) hud.toastText(`A second ${ITEMS[fishId].name} came up with it!`);
-        else hud.showCatch(fishId, rarity, gained, ITEMS[fishId].sell || 0);
+        else hud.showCatch(fishId, rarity, gained, ITEMS[fishId].sell || 0, info);
         leveling.addXp(gained);
         quests.event('fish');
         dailies.event('fish', {
@@ -3506,6 +3730,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       onMiss(msg) { hud.toastText(msg); },
     },
   });
+  fishing.load(saved?.fishing);
 
   // --- MULTIPLAYER ---------------------------------------------------------
   //
@@ -3859,8 +4084,13 @@ const CAM_PITCH_DEFAULT = 0.98;
     }
 
     if (fishing.state.afk) return [{ kind: 'fish', label: 'Stop AFK fishing', run: () => fishing.cancel() }];
-    if (fishing.state.phase === 'bite') return [{ kind: 'fish', label: 'Reel in!', run: () => fishing.strike() }];
-    if (fishing.state.phase === 'waiting') return [{ kind: 'fish', label: 'Wait for it...', run: () => fishing.strike() }];
+    if (fishing.state.phase === 'bite') return [{ kind: 'fish', label: 'STRIKE!', run: () => fishing.strike() }];
+    if (fishing.state.phase === 'waiting') return [{ kind: 'fish', label: 'Wait for the float to go under…', run: () => fishing.strike() }];
+    if (fishing.state.phase === 'casting') return [{ kind: 'fish', label: 'Casting…', run: () => {} }];
+    // the fight is a HOLD, read every frame by fishing.js; the button only has
+    // to exist so a phone has something to hold down
+    if (fishing.state.phase === 'fight') return [{ kind: 'fish', label: touch ? 'Hold to reel' : 'Hold F to reel', run: () => {} }];
+    if (fishing.state.phase === 'landing' || fishing.state.phase === 'showing') return [];
 
     const near = (spot, r = 3.2) => spot && ((spot.x - player.state.pos.x) ** 2 + (spot.z - player.state.pos.z) ** 2 < r * r);
 
@@ -4348,6 +4578,8 @@ const CAM_PITCH_DEFAULT = 0.98;
         pet: pets.state.active,
         mount: mounts.state.active,
         wardrobe: wardrobe.serialize(),
+        fishing: fishing.serialize(),
+        cineSeen: [...cineSeen],
         gachaPity: gacha.pity,
         dailies: dailies.serialize(),
         index: index.serialize(),
@@ -4386,7 +4618,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // can be forced and its effect measured rather than assumed
     adaptive, applyPixelRatio, composer, bloomPass, aoPass,
     resetStats, resetSkillPoints,
-    dungeon, dungeonWorld, hollowGate,
+    dungeon, dungeonWorld, hollowGate, cine, cineSeen, fishGauge,
     enterHollow, leaveHollow, descendHollow, openHollowGate, populateFloor,
     dailies, gamepass, story, skilltree, index, landmarks, watercraft, isles, hud, wind,
     net, remote, chat, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
@@ -4706,10 +4938,12 @@ const CAM_PITCH_DEFAULT = 0.98;
     time += dt;
 
     player.state.dmgMult = totalMult();
-    player.update(dt, input, cam.yaw);
+    // a cinematic owns the hero's hands as well as the camera
+    const liveInput = cine.active() ? NO_INPUT : input;
+    player.update(dt, liveInput, cam.yaw);
     // riding: watercraft owns the hull's heading, speed, height and wake
     if (watercraft.state.active) {
-      watercraft.drive(dt, player, player.moveVecFor(input, cam.yaw), time);
+      watercraft.drive(dt, player, player.moveVecFor(liveInput, cam.yaw), time);
     }
     watercraft.update(dt, time);
     dungeonWorld.update(dt, time);
@@ -4738,6 +4972,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       }
     }
     autoBattleTick(dt);
+    cineTick(dt);
 
     // moving cancels an in-progress fishing session
     if (fishing.state.phase !== 'idle' && (input.joy.active ||
@@ -4766,8 +5001,10 @@ const CAM_PITCH_DEFAULT = 0.98;
     player.setNightGlow?.(nightAmt);
 
     tickWorldBoss(dt);
-    enemyMgr.update(dt, player.state, time, isNight);
-    projectiles.update(dt, enemyMgr.enemies, player.state, particles);
+    // the world slows (not stops) while a cinematic shot is on screen
+    const worldDt = dt * cine.worldScale();
+    enemyMgr.update(worldDt, player.state, time, isNight);
+    projectiles.update(worldDt, enemyMgr.enemies, player.state, particles);
     pickups.update(dt, player.state.pos, (id, count) => {
       inventory.add(id, count);
       hud.toast(id, count);
@@ -4789,6 +5026,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       remote.update(dt, net.state.players, player.state.pos);
     }
     wildlife.update(dt, player.state.pos, time);
+    if (!inHollow) ambience.update(dt, player.state.pos, camera, nightAmt);
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
     lighting.state.weatherDim = weather.state.intensity;

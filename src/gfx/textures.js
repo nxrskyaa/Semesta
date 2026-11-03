@@ -84,7 +84,7 @@ export const TILE = {
   DIRT: 4, STONE: 5, GRASS_SIDE: 6, DIRT_SIDE: 7,
   STONE_SIDE: 8, PATH_SIDE: 9, MOSS: 10, SHORE: 11,
   FLOWER_A: 12, FLOWER_B: 13, PATH_EDGE: 14, SNOW: 15,
-  PLAZA: 16,
+  PLAZA: 16, SAND: 17,
 };
 const ATLAS_GRID = 5, TILE_PX = 16;
 
@@ -167,6 +167,22 @@ export function makeTerrainAtlas() {
   { // wet shore edge
     const [x, y] = at(TILE.SHORE);
     noisyFill(ctx, x, y, 16, 16, [PALETTE.dirtDark, PALETTE.dirt[2], '#5c4436'], rng, 0.4); }
+  { // BEACH SAND — warm and pale, with wind ripples and the odd shell. The
+    // islands were grass right down to the waterline, which made every one of
+    // them read as a piece of the mainland that had floated off.
+    const [x, y] = at(TILE.SAND);
+    noisyFill(ctx, x, y, 16, 16, ['#ead6a4', '#e3cc96', '#f0dfb2', '#dcc38c'], rng, 0.3);
+    for (let r = 0; r < 4; r++) {                    // ripple lines, slightly wavy
+      const ry = y + 2 + r * 4;
+      for (let i = 0; i < 16; i++) {
+        if ((i + r * 3) % 7 === 6) continue;
+        ctx.fillStyle = 'rgba(176,142,92,0.38)';
+        ctx.fillRect(x + i, ry + (((i >> 2) + r) % 2), 1, 1);
+      }
+    }
+    ctx.fillStyle = '#fff4dc'; ctx.fillRect(x + 4 + Math.floor(rng() * 8), y + 3 + Math.floor(rng() * 9), 1, 1);
+    ctx.fillStyle = '#f2b8a8'; ctx.fillRect(x + 2 + Math.floor(rng() * 11), y + 2 + Math.floor(rng() * 11), 2, 1);
+  }
   { // fresh snow — soft white with pale blue shading and sparkles
     const [x, y] = at(TILE.SNOW);
     noisyFill(ctx, x, y, 16, 16, ['#eef4f8', '#e2ecf4', '#f6fafc'], rng, 0.2);

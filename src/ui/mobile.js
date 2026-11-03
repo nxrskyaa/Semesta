@@ -299,6 +299,13 @@ export function createTouchControls(input, skillIds, callbacks) {
   on('.jump', () => callbacks.onJump?.());
   on('.pot', callbacks.onPotion);
   on('.ctx', () => callbacks.onInteract?.());
+  // the star button is also HELD (reeling a fish in), so it reports its state
+  let ctxHeld = false;
+  {
+    const c = root.querySelector('.ctx');
+    c.addEventListener('touchstart', () => { ctxHeld = true; }, { passive: true });
+    for (const ev of ['touchend', 'touchcancel']) c.addEventListener(ev, () => { ctxHeld = false; }, { passive: true });
+  }
   on('.ctx2', () => callbacks.onInteract2?.());
   on('.afk', () => callbacks.onAfkFish?.());
   on('.closebtn', () => callbacks.onCloseMenu?.());
@@ -374,5 +381,5 @@ export function createTouchControls(input, skillIds, callbacks) {
     old.forEach((o, i) => { if (fresh[i]) btns.replaceChild(fresh[i], o); });
   }
 
-  return { update, setPrompt, setMenuOpen, setSkills, root };
+  return { update, setPrompt, setMenuOpen, setSkills, root, isCtxHeld: () => ctxHeld };
 }

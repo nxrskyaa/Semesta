@@ -205,10 +205,14 @@ body.online.touch #hud .qtrack { top: 187px; }
    "+1 item" told the player nothing: not the species, not the rarity, not
    whether it was worth keeping. */
 #hud .catch {
-  position: absolute; left: 50%; top: 26%; transform: translateX(-50%);
+  /* high, because the hero is now holding the fish up in the middle of the
+     screen while this is on it */
+  position: absolute; left: 50%; top: 9%; transform: translateX(-50%);
   display: none; z-index: 58; pointer-events: none; text-align: center;
 }
 #hud .catch.show { display: block; }
+/* a phone's left column (XP, menu, weapon, buffs) runs down to ~196px */
+body.touch #hud .catch { top: 23%; }
 #hud .catch .cbox {
   position: relative; padding: 12px 22px 10px; min-width: 170px;
   background: linear-gradient(180deg, rgba(12,20,26,0.95), rgba(6,10,14,0.96));
@@ -229,6 +233,11 @@ body.online.touch #hud .qtrack { top: 187px; }
 @keyframes c-flip { from { transform: rotateY(180deg) scale(0.5); } }
 #hud .catch .cn { font-size: 11px; color: #f0f4e6; margin-bottom: 5px; }
 #hud .catch .cs { font-size: 8px; letter-spacing: 1px; color: #9fb08c; }
+#hud .catch .cz { font-size: 9px; letter-spacing: 1px; color: #d6e6ee; margin: -1px 0 5px; }
+#hud .catch .crec { font-family: var(--font-display, inherit); font-size: 9px; letter-spacing: 2px; color: #ffd36a;
+  margin-bottom: 5px; animation: c-rec 0.6s steps(2) infinite; }
+#hud .catch .crec.first { color: #9fe79a; animation: none; }
+@keyframes c-rec { 50% { color: #fff3cf; } }
 #hud .catch .cs b { color: #ffe27a; }
 #hud .catch .spark {
   position: absolute; width: 5px; height: 5px; background: var(--rc);
@@ -980,7 +989,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
   // --- CATCH CARD -----------------------------------------------------------
   const catchEl = root.querySelector('.catch');
   let catchTimer = null;
-  function showCatch(fishId, rarity, xp, sell) {
+  function showCatch(fishId, rarity, xp, sell, info = null) {
     clearTimeout(catchTimer);
     const R = RARITY[rarity] || RARITY.common;
     const big = rarity === 'legendary' || rarity === 'mythic' || rarity === 'epic';
@@ -994,6 +1003,8 @@ export function createHUD(root, { inventory, character, forge, audio }) {
       <div class="cr">${'◆'.repeat(RARITY_ORDER.indexOf(rarity) + 1)} ${R.name.toUpperCase()}</div>
       <img src="${itemIconUrl(fishId)}">
       <div class="cn">${ITEMS[fishId].name}</div>
+      ${info ? `<div class="cz">${info.cm.toFixed(1)} cm · ${info.kg < 1 ? `${Math.round(info.kg * 1000)} g` : `${info.kg.toFixed(2)} kg`}</div>` : ''}
+      ${info?.record ? '<div class="crec">★ NEW RECORD ★</div>' : info?.first ? '<div class="crec first">FIRST CATCH</div>' : ''}
       <div class="cs">+<b>${xp}</b> XP · worth <b>${sell}c</b></div>`;
     catchEl.classList.remove('out');
     catchEl.classList.add('show');

@@ -187,7 +187,14 @@ export function getQuality() {
     maxLights: det.maxLights,
     critterScale: det.critters,
     waterSegments: det.waterSeg,
-    fogDensity: det.fogDensity,
+    // FOG FOLLOWS THE DRAW DISTANCE, not the detail tier. It is FogExp2, so
+    // the fogged fraction is 1 - exp(-(d * k)^2): at the old flat 0.024 the
+    // hero, 17 units from the camera, was already 15% fog and everything 40
+    // units out was 60% gone — the whole world read as milk. 1.9 / far still
+    // puts 97% fog at the far plane, which is all fog was ever needed for (no
+    // hard cut where geometry stops), and leaves the middle distance clear:
+    // 110 -> 0.0173, 160 -> 0.0119, 220 -> 0.0086. Never thicker than the tier.
+    fogDensity: Math.min(det.fogDensity, 1.9 / KNOBS.view[choiceOf('view')]),
     drawDistance: KNOBS.view[choiceOf('view')],
   };
 }

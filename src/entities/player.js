@@ -1957,19 +1957,39 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       // both hands on the rod, weight settled, a slow breathing sway. The rod
       // itself is animated by fishing.js; this is only the body under it.
       const t = state.idleT;
-      vis.rotation.x = 0.06;
-      vis.position.y = visBase;
-      parts.legL.rotation.x = 0.1; parts.legR.rotation.x = -0.08;
-      parts.legL.rotation.z = 0.1; parts.legR.rotation.z = -0.1;
-      if (state.attackT <= 0) {
-        parts.armR.rotation.x = -1.15 + Math.sin(t * 1.2) * 0.03;
-        parts.armR.rotation.z = -0.2;
-        parts.armL.rotation.x = -1.0 + Math.sin(t * 1.2) * 0.03;
-        parts.armL.rotation.z = 0.36;                  // reaching across to the rod
+      if (state.fishLift) {
+        // HOLDING THE CATCH UP — both arms straight overhead, a little bounce
+        // on the heels. The fish itself is placed by fishing.js above the head.
+        const b = Math.abs(Math.sin(t * 6)) * 0.03;
+        vis.rotation.x = -0.06;
+        vis.position.y = visBase + b;
+        parts.legL.rotation.set(0, 0, 0.06); parts.legR.rotation.set(0, 0, -0.06);
+        // NOT straight up: a chibi head is bigger than the arms are long, so
+        // arms held vertically disappear behind it and the fish floats with
+        // nothing holding it. Raised forward, the hands show either side of the
+        // face and the fish sits in them.
+        parts.armL.rotation.set(-2.35, 0, 0.42); parts.armR.rotation.set(-2.35, 0, -0.42);
+        parts.head.rotation.set(-0.22, 0, 0);
+        if (parts.capeMesh) parts.capeMesh.rotation.x = 0.2;
+      } else {
+        // THE FIGHT: lean back against the pull, brace the front leg, and
+        // crank the reel with the right hand while it is held
+        const s = state.fishStrain || 0;
+        const crank = state.fishReel ? t * 15 : 0;
+        vis.rotation.x = 0.06 - s * 0.3;
+        vis.position.y = visBase - s * 0.04;
+        parts.legL.rotation.x = 0.1 + s * 0.38; parts.legR.rotation.x = -0.08 - s * 0.28;
+        parts.legL.rotation.z = 0.1; parts.legR.rotation.z = -0.1;
+        if (state.attackT <= 0) {
+          parts.armR.rotation.x = -1.15 - s * 0.32 + Math.sin(t * 1.2) * 0.03 + (state.fishReel ? Math.sin(crank) * 0.13 : 0);
+          parts.armR.rotation.z = -0.2 + (state.fishReel ? Math.cos(crank) * 0.1 : 0);
+          parts.armL.rotation.x = -1.0 - s * 0.42 + Math.sin(t * 1.2) * 0.03;
+          parts.armL.rotation.z = 0.36;                  // reaching across to the rod
+        }
+        parts.head.rotation.x = 0.16 - s * 0.12;         // watching the float
+        parts.head.rotation.z = s > 0.6 ? Math.sin(t * 20) * 0.03 * s : 0;
+        if (parts.capeMesh) parts.capeMesh.rotation.x = 0.28 + s * 0.2 + Math.sin(t * 1.1) * 0.05;
       }
-      parts.head.rotation.x = 0.16;                    // watching the float
-      parts.head.rotation.z = 0;
-      if (parts.capeMesh) parts.capeMesh.rotation.x = 0.28 + Math.sin(t * 1.1) * 0.05;
     } else if (state.workPose) {
       // STIRRING vs HAMMERING. Both are one arm doing the work and the other
       // steadying, but the RHYTHM is the whole difference: a spoon goes round at

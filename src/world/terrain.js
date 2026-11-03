@@ -413,7 +413,7 @@ export class Terrain {
           if (this.height[i] > WATER_LEVEL) {
             this.island[i] = 1;
             this.ocean[i] = 0;
-            if (this.type[i] === 5) this.type[i] = 2;
+            if (this.type[i] === 5) this.type[i] = 9;
           }
         }
       }
@@ -449,7 +449,7 @@ export class Terrain {
           if (this.height[i] > WATER_LEVEL) {
             this.island[i] = 1;
             this.ocean[i] = 0;
-            if (this.type[i] === 5) this.type[i] = 2;   // was water: make it sand
+            if (this.type[i] === 5) this.type[i] = 9;   // was water: make it sand
           } else {
             this.type[i] = 5;
           }
@@ -470,6 +470,43 @@ export class Terrain {
         const wobble = valueNoise2(ix * 0.6, iz * 0.6, SEED + 91) * 1.6;
         if (Math.hypot(dx, dz) > PR + wobble - 0.8) continue;
         this.type[i] = 8;
+      }
+    }
+
+    // an island has no bare dirt: the noise patches that are dirt on the
+    // mainland become sand out here
+    for (let i = 0; i < S * S; i++) if (this.island[i] === 1 && this.type[i] === 2) this.type[i] = 9;
+
+    // BEACHES. Sand wherever dry land meets the SEA — every island all the way
+    // round, and the mainland's ocean coast in a band that widens and narrows
+    // on a noise wobble so it reads as a beach rather than a painted stripe.
+    // Lakes keep their grassy banks: fresh water does not make beaches here.
+    // Paths and the plaza are left alone, and so is snow.
+    const BR = 3;
+    const sea = (j) => this.ocean[j] === 1 && this.height[j] <= WATER_LEVEL;
+    for (let iz = 0; iz < S; iz++) {
+      for (let ix = 0; ix < S; ix++) {
+        const i = this.idx(ix, iz);
+        if (this.height[i] <= WATER_LEVEL) continue;
+        const t = this.type[i];
+        if (t === 1 || t === 8 || t === 9 || this.snow[i]) continue;
+        let best = 99;
+        for (let dz = -BR; dz <= BR && best > 1; dz++) {
+          for (let dx = -BR; dx <= BR; dx++) {
+            const jx = ix + dx, jz = iz + dz;
+            if (!this.inBounds(jx, jz)) continue;
+            if (!sea(this.idx(jx, jz))) continue;
+            best = Math.min(best, Math.hypot(dx, dz));
+          }
+        }
+        if (best > BR) continue;
+        const isle = this.island[i] === 1;
+        const reach = (isle ? 2.3 : 1.6) + valueNoise2(ix * 0.35, iz * 0.35, SEED + 131) * (isle ? 1.2 : 1.6);
+        // The mainland coast stands 3-9 blocks above the sea (measured: the
+        // commonest step is 6), so a low ceiling there gave 14 sand cells on
+        // the whole coast. A steep face is drawn as rock by the mesher anyway,
+        // so the sand cannot climb a cliff whatever this allows.
+        if (best <= reach && this.height[i] <= WATER_LEVEL + (isle ? 3 : 7)) this.type[i] = 9;
       }
     }
   }
@@ -516,7 +553,7 @@ export class Terrain {
   }
 }
 
-const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE, TILE.FLOWER_A, TILE.SNOW, TILE.PLAZA];
+const TOP_TILE = [TILE.GRASS_A, TILE.PATH, TILE.DIRT, TILE.STONE, TILE.MOSS, TILE.SHORE, TILE.FLOWER_A, TILE.SNOW, TILE.PLAZA, TILE.SAND];
 
 export function buildTerrainMesh(terrain, atlas) {
   const S = terrain.size;

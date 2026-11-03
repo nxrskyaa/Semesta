@@ -572,6 +572,12 @@ export function createAudio() {
     splash:     () => { tone('sine', 250, 90, 0.2, 0.06); tone('sine', 170, 70, 0.16, 0.04, ctx ? ctx.currentTime + 0.05 : null); },
     bite:       () => { tone('sine', 620, 640, 0.1, 0.11); tone('sine', 880, 900, 0.13, 0.11, ctx ? ctx.currentTime + 0.12 : null); },
     catch:      () => { [523, 659, 784, 1046].forEach((f, i) => tone('triangle', f, f, 0.12, 0.11, ctx ? ctx.currentTime + i * 0.07 : null)); },
+    nibble:     () => tone('sine', 540, 600, 0.06, 0.045),
+    hookset:    () => { tone('sine', 260, 620, 0.12, 0.09); tone('sine', 180, 120, 0.18, 0.06, ctx ? ctx.currentTime + 0.05 : null); },
+    reel:       () => tone('triangle', 1900, 1700, 0.022, 0.022),
+    reelrun:    () => { for (let i = 0; i < 6; i++) tone('triangle', 2300 - i * 60, 2100 - i * 60, 0.02, 0.02, ctx ? ctx.currentTime + i * 0.03 : null); },
+    linesnap:   () => { tone('triangle', 1500, 260, 0.16, 0.08); tone('sine', 120, 60, 0.2, 0.06, ctx ? ctx.currentTime + 0.04 : null); },
+    fishjump:   () => { tone('sine', 230, 80, 0.26, 0.07); tone('sine', 560, 300, 0.12, 0.035, ctx ? ctx.currentTime + 0.03 : null); },
     // world & quests
     chest:      () => { tone('square', 300, 500, 0.1, 0.12); [660, 880, 1100].forEach((f, i) => tone('triangle', f, f, 0.12, 0.1, ctx ? ctx.currentTime + 0.1 + i * 0.07 : null)); },
     talk:       () => { tone('square', 520, 660, 0.05, 0.06); },

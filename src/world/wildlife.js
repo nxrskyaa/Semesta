@@ -166,6 +166,65 @@ function buildBird(c, wingC) {
   return g;
 }
 
+// ---------------------------------------------------------------------------
+// BEACH: a crab — a domed shell on six legs, two claws, eyes on stalks. It
+// walks SIDEWAYS (its body faces +Z, it travels along X), which is the single
+// detail that makes it a crab rather than a small red beetle.
+// ---------------------------------------------------------------------------
+const CRAB_SHELL_GEO = new THREE.SphereGeometry(0.16, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+function buildCrab(c) {
+  const g = new THREE.Group();
+  const shellMat = sharedMatLocal(c);
+  const shell = new THREE.Mesh(CRAB_SHELL_GEO, shellMat);
+  shell.scale.set(1.25, 0.7, 0.9);
+  shell.position.y = 0.06;
+  g.add(shell);
+  const under = box(0.32, 0.04, 0.2, '#f0c8a0');
+  under.position.y = 0.06;
+  g.add(under);
+  for (const sx of [-1, 1]) {
+    const stalk = box(0.02, 0.08, 0.02, c);
+    stalk.position.set(sx * 0.06, 0.15, 0.09);
+    g.add(stalk);
+    const eye = box(0.045, 0.045, 0.045, '#1a1418');
+    eye.position.set(sx * 0.06, 0.2, 0.09);
+    g.add(eye);
+    const glint = box(0.018, 0.018, 0.01, '#ffffff');
+    glint.position.set(sx * 0.06 + 0.01, 0.21, 0.115);
+    g.add(glint);
+  }
+  const claws = [];
+  for (const sx of [-1, 1]) {
+    const piv = new THREE.Group();
+    piv.position.set(sx * 0.17, 0.07, 0.1);
+    const arm = box(0.05, 0.04, 0.1, c);
+    arm.position.z = 0.05;
+    const pincer = box(0.09, 0.07, 0.08, c);
+    pincer.position.set(sx * 0.02, 0.02, 0.12);
+    piv.add(arm, pincer);
+    g.add(piv);
+    claws.push(piv);
+  }
+  const legs = [];
+  for (const sx of [-1, 1]) {
+    for (let k = 0; k < 3; k++) {
+      const piv = new THREE.Group();
+      piv.position.set(sx * 0.15, 0.06, 0.04 - k * 0.07);
+      const leg = box(0.14, 0.022, 0.022, c);
+      leg.position.set(sx * 0.07, -0.03, 0);
+      leg.rotation.z = sx * -0.5;
+      piv.add(leg);
+      g.add(piv);
+      legs.push(piv);
+    }
+  }
+  g.userData = { claws, legs };
+  return g;
+}
+const CRAB_COLS = ['#e0603c', '#d9483a', '#e8884a', '#c8543c'];
+// songbirds, by plumage: body, wing
+const SONG_COLS = [['#a8754a', '#6e4a2c'], ['#5a86c8', '#38507c'], ['#e0c050', '#8a7030'], ['#c8604a', '#6a3a2c']];
+
 // one shell dome shared by every turtle
 const TURTLE_SHELL_GEO = new THREE.SphereGeometry(0.42, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
 
@@ -309,6 +368,57 @@ export function createWildlife(scene, terrain, particles) {
     group.add(m);
     birds.push({ m, cx, cz, r: 6 + rnd() * 9, a: rnd() * 6.28, sp: 0.32 + rnd() * 0.3, y: 6 + rnd() * 5, beat: rnd() * 6 });
   }
+
+  // --- BEACH CRABS: on the sand, all round the islands and the sea coast ----
+  const crabs = [];
+  const N_CRAB = Math.round(26 * D);
+  const sandCell = (tries = 120) => {
+    for (let i = 0; i < tries; i++) {
+      const x = (rnd() - 0.5) * (S - 10), z = (rnd() - 0.5) * (S - 10);
+      const [ix, iz] = terrain.cellOf(x, z);
+      if (!terrain.inBounds(ix, iz)) continue;
+      if (terrain.type[terrain.idx(ix, iz)] !== 9) continue;
+      if (terrain.heightCell(ix, iz) <= WATER_LEVEL) continue;
+      return { x, z };
+    }
+    return null;
+  };
+  for (let i = 0; i < N_CRAB; i++) {
+    const c = sandCell(); if (!c) continue;
+    const m = buildCrab(CRAB_COLS[Math.floor(rnd() * CRAB_COLS.length)]);
+    m.scale.setScalar(0.85 + rnd() * 0.5);
+    m.position.set(c.x, terrain.surfaceY(c.x, c.z), c.z);
+    m.rotation.y = rnd() * Math.PI * 2;
+    group.add(m);
+    crabs.push({ m, home: c, t: rnd() * 5, move: 0, side: 1, hide: 0, wave: 0 });
+  }
+
+  // --- SONGBIRDS: small flocks pecking in the grass, that scatter -----------
+  const song = [];
+  const N_FLOCK = Math.round(7 * D);
+  const grassCell = () => {
+    for (let i = 0; i < 80; i++) {
+      const c = landCell(); if (!c) return null;
+      const [ix, iz] = terrain.cellOf(c.x, c.z);
+      const t = terrain.type[terrain.idx(ix, iz)];
+      if (t === 0 || t === 6 || t === 4) return c;
+    }
+    return null;
+  };
+  for (let f = 0; f < N_FLOCK; f++) {
+    const c = grassCell(); if (!c) continue;
+    const [bc, wc] = SONG_COLS[f % SONG_COLS.length];
+    const flock = { x: c.x, z: c.z, birds: [], state: 'ground', t: 0, rest: 18 + rnd() * 25, from: null, to: null, dur: 0 };
+    const n = 3 + Math.floor(rnd() * 3);
+    for (let k = 0; k < n; k++) {
+      const m = buildBird(bc, wc);
+      m.scale.setScalar(0.55);
+      group.add(m);
+      flock.birds.push({ m, ox: (rnd() - 0.5) * 2.2, oz: (rnd() - 0.5) * 2.2, peck: rnd() * 6, hop: 0, dir: rnd() * 6.28 });
+    }
+    song.push(flock);
+  }
+  const _sv = new THREE.Vector3();
 
   function update(dt, playerPos, time) {
     // Animals well outside view are simulated at zero cost: their pose is
@@ -477,6 +587,134 @@ export function createWildlife(scene, terrain, particles) {
       const flap = gliding ? 0.05 : Math.sin(b.beat) * 0.7;
       b.m.userData.wings.children.forEach((w) => { w.rotation.x = flap * w.userData.side; });
     }
+
+    // --- CRABS: scuttle sideways, wave a claw, bolt for the water ----------
+    for (const c of crabs) {
+      const m = c.m;
+      const dx = m.position.x - playerPos.x, dz = m.position.z - playerPos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > FAR2) continue;
+      c.t += dt;
+      if (c.hide > 0) {
+        // gone under: sink, wait, then come back up at home
+        c.hide -= dt;
+        if (m.visible) {
+          m.position.y -= dt * 0.8;
+          if (m.position.y < WATER_Y - 0.4) m.visible = false;
+        } else if (c.hide <= 0 && d2 > 64) {
+          m.position.set(c.home.x, terrain.surfaceY(c.home.x, c.home.z), c.home.z);
+          m.visible = true;
+        } else if (c.hide <= 0) c.hide = 1;
+        continue;
+      }
+      let speed = 0;
+      if (d2 < 4.8 * 4.8) {
+        // spotted: go sideways, AWAY — the body turns side-on to you first
+        const away = Math.atan2(dx, dz);
+        m.rotation.y = away - Math.PI / 2;
+        c.side = 1;
+        speed = 3.4;
+        c.move = 0.4;
+      } else if (c.move > 0) {
+        c.move -= dt;
+        speed = 1.3;
+      } else if (Math.random() < dt * 0.5) {
+        c.move = 0.4 + Math.random() * 1.1;
+        c.side = Math.random() < 0.5 ? -1 : 1;
+        // drift back toward home if it has wandered
+        const hx = c.home.x - m.position.x, hz = c.home.z - m.position.z;
+        if (hx * hx + hz * hz > 9) { m.rotation.y = Math.atan2(hx, hz) - Math.PI / 2; c.side = 1; }
+        else m.rotation.y += (Math.random() - 0.5) * 0.8;
+      }
+      const ud = m.userData;
+      if (speed > 0) {
+        // sideways: the body's +X, rotated by its heading
+        const sx = Math.cos(m.rotation.y) * c.side, sz = -Math.sin(m.rotation.y) * c.side;
+        const nx = m.position.x + sx * speed * dt, nz = m.position.z + sz * speed * dt;
+        if (terrain.isWater(nx, nz)) {
+          if (d2 < 7 * 7) { c.hide = 7 + Math.random() * 6; particles?.burst?.(m.position.clone(), '#d8f0f4', 4, 1, 4, 0.3); continue; }
+          c.move = 0;
+        } else if (terrain.walkable(nx, nz, m.position.y + 1)) {
+          m.position.x = nx; m.position.z = nz;
+          m.position.y = terrain.surfaceY(nx, nz);
+        } else c.move = 0;
+        const w = c.t * 22;
+        ud.legs.forEach((l, k) => { l.rotation.z = Math.sin(w + k * 1.7) * 0.45; });
+        ud.claws.forEach((cl) => { cl.rotation.x = -0.2; });
+      } else {
+        ud.legs.forEach((l) => { l.rotation.z *= 0.8; });
+        // the claw wave, now and then
+        if (c.wave <= 0 && Math.random() < dt * 0.25) c.wave = 1.2;
+        if (c.wave > 0) {
+          c.wave -= dt;
+          ud.claws[0].rotation.x = -0.9 - Math.sin(c.wave * 14) * 0.35;
+          ud.claws[1].rotation.x = -0.2 + Math.sin(c.wave * 9) * 0.15;
+        } else { ud.claws[0].rotation.x = 0; ud.claws[1].rotation.x = 0; }
+      }
+    }
+
+    // --- SONGBIRDS: peck, hop, and the whole flock goes up at once ----------
+    for (const f of song) {
+      const dx = f.x - playerPos.x, dz = f.z - playerPos.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > FAR2 && f.state === 'ground') continue;
+      f.t += dt;
+      if (f.state === 'ground') {
+        f.rest -= dt;
+        if (d2 < 5.5 * 5.5 || f.rest <= 0) {
+          // TAKE OFF: pick somewhere 14-28 units away that is open grass
+          let to = null;
+          for (let k = 0; k < 12 && !to; k++) {
+            const a = (d2 < 30 ? Math.atan2(dx, dz) : Math.random() * 6.28) + (Math.random() - 0.5) * 1.6;
+            const r = 14 + Math.random() * 14;
+            const x = f.x + Math.sin(a) * r, z = f.z + Math.cos(a) * r;
+            const [ix, iz] = terrain.cellOf(x, z);
+            if (!terrain.inBounds(ix, iz) || terrain.heightCell(ix, iz) <= WATER_LEVEL) continue;
+            const t = terrain.type[terrain.idx(ix, iz)];
+            if (t === 0 || t === 6 || t === 4) to = { x, z };
+          }
+          if (to) {
+            f.state = 'fly'; f.t = 0; f.from = { x: f.x, z: f.z }; f.to = to;
+            f.dur = Math.hypot(to.x - f.x, to.z - f.z) / 7.5;
+            f.rest = 20 + Math.random() * 30;
+          } else f.rest = 10;
+        }
+        for (const b of f.birds) {
+          const x = f.x + b.ox, z = f.z + b.oz;
+          b.peck += dt;
+          // a hop now and then, otherwise head-down pecking
+          if (b.hop <= 0 && Math.random() < dt * 0.6) { b.hop = 0.28; b.dir += (Math.random() - 0.5) * 2; }
+          let y = terrain.surfaceY(x, z) + 0.06;
+          if (b.hop > 0) {
+            b.hop -= dt;
+            const k = 1 - b.hop / 0.28;
+            y += Math.sin(k * Math.PI) * 0.18;
+            b.ox += Math.cos(b.dir) * dt * 0.9; b.oz -= Math.sin(b.dir) * dt * 0.9;
+            if (b.ox * b.ox + b.oz * b.oz > 2.4) { b.ox *= 0.9; b.oz *= 0.9; }
+          }
+          b.m.position.set(x, y, z);
+          b.m.rotation.y = b.dir;
+          b.m.rotation.z = Math.sin(b.peck * 9) > 0.6 ? -0.5 : 0;   // the peck
+          b.m.userData.wings.children.forEach((w) => { w.rotation.x = 0; });
+        }
+      } else {
+        const k = Math.min(1, f.t / f.dur);
+        const hx = f.from.x + (f.to.x - f.from.x) * k, hz = f.from.z + (f.to.z - f.from.z) * k;
+        const head = Math.atan2(f.to.z - f.from.z, f.to.x - f.from.x);
+        for (const [i, b] of f.birds.entries()) {
+          // each bird on its own slightly different line, so it reads as a flock
+          const lift = Math.sin(k * Math.PI) * (4 + (i % 3)) + Math.min(1, f.t * 3) * 0.4;
+          const x = hx + b.ox * (1 + Math.sin(k * Math.PI) * 0.6);
+          const z = hz + b.oz * (1 + Math.sin(k * Math.PI) * 0.6);
+          b.m.position.set(x, terrain.surfaceY(x, z) + 0.06 + lift + Math.sin(f.t * 9 + i) * 0.08, z);
+          b.m.rotation.y = -head;
+          b.m.rotation.z = 0.15 * Math.sin(k * Math.PI * 2);
+          const flap = Math.sin(f.t * 26 + i * 1.3) * 0.9;
+          b.m.userData.wings.children.forEach((w) => { w.rotation.x = flap * w.userData.side; });
+        }
+        if (k >= 1) { f.state = 'ground'; f.x = f.to.x; f.z = f.to.z; }
+      }
+    }
   }
 
   function dispose() {
@@ -486,6 +724,7 @@ export function createWildlife(scene, terrain, particles) {
 
   return {
     group, update, dispose,
-    count: land.length + sea.length + fish.length + birds.length + shoal.length,
+    count: land.length + sea.length + fish.length + birds.length + shoal.length + crabs.length + song.reduce((a, f) => a + f.birds.length, 0),
+    crabs, song,
   };
 }

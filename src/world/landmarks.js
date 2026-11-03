@@ -1646,12 +1646,19 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     return false;
   }
 
+  // PLACES WITH NAMES. A landmark you walk past without being told what it is
+  // is scenery; one that greets you with its name the first time you reach it
+  // is a PLACE, and the world map stops being the only way to learn the map.
+  // main.js shows the title when you first come within `r` of one.
+  const named = [];
+  const name = (m, title, sub, r = 11) => named.push({ title, sub, x: m.position.x, z: m.position.z, r });
+
   const windmill = buildWindmill();
-  if (place(windmill, S2 * 0.5, -S2 * 0.15, 1, 12, 3.5)) built.push(windmill);
+  if (place(windmill, S2 * 0.5, -S2 * 0.15, 1, 12, 3.5)) { built.push(windmill); name(windmill, 'THE OLD WINDMILL', 'Still turning, nobody knows for whom'); }
   const shrine = buildShrine();
-  if (place(shrine, -S2 * 0.45, S2 * 0.2, 1, 12, 3.5)) built.push(shrine);
+  if (place(shrine, -S2 * 0.45, S2 * 0.2, 1, 12, 3.5)) { built.push(shrine); name(shrine, 'THE HILL SHRINE', 'A gem that glows when no one is looking'); }
   const tower = buildRuinTower();
-  if (place(tower, S2 * 0.15, S2 * 0.5, 1, 12, 3)) built.push(tower);
+  if (place(tower, S2 * 0.15, S2 * 0.5, 1, 12, 3)) { built.push(tower); name(tower, 'THE FALLEN TOWER', 'Moss has had it longer than the Keepers did'); }
   // The schoolhouse is gone — it never had anything to do and it ate one of
   // the flattest sites on the map, which the island housing needs more.
   // MOVED OFF THE HOME ISLAND. The old target (S2*0.38, S2*0.22) sat 14.2 units
@@ -1663,7 +1670,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   // and out of the winter biome so the torches read against green rather than
   // white. The jitter is tighter (8) because the pocket is a good one.
   const heart = buildHeartTorches();
-  if (place(heart, -S2 * 0.26, -S2 * 0.38, 2, 8, 4)) built.push(heart);
+  if (place(heart, -S2 * 0.26, -S2 * 0.38, 2, 8, 4)) { built.push(heart); name(heart, 'THE HEART GARDEN', 'Its torches are lit every night'); }
   // the Rialo monument stands right at the basecamp so nobody misses it —
   // just outside the village circle, plaque facing the well
   const rialo = buildRialoMonument();
@@ -1674,22 +1681,22 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   }
   // festival plaza (south) & watchtower (east) fill the quieter stretches
   const festival = buildFestival();
-  if (place(festival, S2 * 0.05, S2 * 0.6, 2, 12, 4.5, 0.6)) built.push(festival);
+  if (place(festival, S2 * 0.05, S2 * 0.6, 2, 12, 4.5, 0.6)) { built.push(festival); name(festival, 'THE FESTIVAL GROUND', 'The fire never quite goes out', 13); }
   const watch = buildWatchtower();
-  if (place(watch, S2 * 0.6, S2 * 0.06, 1, 12, 3)) built.push(watch);
+  if (place(watch, S2 * 0.6, S2 * 0.06, 1, 12, 3)) { built.push(watch); name(watch, 'THE EAST WATCH', 'Somebody kept a lamp up there'); }
 
   // --- five new structures so the open ground has landmarks worth walking to
   const barn = buildBarn();
-  if (place(barn, -S2 * 0.62, -S2 * 0.18, 3, 14, 6, 0.7)) built.push(barn);
+  if (place(barn, -S2 * 0.62, -S2 * 0.18, 3, 14, 6, 0.7)) { built.push(barn); name(barn, 'MEADOW BARN', 'Hay, a silo, and a very old fence', 13); }
   const pagoda = buildPagoda();
-  if (place(pagoda, S2 * 0.24, -S2 * 0.62, 2, 14, 5)) built.push(pagoda);
+  if (place(pagoda, S2 * 0.24, -S2 * 0.62, 2, 14, 5)) { built.push(pagoda); name(pagoda, 'THE BELL PAGODA', 'Three roofs, and a bell on every corner', 12); }
   const mine = buildMine();
-  if (place(mine, -S2 * 0.15, -S2 * 0.7, 2, 14, 4.5, 1.0)) built.push(mine);
+  if (place(mine, -S2 * 0.15, -S2 * 0.7, 2, 14, 4.5, 1.0)) { built.push(mine); name(mine, 'THE OLD DIGGINGS', 'The cart still sits on the rails'); }
   const market = buildMarketRow();
-  if (place(market, -S2 * 0.55, S2 * 0.55, 2, 14, 4.5, 0.55)) built.push(market);
+  if (place(market, -S2 * 0.55, S2 * 0.55, 2, 14, 4.5, 0.55)) { built.push(market); name(market, 'THE WEST MARKET', 'Three stalls under one awning', 12); }
   // the bridge wants a stream, so it goes near a lake shore rather than mid-field
   const bridge = buildBridge();
-  if (place(bridge, S2 * 0.52, S2 * 0.44, 2, 16, 5, 0.8)) built.push(bridge);
+  if (place(bridge, S2 * 0.52, S2 * 0.44, 2, 16, 5, 0.8)) { built.push(bridge); name(bridge, 'THE STONE BRIDGE', 'Lamps on both ends, for the walk home'); }
 
   // --- three flower gardens, each with a different planting mix ---
   const grng = (() => { let g = 20261; return () => { g = (g * 1103515245 + 12345) & 0x7fffffff; return g / 0x7fffffff; }; })();
@@ -1701,7 +1708,12 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     const gd = buildGarden(grng, kind, getQuality().decorScale);
     // a flower bed is the flattest thing in the game — it gets the tightest
     // budget of any structure so it can never clip into a slope
-    if (place(gd, gx, gz, 2, 16, 4.2, 0.3)) { built.push(gd); gardens.push(gd); }
+    if (place(gd, gx, gz, 2, 16, 4.2, 0.3)) {
+      built.push(gd); gardens.push(gd);
+      const G = { lily: ['THE LILY GARDEN', 'Planted in drifts, the old way'], rose: ['THE ROSE GARDEN', 'Mind the thorns on the arch'],
+        sun: ['THE SUNFLOWER GARDEN', 'Every head follows the sun'] }[kind];
+      name(gd, G[0], G[1], 10);
+    }
   }
 
   // a lantern-lit fishing dock on the shore of EVERY lake, each with its own
@@ -1728,6 +1740,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
       foots.push({ x: dx2, z: dz2, r: 3.5 });
       built.push(dock);
       docks.push({ x: dx2, z: dz2, mesh: dock });
+      named.push({ title: 'THE FISHING DOCK', sub: 'Sell your catch at the stall', x: dx2, z: dz2, r: 9 });
       break;
     }
   }
@@ -1738,7 +1751,7 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
   // blockR 3, not 2. The cliff runs x ±2 and the plunge pool reaches z+2.95,
   // so a 5x5 block left the pool and the space under the falls walkable — which
   // is how the hero ended up standing inside the waterfall.
-  if (place(falls, S2 * 0.32, -S2 * 0.35, 3, 12, 5)) built.push(falls);
+  if (place(falls, S2 * 0.32, -S2 * 0.35, 3, 12, 5)) { built.push(falls); name(falls, 'THE SPRING FALLS', 'Cold, clear, and loud', 13); }
   const kick = buildKickabout();
   if (place(kick, -S2 * 0.38, -S2 * 0.15, 0, 12, 3.5, 0.5)) built.push(kick);
   const CHAT_LOOKS = [
@@ -2027,5 +2040,5 @@ export function createLandmarks(scene, terrain, decorBlocked, avoid = []) {
     }
   }
 
-  return { built, update, heart, docks, foots, bakeReport };
+  return { built, update, heart, docks, foots, bakeReport, named };
 }

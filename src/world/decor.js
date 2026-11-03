@@ -43,7 +43,7 @@ export function buildDecor(terrain, scene) {
       const i = terrain.idx(ix, iz);
       const h = terrain.height[i];
       const t = terrain.type[i];
-      if (h <= WATER_LEVEL || t === 1) continue; // not in water / on paths
+      if (h <= WATER_LEVEL || t === 1 || t === 9) continue; // not in water / on paths / on the beach
       // the archipelago is tropical — pines and sakura would look wrong there,
       // so islands are dressed by src/world/isles.js instead
       if (terrain.island[i] === 1) continue;

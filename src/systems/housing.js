@@ -314,6 +314,7 @@ function buildHome(tier) {
     const pot = box(0.2, 0.14, 0.2, '#6a4a44');
     pot.position.set(W * 0.3, H + 1.56, -D * 0.2);
     g.add(chimney, pot);
+    g.userData.chimney = new THREE.Vector3(W * 0.3, H + 1.68, -D * 0.2);
   }
 
   // THE BEACON. The whole story is that you are the last of an order that kept
@@ -722,6 +723,13 @@ export function createHousing(scene, terrain, decorBlocked, particles, islands =
     lands, home, isle, HOUSE_TIERS,
     nextTier, build, startBuild, tickBuild, buildRemaining, fmtLeft, nearest, serialize, load,
     building: () => (home?.buildingUntil ? HOUSE_TIERS[home.buildingTier - 1] : null),
+    /** World position of the house's chimney pot, if it has one. */
+    chimney: () => {
+      const m = home?.houseMesh;
+      if (!m?.userData.chimney) return null;
+      m.updateWorldMatrix(true, false);
+      return m.localToWorld(m.userData.chimney.clone());
+    },
     tier: () => (home ? home.tier : 0),
     hasHome: () => !!home && home.tier > 0,
   };

@@ -829,6 +829,8 @@ function buildHut(scale = 1, wallColor = '#c8b090', roofColor = '#a85a48') {
   const chimney = new THREE.Mesh(sharedBox(0.3 * scale, 0.6 * scale, 0.3 * scale), lam('#8d9294'));
   chimney.position.set(0.62 * scale, 2.28 * scale, -0.35 * scale);
   g.add(chimney);
+  // where the smoke comes out (ambience.js); local, resolved after placement
+  g.userData.chimney = new THREE.Vector3(0.62 * scale, 2.62 * scale, -0.35 * scale);
   const door = new THREE.Mesh(sharedBox(0.55 * scale, 0.95 * scale, 0.08), beam);
   door.position.set(0, 0.5 * scale, 1.12 * scale);
   const knob = new THREE.Mesh(sharedBox(0.07, 0.07, 0.04), lam('#d8a83a'));
@@ -1802,10 +1804,14 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
     [0.86, '#cfbf9f', '#4f7a6a', 289, 12.6], [0.82, '#d4c2a2', '#96603c', 353, 13.7],
   ];
   const hutSpots = [];
+  const chimneys = [];
   hutStyles.forEach(([sc, wall, roof, deg, r]) => {
     const [hx, hz] = polar(deg * Math.PI / 180, r);
-    place(buildHut(sc, wall, roof), hx, hz, true, 1);
+    const hut = buildHut(sc, wall, roof);
+    place(hut, hx, hz, true, 1);
     hutSpots.push([hx, hz]);
+    hut.updateWorldMatrix(true, false);
+    chimneys.push(hut.localToWorld(hut.userData.chimney.clone()));
   });
 
   // --- the herb garden and the clutter fill the gaps, still on the grid -----
@@ -2316,7 +2322,7 @@ export function createNPCs(scene, terrain, decorBlocked, particles, clearArea = 
     bakeReport = { before, after };
   }
 
-  return { npcs, update, nearest, cookfire, stallSpot, forgeSpot, gachaSpot, bakeReport };
+  return { npcs, update, nearest, cookfire, stallSpot, forgeSpot, gachaSpot, bakeReport, chimneys };
 }
 
 // quest marker sprite ('!' available / '?' turn-in)
