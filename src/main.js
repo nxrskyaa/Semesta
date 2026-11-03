@@ -3759,7 +3759,8 @@ const CAM_PITCH_DEFAULT = 0.98;
       isReeling: () => input.keys.has('KeyF') || !!touchUI?.isCtxHeld?.(),
       touch: () => touch,
       camYaw: () => cam.yaw,
-      gauge: (d) => fishGauge.set(d),
+      // the gauge steps aside for any open panel (a daily-reward popup can land mid-fight)
+      gauge: (d) => fishGauge.set(d && !panels.anyOpen() ? d : null),
       onCatch(fishId, xp, rarity = 'common', extra = false, info = null) {
         inventory.add(fishId, 1);
         const gained = Math.round(xp * xpMult());
