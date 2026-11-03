@@ -279,6 +279,7 @@ export function createSkillSystem(deps) {
   const cooldowns = {}; // id -> seconds remaining
   const levels = {};    // id -> skill level (1..MAX_SKILL_LEVEL)
   let castLvl = 1;      // level of the skill currently executing (for FX scaling)
+  let currentId = null; // ...and which skill it is, so a hit can take its colour
 
   function levelOf(id) { return levels[id] || 1; }
   function upgrade(id) {
@@ -308,6 +309,11 @@ export function createSkillSystem(deps) {
     const { dmg, crit } = damageOf(mult, opts.crit);
     deps.dmgNums.spawn(e.mesh.position.clone().add(new THREE.Vector3(0, 1.1, 0)), dmg, crit ? 'crit' : '');
     deps.enemyMgr.damage(e, dmg, deps.player.state.pos, deps.onKill);
+    // the frame the eye remembers: a glint at the point of contact, and a
+    // beat of hit-stop — heavier on a crit
+    const color = SKILLS[currentId]?.icon?.color || '#ffffff';
+    deps.particles.impact?.(e.mesh.position.clone().add(new THREE.Vector3(0, 0.75, 0)), color, crit ? 1.9 : 1.35);
+    deps.hitStop?.(crit ? 0.075 : 0.045);
     if (opts.stun) e.stunT = Math.max(e.stunT || 0, opts.stun);
     if (opts.freeze) e.frozenT = Math.max(e.frozenT || 0, opts.freeze);
   }
@@ -360,6 +366,7 @@ export function createSkillSystem(deps) {
       deps.player.playSpin();
     },
     warcry() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.player.addBuff({ id: 'warcry', t: 7 * durMult(), dmg: 0.35 + 0.04 * (castLvl - 1) });
       deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), '#e8574a', 24);
@@ -425,6 +432,7 @@ export function createSkillSystem(deps) {
       deps.player.playSwing(1.3);
     },
     ironbody() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.player.addBuff({
         id: 'ironbody', t: 6 * durMult(),
@@ -466,6 +474,7 @@ export function createSkillSystem(deps) {
       deps.player.playBowDraw();
     },
     swiftness() {
+      deps.player.playPower?.();
       deps.player.addBuff({ id: 'swiftness', t: 5 * durMult(), speed: 0.4, atkSpeed: 0.4 });
       deps.particles.fountain(deps.player.state.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), '#a8d8b8', 16);
       deps.particles.shockwave(deps.player.state.pos, '#a8d8b8', 2, 0.35);
@@ -500,6 +509,7 @@ export function createSkillSystem(deps) {
       deps.player.playStaffCast();
     },
     blink() {
+      deps.player.playLunge?.();
       const p = deps.player.state;
       const target = deps.aimPoint() || p.pos.clone().add(facingDir().multiplyScalar(6));
       const dir = target.clone().sub(p.pos); dir.y = 0;
@@ -567,6 +577,7 @@ export function createSkillSystem(deps) {
       deps.player.playSpin();
     },
     shadowstep() {
+      deps.player.playLunge?.();
       const p = deps.player.state;
       let nearest = null, best = 7 * 7;
       for (const e of deps.enemyMgr.enemies) {
@@ -594,6 +605,7 @@ export function createSkillSystem(deps) {
 
     // --- Berserker ---
     rage() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.player.addBuff({ id: 'rage', t: 8 * durMult(), dmg: 0.45, atkSpeed: 0.3 });
       deps.particles.fountain(p.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), '#e8574a', 26);
@@ -648,7 +660,7 @@ export function createSkillSystem(deps) {
       deps.particles.flash(p.pos, '#e8574a', 7, 0.3);
       deps.shake?.(0.4);
       for (const e of enemiesWithin(2.6)) hitEnemy(e, 2.6, { stun: 1.4 });
-      deps.player.playSwing(1.3);
+      deps.player.playSlam?.(0.42);
     },
 
     // --- Hunter ---
@@ -681,6 +693,7 @@ export function createSkillSystem(deps) {
       deps.player.playBowDraw();
     },
     beasttrap() {
+      deps.player.playThrow?.();
       const target = deps.aimPoint() || deps.player.state.pos.clone().add(facingDir().multiplyScalar(5));
       deps.audio.sfx('fanknives');
       deps.particles.shockwave(target, '#b0894a', 2.6, 0.5);
@@ -733,11 +746,12 @@ export function createSkillSystem(deps) {
       deps.particles.shockwave(p.pos, '#f0e0a0', 2.6, 0.5);
       deps.particles.flash(p.pos, '#fff2c0', 5, 0.4);
       deps.audio.sfx('swiftness');
-      deps.player.playStaffCast();
+      deps.player.playPower?.();
     },
 
     // ================= WARRIOR =================
     shieldcharge() {
+      deps.player.playLunge?.();
       const p = deps.player.state;
       aimAtCursor();
       const dir = facingDir();
@@ -764,6 +778,7 @@ export function createSkillSystem(deps) {
       deps.particles.shockwave(dest, '#d8b866', 2.6, 0.35);
     },
     ironstance() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.player.addBuff({ id: 'ironstance', t: 8 * durMult(), armor: 0.5, rooted: true });
       deps.particles.shockwave(p.pos, '#9aa4b0', 2.8, 0.5);
@@ -776,7 +791,7 @@ export function createSkillSystem(deps) {
       const dir = facingDir();
       deps.audio.sfx('bash');
       deps.shake?.(0.6);
-      deps.player.playSwing(1.6);
+      deps.player.playSlam?.(0.42);
       // The fissure WIDENS with distance, so the tell is readable and landing
       // the far end is a real reward rather than a lucky overlap.
       for (let i = 1; i <= 7; i++) {
@@ -792,6 +807,7 @@ export function createSkillSystem(deps) {
       }
     },
     lastbastion() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.player.addBuff({ id: 'lastbastion', t: 6 * durMult(), immortal: true, thorns: 0.9 });
       deps.particles.shockwave(p.pos, '#ffd23e', 4.5, 0.6);
@@ -927,7 +943,7 @@ export function createSkillSystem(deps) {
           for (const e of enemiesWithin(3.5, centre)) e.slowT = Math.max(e.slowT || 0, 1.2);
         }, t * 1000);
       }
-      deps.player.playStaffCast();
+      deps.player.playPower?.();
     },
     chastise() {
       const p = deps.player.state;
@@ -1000,6 +1016,7 @@ export function createSkillSystem(deps) {
       }
     },
     smokebomb() {
+      deps.player.playThrow?.();
       const p = deps.player.state;
       deps.player.addBuff({ id: 'smokebomb', t: 3 * durMult(), untargetable: true });
       deps.audio.sfx('shadowstep');
@@ -1041,6 +1058,7 @@ export function createSkillSystem(deps) {
       }, targets.length * 90 + 60);
     },
     vanish() {
+      deps.player.playLunge?.();
       const p = deps.player.state;
       deps.player.addBuff({
         id: 'vanish', t: 5 * durMult(), untargetable: true, speed: 0.35,
@@ -1059,6 +1077,7 @@ export function createSkillSystem(deps) {
       deps.player.playStaffCast();
     },
     turretdrop() {
+      deps.player.playThrow?.();
       const p = deps.player.state;
       deps.summons?.spawn('turret', p.pos.clone().add(facingDir().multiplyScalar(1.6)));
       deps.audio.sfx('summon');
@@ -1072,6 +1091,7 @@ export function createSkillSystem(deps) {
       deps.player.playStaffCast();
     },
     rocketrain() {
+      deps.player.playThrow?.();
       const p = deps.player.state;
       aimAtCursor();
       const centre = deps.aimPoint() || p.pos.clone().add(facingDir().multiplyScalar(7));
@@ -1095,6 +1115,7 @@ export function createSkillSystem(deps) {
       }
     },
     repairfield() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.player.addBuff({ id: 'repairfield', t: 8 * durMult(), regen: 3 });
       deps.summons?.extendAll(8);
@@ -1103,6 +1124,7 @@ export function createSkillSystem(deps) {
       deps.audio.sfx('heal');
     },
     siegemode() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.player.addBuff({ id: 'siegemode', t: 7 * durMult(), rooted: true, dmg: 2.2, splash: 2.2 });
       deps.particles.shockwave(p.pos, '#ffb055', 3.0, 0.5);
@@ -1111,6 +1133,7 @@ export function createSkillSystem(deps) {
       deps.shake?.(0.3);
     },
     legion() {
+      deps.player.playPower?.();
       const p = deps.player.state;
       deps.audio.sfx('summon');
       deps.shake?.(0.5);
@@ -1171,6 +1194,8 @@ export function createSkillSystem(deps) {
     deps.particles.runeCircle?.(p.pos, def.icon.color, 2.4 + castLvl * 0.15, 0.7);
     deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.25, 0)), def.icon.color, 8, 2.2, 2, 0.5);
     deps.particles.flash(p.pos, def.icon.color, 3.5, 0.25);
+    deps.particles.rise?.(p.pos, def.icon.color, 1.1 + castLvl * 0.06, 14);
+    currentId = id;
     FX[id]();
     return true;
   }

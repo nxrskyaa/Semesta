@@ -6,6 +6,8 @@ import { getQuality, onQualityChange } from './quality.js';
 const MAX = 800;
 const MAX_RINGS = 10;
 const MAX_FLASH = 6;
+const WHITE = new THREE.Color(0xffffff);
+const TMP_COL = new THREE.Color();
 
 export function createParticles(scene) {
   // VISUAL FX scales every emitter's count. Kept live so the setting takes
@@ -546,6 +548,88 @@ export function createParticles(scene) {
     d.mesh.visible = true;
   }
 
+  // ---- IMPACT: a cross-shaped glint where a blow LANDS --------------------
+  // Every hit used to be a cloud of sparks and nothing else, so a skill that
+  // connected and a skill that whiffed past a monster looked almost the same.
+  // A hard four-point star at the point of contact, there for a fifth of a
+  // second, is the frame the eye remembers as "it hit": it snaps to full size
+  // almost instantly, then thins out along its rays rather than just fading.
+  // A pooled Sprite, so it always faces the camera; depthTest is off because a
+  // glint hidden behind the very monster it landed on would defeat the point.
+  const starCanvas = document.createElement('canvas');
+  starCanvas.width = starCanvas.height = 64;
+  {
+    const c = starCanvas.getContext('2d');
+    const core = c.createRadialGradient(32, 32, 0, 32, 32, 14);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = core; c.fillRect(0, 0, 64, 64);
+    const ray = (len, w, rot) => {
+      c.save(); c.translate(32, 32); c.rotate(rot);
+      const g = c.createLinearGradient(-len, 0, len, 0);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(0.5, 'rgba(255,255,255,1)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g;
+      c.beginPath(); c.moveTo(-len, 0); c.lineTo(0, -w); c.lineTo(len, 0); c.lineTo(0, w); c.closePath(); c.fill();
+      c.restore();
+    };
+    ray(31, 3.2, 0); ray(31, 3.2, Math.PI / 2);
+    ray(17, 2, Math.PI / 4); ray(17, 2, -Math.PI / 4);
+  }
+  const starTex = new THREE.CanvasTexture(starCanvas);
+  const MAX_IMPACTS = 10;
+  const impacts = [];
+  for (let i = 0; i < MAX_IMPACTS; i++) {
+    const m = new THREE.SpriteMaterial({
+      map: starTex, color: 0xffffff, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+    });
+    const sp = new THREE.Sprite(m);
+    sp.visible = false;
+    sp.renderOrder = 20;
+    scene.add(sp);
+    impacts.push({ sp, m, t: 0, dur: 0, size: 1 });
+  }
+  let impactCursor = 0;
+
+  function impact(pos, colorHex, size = 1.3, dur = 0.2) {
+    const it = impacts[impactCursor]; impactCursor = (impactCursor + 1) % MAX_IMPACTS;
+    // tinted toward white: the colour says WHOSE hit it was, the white says HIT
+    it.m.color.set(colorHex).lerp(WHITE, 0.45);
+    it.m.rotation = (Math.random() - 0.5) * 0.5;
+    it.sp.position.set(pos.x, pos.y, pos.z);
+    it.t = dur; it.dur = dur; it.size = size;
+    it.sp.visible = true;
+    // a few very fast short sparks thrown off the contact point
+    const c = TMP_COL.set(colorHex);
+    for (let i = 0; i < nOf(6); i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 5 + Math.random() * 4;
+      emit(Math.random() < 0.6 ? 0 : 1, pos.x, pos.y, pos.z,
+        Math.cos(a) * v, (Math.random() - 0.2) * v * 0.6, Math.sin(a) * v,
+        c, 0.16 + Math.random() * 0.1, 4, 7);
+    }
+  }
+
+  // ---- RISE: motes drawn UP off a cast circle into the caster --------------
+  // The rune circle on the floor said "a spell happened here"; nothing said
+  // the caster was the source. A ring of motes lifting from the circle's edge
+  // and drifting in toward the body ties the two together, and it is the one
+  // thing every cast shares, so a quick skill still reads as a spell.
+  function rise(pos, colorHex, radius = 1.4, count = 16) {
+    const c = TMP_COL.set(colorHex);
+    const n = nOf(count);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
+      const r = radius * (0.8 + Math.random() * 0.3);
+      emit(Math.random() < 0.5 ? 0 : 1,
+        pos.x + Math.cos(a) * r, pos.y + 0.1, pos.z + Math.sin(a) * r,
+        -Math.cos(a) * r * 0.9, 1.6 + Math.random() * 1.6, -Math.sin(a) * r * 0.9,
+        c, 0.55 + Math.random() * 0.35, -1.2, 1.6);
+    }
+  }
+
   function update(dt) {
     for (const d of decals) {
       if (d.t <= 0) { d.mesh.visible = false; continue; }
@@ -648,6 +732,16 @@ export function createParticles(scene) {
       }
     }
 
+    // IMPACT: full size in the first fifth, then the rays thin and fade
+    for (const it of impacts) {
+      if (it.t <= 0) { it.sp.visible = false; continue; }
+      it.t -= dt;
+      const k = 1 - Math.max(0, it.t / it.dur);
+      const grow = k < 0.2 ? 0.35 + 0.65 * (k / 0.2) : 1 + (k - 0.2) * 0.25;
+      it.sp.scale.set(it.size * grow, it.size * grow * (k < 0.2 ? 1 : 1 - (k - 0.2) * 0.6), 1);
+      it.m.opacity = k < 0.2 ? 1 : 1 - (k - 0.2) / 0.8;
+    }
+
     // RIBBONS: slash and bolt both just fade; their shape is already final.
     for (const r of ribbons) {
       if (r.t <= 0) { r.mesh.visible = false; continue; }
@@ -658,5 +752,5 @@ export function createParticles(scene) {
   }
 
   return { burst, fountain, ring, shockwave, flash, runeCircle,
-           beam, spikes, slash, bolt, decal, update };
+           beam, spikes, slash, bolt, decal, impact, rise, update };
 }

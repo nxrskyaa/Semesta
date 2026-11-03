@@ -2139,18 +2139,26 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   }
 
   // Attack anims: anticipation -> strike with forward lunge -> recover.
+  // EASING. Every pose here used to interpolate LINEARLY, which is the single
+  // biggest reason a swing read as a puppet being moved: a blow accelerates
+  // out of its wind-up and decelerates into its follow-through, and a straight
+  // line does neither. `snapOut` is for strikes (most of the travel in the
+  // first third), `smooth` for wind-ups and settles.
+  const smooth = (w) => w * w * (3 - 2 * w);
+  const snapOut = (w) => 1 - Math.pow(1 - w, 3);
+
   function animateAttack(t) {
     const kind = state.attackKind;
     if (kind === 'sword') {
       if (t < 0.28) {
-        const w = t / 0.28;
+        const w = smooth(t / 0.28);
         parts.armR.rotation.x = -2.0 * w;
         parts.armR.rotation.z = -0.55 * w;
         vis.rotation.y = 0.5 * w;
         vis.position.z = -0.06 * w;
         parts.head.rotation.x = -0.12 * w;
       } else if (t < 0.62) {
-        const w = (t - 0.28) / 0.34;
+        const w = snapOut((t - 0.28) / 0.34);
         parts.armR.rotation.x = -2.0 + 3.2 * w;
         parts.armR.rotation.z = -0.55 + 1.2 * w;
         vis.rotation.y = 0.5 - 1.1 * w;
@@ -2158,7 +2166,7 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
         parts.head.rotation.x = -0.12 + 0.2 * w;
         if (w > 0.15 && trailMat.opacity <= 0.01) flashTrail();
       } else {
-        const w = (t - 0.62) / 0.38;
+        const w = smooth((t - 0.62) / 0.38);
         parts.armR.rotation.x = 1.2 * (1 - w);
         parts.armR.rotation.z = 0.65 * (1 - w);
         vis.rotation.y = -0.6 * (1 - w);
@@ -2333,14 +2341,14 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     } else if (kind === 'bow') {
       const arrow = rig.getBowArrow();
       if (t < 0.55) {
-        const w = t / 0.55;
+        const w = smooth(t / 0.55);
         parts.armL.rotation.x = -1.5;
         parts.armR.rotation.x = -1.5 + 0.001;
         parts.armR.rotation.z = 0.7 * w;
         vis.rotation.y = -0.25 * w;
         if (arrow) arrow.visible = true;
       } else {
-        const w = (t - 0.55) / 0.45;
+        const w = smooth((t - 0.55) / 0.45);
         parts.armR.rotation.z = 0;
         if (arrow) arrow.visible = false;
         parts.armL.rotation.x = -1.5 * (1 - w);
@@ -2349,21 +2357,159 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
         vis.position.z = -0.05 * Math.sin(w * Math.PI);
       }
     } else if (kind === 'staff') {
+      // GATHER -> RELEASE -> SETTLE. It used to raise the arm and stop, ending
+      // at -0.7 rad with the body still turned, and endAttackPose then snapped
+      // all of it to rest in one frame: a visible pop on every mage, priest and
+      // summoner skill in the game. Every phase now ends where the next begins,
+      // and the last one ends at rest.
       const orb = rig.getStaffOrb();
-      if (t < 0.4) {
-        const w = t / 0.4;
-        parts.armR.rotation.x = -1.9 * w;
-        vis.rotation.y = 0.3 * w;
-        if (orb) orb.scale.setScalar(1 + w * 1.1);
+      if (t < 0.36) {                       // draw the power in: lean back, both hands up
+        const w = smooth(t / 0.36);
+        parts.armR.rotation.x = -1.35 * w;
+        parts.armL.rotation.x = -0.85 * w;
+        parts.armL.rotation.z = -0.25 * w;
+        vis.rotation.x = -0.09 * w;
+        vis.rotation.y = 0.28 * w;
+        vis.position.y = visBase + 0.03 * w;
+        parts.head.rotation.x = -0.18 * w;
+        if (orb) orb.scale.setScalar(1 + w * 0.7);
+      } else if (t < 0.56) {                // RELEASE: thrust it overhead and forward
+        const w = snapOut((t - 0.36) / 0.2);
+        parts.armR.rotation.x = -1.35 - 0.95 * w;
+        parts.armL.rotation.x = -0.85 + 0.35 * w;
+        parts.armL.rotation.z = -0.25;
+        vis.rotation.x = -0.09 + 0.22 * w;
+        vis.rotation.y = 0.28 - 0.4 * w;
+        vis.position.z = 0.16 * w;
+        vis.position.y = visBase + 0.03 - 0.05 * w;
+        parts.head.rotation.x = -0.18 + 0.12 * w;
+        if (orb) orb.scale.setScalar(1.7 + w * 0.6);
+      } else {                              // settle all the way back to rest
+        const w = smooth((t - 0.56) / 0.44);
+        const k = 1 - w;
+        parts.armR.rotation.x = -2.3 * k;
+        parts.armL.rotation.x = -0.5 * k;
+        parts.armL.rotation.z = -0.25 * k;
+        vis.rotation.x = 0.13 * k;
+        vis.rotation.y = -0.12 * k;
+        vis.position.z = 0.16 * k;
+        vis.position.y = visBase - 0.02 * k;
+        parts.head.rotation.x = -0.06 * k;
+        if (orb) orb.scale.setScalar(1 + 1.3 * k);
+      }
+    } else if (kind === 'power') {
+      // A POWER-UP, for the buffs. Fifteen skills — Warcry, Rage, Iron Body,
+      // Swiftness, the stances, Siege Mode, Legion — played NO animation at
+      // all: the hero stood perfectly still while a war cry went off around
+      // them. Coil (arms crossed, head down, crouch), then BURST — arms flung
+      // wide, chest up, a small lift off the ground — then settle.
+      if (t < 0.32) {
+        const w = smooth(t / 0.32);
+        vis.position.y = visBase - 0.08 * w;
+        parts.armR.rotation.x = -0.9 * w; parts.armR.rotation.z = -0.55 * w;
+        parts.armL.rotation.x = -0.9 * w; parts.armL.rotation.z = 0.55 * w;
+        parts.head.rotation.x = 0.22 * w;
+        vis.rotation.x = 0.1 * w;
+      } else if (t < 0.52) {
+        const w = snapOut((t - 0.32) / 0.2);
+        vis.position.y = visBase - 0.08 + 0.2 * w;
+        parts.armR.rotation.x = -0.9 + 0.5 * w; parts.armR.rotation.z = -0.55 + 1.85 * w;
+        parts.armL.rotation.x = -0.9 + 0.5 * w; parts.armL.rotation.z = 0.55 - 1.85 * w;
+        parts.head.rotation.x = 0.22 - 0.5 * w;
+        vis.rotation.x = 0.1 - 0.22 * w;
       } else {
-        const w = (t - 0.4) / 0.6;
-        parts.armR.rotation.x = -1.9 + 1.2 * w;
-        vis.rotation.y = 0.3 - 0.5 * w;
-        vis.position.z = 0.18 * Math.sin(w * Math.PI);
-        if (orb) orb.scale.setScalar(2.1 - w * 1.1);
+        const w = smooth((t - 0.52) / 0.48);
+        const k = 1 - w;
+        vis.position.y = visBase + 0.12 * k;
+        parts.armR.rotation.x = -0.4 * k; parts.armR.rotation.z = 1.3 * k;
+        parts.armL.rotation.x = -0.4 * k; parts.armL.rotation.z = -1.3 * k;
+        parts.head.rotation.x = -0.28 * k;
+        vis.rotation.x = -0.12 * k;
+      }
+    } else if (kind === 'slam') {
+      // LEAP AND SMASH, for the ground-breakers. They borrowed the sword's
+      // horizontal swing, so Earthsplitter split the earth with a sideways cut.
+      // Crouch, spring up with the weapon overhead, and come down on it with
+      // the whole body — the impact is at 0.55, where the FX lands.
+      if (t < 0.2) {
+        const w = smooth(t / 0.2);
+        vis.position.y = visBase - 0.1 * w;
+        parts.armR.rotation.x = -0.6 * w; parts.armL.rotation.x = -0.6 * w;
+        vis.rotation.x = 0.12 * w;
+      } else if (t < 0.42) {
+        const w = snapOut((t - 0.2) / 0.22);
+        vis.position.y = visBase - 0.1 + 0.55 * Math.sin(w * Math.PI * 0.5);
+        parts.armR.rotation.x = -0.6 - 2.3 * w; parts.armL.rotation.x = -0.6 - 2.0 * w;
+        vis.rotation.x = 0.12 - 0.3 * w;
+        parts.head.rotation.x = -0.25 * w;
+      } else if (t < 0.56) {
+        const w = (t - 0.42) / 0.14;
+        const e = w * w;                     // accelerate INTO the ground
+        vis.position.y = visBase + 0.45 - 0.6 * e;
+        parts.armR.rotation.x = -2.9 + 4.0 * e; parts.armL.rotation.x = -2.6 + 3.6 * e;
+        vis.rotation.x = -0.18 + 0.48 * e;
+        vis.position.z = 0.2 * e;
+        parts.head.rotation.x = -0.25 + 0.5 * e;
+        if (w > 0.4 && trailMat.opacity <= 0.01) flashTrail();
+      } else {
+        const w = smooth((t - 0.56) / 0.44);
+        const k = 1 - w;
+        vis.position.y = visBase - 0.15 * k;
+        parts.armR.rotation.x = 1.1 * k; parts.armL.rotation.x = 1.0 * k;
+        vis.rotation.x = 0.3 * k;
+        vis.position.z = 0.2 * k;
+        parts.head.rotation.x = 0.25 * k;
+      }
+    } else if (kind === 'lunge') {
+      // A DASH. Blink, Shadowstep, Vanish and Shield Charge move the hero a
+      // long way in one frame; a body that stays upright while it teleports
+      // reads as a glitch, a body thrown low and forward reads as speed.
+      if (t < 0.35) {
+        const w = snapOut(t / 0.35);
+        vis.rotation.x = 0.42 * w;
+        vis.position.y = visBase - 0.1 * w;
+        vis.position.z = 0.22 * w;
+        parts.armR.rotation.x = 1.0 * w; parts.armL.rotation.x = 1.0 * w;
+        parts.armR.rotation.z = 0.35 * w; parts.armL.rotation.z = -0.35 * w;
+        parts.legR.rotation.x = -0.6 * w; parts.legL.rotation.x = 0.5 * w;
+        parts.head.rotation.x = -0.3 * w;
+      } else {
+        const w = smooth((t - 0.35) / 0.65);
+        const k = 1 - w;
+        vis.rotation.x = 0.42 * k;
+        vis.position.y = visBase - 0.1 * k;
+        vis.position.z = 0.22 * k;
+        parts.armR.rotation.x = 1.0 * k; parts.armL.rotation.x = 1.0 * k;
+        parts.armR.rotation.z = 0.35 * k; parts.armL.rotation.z = -0.35 * k;
+        parts.legR.rotation.x = -0.6 * k; parts.legL.rotation.x = 0.5 * k;
+        parts.head.rotation.x = -0.3 * k;
+      }
+    } else if (kind === 'throw') {
+      // AN OVERHAND THROW, for everything that is put down or lobbed: smoke
+      // bombs, traps, turrets, the flare that calls rocket rain.
+      if (t < 0.35) {
+        const w = smooth(t / 0.35);
+        parts.armR.rotation.x = -2.5 * w;
+        parts.armR.rotation.z = 0.25 * w;
+        vis.rotation.y = 0.35 * w;
+        vis.rotation.x = -0.08 * w;
+      } else if (t < 0.55) {
+        const w = snapOut((t - 0.35) / 0.2);
+        parts.armR.rotation.x = -2.5 + 3.3 * w;
+        parts.armR.rotation.z = 0.25 - 0.25 * w;
+        vis.rotation.y = 0.35 - 0.6 * w;
+        vis.rotation.x = -0.08 + 0.2 * w;
+        vis.position.z = 0.12 * w;
+      } else {
+        const w = smooth((t - 0.55) / 0.45);
+        const k = 1 - w;
+        parts.armR.rotation.x = 0.8 * k;
+        vis.rotation.y = -0.25 * k;
+        vis.rotation.x = 0.12 * k;
+        vis.position.z = 0.12 * k;
       }
     } else if (kind === 'spin') {
-      vis.rotation.y = t * Math.PI * 2;
+      vis.rotation.y = smooth(t) * Math.PI * 2;
       parts.armR.rotation.x = -1.4;
       parts.armL.rotation.x = -1.4;
       vis.position.y = visBase + Math.sin(t * Math.PI) * 0.1;
@@ -2372,7 +2518,7 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       if (t < 0.4) {
         parts.armR.rotation.x = -2.4 * (t / 0.4);
       } else {
-        parts.armR.rotation.x = -2.4 + 2.0 * ((t - 0.4) / 0.6);
+        parts.armR.rotation.x = -2.4 * (1 - smooth((t - 0.4) / 0.6));
       }
     }
   }
@@ -2383,6 +2529,7 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     vis.rotation.y = 0;
     vis.rotation.x = 0;
     vis.position.z = 0;
+    vis.position.y = visBase;
     parts.head.rotation.x = 0;
     const arrow = rig.getBowArrow();
     if (arrow) arrow.visible = false;
@@ -2431,6 +2578,29 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
   function playStaffCast() {
     state.attackKind = 'staff';
     state.attackDur = 0.35;
+    state.attackT = state.attackDur;
+  }
+  function playPower() {
+    state.attackKind = 'power';
+    state.attackDur = 0.62;
+    state.attackT = state.attackDur;
+  }
+  /** `from` starts the pose part-way in — a skill whose hit lands on the
+   *  cast frame starts at the descent, so the body meets the ground with the
+   *  effect instead of a third of a second after it. */
+  function playSlam(from = 0) {
+    state.attackKind = 'slam';
+    state.attackDur = 0.58;
+    state.attackT = state.attackDur * (1 - from);
+  }
+  function playLunge() {
+    state.attackKind = 'lunge';
+    state.attackDur = 0.4;
+    state.attackT = state.attackDur;
+  }
+  function playThrow() {
+    state.attackKind = 'throw';
+    state.attackDur = 0.42;
     state.attackT = state.attackDur;
   }
   function playCast() {
@@ -2508,7 +2678,8 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     setWeaponVisible: (on) => rig.setWeaponVisible?.(on),
     // watercraft.js steers with the same camera-relative vector the legs use
     moveVecFor: (input, camYaw) => moveVec(input, camYaw),
-    playSwing, playSpin, playBowDraw, playStaffCast, playCast, setNightGlow,
+    playSwing, playSpin, playBowDraw, playStaffCast, playCast,
+    playPower, playSlam, playLunge, playThrow, setNightGlow,
     // the one collision predicate, and the way out of a bad landing
     canStandAt, unstick,
   };
