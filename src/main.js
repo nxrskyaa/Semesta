@@ -155,7 +155,17 @@ const schedule = (fn) => {
   if (document.visibilityState === 'hidden') setTimeout(() => fn(performance.now()), 50);
   else requestAnimationFrame(fn);
 };
-const frame = () => new Promise((r) => schedule(r));
+// A BOOT STEP NEVER WAITS ON rAF ALONE. `visibilityState` only says "hidden"
+// when the tab is backgrounded; a window that is merely covered by another one
+// (or a browser pane that is not compositing) reports "visible" and still gets
+// no animation frames, so the build sat at 0% until somebody looked at it.
+// Whichever arrives first — the frame or 100ms — moves the boot on.
+const frame = () => new Promise((r) => {
+  let done = false;
+  const go = () => { if (!done) { done = true; r(performance.now()); } };
+  schedule(go);
+  setTimeout(go, 100);
+});
 
 async function main() {
   bootEl.style.display = 'none';
@@ -2681,6 +2691,15 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   const cam = { yaw: Math.PI * 0.25, dist: 17, pitch: CAM_PITCH_DEFAULT, shake: 0, tiltHeld: 0 };
   function addShake(amt) { cam.shake = Math.min(0.8, cam.shake + amt); }
+  // THROTTLED, so a multi-hit skill (Flurry's six punches, Thousand Cuts)
+  // freezes once rather than stuttering six times in a row — a stop only
+  // reads as weight when it is rare.
+  let hitStopT = 0, hitStopCool = 0;
+  function hitStop(s) {
+    if (hitStopCool > 0) return;
+    hitStopT = Math.max(hitStopT, Math.min(0.1, s));
+    hitStopCool = hitStopT + 0.16;
+  }
   function updateCamera(dt) {
     const p = player.state.pos;
     if (input.keys.has('KeyQ')) cam.yaw += dt * 1.8;
@@ -3309,7 +3328,7 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   const skillSys = createSkillSystem({
     player, enemyMgr, projectiles, particles, dmgNums, audio, terrain,
-    aimPoint, onKill, shake: addShake,
+    aimPoint, onKill, shake: addShake, hitStop,
     weaponDef: () => inventory.equippedDef(),
     forgeMult, summons,
   });
@@ -4532,6 +4551,13 @@ const CAM_PITCH_DEFAULT = 0.98;
     particles.flash?.(fxAt, '#ffffff', 2, 0.3);
     particles.runeCircle?.(fxAt, '#a86aff', 2.5, 0.6);
     particles.fountain?.(fxAt, '#7fd06a', 8, 2);
+    // the shape vocabulary and the impact glint are their own materials too
+    particles.beam?.(fxAt, '#ffe9a0', 0.8, 3, 0.3);
+    particles.spikes?.(fxAt, '#9fdcff', 2, 0.4);
+    particles.slash?.(fxAt, 0, '#ffd08a', 2, 2.4, 0.3);
+    particles.bolt?.(fxAt, fxAt.clone().setX(fxAt.x + 3), '#bfe8ff', 0.2);
+    particles.impact?.(fxAt, '#ffffff', 1, 0.2);
+    particles.rise?.(fxAt, '#a86aff', 1.2, 6);
   } catch { /* an effect that will not fire dry is not worth failing boot for */ }
 
   setBoot(0.93, 'Compiling shaders…'); await frame();
@@ -4647,8 +4673,15 @@ const CAM_PITCH_DEFAULT = 0.98;
   let last = performance.now(), time = 0, hudT = 0, thunderT = 20;
   function loop(now) {
     schedule(loop);
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const rawDt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    // HIT-STOP: for a few hundredths of a second after a skill connects the
+    // world runs at a crawl, the camera included. It is the oldest trick in
+    // action games and the reason a hit there feels like it struck something
+    // rather than passed through it.
+    let dt = rawDt;
+    if (hitStopT > 0) { hitStopT -= rawDt; dt = rawDt * 0.07; }
+    if (hitStopCool > 0) hitStopCool -= rawDt;
     time += dt;
 
     player.state.dmgMult = totalMult();

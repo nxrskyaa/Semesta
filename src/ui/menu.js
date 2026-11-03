@@ -1,6 +1,12 @@
-// Opening sequence: pixel-sky loading screen (drifting clouds, floating
-// islands, snowy peaks, rising light beams — styled after the key art) with
-// the SEMESTA logo, then the main menu: New Game / Continue / About.
+// THE TITLE: a short cinematic, then the main menu.
+//
+// It opens on black and letterbox bars, a "presents" card, then the camera
+// tilts down out of the night sky onto Anavela (src/ui/titlescene.js — the
+// village lit on its hill, sky lanterns rising, the hero and Spider on a cliff
+// looking at it). The logo sweeps in, the bars ease back, and the menu slides
+// in from the left as a list you can drive with the mouse, a finger, or the
+// arrow keys. Any click or key during the intro skips straight to the end.
+//
 // The logo & mascot are the only image assets in the game (everything else
 // stays procedural).
 import logoUrl from '../../logoasset/semesta.png';
@@ -16,119 +22,174 @@ import { deleteSlot, MAX_SLOTS } from '../systems/profiles.js';
 import { serverConfigured } from '../net/client.js';
 import { createGfxPanel } from './gfxpanel.js';
 import { cleanImage } from '../gfx/logo.js';
+import { createTitleScene } from './titlescene.js';
 
 export { logoUrl, mascotUrl };
 
 const CSS = `
 #opening {
-  position: fixed; inset: 0; z-index: 120; overflow: hidden;
-  background: linear-gradient(180deg,
-    #2e5aa8 0%, #4a7ec8 22%, #6ba3dd 45%, #9cc8ea 68%, #cfe6f2 88%, #e8f2f5 100%);
+  position: fixed; inset: 0; z-index: 120; overflow: hidden; background: #05060d;
   font-family: inherit; color: #e8f0f8; user-select: none;
 }
-#opening.fadeout { transition: opacity 0.7s; opacity: 0; pointer-events: none; }
-
-#opening .layer { position: absolute; inset: 0; pointer-events: none; }
-#opening canvas.px { position: absolute; image-rendering: pixelated; }
-
-/* twinkling star specks near the top */
-#opening .stars b {
-  position: absolute; width: 3px; height: 3px; background: #fff;
-  animation: op-twinkle 2.4s ease-in-out infinite;
+#opening.fadeout { transition: opacity 0.8s ease; opacity: 0; pointer-events: none; }
+#opening canvas.scene {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  image-rendering: pixelated; object-fit: cover;
 }
-@keyframes op-twinkle { 0%,100% { opacity: 0.15; } 50% { opacity: 0.95; } }
-#opening .stars b.d { width: 5px; height: 5px; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
-
-/* rising aurora light beams */
-#opening .beam {
-  position: absolute; bottom: 30%; width: 46px; height: 65%;
-  background: linear-gradient(180deg, rgba(180,220,255,0) 0%, rgba(190,225,255,0.5) 45%, rgba(220,240,255,0.85) 100%);
-  filter: blur(6px); transform-origin: bottom center;
-  animation: op-beam 5s ease-in-out infinite;
+/* film: a soft vignette and the faintest scanline, so the upscaled pixels read
+   as a picture on a screen rather than a blur */
+#opening .film {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 42%, transparent 46%, rgba(2,2,8,0.72) 100%),
+    repeating-linear-gradient(180deg, rgba(0,0,0,0.12) 0 1px, transparent 1px 3px);
 }
-@keyframes op-beam { 0%,100% { opacity: 0.35; transform: scaleY(0.92); } 50% { opacity: 0.85; transform: scaleY(1.04); } }
+/* the menu side gets its own shade so the type always reads over the sky */
+#opening .shade {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s ease;
+  background: linear-gradient(90deg, rgba(4,4,12,0.86) 0%, rgba(4,4,12,0.55) 30%, rgba(4,4,12,0) 56%);
+}
+#opening.ready .shade { opacity: 1; }
+/* letterbox: full cinema during the intro, gone once the menu is up */
+#opening .lbx { position: absolute; left: 0; right: 0; height: 13vh; background: #000; z-index: 6;
+  transition: height 1.3s cubic-bezier(.6,0,.2,1); pointer-events: none; }
+#opening .lbx.top { top: 0; }
+#opening .lbx.bot { bottom: 0; }
+#opening.ready .lbx { height: 0; }
+#opening .black { position: absolute; inset: 0; background: #000; z-index: 5; pointer-events: none;
+  transition: opacity 1.6s ease; }
+#opening.lit .black { opacity: 0; }
+#opening .presents {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); z-index: 7;
+  text-align: center; font-family: var(--font-display, monospace); pointer-events: none;
+  opacity: 0; transition: opacity 0.9s ease, letter-spacing 2.4s ease;
+  font-size: 11px; letter-spacing: 4px; color: #cfc8ee;
+}
+#opening .presents b { display: block; font-size: 16px; color: #ffe9b0; margin-bottom: 8px; letter-spacing: inherit; font-weight: normal; }
+#opening.p-on .presents { opacity: 1; letter-spacing: 7px; }
+#opening.p-off .presents { opacity: 0; }
 
-/* drifting pixel clouds */
-#opening .cloud { position: absolute; image-rendering: pixelated; animation: op-drift linear infinite; }
-@keyframes op-drift { from { transform: translateX(-14vw); } to { transform: translateX(114vw); } }
-
-/* bobbing floating islands */
-#opening .isle { position: absolute; image-rendering: pixelated; animation: op-bob ease-in-out infinite; }
-@keyframes op-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
-
-/* logo */
+/* the logo: top-left on wide screens, sweeping in with a light pass */
+/* ONE COLUMN holds the logo and the list, so the list always starts where the
+   logo actually ends — positioning the two separately put the tagline on top
+   of the first menu item as soon as the logo's real height differed */
+#opening .col {
+  position: absolute; left: max(5vw, 28px); top: 0; bottom: 0; width: min(400px, 40vw); z-index: 4;
+  display: flex; flex-direction: column; justify-content: center; gap: 4vh; padding: 5vh 0 8vh;
+  pointer-events: none;
+}
+#opening .col > * { pointer-events: auto; }
 #opening .logo-wrap {
-  position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
-  text-align: center; pointer-events: none;
+  position: relative; width: 100%;
+  pointer-events: none; opacity: 0; transform: translateY(10px) scale(0.97);
+  transition: opacity 1.2s ease, transform 1.4s cubic-bezier(.2,.8,.2,1);
 }
+#opening.logo-on .logo-wrap { opacity: 1; transform: none; }
+#opening .logo-wrap .lg { position: relative; animation: op-logo 6s ease-in-out infinite; }
 #opening .logo-wrap img {
-  width: min(560px, 82vw); image-rendering: pixelated;
-  filter: drop-shadow(0 10px 24px rgba(10,20,50,0.55)) drop-shadow(0 0 34px rgba(140,190,255,0.35));
-  animation: op-logo 4s ease-in-out infinite;
+  width: 100%; image-rendering: pixelated; display: block;
+  filter: drop-shadow(0 6px 0 rgba(0,0,0,0.45)) drop-shadow(0 0 26px rgba(140,160,255,0.35));
 }
-@keyframes op-logo { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+/* a light pass across the wordmark, masked to the logo's own shape */
+#opening .logo-wrap .sweep { position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+#opening .logo-wrap .sweep::after { content: ''; position: absolute; top: 0; bottom: 0; width: 26%; left: -40%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.7), transparent);
+  animation: op-sweep 6s ease-in-out 0.8s infinite; }
+@keyframes op-sweep { 0% { left: -40%; } 28%, 100% { left: 130%; } }
+@keyframes op-logo { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+#opening .tagline {
+  font-family: var(--font-display, monospace); font-size: 9px; letter-spacing: 5px; color: #b9b2e0;
+  margin: 10px 0 0 4px; text-shadow: 0 2px 0 #000;
+}
 
-/* loading bar */
-#opening .loadbox {
-  position: absolute; left: 50%; bottom: 16%; transform: translateX(-50%);
-  width: min(340px, 70vw); text-align: center;
-}
-#opening .loadbox .txt { font-size: 10px; letter-spacing: 4px; color: #f0f6fc; text-shadow: 0 2px 0 #2a4a7a; margin-bottom: 8px; }
-#opening .loadbox .rialoline {
-  display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 14px;
-  font-size: 10px; letter-spacing: 4px; color: #e8e2d2; text-shadow: 0 2px 0 #2a4a7a;
-}
-#opening .loadbox .rialoline canvas {
-  width: 22px; height: 22px; image-rendering: pixelated; border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(232,226,210,0.4), 0 2px 8px rgba(0,0,0,0.35);
-}
-#opening .loadbox .bar {
-  height: 14px; border: 2px solid #22324e; background: rgba(16,26,44,0.75);
-  box-shadow: inset 0 0 0 1px rgba(200,220,255,0.25), 0 3px 8px rgba(10,20,40,0.4);
-}
-#opening .loadbox .bar > div {
-  height: 100%; width: 0%;
-  background: linear-gradient(90deg, #d8b866, #ffe9a8, #d8b866);
-  background-size: 200% 100%; animation: op-barshine 1.2s linear infinite;
-  transition: width 0.25s;
-}
-@keyframes op-barshine { from { background-position: 0 0; } to { background-position: 200% 0; } }
-
-/* menu buttons */
+/* menu: a list, not a stack of signboards */
 #opening .menu {
-  position: absolute; left: 50%; top: 60%; transform: translateX(-50%);
-  display: none; flex-direction: column; gap: 12px; width: min(320px, 78vw);
+  position: relative; width: 100%;
+  display: flex; visibility: hidden; flex-direction: column; gap: 1px;
 }
-#opening .menu.show { display: flex; animation: op-menuin 0.5s ease-out; }
-@keyframes op-menuin { from { opacity: 0; transform: translateX(-50%) translateY(14px); } }
-#opening .menu button {
-  font-family: inherit; font-size: 15px; letter-spacing: 4px; padding: 14px 10px;
-  cursor: pointer; color: #ffe9b0; text-shadow: 0 2px 0 #241c0a;
-  background: linear-gradient(180deg, rgba(64,52,30,0.92), rgba(40,32,18,0.92));
-  border: 2px solid #8a744a;
-  box-shadow: inset 0 0 0 1px rgba(216,184,102,0.35), 0 4px 14px rgba(10,20,40,0.45);
-  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 12px 100%, 0 50%);
-  transition: filter 0.1s, transform 0.1s;
+#opening .menu.show { visibility: visible; }
+#opening .menu:not(.show) > * { animation: none; }
+#opening .menu > * { opacity: 0; transform: translateX(-18px); animation: op-itemin 0.55s cubic-bezier(.2,.8,.2,1) forwards; }
+${Array.from({ length: 12 }, (_, i) => `#opening .menu > *:nth-child(${i + 1}) { animation-delay: ${(0.05 + i * 0.06).toFixed(2)}s; }`).join('\n')}
+@keyframes op-itemin { to { opacity: 1; transform: none; } }
+#opening .menu button[data-m] {
+  position: relative; display: grid; grid-template-columns: 24px 1fr; align-items: baseline;
+  column-gap: 8px; text-align: left; width: 100%; isolation: isolate;
+  font-family: var(--font-display, monospace); font-size: 15px; letter-spacing: 3px;
+  padding: 8px 12px 8px 14px; cursor: pointer; color: #d9d4f2; background: transparent; border: 0;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.8); transition: color .15s, padding .2s ease;
 }
-#opening .menu button:hover:not(:disabled) { filter: brightness(1.25); transform: scale(1.03); }
-#opening .menu button:disabled { opacity: 0.45; cursor: default; }
-/* PLAY ONLINE is a different KIND of choice, not a bigger version of the same
-   one — solo is your own world, online is everybody's. Colouring it apart is
-   what stops someone joining a shared world when they wanted to be alone. */
-#opening .menu button.online {
-  color: #cfe8ff; border-color: #4a7a9a;
-  background: linear-gradient(180deg, rgba(30,52,72,0.94), rgba(18,32,48,0.94));
-  box-shadow: inset 0 0 0 1px rgba(140,200,255,0.3), 0 4px 14px rgba(10,20,40,0.45);
+#opening .menu button[data-m] i { font-style: normal; font-size: 9px; color: #6f6a9c; letter-spacing: 1px; }
+#opening .menu button[data-m] small { grid-column: 2; display: block; font-family: var(--font-body, inherit);
+  font-size: 10px; letter-spacing: 1px; color: #8d88b8; margin-top: 3px; }
+#opening .menu button[data-m]::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; opacity: 0; transition: opacity .2s;
+  background: linear-gradient(90deg, rgba(255,214,120,0.2), rgba(255,214,120,0) 85%);
+  box-shadow: inset 2px 0 0 #ffd36a;
 }
-#opening .menu button.online:hover:not(:disabled) { filter: brightness(1.3); }
-#opening .menu button.primary {
-  background: linear-gradient(180deg, rgba(88,68,34,0.95), rgba(58,46,24,0.95));
-  border-color: #d8b866;
+#opening .menu button[data-m]::after {
+  content: '◆'; position: absolute; left: -8px; top: 10px; font-size: 9px; color: #ffd36a; opacity: 0;
+  transform: translateX(-6px); transition: opacity .2s, transform .2s; text-shadow: 0 0 8px #ffb84a;
 }
-#opening .menu .continfo { font-size: 9px; letter-spacing: 1px; color: #dce8f4; text-align: center; margin-top: -8px; text-shadow: 0 1px 0 #2a4a7a; }
-#opening .credit {
-  position: absolute; bottom: 12px; left: 0; right: 0; text-align: center;
-  font-size: 9px; letter-spacing: 3px; color: rgba(240,248,255,0.75); text-shadow: 0 1px 0 #2a4a7a;
+#opening .menu button[data-m]:hover, #opening .menu button[data-m]:focus-visible {
+  color: #ffe9b0; padding-left: 20px; outline: none;
+}
+#opening .menu button[data-m]:hover::before, #opening .menu button[data-m]:focus-visible::before { opacity: 1; }
+#opening .menu button[data-m]:hover::after, #opening .menu button[data-m]:focus-visible::after { opacity: 1; transform: none; }
+#opening .menu button[data-m]:hover i, #opening .menu button[data-m]:focus-visible i { color: #ffd36a; }
+#opening .menu button.primary { font-size: 18px; color: #ffe9b0; }
+#opening .menu button.online small { color: #8fc8e8; }
+#opening .menu button.online:hover, #opening .menu button.online:focus-visible { color: #cfeeff; }
+#opening .menu .sep { height: 1px; margin: 5px 0 5px 14px; background: linear-gradient(90deg, rgba(200,190,255,0.25), transparent); }
+
+#opening .foot {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; padding: 10px max(5vw, 28px) 12px; pointer-events: none;
+  font-family: var(--font-display, monospace); font-size: 8px; letter-spacing: 3px; color: rgba(220,214,255,0.62);
+  text-shadow: 0 1px 0 #000; opacity: 0; transition: opacity 1s ease 0.6s;
+}
+#opening.ready .foot { opacity: 1; }
+#opening .foot .rialoline { display: flex; align-items: center; gap: 8px; }
+#opening .foot canvas { width: 18px; height: 18px; image-rendering: pixelated; border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(232,226,210,0.35); }
+#opening .foot .keys b { color: #ffe9b0; font-weight: normal; padding: 1px 4px; box-shadow: inset 0 0 0 1px rgba(255,233,176,0.35); }
+#opening .skiphint { position: absolute; right: 18px; bottom: calc(13vh + 10px); z-index: 7; pointer-events: none;
+  font-family: var(--font-display, monospace); font-size: 8px; letter-spacing: 3px; color: rgba(255,255,255,0.45);
+  transition: opacity .5s; }
+#opening.ready .skiphint { opacity: 0; }
+#opening .gfxp { z-index: 8; transition: opacity .8s ease .4s; }
+/* folded, the tab lives in the corner: mid-right is where the Hub island is */
+#opening .gfxp.collapsible.folded { top: 14px; transform: none; }
+#opening:not(.ready) .gfxp { opacity: 0; pointer-events: none; }
+
+/* NARROW SCREENS: logo centred at the top, the list at the bottom, and the
+   shade comes up from below instead of across */
+@media (max-width: 720px) {
+  #opening .shade { background: linear-gradient(0deg, rgba(4,4,12,0.94) 0%, rgba(4,4,12,0.62) 48%, rgba(4,4,12,0) 74%); }
+  #opening .col { left: 50%; width: min(380px, 90vw); margin-left: calc(min(380px, 90vw) / -2);
+    justify-content: space-between; padding: 6vh 0 38px; }
+  #opening .logo-wrap { width: min(330px, 78vw); align-self: center; }
+  #opening .tagline { text-align: center; margin-left: 0; font-size: 8px; letter-spacing: 3px; }
+  #opening .foot .keys, #opening .foot .by { display: none; }
+  #opening .foot { justify-content: center; padding-bottom: 10px; }
+}
+@media (max-height: 760px) {
+  #opening .menu button[data-m] { padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
+  #opening .menu button.primary { font-size: 15px; }
+  #opening .menu button[data-m] small { font-size: 9px; margin-top: 1px; }
+  #opening .col { gap: 2vh; padding-top: 3vh; }
+  #opening .logo-wrap { width: min(340px, 34vw); }
+}
+@media (max-height: 640px) {
+  #opening .menu button[data-m] small { display: none; }
+  #opening .acct .note { display: none; }
+}
+@media (max-width: 720px) and (max-height: 760px) {
+  #opening .logo-wrap { width: min(280px, 70vw); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #opening .logo-wrap .lg, #opening .logo-wrap .sweep::after { animation: none; }
 }
 
 /* ACCOUNT STRIP.
@@ -136,8 +197,8 @@ const CSS = `
    never look like a gate in front of the game. Someone who ignores it entirely
    gets exactly the game they have today. */
 #opening .acct {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  flex-wrap: wrap; min-height: 26px; margin-bottom: 4px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+  flex-wrap: wrap; min-height: 26px; margin: 0 0 8px 14px;
   font-size: 9px; letter-spacing: 1px; color: #dce8f4;
   text-shadow: 0 1px 0 #2a4a7a;
 }
@@ -154,39 +215,18 @@ const CSS = `
    be fought with, so this only reserves the space. */
 #opening .acct .gbtn { display: flex; align-items: center; min-height: 32px; }
 
-/* THE MENU HAS TO FIT.
-   It was positioned at a fixed 60% of the height with desktop-sized buttons and
-   no small-screen rules at all. Adding the account strip on top of five buttons
-   pushed the column 72px past the bottom of a 375x812 phone, taking ROADMAP and
-   ABOUT off screen entirely. Keyed on HEIGHT rather than width, because that is
-   the dimension that actually runs out — a short landscape window has the same
-   problem as a tall narrow one.
-
-   The 980 threshold is measured, not guessed: the column is 383px tall at full
-   size and sits at 60% of the height, so it needs 383/0.40 = 958px of viewport
-   to clear the bottom. A first pass used 880 and left the tall modern phones
-   (412x915, 430x932) still overflowing by 10-17px — comfortably enough to eat
-   the ABOUT button and nothing like enough to notice by eye. */
-@media (max-height: 980px) {
-  #opening .menu { top: 50%; gap: 8px; }
-  #opening .menu button { font-size: 13px; padding: 10px 8px; letter-spacing: 3px; }
-  #opening .acct { min-height: 0; margin-bottom: 0; gap: 6px; }
-  #opening .acct .note { font-size: 8px; }
-  #opening .menu .continfo { font-size: 8px; margin-top: -6px; }
-}
-@media (max-height: 720px) {
-  #opening .menu { top: 46%; gap: 6px; width: min(300px, 82vw); }
-  #opening .menu button { font-size: 12px; padding: 8px 6px; letter-spacing: 2px; }
-  /* the strapline is the first thing to go: it is nice to have, and a button
-     you cannot reach is not */
-  #opening .acct .note { display: none; }
-}
+/* THE MENU HAS TO FIT. The column is sized from the logo above it and steps
+   down by viewport HEIGHT (the dimension that actually runs out — a short
+   landscape window has the same problem as a tall narrow phone): subtitles go
+   first, then padding. See the max-height blocks in the layout above. */
+#opening .acct { font-size: 9px; }
+#opening .menu .continfo { font-size: 9px; letter-spacing: 1px; color: #b9b2e0; margin: 4px 0 0 14px; }
 
 /* the guide's own styles are appended below via DOCS_CSS */
 /* about modal */
 #opening .about {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8, 14, 26, 0.72); pointer-events: auto;
+  background: rgba(8, 14, 26, 0.72); pointer-events: auto; z-index: 9;
 }
 #opening .about.show { display: flex; }
 #opening .about .card {
@@ -260,86 +300,6 @@ const CSS = `
 #opening .roadmap .rm p b { color: #ffe9b0; }
 `;
 
-// --- tiny pixel-art painters (canvas, chunky pixels) ---
-function pxCanvas(w, h, scale, draw) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const ctx = c.getContext('2d');
-  draw(ctx);
-  c.style.width = `${w * scale}px`;
-  c.style.height = `${h * scale}px`;
-  return c;
-}
-
-function drawCloud(ctx, w, h, tint = '#ffffff') {
-  // lumpy pixel cloud: overlapping filled circles snapped to a grid
-  const lumps = 4 + Math.floor(Math.random() * 3);
-  ctx.fillStyle = 'rgba(255,255,255,0)';
-  const blob = (cx, cy, r, col) => {
-    ctx.fillStyle = col;
-    for (let y = -r; y <= r; y++) {
-      for (let x = -r; x <= r; x++) {
-        if (x * x + y * y <= r * r) ctx.fillRect(cx + x, cy + y, 1, 1);
-      }
-    }
-  };
-  for (let i = 0; i < lumps; i++) {
-    const cx = 6 + Math.floor(Math.random() * (w - 12));
-    const cy = h - 6 - Math.floor(Math.random() * 4);
-    blob(cx, cy - 3, 4 + Math.floor(Math.random() * 3), tint);
-  }
-  // flat base + soft shadow line
-  ctx.fillStyle = tint;
-  ctx.fillRect(3, h - 5, w - 6, 3);
-  ctx.fillStyle = 'rgba(150,180,220,0.65)';
-  ctx.fillRect(4, h - 2, w - 8, 1);
-}
-
-function drawIsland(ctx) {
-  // floating rock with grass top and a tiny tree
-  const g = (x, y, w2, h2, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w2, h2); };
-  // rock (tapered down)
-  g(6, 14, 20, 5, '#7a6a5a'); g(8, 19, 16, 4, '#6a5a4c'); g(11, 23, 10, 3, '#584a3e');
-  g(14, 26, 4, 3, '#4a3e34');
-  // grass cap
-  g(5, 11, 22, 4, '#5e9448'); g(4, 12, 24, 2, '#6aa84f');
-  g(6, 10, 4, 1, '#7fbd62'); g(18, 10, 5, 1, '#7fbd62');
-  // tiny tree
-  g(14, 3, 4, 5, '#3a7343'); g(13, 4, 6, 3, '#4a8a50'); g(15, 8, 2, 3, '#5a4432');
-  // hanging vines
-  g(7, 15, 1, 3, '#4f7a3e'); g(24, 15, 1, 4, '#4f7a3e');
-}
-
-function drawMountains(ctx, w, h) {
-  // two layered snowy ridges
-  const ridge = (baseY, peaks, col, snow) => {
-    ctx.fillStyle = col;
-    let x = 0;
-    for (const [pw, ph] of peaks) {
-      // triangle peak drawn in pixel steps
-      for (let i = 0; i < pw; i++) {
-        const t = i / pw;
-        const y = t < 0.5 ? ph * (t * 2) : ph * (2 - t * 2);
-        ctx.fillRect(x + i, baseY - Math.floor(y), 1, Math.floor(y) + (h - baseY));
-      }
-      // snow cap
-      ctx.fillStyle = snow;
-      for (let i = Math.floor(pw * 0.36); i < Math.ceil(pw * 0.64); i++) {
-        const t = i / pw;
-        const y = t < 0.5 ? ph * (t * 2) : ph * (2 - t * 2);
-        const capH = Math.max(2, Math.floor(ph * 0.16));
-        ctx.fillRect(x + i, baseY - Math.floor(y), 1, capH);
-      }
-      ctx.fillStyle = col;
-      x += pw - Math.floor(pw * 0.22); // overlap peaks
-    }
-  };
-  ridge(h, [[70, 46], [90, 62], [60, 40], [84, 56], [70, 48]], '#5a7a9e', '#e8f2f8');
-  ctx.globalAlpha = 0.9;
-  ridge(h, [[54, 30], [64, 38], [58, 32], [66, 40], [60, 34], [52, 28]], '#7a9ec0', '#f0f6fa');
-  ctx.globalAlpha = 1;
-}
-
 // ---------------------------------------------------------------------------
 // showOpening(saved, syncAccount) -> Promise<{ action: 'new'|'continue'|'online' }>
 //
@@ -352,10 +312,45 @@ function drawMountains(ctx, w, h) {
 const escapeText = (t) => String(t).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+/** Crop an image to the bounding box of its non-transparent pixels. */
+function trimTransparent(src) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const x = c.getContext('2d');
+        x.drawImage(img, 0, 0);
+        const d = x.getImageData(0, 0, c.width, c.height).data;
+        let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+        for (let y = 0; y < c.height; y++) {
+          for (let xx = 0; xx < c.width; xx++) {
+            if (d[(y * c.width + xx) * 4 + 3] > 12) {
+              if (xx < x0) x0 = xx; if (xx > x1) x1 = xx;
+              if (y < y0) y0 = y; if (y > y1) y1 = y;
+            }
+          }
+        }
+        if (x1 < 0) { res(src); return; }
+        const o = document.createElement('canvas');
+        o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
+        o.getContext('2d').drawImage(c, -x0, -y0);
+        res(o.toDataURL());
+      } catch { res(src); }
+    };
+    img.onerror = () => res(src);
+    img.src = src;
+  });
+}
+
 export function showOpening(saved, syncAccount) {
   return new Promise(async (resolve) => {
     // key out the solid PNG backgrounds so the logo/mascot float cleanly
-    const [logo, mascot] = await Promise.all([cleanImage(logoUrl), cleanImage(mascotUrl)]);
+    const [logoRaw, mascot] = await Promise.all([cleanImage(logoUrl), cleanImage(mascotUrl)]);
+    // the wordmark PNG carries a lot of empty margin; trimmed, the column lays
+    // out around what you can actually see
+    const logo = await trimTransparent(logoRaw);
 
     const style = document.createElement('style');
     style.textContent = CSS + DOCS_CSS;
@@ -365,78 +360,40 @@ export function showOpening(saved, syncAccount) {
     root.id = 'opening';
     document.body.appendChild(root);
 
-    // --- sky layers ---
-    // stars
-    const stars = document.createElement('div');
-    stars.className = 'layer stars';
-    for (let i = 0; i < 26; i++) {
-      const b = document.createElement('b');
-      if (Math.random() < 0.3) b.className = 'd';
-      b.style.left = `${Math.random() * 100}%`;
-      b.style.top = `${Math.random() * 34}%`;
-      b.style.animationDelay = `${Math.random() * 2.4}s`;
-      stars.appendChild(b);
-    }
-    root.appendChild(stars);
+    // --- the scene ---
+    const sceneCv = document.createElement('canvas');
+    sceneCv.className = 'scene';
+    root.appendChild(sceneCv);
+    const scene = createTitleScene(sceneCv);
+    root.insertAdjacentHTML('beforeend', `
+      <div class="film"></div>
+      <div class="shade"></div>
+      <div class="black"></div>
+      <div class="lbx top"></div><div class="lbx bot"></div>
+      <div class="presents"><b>NXRSKYAA</b>PRESENTS · A RIALO COMMUNITY GAME</div>
+      <div class="skiphint">${matchMedia('(pointer: coarse)').matches ? 'TAP' : 'CLICK'} TO SKIP</div>`);
 
-    // light beams
-    for (const [left, delay, hgt] of [[14, 0, 60], [30, 1.6, 48], [68, 0.8, 55], [86, 2.2, 62]]) {
-      const beam = document.createElement('div');
-      beam.className = 'beam';
-      beam.style.left = `${left}%`;
-      beam.style.height = `${hgt}%`;
-      beam.style.animationDelay = `${delay}s`;
-      root.appendChild(beam);
-    }
-
-    // mountains (bottom)
-    const mtn = pxCanvas(340, 80, 1, (ctx) => drawMountains(ctx, 340, 80));
-    mtn.className = 'px';
-    mtn.style.cssText += 'left:0;right:0;bottom:0;width:100%;height:34vh;';
-    root.appendChild(mtn);
-
-    // clouds
-    for (let i = 0; i < 9; i++) {
-      const w = 34 + Math.floor(Math.random() * 26);
-      const cl = pxCanvas(w, 18, 4 + Math.random() * 3, (ctx) => drawCloud(ctx, w, 18));
-      cl.className = 'px cloud';
-      cl.style.top = `${4 + Math.random() * 55}%`;
-      cl.style.left = `${-10 + Math.random() * 100}%`;
-      const dur = 60 + Math.random() * 80;
-      cl.style.animationDuration = `${dur}s`;
-      cl.style.animationDelay = `${-Math.random() * dur}s`;
-      cl.style.opacity = 0.75 + Math.random() * 0.25;
-      root.appendChild(cl);
-    }
-
-    // floating islands
-    for (const [left, top, scale, delay, flip] of [
-      [8, 26, 4, 0, false], [78, 18, 5, 1.2, true], [64, 44, 3, 0.5, false], [22, 52, 2.5, 1.8, true],
-    ]) {
-      const isle = pxCanvas(32, 30, scale, (ctx) => drawIsland(ctx));
-      isle.className = 'px isle';
-      isle.style.left = `${left}%`;
-      isle.style.top = `${top}%`;
-      isle.style.animationDuration = `${3.6 + Math.random() * 1.6}s`;
-      isle.style.animationDelay = `${delay}s`;
-      if (flip) isle.style.transform = 'scaleX(-1)';
-      root.appendChild(isle);
-    }
-
-    // --- logo ---
+    // --- logo, with a light pass masked to its own shape ---
     const logoWrap = document.createElement('div');
     logoWrap.className = 'logo-wrap';
-    logoWrap.innerHTML = `<img src="${logo}" alt="SEMESTA">`;
-    root.appendChild(logoWrap);
+    logoWrap.innerHTML = `<div class="lg"><img src="${logo}" alt="SEMESTA"><div class="sweep"></div></div>
+      <div class="tagline">THE LANTERNKEEPER'S CHRONICLE</div>`;
+    const col = document.createElement('div');
+    col.className = 'col';
+    root.appendChild(col);
+    col.appendChild(logoWrap);
+    const sweep = logoWrap.querySelector('.sweep');
+    sweep.style.webkitMaskImage = `url("${logo}")`;
+    sweep.style.maskImage = `url("${logo}")`;
 
-    // --- loading bar -> menu ---
-    const loadbox = document.createElement('div');
-    loadbox.className = 'loadbox';
-    // (the mini Rialo mark is painted right after the innerHTML below)
-    loadbox.innerHTML = `<div class="txt">AWAKENING THE WORLD...</div><div class="bar"><div></div></div>
-      <div class="rialoline"><canvas class="rlogo" width="40" height="40"></canvas><span>BUILD FOR RIALO</span></div>`;
-    root.appendChild(loadbox);
-    paintRialoMark(loadbox.querySelector('.rlogo').getContext('2d'), 40);
+    // --- footer: who made it, what it is built for, and the keys ---
+    const foot = document.createElement('div');
+    foot.className = 'foot';
+    foot.innerHTML = `<div class="rialoline"><canvas class="rlogo" width="40" height="40"></canvas>
+      <span>BUILD FOR RIALO<span class="by"> · A WORLD BY NXRSKYAA</span></span></div>
+      <div class="keys"><b>↑</b> <b>↓</b> SELECT &nbsp; <b>ENTER</b> CONFIRM</div>`;
+    root.appendChild(foot);
+    paintRialoMark(foot.querySelector('.rlogo').getContext('2d'), 40);
 
     // SOLO AND ONLINE ARE SEPARATE CHOICES.
     //
@@ -453,21 +410,25 @@ export function showOpening(saved, syncAccount) {
 
     function menuHTML() {
       const online = serverConfigured();
+      // numbering follows what is actually on the list, so it never skips
+      const n = (k) => String(savedRef ? k : k - 1).padStart(2, '0');
       return `
       <div class="acct"></div>
-      <button class="primary" data-m="new">⚔ &nbsp;NEW ADVENTURE</button>
-      ${savedRef ? `<button data-m="continue">▶ &nbsp;CONTINUE</button>
-        <div class="continfo">${escapeText(savedRef.character?.name || 'Adventurer')} · Lv${
-          Number(savedRef.level) || 1}</div>` : ''}
-      ${online ? `<button class="online" data-m="online">🌐 &nbsp;PLAY ONLINE</button>
-        <div class="continfo">Shared world · other players, chat, one clock</div>` : ''}
-      <button data-m="docs">📖 &nbsp;HOW TO PLAY</button>
-      <button data-m="roadmap">◈ &nbsp;ROADMAP</button>
-      <button data-m="about">✦ &nbsp;ABOUT</button>
+      ${savedRef ? `<button class="primary" data-m="continue"><i>01</i>CONTINUE
+        <small>${escapeText(savedRef.character?.name || 'Adventurer')} · Lv${
+          Number(savedRef.level) || 1} — pick up where you left off</small></button>` : ''}
+      <button class="${savedRef ? '' : 'primary'}" data-m="new"><i>${savedRef ? '02' : '01'}</i>NEW ADVENTURE
+        <small>Begin a new life in Anavela</small></button>
+      ${online ? `<button class="online" data-m="online"><i>${n(3)}</i>PLAY ONLINE
+        <small>Shared world · other players, chat, one clock</small></button>` : ''}
+      <div class="sep"></div>
+      <button data-m="docs"><i>${n(online ? 4 : 3)}</i>HOW TO PLAY<small>The Semesta guide</small></button>
+      <button data-m="roadmap"><i>${n(online ? 5 : 4)}</i>ROADMAP<small>Where Semesta is headed</small></button>
+      <button data-m="about"><i>${n(online ? 6 : 5)}</i>ABOUT<small>The team behind the world</small></button>
     `;
     }
     menu.innerHTML = menuHTML();
-    root.appendChild(menu);
+    col.appendChild(menu);
 
     // the account strip is rebuilt with the buttons, so it has to be re-found
     function rebuildMenuButtons() {
@@ -481,11 +442,6 @@ export function showOpening(saved, syncAccount) {
     // (no sfx here: audio only starts on the first menu click)
     const gfx = createGfxPanel({ collapsible: true });
     root.appendChild(gfx.el);
-
-    const credit = document.createElement('div');
-    credit.className = 'credit';
-    credit.textContent = 'A WORLD BY NXRSKYAA';
-    root.appendChild(credit);
 
     // --- about modal ---
     const about = document.createElement('div');
@@ -694,20 +650,71 @@ export function showOpening(saved, syncAccount) {
     roadmap.querySelector('.closebtn').addEventListener('click', () => roadmap.classList.remove('show'));
     roadmap.addEventListener('click', (e) => { if (e.target === roadmap) roadmap.classList.remove('show'); });
 
-    // fake-but-tasty loading progress, then reveal the menu
-    const fill = loadbox.querySelector('.bar > div');
-    let prog = 0;
-    const tick = setInterval(() => {
-      prog = Math.min(100, prog + 7 + Math.random() * 16);
-      fill.style.width = `${prog}%`;
-      if (prog >= 100) {
-        clearInterval(tick);
-        setTimeout(() => {
-          loadbox.style.display = 'none';
-          menu.classList.add('show');
-        }, 250);
-      }
-    }, 160);
+    // THE INTRO. Black -> "presents" -> the camera tilts down out of the sky ->
+    // the logo -> the bars ease back and the list slides in. Every step is a
+    // timeout on a class, so skipping is simply "run all of them now".
+    const timers = [];
+    let introK = 0, introRaf = 0, ready = false;
+    const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function finishIntro() {
+      if (ready) return;
+      ready = true;
+      timers.forEach(clearTimeout);
+      cancelAnimationFrame(introRaf);
+      scene.setIntro(1);
+      root.classList.remove('p-on');
+      root.classList.add('p-off', 'lit', 'logo-on', 'ready');
+      menu.classList.add('show');
+      removeEventListener('keydown', skipKey, true);
+      root.removeEventListener('pointerdown', skipClick, true);
+      // land focus on the first choice so ENTER works straight away
+      setTimeout(() => menu.querySelector('button[data-m]')?.focus({ preventScroll: true }), 650);
+    }
+    // a click or key during the intro skips it, and is swallowed so the same
+    // press does not also pick a menu item that has not appeared yet
+    const skipClick = (e) => { if (!ready) { e.stopPropagation(); e.preventDefault(); finishIntro(); } };
+    const skipKey = (e) => { if (!ready) { e.stopPropagation(); e.preventDefault(); finishIntro(); } };
+    root.addEventListener('pointerdown', skipClick, true);
+    addEventListener('keydown', skipKey, true);
+    if (reduced) finishIntro();
+    else {
+      at(250, () => root.classList.add('p-on'));
+      at(1900, () => { root.classList.remove('p-on'); root.classList.add('p-off'); });
+      at(2300, () => {
+        root.classList.add('lit');
+        // the tilt runs on its own clock so it is smooth whatever the timers do
+        const t0 = performance.now();
+        const step = () => {
+          introK = Math.min(1, (performance.now() - t0) / 3200);
+          scene.setIntro(introK);
+          if (introK < 1 && !ready) introRaf = requestAnimationFrame(step);
+        };
+        step();
+        // a hidden tab gets no rAF; never leave the camera pointing at the sky
+        at(3600, () => scene.setIntro(1));
+      });
+      at(4300, () => root.classList.add('logo-on'));
+      at(5600, finishIntro);
+    }
+
+    // ARROW KEYS walk the list (wrapping), ENTER is the button's own
+    function onNavKey(e) {
+      if (!ready || document.querySelector('#opening .about.show')) return;
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      const items = [...menu.querySelectorAll('button[data-m]')];
+      if (!items.length) return;
+      e.preventDefault();
+      const i = items.indexOf(document.activeElement);
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      items[(i + d + items.length) % items.length].focus();
+    }
+    addEventListener('keydown', onNavKey);
+    // the mouse and the keyboard should agree on which item is "current"
+    menu.addEventListener('pointerover', (e) => {
+      const b = e.target.closest('button[data-m]');
+      if (b && document.activeElement !== b) b.focus({ preventScroll: true });
+    });
 
     menu.addEventListener('click', (e) => {
       const b = e.target.closest('[data-m]');
@@ -717,8 +724,9 @@ export function showOpening(saved, syncAccount) {
       if (b.dataset.m === 'roadmap') { roadmap.classList.add('show'); return; }
       const action = b.dataset.m;
       gfx.dispose();
+      removeEventListener('keydown', onNavKey);
       root.classList.add('fadeout');
-      setTimeout(() => root.remove(), 750);
+      setTimeout(() => { scene.stop(); root.remove(); }, 820);
       resolve({ action });
     });
   });

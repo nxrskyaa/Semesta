@@ -132,8 +132,11 @@ export function createGfxPanel({
   injectCss();
   const root = document.createElement('div');
   root.className = `gfxp${collapsible ? ' collapsible' : ''}`;
-  // a phone opens folded (the menu column needs the room); a desktop opens wide
-  let folded = collapsible && (innerWidth <= 900 || innerHeight <= 560);
+  // Folded by default on the title: the right half of that screen is the
+  // picture (the moon, the sea, the Hub), and a settings plate parked over it
+  // was the first thing anybody saw. One click still opens it before the world
+  // builds, which is the whole reason it lives there.
+  let folded = collapsible;
   if (folded) root.classList.add('folded');
 
   let hoverHint = '';
