@@ -7,6 +7,13 @@
 // is drawn procedurally into a 320x180 canvas and upscaled with pixelated
 // smoothing, so it is real pixel art and costs almost nothing.
 //
+// It is FRAMED like a film: letterbox bars slide in, the camera makes a slow
+// Ken Burns push across the painting, the place's name comes up as a title
+// card letter by letter, tips run as subtitles, and progress is a single
+// hairline along the top of the bottom bar. The old screen stacked a logo, a
+// segmented bar and a "DID YOU KNOW" box in the middle of the picture, which
+// covered the one thing on it worth looking at.
+//
 // Second, it has to be HONEST. The bar is driven by the actual build stages in
 // main.js (terrain, forest, villagers, sea, shaders), not a timer, and the boot
 // deliberately warms the expensive caches — every item icon, every shader — while
@@ -567,76 +574,109 @@ function paintFestival(rnd) {
 
 const PAINTERS = { dawn: paintDawn, night: paintNight, winter: paintWinter, sea: paintSea, festival: paintFestival };
 const VIGNETTE_NAME = {
-  dawn: 'ANAVELA UNIVERSE · DAYBREAK',
-  night: 'THE LANTERN ROAD · NIGHTFALL',
-  winter: 'THE FROSTED NORTH-WEST',
-  sea: 'THE SOUTHERN ARCHIPELAGO',
-  festival: 'THE FESTIVAL PLAZA',
+  dawn: ['ANAVELA', 'DAYBREAK OVER THE VILLAGE'],
+  night: ['THE LANTERN ROAD', 'NIGHTFALL'],
+  winter: ['THE FROSTED NORTH', 'WHERE THE SNOW STAYS'],
+  sea: ['THE SOUTHERN ARCHIPELAGO', 'SUNSET ON THE WATER'],
+  festival: ['THE FESTIVAL PLAZA', 'AN EVENING BY THE FIRE'],
 };
 
 const CSS = `
 #loadscreen {
   position: fixed; inset: 0; z-index: 120; overflow: hidden;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  background: #0a0f14; font-family: var(--font-body, inherit);
-  transition: opacity 0.55s ease;
+  background: #000; font-family: var(--font-body, inherit);
+  transition: opacity 0.9s ease;
 }
 #loadscreen.gone { opacity: 0; pointer-events: none; }
-#loadscreen { transition: opacity 0.85s ease; }
+/* THE CAMERA. A slow Ken Burns push across the painting, so a still picture
+   reads as a shot rather than a slide. Pixelated scaling keeps it crisp. */
+/* the picture is fitted to the window BETWEEN the bars, not to the screen —
+   the scenes keep their near-field detail along the bottom edge, and a bar
+   laid over it hid exactly that. The window closes in from full screen. */
+#loadscreen .frame { position: absolute; left: 0; right: 0; top: 0; bottom: 0; overflow: hidden;
+  animation: ls-frame 1.2s cubic-bezier(.6,0,.2,1) 0.2s forwards; }
+@keyframes ls-frame { to { top: 10vh; bottom: max(15vh, 104px); } }
 #loadscreen .scene {
   position: absolute; inset: 0; width: 100%; height: 100%;
   image-rendering: pixelated; object-fit: cover;
+  animation: ls-kb 26s ease-in-out infinite alternate;
+  transform-origin: 50% 70%;
 }
-/* a scanline veil + vignette so the upscaled pixels read as a screen, not a blur */
+@keyframes ls-kb {
+  from { transform: scale(1.07) translate(-1.2%, 0.4%); }
+  to   { transform: scale(1.0) translate(0.8%, 0); }
+}
+/* film: a vignette and a faint scanline so the upscaled pixels read as a
+   screen, not a blur */
 #loadscreen .veil {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; pointer-events: none;
   background:
-    radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(4,8,10,0.75) 100%),
-    repeating-linear-gradient(180deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 3px);
+    radial-gradient(ellipse at 50% 46%, transparent 44%, rgba(0,0,0,0.7) 100%),
+    repeating-linear-gradient(180deg, rgba(0,0,0,0.14) 0 1px, transparent 1px 3px);
 }
-#loadscreen .stack {
-  position: relative; z-index: 2; width: min(560px, 88vw);
-  padding: 0 0 max(7vh, 42px); text-align: center;
+#loadscreen .fadein { position: absolute; inset: 0; background: #000; z-index: 9; pointer-events: none;
+  animation: ls-fadein 1.4s ease forwards; }
+@keyframes ls-fadein { to { opacity: 0; } }
+/* letterbox: the bars slide in, which is what makes it read as a film */
+#loadscreen .lbx { position: absolute; left: 0; right: 0; background: #000; z-index: 3;
+  height: 0; animation: ls-bars 1.2s cubic-bezier(.6,0,.2,1) 0.2s forwards; }
+#loadscreen .lbx.top { top: 0; --h: 10vh; }
+#loadscreen .lbx.bot { bottom: 0; --h: max(15vh, 104px); }
+@keyframes ls-bars { to { height: var(--h); } }
+
+/* the title card, top-left inside the frame */
+#loadscreen .card {
+  position: absolute; z-index: 4; left: max(5vw, 24px); top: calc(10vh + 4vh); max-width: 80vw;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.75), 0 0 18px rgba(0,0,0,0.6);
 }
-#loadscreen .logo {
-  width: min(330px, 62vw); image-rendering: pixelated; display: block; margin: 0 auto 4px;
-  filter: drop-shadow(0 4px 0 rgba(0,0,0,0.6));
-}
-#loadscreen .place {
-  font-family: var(--font-display, inherit); font-size: 9px; letter-spacing: 4px;
-  color: #cfe0c8; text-shadow: 0 2px 0 #000; margin-bottom: 16px; opacity: 0.85;
-}
-#loadscreen .stage {
-  font-size: 11px; letter-spacing: 2px; color: #ffe9b0; text-shadow: 0 2px 0 #000;
-  min-height: 15px; margin-bottom: 7px;
-}
-/* segmented pixel bar — 24 chunky cells that light up left to right */
+#loadscreen .card .kick { font-family: var(--font-display, inherit); font-size: 9px; letter-spacing: 5px; color: #ffd36a;
+  opacity: 0; animation: ls-in 0.8s ease 1.0s forwards; }
+#loadscreen .card h1 { margin: 8px 0 0; font-family: var(--font-display, inherit); font-weight: normal;
+  font-size: clamp(22px, 4.2vw, 44px); letter-spacing: 0.12em; color: #fff6e0; line-height: 1.05; }
+#loadscreen .card h1 span { display: inline-block; opacity: 0; transform: translateY(8px);
+  animation: ls-letter 0.7s cubic-bezier(.2,.8,.2,1) forwards; }
+#loadscreen .card .rule { height: 2px; width: 0; margin: 12px 0 9px;
+  background: linear-gradient(90deg, #ffd36a, rgba(255,211,106,0)); animation: ls-rule 1.4s cubic-bezier(.2,.8,.2,1) 1.5s forwards; }
+#loadscreen .card .sub { font-family: var(--font-display, inherit); font-size: 10px; letter-spacing: 4px; color: #d6cfee;
+  opacity: 0; animation: ls-in 0.9s ease 1.9s forwards; }
+@keyframes ls-in { to { opacity: 1; } }
+@keyframes ls-letter { to { opacity: 1; transform: none; } }
+@keyframes ls-rule { to { width: min(280px, 50vw); } }
+
+/* the bottom bar: the logo, the line under the picture, and the stage */
 #loadscreen .bar {
-  display: flex; gap: 2px; height: 14px; padding: 3px;
-  background: rgba(8,12,10,0.72); box-shadow: var(--pix-frame, 0 0 0 2px #46523c);
+  position: absolute; left: 0; right: 0; bottom: 0; height: max(15vh, 104px); z-index: 5;
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 22px;
+  padding: 0 max(5vw, 24px); opacity: 0; animation: ls-in 0.8s ease 1.2s forwards;
 }
-#loadscreen .bar i { flex: 1; background: #1d2a20; transition: background 0.2s, box-shadow 0.2s; }
-#loadscreen .bar i.on {
-  background: linear-gradient(180deg, #9fe86e, #58c93f);
-  box-shadow: 0 0 6px rgba(140,230,110,0.55);
+#loadscreen .bar .logo { height: 34px; image-rendering: pixelated; opacity: 0.9;
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,0.6)); }
+#loadscreen .line { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: rgba(255,255,255,0.07); }
+#loadscreen .line i { position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: linear-gradient(90deg, rgba(255,211,106,0.15), #ffd36a); transition: width 0.6s cubic-bezier(.2,.8,.2,1);
+  box-shadow: 0 0 10px rgba(255,200,90,0.6); }
+#loadscreen .line i::after { content: ''; position: absolute; right: -3px; top: -2px; width: 6px; height: 6px;
+  background: #fff3cf; box-shadow: 0 0 10px 3px rgba(255,210,110,0.85); }
+/* the tip, written like a subtitle */
+#loadscreen .tip { text-align: center; font-size: 12px; line-height: 1.7; color: #e9e3ff;
+  text-shadow: 0 2px 0 #000; transition: opacity 0.5s, transform 0.5s; }
+#loadscreen .tip.out { opacity: 0; transform: translateY(4px); }
+#loadscreen .tip em { font-style: normal; color: #ffd36a; margin-right: 8px; }
+#loadscreen .status { text-align: right; min-width: 150px; }
+#loadscreen .stage { font-size: 10px; letter-spacing: 1px; color: #b9b2e0; min-height: 14px; }
+#loadscreen .pct { font-family: var(--font-display, inherit); font-size: 18px; letter-spacing: 3px; color: #ffe9b0; margin-top: 3px; }
+#loadscreen .rialo { position: absolute; z-index: 5; right: max(5vw, 24px); top: calc(5vh - 6px);
+  font-family: var(--font-display, inherit); font-size: 8px; letter-spacing: 4px; color: rgba(220,214,255,0.55); }
+@media (max-width: 640px) {
+  #loadscreen .bar { grid-template-columns: 1fr auto; gap: 12px; }
+  #loadscreen .bar .logo { display: none; }
+  #loadscreen .tip { font-size: 10px; text-align: left; }
+  #loadscreen .status { min-width: 0; }
+  #loadscreen .stage { display: none; }
+  #loadscreen .card .sub { font-size: 8px; letter-spacing: 3px; }
 }
-#loadscreen .pct {
-  font-family: var(--font-display, inherit); font-size: 10px; letter-spacing: 3px;
-  color: #b8d89a; margin-top: 7px; text-shadow: 0 2px 0 #000;
-}
-#loadscreen .tip {
-  font-size: 10px; line-height: 1.8; color: #a8b89a; margin-top: 14px;
-  min-height: 34px; text-shadow: 0 1px 0 #000; transition: opacity 0.4s;
-}
-#loadscreen .tip b { color: #ffe27a; letter-spacing: 2px; display: block; font-size: 8px; margin-bottom: 3px; }
-#loadscreen .rialo {
-  position: absolute; bottom: 12px; left: 0; right: 0; text-align: center;
-  font-family: var(--font-display, inherit); font-size: 8px; letter-spacing: 4px;
-  color: #8ea084; z-index: 3; text-shadow: 0 2px 0 #000;
-}
-@media (max-width: 560px) {
-  #loadscreen .logo { width: 68vw; }
-  #loadscreen .tip { font-size: 9px; }
+@media (prefers-reduced-motion: reduce) {
+  #loadscreen .scene { animation: none; }
 }
 `;
 
@@ -659,25 +699,38 @@ export function createLoadScreen({ logoSrc = '', vignette = null } = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   canvas.className = 'scene';
-  root.appendChild(canvas);
-  root.insertAdjacentHTML('beforeend', '<div class="veil"></div>');
+  const frameEl = document.createElement('div');
+  frameEl.className = 'frame';
+  frameEl.appendChild(canvas);
+  frameEl.insertAdjacentHTML('beforeend', '<div class="veil"></div>');
+  root.appendChild(frameEl);
 
-  const CELLS = 24;
+  const [title, sub] = VIGNETTE_NAME[key];
+  // each letter of the title rises in on its own beat
+  const letters = [...title].map((ch, i) => ch === ' '
+    ? '<span>&nbsp;</span>'
+    : `<span style="animation-delay:${(1.1 + i * 0.045).toFixed(3)}s">${ch}</span>`).join('');
   root.insertAdjacentHTML('beforeend', `
-    <div class="stack">
-      ${logoSrc ? `<img class="logo" src="${logoSrc}" alt="SEMESTA">` : ''}
-      <div class="place">${VIGNETTE_NAME[key]}</div>
-      <div class="stage">Waking the world…</div>
-      <div class="bar">${'<i></i>'.repeat(CELLS)}</div>
-      <div class="pct">0%</div>
+    <div class="lbx top"></div><div class="lbx bot"></div>
+    <div class="card">
+      <div class="kick">◆ ENTERING</div>
+      <h1>${letters}</h1>
+      <div class="rule"></div>
+      <div class="sub">${sub}</div>
+    </div>
+    <div class="bar">
+      <div class="line"><i></i></div>
+      ${logoSrc ? `<img class="logo" src="${logoSrc}" alt="SEMESTA">` : '<span></span>'}
       <div class="tip"></div>
+      <div class="status"><div class="stage">Waking the world…</div><div class="pct">0%</div></div>
     </div>
     <div class="rialo">◆ BUILD FOR RIALO ◆</div>
+    <div class="fadein"></div>
   `);
 
   const ctx = canvas.getContext('2d');
   const draw = PAINTERS[key](rngFrom(key.length * 7919 + 13));
-  const cells = [...root.querySelectorAll('.bar i')];
+  const lineEl = root.querySelector('.line i');
   const stageEl = root.querySelector('.stage');
   const pctEl = root.querySelector('.pct');
   const tipEl = root.querySelector('.tip');
@@ -686,15 +739,15 @@ export function createLoadScreen({ logoSrc = '', vignette = null } = {}) {
   const order = TIPS.map((_, i) => i).sort(() => Math.random() - 0.5);
   let tipI = 0;
   function showTip() {
-    tipEl.style.opacity = '0';
+    tipEl.classList.add('out');
     setTimeout(() => {
-      tipEl.innerHTML = `<b>DID YOU KNOW</b>${TIPS[order[tipI % order.length]]}`;
-      tipEl.style.opacity = '1';
+      tipEl.innerHTML = `<em>◆</em>${TIPS[order[tipI % order.length]]}`;
+      tipEl.classList.remove('out');
       tipI++;
-    }, 260);
+    }, 500);
   }
   showTip();
-  const tipTimer = setInterval(showTip, 3800);
+  const tipTimer = setInterval(showTip, 4600);
 
   // the scene animates on its own clock so it keeps moving through long stages
   const t0 = performance.now();
@@ -723,8 +776,7 @@ export function createLoadScreen({ logoSrc = '', vignette = null } = {}) {
   function stage(label, pct) {
     if (label) stageEl.textContent = label;
     shownPct = Math.max(shownPct, Math.min(1, pct));
-    const lit = Math.round(shownPct * CELLS);
-    cells.forEach((c, i) => c.classList.toggle('on', i < lit));
+    lineEl.style.width = `${(shownPct * 100).toFixed(1)}%`;
     pctEl.textContent = `${Math.round(shownPct * 100)}%`;
   }
 
