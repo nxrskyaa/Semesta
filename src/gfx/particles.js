@@ -59,9 +59,10 @@ export function createParticles(scene) {
     scene.add(pts);
     const pool = [];
     for (let i = 0; i < cap; i++) {
-      pool.push({ life: 0, life0: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: 1, g: 1, b: 1, grav: 1, drag: 0 });
+      pool.push({ life: 0, life0: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: 1, g: 1, b: 1, grav: 1, drag: 0, parked: true });
     }
-    return { cap, g, pos, col, pool, cursor: 0 };
+    for (let i = 0; i < cap; i++) pos[i * 3 + 1] = -999;    // start parked, not at the origin
+    return { cap, g, pos, col, pool, cursor: 0, alive: 0, wasAlive: true };
   });
 
   /** Put one particle into a size layer. `drag` bleeds speed, so fast sparks
@@ -74,6 +75,8 @@ export function createParticles(scene) {
     p.vx = vx; p.vy = vy; p.vz = vz;
     p.r = c.r; p.g = c.g; p.b = c.b;
     p.grav = grav; p.drag = drag;
+    p.parked = false;
+    L.wasAlive = true;            // wakes an idle layer for this frame
   }
   /** Pick a layer: mostly medium, some fine, a few fat. */
   const pickLayer = () => { const r = Math.random(); return r < 0.42 ? 0 : r < 0.8 ? 1 : 2; };
@@ -437,6 +440,86 @@ export function createParticles(scene) {
     r.g.computeBoundingSphere();
   }
 
+  // ---- HELIX: the aura that wraps the caster -------------------------------
+  // Two bands of light spiralling up round the body and turning as they go.
+  // The rune circle says WHERE a spell was cast and the rise says FROM WHOM;
+  // the helix is what makes the cast itself look expensive. Built in local
+  // space round the origin and placed with mesh.position, so it can spin on
+  // its own axis. More stations than a slash, because 1.5 turns on 14 points
+  // is a staircase.
+  const HX_ST = 34;
+  const helixes = [];
+  for (let i = 0; i < 4; i++) {
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array(HX_ST * 2 * 3);
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const idx = [];
+    for (let k = 0; k < HX_ST - 1; k++) { const a = k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    g.setIndex(idx);
+    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.frustumCulled = false;
+    mesh.visible = false;
+    scene.add(mesh);
+    helixes.push({ mesh, m, g, pos, t: 0, dur: 0, spin: 1, h: 1 });
+  }
+  let hxCursor = 0;
+  function helix(pos, colorHex, height = 2.4, radius = 0.85, dur = 0.65, turns = 1.4) {
+    for (let strand = 0; strand < 2; strand++) {
+      const H = helixes[hxCursor]; hxCursor = (hxCursor + 1) % helixes.length;
+      H.m.color.set(colorHex).lerp(WHITE, 0.06);
+      const p2 = H.pos;
+      for (let i = 0; i < HX_ST; i++) {
+        const t = i / (HX_ST - 1);
+        const a = strand * Math.PI + t * turns * Math.PI * 2;
+        const r = radius * (1 - t * 0.35);
+        const y = t * height;
+        const w = Math.sin(t * Math.PI) * 0.22 + 0.02;      // fat in the middle, points at both ends
+        const x = Math.cos(a) * r, z = Math.sin(a) * r;
+        p2[i * 6] = x; p2[i * 6 + 1] = y - w; p2[i * 6 + 2] = z;
+        p2[i * 6 + 3] = x; p2[i * 6 + 4] = y + w; p2[i * 6 + 5] = z;
+      }
+      H.g.attributes.position.needsUpdate = true;
+      H.mesh.position.set(pos.x, pos.y + 0.05, pos.z);
+      H.mesh.rotation.set(0, Math.random() * 6.28, 0);
+      H.mesh.scale.set(1, 0.2, 1);
+      H.t = dur; H.dur = dur; H.spin = strand ? -1 : 1; H.h = 1;
+      H.mesh.visible = true;
+    }
+  }
+
+  /**
+   * STREAK: the comet tail a dash leaves. Wide at the arrival end, a point at
+   * the departure, lying just above the ground so the top-down camera sees its
+   * whole length; a spray of sparks is thrown along it.
+   */
+  function streak(from, to, colorHex, dur = 0.42, width = 0.62) {
+    const r = takeRibbon(colorHex, dur);
+    const p2 = r.pos;
+    const dx = to.x - from.x, dz = to.z - from.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const px = -dz / len, pz = dx / len;
+    for (let i = 0; i < RIB_ST; i++) {
+      const t = i / (RIB_ST - 1);
+      const w = width * Math.pow(t, 0.7) * (t > 0.9 ? (1 - t) * 10 : 1) + 0.02;
+      const cx = from.x + dx * t, cz = from.z + dz * t;
+      const cy = from.y + (to.y - from.y) * t + 0.7;
+      p2[i * 6] = cx - px * w; p2[i * 6 + 1] = cy; p2[i * 6 + 2] = cz - pz * w;
+      p2[i * 6 + 3] = cx + px * w; p2[i * 6 + 4] = cy; p2[i * 6 + 5] = cz + pz * w;
+    }
+    r.g.attributes.position.needsUpdate = true;
+    r.g.computeBoundingSphere();
+    const c = TMP_COL.set(colorHex);
+    const n = nOf(Math.min(18, Math.round(len * 2.2)));
+    for (let i = 0; i < n; i++) {
+      const t = Math.random();
+      emit(Math.random() < 0.5 ? 0 : 1, from.x + dx * t, from.y + 0.6 + Math.random() * 0.5, from.z + dz * t,
+        (Math.random() - 0.5) * 1.6, 0.8 + Math.random() * 1.4, (Math.random() - 0.5) * 1.6,
+        c, 0.3 + Math.random() * 0.3, 1, 3);
+    }
+  }
+
   // ---- GROUND DECALS ------------------------------------------------------
   //
   // The thing every skill was missing. A cast was particles in mid-air and
@@ -645,9 +728,23 @@ export function createParticles(scene) {
 
     for (const L of layers) {
       const { pool, pos, col, cap } = L;
+      // IDLE LAYERS COST NOTHING. Every layer used to walk all of its slots and
+      // re-upload its whole position and colour buffers every frame, alive or
+      // not — 800 particles' worth of GPU upload while nothing was burning.
+      // A layer with nothing alive, that also had nothing alive last frame,
+      // is skipped outright; a slot is parked below the world once, when it
+      // dies, rather than re-parked every frame forever.
+      if (L.alive === 0 && !L.wasAlive) continue;
+      let alive = 0;
       for (let i = 0; i < cap; i++) {
         const p = pool[i];
-        if (p.life <= 0) { pos[i * 3 + 1] = -999; continue; }
+        if (p.life <= 0) {
+          if (p.parked) continue;
+          p.parked = true;
+          pos[i * 3 + 1] = -999;
+          continue;
+        }
+        alive++;
         p.life -= dt;
         p.vy -= p.grav * dt;
         // DRAG. Without it a spark travels at full speed right up to the frame
@@ -669,6 +766,8 @@ export function createParticles(scene) {
         const f = Math.min(1, a);
         col[i * 3] = p.r * f; col[i * 3 + 1] = p.g * f; col[i * 3 + 2] = p.b * f;
       }
+      L.wasAlive = L.alive > 0 || alive > 0;
+      L.alive = alive;
       L.g.attributes.position.needsUpdate = true;
       L.g.attributes.color.needsUpdate = true;
     }
@@ -742,6 +841,16 @@ export function createParticles(scene) {
       it.m.opacity = k < 0.2 ? 1 : 1 - (k - 0.2) / 0.8;
     }
 
+    // HELIX: the bands climb out of the floor, spin, and fade from the bottom up
+    for (const H of helixes) {
+      if (H.t <= 0) { H.mesh.visible = false; continue; }
+      H.t -= dt;
+      const k = 1 - Math.max(0, H.t / H.dur);
+      H.mesh.scale.y = Math.min(1, 0.2 + k * 2.4);
+      H.mesh.rotation.y += dt * 7 * H.spin * (1 - k * 0.6);
+      H.m.opacity = (k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85) * 0.7;
+    }
+
     // RIBBONS: slash and bolt both just fade; their shape is already final.
     for (const r of ribbons) {
       if (r.t <= 0) { r.mesh.visible = false; continue; }
@@ -752,5 +861,5 @@ export function createParticles(scene) {
   }
 
   return { burst, fountain, ring, shockwave, flash, runeCircle,
-           beam, spikes, slash, bolt, decal, impact, rise, update };
+           beam, spikes, slash, bolt, decal, impact, rise, helix, streak, update };
 }

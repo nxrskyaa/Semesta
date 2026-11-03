@@ -22,6 +22,16 @@ import {
 } from '../systems/classes.js';
 
 const CSS = `
+/* the gacha's legendary/mythic moment reaches past the panel */
+.g-screenflash { position: fixed; inset: 0; z-index: 400; pointer-events: none;
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--rc) 55%, #fff) 0%, color-mix(in srgb, var(--rc) 30%, transparent) 32%, transparent 72%);
+  animation: g-sflash 0.85s ease-out forwards; }
+@keyframes g-sflash { 0% { opacity: 0; } 12% { opacity: 0.95; } 100% { opacity: 0; } }
+.g-jolt { animation: g-jolt 0.42s cubic-bezier(.3,1.6,.5,1); }
+/* .panel sits at translate(-50%, -52%), so the jolt shakes round THAT */
+@keyframes g-jolt { 0% { transform: translate(-50%, -52%) scale(1); } 20% { transform: translate(calc(-50% - 5px), calc(-52% + 3px)) scale(1.015); }
+  45% { transform: translate(calc(-50% + 4px), calc(-52% - 2px)); } 70% { transform: translate(calc(-50% - 2px), -52%); } 100% { transform: translate(-50%, -52%); } }
+.g-mythicglow { box-shadow: var(--pix-frame), 0 0 40px rgba(255,122,184,0.55), 0 0 90px rgba(120,200,255,0.35) !important; transition: box-shadow 0.4s; }
 .panel {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -52%);
   width: min(500px, calc(100vw - 32px)); max-height: 78vh; overflow-y: auto;
@@ -34,8 +44,10 @@ const CSS = `
   pointer-events: auto; z-index: 30;
   scrollbar-width: thin; scrollbar-color: var(--gold-dim) transparent;
 }
-.panel.show { display: block; animation: panel-in 0.14s ease-out; }
-@keyframes panel-in { from { transform: translate(-50%, -50%) scale(0.97); opacity: 0; } }
+.panel.show { display: block; animation: panel-in 0.24s cubic-bezier(.2,1.25,.4,1); }
+/* the panel rests at translate(-50%, -52%); the open animation used to start
+   from -50% and finish with a two-percent hop at the end */
+@keyframes panel-in { from { transform: translate(-50%, -49%) scale(0.92); opacity: 0; filter: brightness(1.5); } }
 .panel h3 {
   font-family: var(--font-display);
   font-size: 13px; letter-spacing: 3px; color: var(--gold); margin: -4px -4px 12px;
@@ -45,6 +57,12 @@ const CSS = `
   text-shadow: 0 1px 0 var(--ink), 0 0 12px var(--gold-glow);
 }
 .panel h3::before { content: '◆ '; font-size: 10px; color: var(--gold-dim); vertical-align: 2px; }
+/* a sheen runs across the title bar as the panel opens */
+.panel h3 { position: relative; overflow: hidden; }
+.panel h3::after { content: ''; position: absolute; top: 0; bottom: 0; width: 28%; left: -40%; transform: skewX(-20deg);
+  background: linear-gradient(90deg, transparent, rgba(255,233,176,0.22), transparent); pointer-events: none;
+  animation: h3-sheen 1.1s ease-out 0.12s; }
+@keyframes h3-sheen { to { left: 130%; } }
 .panel h3 small { float: right; color: var(--muted); font-size: 10px; letter-spacing: 1px; }
 .panel h4.sect {
   font-size: 11px; letter-spacing: 3px; color: var(--gold-dim); margin: 14px 0 8px;
@@ -730,6 +748,39 @@ export function createPanels(hudRoot, {
   let gachaHistory = [];
   let gachaBusy = false; // don't let inventory refreshes stomp the animation
   let gachaView = 'machine'; // machine | prizes (the full pull catalogue)
+
+  // ---- the reveal's ceremony, scaled by tier --------------------------------
+  // Rotating rays behind the card (two counter-turning layers from epic up; a
+  // rainbow for a mythic), sparkles that rise off the floor of the stage, and
+  // the name rising in letter by letter. All CSS: nothing here costs a frame.
+  const raysHtml = (tier, color, top = false) => (tier < 2 ? ''
+    : `<div class="g-rays t${tier}${top ? ' top' : ''}" style="--rc:${color}"><i></i>${tier >= 3 ? '<i></i>' : ''}</div>`);
+  const sparksHtml = (tier, color) => {
+    if (tier < 1) return '';
+    let h = '';
+    for (let i = 0; i < tier * 5; i++) {
+      h += `<i class="g-spk" style="--rc:${color};left:${(6 + Math.random() * 88).toFixed(1)}%;`
+        + `animation-delay:${(0.4 + Math.random() * 1.6).toFixed(2)}s;animation-duration:${(1.5 + Math.random() * 1.3).toFixed(2)}s"></i>`;
+    }
+    return h;
+  };
+  const lettersHtml = (text, at) => [...String(text)].map((ch, i) => (ch === ' '
+    ? ' ' : `<span style="animation-delay:${(at + i * 0.028).toFixed(3)}s">${ch.replace(/[<>&]/g, '')}</span>`)).join('');
+  /** A full-screen bloom of the rarity colour, and the panel jolts — legendary+. */
+  function bigMoment(color, tier) {
+    const f = document.createElement('div');
+    f.className = 'g-screenflash';
+    f.style.setProperty('--rc', color);
+    document.body.appendChild(f);
+    setTimeout(() => f.remove(), 900);
+    const pnl = panels.gacha;
+    pnl.classList.remove('g-jolt');
+    void pnl.offsetWidth;
+    pnl.classList.add('g-jolt');
+    if (tier >= 5) pnl.classList.add('g-mythicglow');
+    setTimeout(() => pnl.classList.remove('g-jolt', 'g-mythicglow'), 1600);
+  }
+
   function renderGacha(phase = 'idle', result = null) {
     if (!gacha) return;
     if (gachaBusy && phase === 'idle') return;
@@ -825,8 +876,11 @@ export function createPanels(hudRoot, {
       stage = `<div class="g-dropzone t${tier}" style="--rc:${R.color}">
           ${beam}${rings}
           <div class="g-fallcap">
-            <img class="g-half t" src="${capsuleHalfUrl(R.color, true)}">
-            <img class="g-half b" src="${capsuleHalfUrl('#f2f2ea', false)}">
+            <div class="g-shaker">
+              <img class="g-half t" src="${capsuleHalfUrl(R.color, true)}">
+              <img class="g-half b" src="${capsuleHalfUrl('#f2f2ea', false)}">
+              <i class="g-seam"></i>
+            </div>
           </div>
           <div class="g-crackglow"></div>
         </div>
@@ -840,12 +894,15 @@ export function createPanels(hudRoot, {
       // A 16px icon blown up to 90px is sixteen fat squares and looks the same
       // whatever you pulled. If the thing has a model, turn the model.
       const solid = hasModel(result.iconId);
-      stage = `<div class="g-flash" style="--rc:${R.color}"></div>${confetti}
+      const tier = RARITY_ORDER.indexOf(result.rarity);
+      stage = `<div class="g-flash" style="--rc:${R.color}"></div>
+        ${raysHtml(tier, R.color)}${sparksHtml(tier, R.color)}${confetti}
         <div class="g-card flip ${high ? 'high' : ''} r-${result.rarity}" style="--rc:${R.color}">
-          <div class="g-rarity">${'◆'.repeat(RARITY_ORDER.indexOf(result.rarity) + 1)} ${R.name.toUpperCase()}</div>
+          <i class="g-sheen"></i>
+          <div class="g-rarity">${'◆'.repeat(tier + 1)} ${R.name.toUpperCase()}</div>
           <div class="g-icoframe ${solid ? 'solid' : ''}">${
             solid ? '<span data-show3d></span>' : `<img src="${itemIconUrl(result.iconId)}">`}</div>
-          <div class="g-name">${result.name}</div>
+          <div class="g-name">${lettersHtml(result.name, 0.62)}</div>
           ${result.note ? `<div class="g-note">${result.note}</div>` : ''}
         </div>`;
     } else if (phase === 'multi' && result) {
@@ -865,8 +922,9 @@ export function createPanels(hudRoot, {
       const confetti = bestIdx >= 3 ? Array.from({ length: 16 }, (_, i) =>
         `<i class="g-conf" style="left:${4 + Math.random() * 92}%;background:${['#ffd23e', bestR.color, '#f0f0e8'][i % 3]};animation-delay:${Math.random() * 0.6}s;animation-duration:${0.9 + Math.random() * 0.8}s"></i>`).join('') : '';
       const solid = hasModel(hero.iconId);
-      stage = `${confetti}
+      stage = `${raysHtml(bestIdx, bestR.color, true)}${sparksHtml(bestIdx, bestR.color)}${confetti}
         <div class="g-hero" style="--rc:${bestR.color}">
+          <i class="g-sheen"></i>
           <div class="g-rarity">${'◆'.repeat(bestIdx + 1)} BEST PULL — ${bestR.name.toUpperCase()}</div>
           <div class="g-icoframe ${solid ? 'solid' : ''}">${
             solid ? '<span data-show3d></span>' : `<img src="${itemIconUrl(hero.iconId)}">`}</div>
@@ -924,8 +982,8 @@ export function createPanels(hudRoot, {
         @keyframes g-spin { to { transform: rotate(360deg); } }
         @keyframes g-pulse { 50% { opacity: 0.45; } }
         .g-half { position: absolute; left: 0; width: 44px; height: 26px; image-rendering: pixelated; }
-        .g-half.t { top: 0; animation: g-crack-top 0.3s ease-in 0.66s forwards; }
-        .g-half.b { top: 24px; animation: g-crack-bot 0.3s ease-in 0.66s forwards; }
+        .g-half.t { top: 0; animation: g-crack-top 0.3s ease-in 0.96s forwards; }
+        .g-half.b { top: 24px; animation: g-crack-bot 0.3s ease-in 0.96s forwards; }
         .g-hint { font-size: 10px; color: var(--muted); margin-top: 10px; letter-spacing: 1px; }
         /* capsule drop + crack-open phase */
         .g-dropzone { position: relative; height: 130px; }
@@ -939,10 +997,24 @@ export function createPanels(hudRoot, {
         }
         @keyframes g-crack-top { to { transform: translate(-14px, -26px) rotate(-38deg); opacity: 0.15; } }
         @keyframes g-crack-bot { to { transform: translate(14px, 12px) rotate(30deg); opacity: 0.15; } }
+        /* the room goes dark round the capsule, so the light that comes next is the only thing to look at */
+        .g-dropzone::before { content: ''; position: absolute; inset: -40px -60px; pointer-events: none;
+          background: radial-gradient(circle at 50% 58%, transparent 18%, rgba(0,0,0,0.6) 72%);
+          opacity: 0; animation: g-dim 0.5s ease-out forwards; }
+        @keyframes g-dim { to { opacity: 1; } }
+        /* it SHAKES before it opens, harder for a better prize, and light leaks out of the seam */
+        .g-shaker { position: absolute; inset: 0; animation: g-shake 0.07s linear 0.62s 5; }
+        .g-dropzone.t3 .g-shaker, .g-dropzone.t4 .g-shaker { animation-iteration-count: 6; animation-duration: 0.06s; }
+        .g-dropzone.t5 .g-shaker { animation-iteration-count: 8; animation-duration: 0.05s; }
+        @keyframes g-shake { 25% { transform: translate(-2px, 1px) rotate(-5deg); } 75% { transform: translate(2px, -1px) rotate(5deg); } }
+        .g-seam { position: absolute; left: 2px; right: 2px; top: 23px; height: 3px; background: #fff;
+          box-shadow: 0 0 8px 3px var(--rc), 0 0 2px #fff; opacity: 0; border-radius: 2px;
+          animation: g-seam 0.34s ease-in 0.62s forwards; }
+        @keyframes g-seam { to { opacity: 1; box-shadow: 0 0 22px 9px var(--rc), 0 0 4px #fff; } }
         .g-crackglow { position: absolute; left: 50%; top: 74px; width: 10px; height: 10px; margin-left: -5px;
           border-radius: 50%; background: var(--rc); opacity: 0;
           box-shadow: 0 0 30px 16px var(--rc);
-          animation: g-glowup 0.34s ease-out 0.66s forwards; }
+          animation: g-glowup 0.34s ease-out 0.96s forwards; }
         @keyframes g-glowup { to { opacity: 0.95; transform: scale(2.4); } }
         /* rarity flash + reveal card */
         .g-flash { position: absolute; inset: -15px; pointer-events: none;
@@ -1000,7 +1072,7 @@ export function createPanels(hudRoot, {
            the tell, and it lands before the card does. */
         .g-ring { position: absolute; left: 50%; top: 52%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
           border: 2px solid var(--rc); border-radius: 50%; opacity: 0; pointer-events: none;
-          animation: g-ringout 0.62s ease-out forwards; }
+          animation: g-ringout 0.62s ease-out 0.62s forwards; }
         @keyframes g-ringout {
           0% { transform: scale(0.35); opacity: 0.95; }
           100% { transform: scale(5.2); opacity: 0; }
@@ -1009,7 +1081,7 @@ export function createPanels(hudRoot, {
         .g-beam { position: absolute; left: 50%; top: -6%; width: 46px; margin-left: -23px; height: 108%;
           background: linear-gradient(180deg, transparent, var(--rc) 26%, #fff 62%, var(--rc) 84%, transparent);
           opacity: 0; filter: blur(1px); pointer-events: none;
-          animation: g-beamin 0.9s ease-out 0.28s forwards; }
+          animation: g-beamin 0.9s ease-out 0.7s forwards; }
         @keyframes g-beamin {
           0% { opacity: 0; transform: scaleX(0.2); }
           22% { opacity: 0.9; transform: scaleX(1); }
@@ -1024,6 +1096,38 @@ export function createPanels(hudRoot, {
           100% { transform: scale(1); opacity: 1; }
         }
         .g-name { font-size: 13px; color: var(--text); margin-top: 8px; }
+        .g-name span { display: inline-block; animation: g-letter 0.42s cubic-bezier(.2,.9,.3,1.3) backwards; }
+        @keyframes g-letter { from { transform: translateY(9px) scale(0.6); opacity: 0; } }
+        .g-rarity { animation: g-stamp 0.5s cubic-bezier(.2,1.6,.4,1) 0.3s backwards; }
+        @keyframes g-stamp { from { transform: scale(2.3); opacity: 0; letter-spacing: 12px; } }
+        /* the reveal stage clips its own light */
+        .g-stage { overflow: hidden; }
+        .g-rays { position: absolute; left: 50%; top: 50%; width: 440px; height: 440px; margin: -220px 0 0 -220px;
+          pointer-events: none; opacity: 0; animation: g-rays-in 0.7s ease-out 0.12s forwards; }
+        .g-rays.top { top: 34%; }
+        .g-rays i { position: absolute; inset: 0; border-radius: 50%;
+          background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--rc) 50%, transparent) 0deg 6deg, transparent 6deg 20deg);
+          -webkit-mask: radial-gradient(circle, #000 4%, rgba(0,0,0,0.55) 32%, transparent 66%);
+          mask: radial-gradient(circle, #000 4%, rgba(0,0,0,0.55) 32%, transparent 66%);
+          animation: g-rot 16s linear infinite; }
+        .g-rays i + i { inset: 12%; opacity: 0.7; animation-duration: 24s; animation-direction: reverse; }
+        .g-rays.t5 i { background: repeating-conic-gradient(from 0deg,
+          rgba(255,110,150,0.55) 0deg 5deg, transparent 5deg 12deg, rgba(255,215,110,0.55) 12deg 17deg, transparent 17deg 24deg,
+          rgba(110,225,255,0.55) 24deg 29deg, transparent 29deg 36deg); }
+        @keyframes g-rot { to { transform: rotate(360deg); } }
+        @keyframes g-rays-in { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: scale(1); } }
+        .g-spk { position: absolute; bottom: 4%; width: 4px; height: 4px; border-radius: 50%; background: #fff;
+          box-shadow: 0 0 6px 2px var(--rc); opacity: 0; pointer-events: none; animation: g-spk-up linear infinite; }
+        @keyframes g-spk-up { 0% { transform: translateY(0) scale(0.4); opacity: 0; } 15% { opacity: 1; }
+          100% { transform: translateY(-180px) scale(1.1); opacity: 0; } }
+        /* a sheen of light sweeps the card once it lands, and keeps sweeping for the best tiers */
+        .g-card, .g-hero { position: relative; overflow: hidden; }
+        .g-sheen { position: absolute; top: -30%; bottom: -30%; width: 38%; left: -70%; transform: skewX(-20deg);
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.32), transparent);
+          pointer-events: none; z-index: 3; animation: g-sheen 1.1s ease-out 0.55s; }
+        .g-card.high .g-sheen, .g-hero .g-sheen { animation: g-sheen-loop 3.4s ease-out 0.55s infinite; }
+        @keyframes g-sheen { to { left: 140%; } }
+        @keyframes g-sheen-loop { 0% { left: -70%; } 32%, 100% { left: 140%; } }
         .g-note { font-size: 9px; color: var(--gold); margin-top: 5px; }
         .g-hist { font-size: 9px; line-height: 1.9; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
         .g-rollbtn { width: 100%; margin-top: 10px; font-size: 13px !important; padding: 12px !important; letter-spacing: 3px !important; }
@@ -1084,14 +1188,16 @@ export function createPanels(hudRoot, {
         audio.sfx('gacha_drop');
         renderGacha('drop', prize);
       }, 900);
-      setTimeout(() => { audio.sfx('gacha_pop'); }, 1560);
+      setTimeout(() => { audio.sfx('gacha_pop'); }, 1860);
       setTimeout(() => {
         gachaHistory.push(prize);
         if (gachaHistory.length > 24) gachaHistory.splice(0, gachaHistory.length - 24);
         gachaBusy = false;
         audio.sfx(`reveal_${prize.rarity}`);
         renderGacha('reveal', prize);
-      }, 1860);
+        const t = RARITY_ORDER.indexOf(prize.rarity);
+        if (t >= 4) bigMoment(RARITY[prize.rarity].color, t);
+      }, 2160);
     });
     panels.gacha.querySelector('[data-roll10]')?.addEventListener('click', () => {
       const prizes = gacha.roll10();
@@ -1114,6 +1220,8 @@ export function createPanels(hudRoot, {
         gachaBusy = false;
         audio.sfx(`reveal_${best.rarity}`);
         renderGacha('multi', prizes);
+        const t = RARITY_ORDER.indexOf(best.rarity);
+        if (t >= 4) bigMoment(RARITY[best.rarity].color, t);
       }, 2400);
     });
   }

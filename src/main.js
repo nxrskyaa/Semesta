@@ -26,6 +26,7 @@ import { createIsles } from './world/isles.js';
 import { buildHorizon } from './world/horizon.js';
 import { buildWind } from './world/wind.js';
 import { createAmbience } from './world/ambience.js';
+import { createHollowtide } from './world/hollowtide.js';
 import { createNetClient, serverConfigured } from './net/client.js';
 import { createRemotePlayers } from './net/remote.js';
 import { createChat } from './ui/chat.js';
@@ -746,6 +747,10 @@ async function init(character, saved, audio, online = false) {
   const wildlife = createWildlife(scene, terrain, particles);
   // chimney smoke off every hut and off your own house once it has a chimney
   const ambience = createAmbience({ scene, wind, sources: () => [...(npcs.chimneys || []), housing.chimney?.()] });
+  // HOLLOWTIDE festival dress: pumpkins, bats, the graveyard — only while the
+  // HOLLOWTIDE pass season runs (or ?hollowtide=1 for a preview)
+  const hollowtide = createHollowtide({ scene, terrain, landmarks, decor, npcs });
+  lighting.state.tint = hollowtide.tint;
   const watercraft = createWatercraft(scene, terrain, particles, {
     owns: (item) => inventory.count(item) > 0,
     onBoard: (def) => {
@@ -941,6 +946,7 @@ async function init(character, saved, audio, online = false) {
   setBoot(0.78, 'Unpacking your bag…'); await frame();
 
   const enemyMgr = createEnemyManager(terrain, decor.blocked, scene, particles, projectiles, {
+    festive: () => !!hollowtide?.active,
     /**
      * A world boss casting one of its phase moves.
      *
@@ -2729,6 +2735,31 @@ const CAM_PITCH_DEFAULT = 0.98;
     hitStopT = Math.max(hitStopT, Math.min(0.1, s));
     hitStopCool = hitStopT + 0.16;
   }
+  // BIG CASTS — the long-cooldown skills (War Cry, Iron Body, Meteor, Legion…)
+  // land with a bloom of their colour round the screen's edge and a short
+  // camera PUNCH (the field of view snaps in and eases back). Both are what
+  // tell you this one cost something; on a five-second jab they would be noise.
+  const BASE_FOV = camera.fov;
+  let fovPunch = 0;
+  const castFlash = document.createElement('div');
+  castFlash.id = 'castflash';
+  document.body.appendChild(castFlash);
+  {
+    const st = document.createElement('style');
+    st.textContent = `#castflash { position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: 0;
+      background: radial-gradient(ellipse at 50% 55%, transparent 42%, color-mix(in srgb, var(--c, #fff) 70%, transparent) 135%); }
+      #castflash.on { animation: castflash 0.6s ease-out; }
+      @keyframes castflash { 0% { opacity: 0; } 14% { opacity: 0.9; } 100% { opacity: 0; } }`;
+    document.head.appendChild(st);
+  }
+  function bigCast(color, k = 0.5) {
+    castFlash.style.setProperty('--c', color);
+    castFlash.classList.remove('on');
+    void castFlash.offsetWidth;
+    castFlash.classList.add('on');
+    fovPunch = Math.max(fovPunch, 2.5 + k * 3.5);
+    addShake(0.1 + k * 0.14);
+  }
   /** Where the gameplay camera wants to be right now — the pose a cinematic
    *  eases back into, so the hand-back never jumps. Mirrors updateCamera. */
   function followPose(outPos, outLook) {
@@ -2740,6 +2771,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     outLook.set(p.x, p.y + 0.6 + Math.max(0, (CAM_PITCH_DEFAULT - cam.pitch) * 7.5), p.z);
   }
   cine = createCinematics({ camera, followPose });
+  const _camGoal = new THREE.Vector3();
 
   // --- WHAT EARNS A CINEMATIC ------------------------------------------------
   //
@@ -2914,6 +2946,12 @@ const CAM_PITCH_DEFAULT = 0.98;
       cine.placeTitle('ENTERING', 'THE SOUTHERN SEA', 'Nine islands, and whatever lives under them');
       return;
     }
+    // the festival announces itself once a session
+    if (hollowtide.active && !placeShown.get('fest') && time > 8) {
+      placeShown.set('fest', true);
+      cine.placeTitle('THE SEASON OF', 'HOLLOWTIDE', 'Pumpkins are lit, bats are out, and the graveyard is awake');
+      return;
+    }
     // coming home to the plaza: a small title, at most every five minutes
     const sp = terrain.spawn;
     const inPlaza = (sp.x - p.x) ** 2 + (sp.z - p.z) ** 2 < 12.5 * 12.5;
@@ -2958,7 +2996,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     const cx = p.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
     const cz = p.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
     const cy = p.y + Math.sin(cam.pitch) * cam.dist;
-    camera.position.lerp(new THREE.Vector3(cx, cy, cz), Math.min(1, dt * 7));
+    camera.position.lerp(_camGoal.set(cx, cy, cz), Math.min(1, dt * 7));
     if (cam.shake > 0.005) {
       camera.position.x += (Math.random() - 0.5) * cam.shake * 0.5;
       camera.position.y += (Math.random() - 0.5) * cam.shake * 0.4;
@@ -2972,6 +3010,16 @@ const CAM_PITCH_DEFAULT = 0.98;
     // the sky — and anything standing in it — into view.
     const tiltLift = (CAM_PITCH_DEFAULT - cam.pitch) * 7.5;
     camera.lookAt(p.x, p.y + 0.6 + Math.max(0, tiltLift), p.z);
+    // the punch: in fast, out slow; the projection is only rebuilt while it moves
+    if (fovPunch > 0.01) {
+      fovPunch *= Math.exp(-dt * 6);
+      camera.fov = BASE_FOV - fovPunch;
+      camera.updateProjectionMatrix();
+    } else if (camera.fov !== BASE_FOV) {
+      fovPunch = 0;
+      camera.fov = BASE_FOV;
+      camera.updateProjectionMatrix();
+    }
   }
   updateCamera(10);
 
@@ -3554,7 +3602,7 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   const skillSys = createSkillSystem({
     player, enemyMgr, projectiles, particles, dmgNums, audio, terrain,
-    aimPoint, onKill, shake: addShake, hitStop,
+    aimPoint, onKill, shake: addShake, hitStop, bigCast,
     weaponDef: () => inventory.equippedDef(),
     forgeMult, summons,
   });
@@ -4618,7 +4666,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // can be forced and its effect measured rather than assumed
     adaptive, applyPixelRatio, composer, bloomPass, aoPass,
     resetStats, resetSkillPoints,
-    dungeon, dungeonWorld, hollowGate, cine, cineSeen, fishGauge,
+    dungeon, dungeonWorld, hollowGate, cine, cineSeen, fishGauge, hollowtide, ambience,
     enterHollow, leaveHollow, descendHollow, openHollowGate, populateFloor,
     dailies, gamepass, story, skilltree, index, landmarks, watercraft, isles, hud, wind,
     net, remote, chat, drinkBooster, xpMult, luckMult, gfxQuality: { getQuality, buildSnapshot }, renderer, scene,
@@ -4811,6 +4859,8 @@ const CAM_PITCH_DEFAULT = 0.98;
     particles.bolt?.(fxAt, fxAt.clone().setX(fxAt.x + 3), '#bfe8ff', 0.2);
     particles.impact?.(fxAt, '#ffffff', 1, 0.2);
     particles.rise?.(fxAt, '#a86aff', 1.2, 6);
+    particles.helix?.(fxAt, '#a86aff', 2, 0.8, 0.3);
+    particles.streak?.(fxAt, fxAt.clone().add(new THREE.Vector3(4, 0, 0)), '#a86aff', 0.2);
   } catch { /* an effect that will not fire dry is not worth failing boot for */ }
 
   setBoot(0.93, 'Compiling shaders…'); await frame();
@@ -4924,6 +4974,7 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   // --- game loop ---
   let last = performance.now(), time = 0, hudT = 0, thunderT = 20;
+  let enchantT = 0;
   function loop(now) {
     schedule(loop);
     const rawDt = Math.min(0.05, (now - last) / 1000);
@@ -4973,6 +5024,9 @@ const CAM_PITCH_DEFAULT = 0.98;
     }
     autoBattleTick(dt);
     cineTick(dt);
+    // the equipped weapon's forge level, shown on the blade (memoised in the rig)
+    enchantT -= dt;
+    if (enchantT <= 0) { enchantT = 0.5; player.setEnchant?.(forge.plusOf(player.state.equipped)); }
 
     // moving cancels an in-progress fishing session
     if (fishing.state.phase !== 'idle' && (input.joy.active ||
@@ -5026,7 +5080,10 @@ const CAM_PITCH_DEFAULT = 0.98;
       remote.update(dt, net.state.players, player.state.pos);
     }
     wildlife.update(dt, player.state.pos, time);
-    if (!inHollow) ambience.update(dt, player.state.pos, camera, nightAmt);
+    if (!inHollow) {
+      ambience.update(dt, player.state.pos, camera, nightAmt);
+      hollowtide.update(dt, time, player.state.pos, nightAmt);
+    }
     water.update(dt, time);
     weather.update(dt, player.state.pos, time);
     lighting.state.weatherDim = weather.state.intensity;

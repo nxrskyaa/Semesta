@@ -13,8 +13,58 @@ import {
 // (242 raw allocation sites). The weapon builders route through it now.
 import {
   bladeGeometry, axeBitGeometry, sweepGeometry,
-  sharedBox, sharedCyl, sharedSphere, sharedTorus,
+  sharedBox, sharedCyl, sharedSphere, sharedTorus, SHARED,
 } from '../gfx/meshcache.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+
+// SOFT CLOTH. Every garment was a stack of hard axis-aligned boxes, so a robe,
+// a coat and a breastplate all had the same razor edges and the hero read as
+// built from bricks — the one look the art direction rules out. Anything big
+// enough to show an edge is a ROUNDED box now (radius scaled to its thinnest
+// side, two segments), cached by size and SHARED-tagged so every hero, preview
+// and remote player draws the same buffers; rivets, studs and buckles stay
+// crisp, because a rounded stud is a bead.
+const rbCache = new Map();
+function RB(w, h, d) {
+  const m = Math.min(w, h, d);
+  if (m < 0.045) return new THREE.BoxGeometry(w, h, d);
+  const key = `${w.toFixed(3)}|${h.toFixed(3)}|${d.toFixed(3)}`;
+  let g = rbCache.get(key);
+  if (!g) {
+    g = new RoundedBoxGeometry(w, h, d, 2, Math.min(0.032, m * 0.3));
+    g[SHARED] = true;
+    rbCache.set(key, g);
+  }
+  return g;
+}
+
+// WOVEN CLOTH. A flat colour reads as plastic; a faint pixel weave tinted by
+// the material colour reads as fabric, at the same 16px grain as the world.
+let fabricTex = null;
+function fabric() {
+  if (fabricTex) return fabricTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 16;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, 16, 16);
+  let s = 7;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      // a twill: diagonal ribs, plus a little noise so no two cells match
+      const rib = ((x + y) % 4 === 0) ? 0.92 : ((x + y) % 4 === 2 ? 0.97 : 1);
+      const v = Math.round(255 * rib * (0.95 + rnd() * 0.05));
+      g.fillStyle = `rgb(${v},${v},${v})`;
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  fabricTex = new THREE.CanvasTexture(c);
+  fabricTex.magFilter = THREE.NearestFilter;
+  fabricTex.colorSpace = THREE.SRGBColorSpace;
+  fabricTex[SHARED] = true;
+  return fabricTex;
+}
 
 const ROLL_TIME = 0.42;
 const ROLL_SPEED = 8.5;
@@ -92,9 +142,9 @@ export function buildCharacterMesh(config) {
   const accessory = config.accessory ?? 0;
 
   const skinMat = lam(skin);
-  const clothMat = lam(outfit);
-  const clothDark = new THREE.MeshLambertMaterial({ color: shadeHex(outfit, -0.38) });
-  const clothLight = new THREE.MeshLambertMaterial({ color: shadeHex(outfit, 0.22) });
+  const clothMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(outfit), map: fabric() });
+  const clothDark = new THREE.MeshLambertMaterial({ color: shadeHex(outfit, -0.38), map: fabric() });
+  const clothLight = new THREE.MeshLambertMaterial({ color: shadeHex(outfit, 0.22), map: fabric() });
   const hairMat = lam(hairC);
   const hairDark = new THREE.MeshLambertMaterial({ color: shadeHex(hairC, -0.22) });
   const bootMat = lam('#4a3a2c');
@@ -108,194 +158,194 @@ export function buildCharacterMesh(config) {
   const at = (obj, x, y, z) => { obj.position.set(x, y - 0.55, z); vis.add(obj); return obj; };
 
   // --- legs (short, with boots) ---
-  const legGeo = new THREE.BoxGeometry(0.13, 0.3, 0.16);
+  const legGeo = RB(0.13, 0.3, 0.16);
   const legL = new THREE.Mesh(legGeo, clothDark);
   at(legL, -0.09, 0.15, 0);
   const legR = new THREE.Mesh(legGeo, clothDark);
   at(legR, 0.09, 0.15, 0);
   legL.castShadow = legR.castShadow = true;
-  const bootGeo = new THREE.BoxGeometry(0.15, 0.11, 0.19);
+  const bootGeo = RB(0.15, 0.11, 0.19);
   const bootL = new THREE.Mesh(bootGeo, bootMat); bootL.position.y = -0.11; legL.add(bootL);
   const bootR = new THREE.Mesh(bootGeo, bootMat); bootR.position.y = -0.11; legR.add(bootR);
 
   // --- torso (varies per outfit style) ---
   const bw = female ? 0.32 : 0.36;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.38, 0.22), clothMat);
+  const body = new THREE.Mesh(RB(bw, 0.38, 0.22), clothMat);
   at(body, 0, 0.49, 0);
   body.castShadow = true;
 
   if (style === 0) { // tunic: collar, belt w/ buckle, skirt flare, side trim
-    const collar = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.04, 0.05, 0.24), clothLight);
+    const collar = new THREE.Mesh(RB(bw + 0.04, 0.05, 0.24), clothLight);
     at(collar, 0, 0.66, 0);
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.06, 0.25), clothDark);
+    const belt = new THREE.Mesh(RB(bw + 0.03, 0.06, 0.25), clothDark);
     at(belt, 0, 0.33, 0);
-    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.02), goldMat);
+    const buckle = new THREE.Mesh(RB(0.07, 0.05, 0.02), goldMat);
     buckle.position.set(0, 0, 0.13); belt.add(buckle);
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.1, 0.28), clothMat);
+    const skirt = new THREE.Mesh(RB(bw + 0.07, 0.1, 0.28), clothMat);
     at(skirt, 0, 0.27, 0);
-    const trim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.08, 0.03, 0.29), clothLight);
+    const trim = new THREE.Mesh(RB(bw + 0.08, 0.03, 0.29), clothLight);
     at(trim, 0, 0.22, 0);
   } else if (style === 1) { // robe: long skirt, sash, hood resting behind the head
-    const robe = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.08, 0.32, 0.28), clothMat);
+    const robe = new THREE.Mesh(RB(bw + 0.08, 0.32, 0.28), clothMat);
     at(robe, 0, 0.17, 0);
     robe.castShadow = true;
-    const hem = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.1, 0.04, 0.3), clothLight);
+    const hem = new THREE.Mesh(RB(bw + 0.1, 0.04, 0.3), clothLight);
     at(hem, 0, 0.03, 0);
-    const sash = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.05, 0.26), clothLight);
+    const sash = new THREE.Mesh(RB(bw + 0.05, 0.05, 0.26), clothLight);
     at(sash, 0, 0.34, 0);
-    const sashKnot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.05), clothDark);
+    const sashKnot = new THREE.Mesh(RB(0.08, 0.08, 0.05), clothDark);
     at(sashKnot, 0.1, 0.32, 0.12);
-    const hood = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.14), clothDark);
+    const hood = new THREE.Mesh(RB(0.3, 0.12, 0.14), clothDark);
     at(hood, 0, 0.68, -0.16);
   } else if (style === 2) { // leather: bandolier, belt pouches, knee pads
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.24), leatherMat);
+    const strap = new THREE.Mesh(RB(0.08, 0.4, 0.24), leatherMat);
     strap.rotation.z = 0.5;
     at(strap, 0, 0.5, 0.005);
-    const strapStud = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.02), goldMat);
+    const strapStud = new THREE.Mesh(RB(0.04, 0.04, 0.02), goldMat);
     at(strapStud, 0.06, 0.55, 0.12);
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.07, 0.25), leatherMat);
+    const belt = new THREE.Mesh(RB(bw + 0.03, 0.07, 0.25), leatherMat);
     at(belt, 0, 0.32, 0);
-    const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 0.05), lam('#8a6a48'));
+    const pouch = new THREE.Mesh(RB(0.09, 0.08, 0.05), lam('#8a6a48'));
     pouch.position.set(0.12, -0.04, 0.11); belt.add(pouch);
     const pouch2 = pouch.clone(); pouch2.position.x = -0.12; belt.add(pouch2);
-    const kneeL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.07, 0.18), leatherMat);
+    const kneeL = new THREE.Mesh(RB(0.15, 0.07, 0.18), leatherMat);
     kneeL.position.y = 0.02; legL.add(kneeL);
     const kneeR = kneeL.clone(); legR.add(kneeR);
   } else if (style === 3) { // plate: layered chest plates, gold trim, tasset skirt
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.22, 0.26), clothLight);
+    const chest = new THREE.Mesh(RB(bw + 0.05, 0.22, 0.26), clothLight);
     at(chest, 0, 0.57, 0);
-    const chestLow = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.1, 0.25), clothMat);
+    const chestLow = new THREE.Mesh(RB(bw + 0.03, 0.1, 0.25), clothMat);
     at(chestLow, 0, 0.42, 0);
-    const trim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.06, 0.03, 0.27), goldMat);
+    const trim = new THREE.Mesh(RB(bw + 0.06, 0.03, 0.27), goldMat);
     at(trim, 0, 0.48, 0);
-    const emblem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.02), goldMat);
+    const emblem = new THREE.Mesh(RB(0.08, 0.08, 0.02), goldMat);
     at(emblem, 0, 0.58, 0.135);
-    const tasset = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.09, 0.09, 0.28), clothDark);
+    const tasset = new THREE.Mesh(RB(bw + 0.09, 0.09, 0.28), clothDark);
     at(tasset, 0, 0.28, 0);
   } else if (style === 4) { // knight: heavy segmented plate, gorget, ridged breastplate + fauld
-    const gorget = new THREE.Mesh(new THREE.BoxGeometry(bw - 0.02, 0.07, 0.25), goldMat);
+    const gorget = new THREE.Mesh(RB(bw - 0.02, 0.07, 0.25), goldMat);
     at(gorget, 0, 0.665, 0);
-    const breast = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.26, 0.28), clothLight);
+    const breast = new THREE.Mesh(RB(bw + 0.07, 0.26, 0.28), clothLight);
     at(breast, 0, 0.55, 0);
     breast.castShadow = true;
     // central keel ridge + rivets
-    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.31), goldMat);
+    const ridge = new THREE.Mesh(RB(0.05, 0.26, 0.31), goldMat);
     at(ridge, 0, 0.55, 0);
     for (const sy of [0.62, 0.5]) {
       for (const sx of [-1, 1]) {
-        const rivet = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), goldMat);
+        const rivet = new THREE.Mesh(RB(0.03, 0.03, 0.02), goldMat);
         at(rivet, sx * (bw / 2), sy, 0.145);
       }
     }
-    const abs = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.02, 0.12, 0.25), clothMat);
+    const abs = new THREE.Mesh(RB(bw + 0.02, 0.12, 0.25), clothMat);
     at(abs, 0, 0.38, 0);
     // fauld: two overlapping skirt plates
-    const fauld1 = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.1, 0.08, 0.29), clothDark);
+    const fauld1 = new THREE.Mesh(RB(bw + 0.1, 0.08, 0.29), clothDark);
     at(fauld1, 0, 0.3, 0);
-    const fauld2 = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.12, 0.07, 0.3), clothLight);
+    const fauld2 = new THREE.Mesh(RB(bw + 0.12, 0.07, 0.3), clothLight);
     at(fauld2, 0, 0.24, 0);
-    const faTrim = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.13, 0.02, 0.31), goldMat);
+    const faTrim = new THREE.Mesh(RB(bw + 0.13, 0.02, 0.31), goldMat);
     at(faTrim, 0, 0.205, 0);
   } else if (style === 6) { // hakama: a wrapped top over wide pleated trousers
-    const top = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.04, 0.26, 0.24), clothMat);
+    const top = new THREE.Mesh(RB(bw + 0.04, 0.26, 0.24), clothMat);
     at(top, 0, 0.56, 0);
     top.castShadow = true;
     // the crossed front of a kimono, one panel over the other
     for (const sx of [-1, 1]) {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.26, 0.02), clothLight);
+      const panel = new THREE.Mesh(RB(0.11, 0.26, 0.02), clothLight);
       at(panel, sx * 0.06, 0.56, 0.125);
       panel.rotation.z = sx * 0.42;
     }
-    const obi = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.09, 0.26), clothDark);
+    const obi = new THREE.Mesh(RB(bw + 0.07, 0.09, 0.26), clothDark);
     at(obi, 0, 0.41, 0);
-    const knot = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), clothDark);
+    const knot = new THREE.Mesh(RB(0.09, 0.07, 0.05), clothDark);
     at(knot, 0, 0.41, -0.15);
     // wide pleated skirt, split into panels
     for (const sx of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(bw / 2 + 0.05, 0.3, 0.28), clothMat);
+      const leg = new THREE.Mesh(RB(bw / 2 + 0.05, 0.3, 0.28), clothMat);
       at(leg, sx * (bw / 4 + 0.01), 0.2, 0);
-      const pleat = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.3, 0.29), clothDark);
+      const pleat = new THREE.Mesh(RB(0.02, 0.3, 0.29), clothDark);
       at(pleat, sx * (bw / 4 + 0.01), 0.2, 0);
     }
   } else if (style === 7) { // sailor: square collar, kerchief, pleated skirt
-    const shirt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.03, 0.3, 0.23), clothLight);
+    const shirt = new THREE.Mesh(RB(bw + 0.03, 0.3, 0.23), clothLight);
     at(shirt, 0, 0.55, 0);
     shirt.castShadow = true;
     // the big square collar that falls down the back
-    const collar = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.02, 0.16, 0.03), clothMat);
+    const collar = new THREE.Mesh(RB(bw + 0.02, 0.16, 0.03), clothMat);
     at(collar, 0, 0.62, -0.12);
     for (const sx of [-1, 1]) {
-      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.02), clothMat);
+      const flap = new THREE.Mesh(RB(0.09, 0.14, 0.02), clothMat);
       at(flap, sx * 0.11, 0.62, 0.12);
     }
     // kerchief knotted at the throat
-    const tie = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.03), goldMat);
+    const tie = new THREE.Mesh(RB(0.07, 0.07, 0.03), goldMat);
     at(tie, 0, 0.63, 0.13);
-    const tail2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.02), goldMat);
+    const tail2 = new THREE.Mesh(RB(0.05, 0.16, 0.02), goldMat);
     at(tail2, 0, 0.53, 0.14);
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.1, 0.2, 0.3), clothDark);
+    const skirt = new THREE.Mesh(RB(bw + 0.1, 0.2, 0.3), clothDark);
     at(skirt, 0, 0.3, 0);
     for (let k = 0; k < 5; k++) {
-      const pl = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.31), clothMat);
+      const pl = new THREE.Mesh(RB(0.02, 0.2, 0.31), clothMat);
       at(pl, -0.12 + k * 0.06, 0.3, 0);
     }
   } else if (style === 8) { // poncho: one heavy woven sheet with a fringe
-    const cloth = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.16, 0.42, 0.3), clothMat);
+    const cloth = new THREE.Mesh(RB(bw + 0.16, 0.42, 0.3), clothMat);
     at(cloth, 0, 0.46, 0);
     cloth.castShadow = true;
     // woven bands across it
     for (const by of [0.56, 0.44, 0.32]) {
-      const band = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.17, 0.04, 0.31), clothLight);
+      const band = new THREE.Mesh(RB(bw + 0.17, 0.04, 0.31), clothLight);
       at(band, 0, by, 0);
     }
     // the neck hole
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.16), clothDark);
+    const neck = new THREE.Mesh(RB(0.12, 0.05, 0.16), clothDark);
     at(neck, 0, 0.66, 0);
     // fringe along the bottom edge
     for (let k = 0; k < 7; k++) {
-      const fr = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.07, 0.03), clothDark);
+      const fr = new THREE.Mesh(RB(0.025, 0.07, 0.03), clothDark);
       at(fr, -0.15 + k * 0.05, 0.22, 0.15);
     }
   } else if (style === 9) { // vestments: layered robes with a stole and a sigil
-    const robe = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.05, 0.46, 0.26), clothLight);
+    const robe = new THREE.Mesh(RB(bw + 0.05, 0.46, 0.26), clothLight);
     at(robe, 0, 0.42, 0);
     robe.castShadow = true;
     // a stole hanging down both sides of the chest
     for (const sx of [-1, 1]) {
-      const stole = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.4, 0.03), clothMat);
+      const stole = new THREE.Mesh(RB(0.07, 0.4, 0.03), clothMat);
       at(stole, sx * 0.08, 0.5, 0.13);
-      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.03), goldMat);
+      const tip = new THREE.Mesh(RB(0.07, 0.04, 0.03), goldMat);
       at(tip, sx * 0.08, 0.31, 0.13);
     }
     // a gold sigil at the throat
-    const sig = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), goldMat);
+    const sig = new THREE.Mesh(RB(0.07, 0.07, 0.02), goldMat);
     at(sig, 0, 0.63, 0.14);
-    const sigBar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.11, 0.025), goldMat);
+    const sigBar = new THREE.Mesh(RB(0.03, 0.11, 0.025), goldMat);
     at(sigBar, 0, 0.63, 0.145);
-    const hem = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.09, 0.05, 0.27), goldMat);
+    const hem = new THREE.Mesh(RB(bw + 0.09, 0.05, 0.27), goldMat);
     at(hem, 0, 0.21, 0);
   } else { // coat: long ranger duster with lapels, buttons & split tails
-    const coat = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.06, 0.4, 0.26), clothMat);
+    const coat = new THREE.Mesh(RB(bw + 0.06, 0.4, 0.26), clothMat);
     at(coat, 0, 0.44, 0);
     coat.castShadow = true;
     // open V-lapels
     for (const sx of [-1, 1]) {
-      const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.24, 0.02), clothLight);
+      const lapel = new THREE.Mesh(RB(0.09, 0.24, 0.02), clothLight);
       at(lapel, sx * 0.09, 0.58, 0.13);
       lapel.rotation.z = sx * 0.3;
     }
     // brass buttons down the front
     for (const by of [0.52, 0.44, 0.36]) {
-      const btn = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), goldMat);
+      const btn = new THREE.Mesh(RB(0.03, 0.03, 0.02), goldMat);
       at(btn, 0, by, 0.135);
     }
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.07, 0.05, 0.27), leatherMat);
+    const belt = new THREE.Mesh(RB(bw + 0.07, 0.05, 0.27), leatherMat);
     at(belt, 0, 0.33, 0);
-    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02), goldMat);
+    const buckle = new THREE.Mesh(RB(0.06, 0.04, 0.02), goldMat);
     at(buckle, 0, 0.33, 0.14);
     // two coat-tails hanging past the waist
     for (const sx of [-1, 1]) {
-      const tail = new THREE.Mesh(new THREE.BoxGeometry(bw / 2 + 0.02, 0.22, 0.06), clothDark);
+      const tail = new THREE.Mesh(RB(bw / 2 + 0.02, 0.22, 0.06), clothDark);
       at(tail, sx * (bw / 4 + 0.02), 0.13, -0.11);
     }
   }
@@ -304,16 +354,16 @@ export function buildCharacterMesh(config) {
   function makeArm(x) {
     const pivot = new THREE.Group();
     at(pivot, x, 0.64, 0);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.12), skinMat);
+    const arm = new THREE.Mesh(RB(0.1, 0.3, 0.12), skinMat);
     arm.position.y = -0.14;
     arm.castShadow = true;
     pivot.add(arm);
-    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.13, 0.14),
+    const sleeve = new THREE.Mesh(RB(0.12, 0.13, 0.14),
       (style === 3 || style === 4) ? clothLight : clothMat);
     sleeve.position.y = -0.04;
     pivot.add(sleeve);
     if (style === 1) { // wide robe sleeves
-      const wide = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.17), clothMat);
+      const wide = new THREE.Mesh(RB(0.15, 0.12, 0.17), clothMat);
       wide.position.y = -0.14;
       pivot.add(wide);
     }
@@ -324,19 +374,19 @@ export function buildCharacterMesh(config) {
 
   if (style === 3) { // plate pauldrons
     for (const [pivot, sx] of [[armL, -1], [armR, 1]]) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.11, 0.19), clothDark);
+      const pad = new THREE.Mesh(RB(0.17, 0.11, 0.19), clothDark);
       pad.position.set(sx * 0.02, 0.05, 0);
       pivot.add(pad);
-      const padTrim = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.2), goldMat);
+      const padTrim = new THREE.Mesh(RB(0.18, 0.03, 0.2), goldMat);
       padTrim.position.set(sx * 0.01, -0.01, 0);
       pivot.add(padTrim);
     }
   } else if (style === 4) { // knight: big ridged pauldrons with a spike
     for (const [pivot, sx] of [[armL, -1], [armR, 1]]) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.22), clothLight);
+      const pad = new THREE.Mesh(RB(0.2, 0.14, 0.22), clothLight);
       pad.position.set(sx * 0.03, 0.06, 0);
       pivot.add(pad);
-      const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.03, 0.06), goldMat);
+      const ridge = new THREE.Mesh(RB(0.21, 0.03, 0.06), goldMat);
       ridge.position.set(sx * 0.03, 0.12, 0);
       pivot.add(ridge);
       const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4), goldMat);
@@ -346,7 +396,7 @@ export function buildCharacterMesh(config) {
     }
   } else if (style === 2) { // leather shoulder straps
     for (const [pivot, sx] of [[armL, -1], [armR, 1]]) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.16), leatherMat);
+      const pad = new THREE.Mesh(RB(0.14, 0.06, 0.16), leatherMat);
       pad.position.set(sx * 0.01, 0.07, 0);
       pivot.add(pad);
     }
@@ -509,6 +559,89 @@ export function buildCharacterMesh(config) {
 
   // --- weapons (detailed, tiered) ---
   let weaponGroup = null;
+
+  // FORGE ENCHANT. Forging a weapon to +9 changed a number in a tooltip and
+  // nothing you could see, so the most expensive thing in the game looked
+  // exactly like the sword you started with. From +4 a forged weapon carries
+  // its level: sparks orbiting the blade, a halo of light along it, and the
+  // colour climbs cyan (+4) -> violet (+7) -> gold (+9). Additive sprites
+  // parented to the weapon, so they swing with it and bloom picks them up.
+  let enchant = null;
+  const ENCHANT_TEX = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 32;
+    const g = c.getContext('2d');
+    const r = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,0.6)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r; g.fillRect(0, 0, 32, 32);
+    return new THREE.CanvasTexture(c);
+  })();
+  function setEnchant(plus = 0) {
+    const want = plus >= 4 ? plus : 0;
+    if (enchant && enchant.parent === weaponGroup && enchant.userData.plus === want) return;
+    if (enchant) {
+      enchant.parent?.remove(enchant);
+      enchant.traverse((o) => o.material?.dispose?.());
+      enchant = null;
+    }
+    if (!want || !weaponGroup) return;
+    const color = want >= 9 ? '#ffd36a' : want >= 7 ? '#c08aff' : '#7fe0ff';
+    // the blade's extent in the weapon's own frame, so the light runs along it
+    weaponGroup.updateWorldMatrix(true, true);
+    const inv = new THREE.Matrix4().copy(weaponGroup.matrixWorld).invert();
+    const box = new THREE.Box3();
+    weaponGroup.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld).applyMatrix4(inv);
+      box.union(b);
+    });
+    if (box.isEmpty()) return;
+    const size = box.getSize(new THREE.Vector3());
+    const centre = box.getCenter(new THREE.Vector3());
+    const axis = size.y >= size.x && size.y >= size.z ? 'y' : size.x >= size.z ? 'x' : 'z';
+    const len = size[axis];
+    const g = new THREE.Group();
+    g.userData = { plus: want, axis, len, centre: centre.clone(), sparks: [], halo: null };
+    const n = want >= 9 ? 6 : want >= 7 ? 4 : 2;
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.SpriteMaterial({ map: ENCHANT_TEX, color, transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending });
+      const sp = new THREE.Sprite(m);
+      sp.scale.setScalar(0.09 + (want - 4) * 0.008);
+      g.add(sp);
+      g.userData.sparks.push({ sp, ph: (i / n) * Math.PI * 2, off: (i + 0.5) / n });
+    }
+    if (want >= 6) {
+      const hm = new THREE.SpriteMaterial({ map: ENCHANT_TEX, color, transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, opacity: 0.35 });
+      const halo = new THREE.Sprite(hm);
+      halo.position.copy(centre);
+      halo.scale.set(Math.max(0.28, len * 0.42), Math.max(0.28, len * 0.42), 1);
+      g.add(halo);
+      g.userData.halo = halo;
+    }
+    weaponGroup.add(g);
+    enchant = g;
+  }
+  function tickEnchant(t) {
+    if (!enchant || enchant.parent !== weaponGroup) return;
+    const u = enchant.userData;
+    const w = u.plus >= 9 ? 3.2 : 2.4;
+    for (const s2 of u.sparks) {
+      // each spark runs up and down the blade on its own phase, circling it
+      const k = (Math.sin(t * 1.3 + s2.ph) * 0.5 + 0.5) * 0.9 + 0.05;
+      const a = t * w + s2.ph;
+      const along = (k - 0.5) * u.len;
+      const r = 0.07 + 0.03 * Math.sin(t * 5 + s2.ph);
+      const p2 = s2.sp.position;
+      p2.copy(u.centre);
+      if (u.axis === 'y') { p2.y += along; p2.x += Math.cos(a) * r; p2.z += Math.sin(a) * r; }
+      else if (u.axis === 'x') { p2.x += along; p2.y += Math.cos(a) * r; p2.z += Math.sin(a) * r; }
+      else { p2.z += along; p2.x += Math.cos(a) * r; p2.y += Math.sin(a) * r; }
+      s2.sp.material.opacity = 0.55 + Math.sin(t * 7 + s2.ph * 3) * 0.35;
+    }
+    if (u.halo) u.halo.material.opacity = 0.22 + Math.sin(t * 2.2) * 0.1 + (u.plus >= 9 ? 0.12 : 0);
+  }
   let bowArrow = null;
   let staffOrb = null;
 
@@ -1019,6 +1152,7 @@ export function buildCharacterMesh(config) {
     getStaffOrb: () => staffOrb,
     getWeaponSparks: () => weaponGroup?.userData.sparks || null,
     getWeaponAnim: () => weaponGroup?.userData.anim || null,
+    setEnchant, tickEnchant,
   };
 }
 
@@ -1905,6 +2039,7 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     }
     // weapon jewelry: rings precess (a flat torus spinning on its own axis
     // would be invisible), orbs breathe, loose fragments hover & twirl
+    rig.tickEnchant?.(state.idleT);
     const wAnim = rig.getWeaponAnim?.();
     if (wAnim) {
       if (wAnim.ring) {
@@ -2696,6 +2831,8 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     addBuff, consumeCritBuff, buffVal, setMountState, applyAppearance, setCraftPose,
     setWorkPose, setFishPose,
     setWeaponVisible: (on) => rig.setWeaponVisible?.(on),
+    // the forge level shows on the blade from +4 up (see setEnchant in the rig)
+    setEnchant: (plus) => rig.setEnchant?.(plus),
     // watercraft.js steers with the same camera-relative vector the legs use
     moveVecFor: (input, camYaw) => moveVec(input, camYaw),
     playSwing, playSpin, playBowDraw, playStaffCast, playCast,

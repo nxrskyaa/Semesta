@@ -308,7 +308,8 @@ body.touch #hud .quests::before { display: none; }
   border: 2px solid #4a5a42; padding: 6px 14px; display: none; white-space: nowrap;
   letter-spacing: 1px;
 }
-#hud .prompt.show { display: block; animation: prompt-in 0.12s; }
+#hud .prompt.show { display: block; animation: prompt-in 0.18s cubic-bezier(.2,1.5,.4,1), prompt-glow 2.2s ease-in-out 0.2s infinite; }
+@keyframes prompt-glow { 50% { box-shadow: 0 0 14px rgba(255,226,122,0.28), inset 0 0 0 1px rgba(255,226,122,0.18); } }
 #hud .prompt b { color: #ffe27a; background: #202a20; border: 1px solid #4a5a42; padding: 0 5px; margin-right: 5px; }
 @keyframes prompt-in { from { transform: translateX(-50%) translateY(4px); opacity: 0; } }
 /* secondary interact prompt sits just under the primary */
@@ -450,13 +451,15 @@ body.touch #hud .autoflag { top: 200px; font-size: 9px; padding: 5px 10px; }
 #hud .toasts { position: absolute; left: 10px; bottom: 10px; display: flex; flex-direction: column-reverse; gap: 3px; }
 #hud .toast {
   display: flex; align-items: center; gap: 6px; font-size: 11px;
-  background: rgba(14,18,12,0.85); border-left: 3px solid #7da05e;
-  padding: 3px 9px 3px 5px; color: #dde5d5; width: max-content;
-  animation: toast-in 0.15s;
+  background: linear-gradient(90deg, rgba(30,40,24,0.94), rgba(14,18,12,0.82));
+  border-left: 3px solid #7da05e;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.35), inset 0 0 0 1px rgba(125,160,94,0.18);
+  padding: 4px 10px 4px 6px; color: #dde5d5; width: max-content;
+  animation: toast-in 0.26s cubic-bezier(.2,1.4,.4,1);
 }
 #hud .toast img { width: 15px; height: 15px; image-rendering: pixelated; }
 #hud .toast.quest { border-left-color: #ffd23e; color: #ffe9a8; }
-@keyframes toast-in { from { transform: translateX(-8px); opacity: 0; } }
+@keyframes toast-in { from { transform: translateX(-14px) scale(0.96); opacity: 0; } }
 
 /* ---- overlays ---- */
 #hud .vignette {

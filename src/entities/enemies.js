@@ -10,7 +10,7 @@ import { disposeObject } from '../util/dispose.js';
 // Geometry is SHARED — every monster spawn used to allocate ~72 fresh
 // geometries, and the GPU buffer uploads on the frame they first appear are a
 // measured 7.2ms spike. Materials stay per-enemy: they flash white on a hit.
-import { sharedBox, sharedCyl, sharedSphere } from '../gfx/meshcache.js';
+import { sharedBox, sharedCyl, sharedSphere, sharedMat, SHARED } from '../gfx/meshcache.js';
 
 // Aggro ranges are deliberately modest — monsters shouldn't dogpile players
 // who are just exploring; you mostly fight what you walk up to.
@@ -681,6 +681,52 @@ function redrawNameplate(np, hpFrac) {
 // ---------------------------------------------------------------------------
 const MAX_ENEMIES = 38;
 
+// HOLLOWTIDE HATS. During the festival some of the wilds dress up for it: a
+// little carved pumpkin or a witch's hat, sat on the creature's head inside its
+// posing pivot so it bobs with the walk. Shared geometry and materials (tagged
+// SHARED), so retire() never frees a hat another monster is still wearing.
+let HAT_PARTS = null;
+function hatParts() {
+  if (HAT_PARTS) return HAT_PARTS;
+  const tag = (g) => { g[SHARED] = true; return g; };
+  const pumpkin = tag(new THREE.SphereGeometry(0.17, 10, 7));
+  pumpkin.scale(1, 0.75, 1);
+  HAT_PARTS = {
+    pumpkin, stem: tag(new THREE.CylinderGeometry(0.02, 0.03, 0.08, 5)),
+    cone: tag(new THREE.ConeGeometry(0.16, 0.42, 8)), brim: tag(new THREE.CylinderGeometry(0.28, 0.28, 0.03, 12)),
+    band: tag(new THREE.CylinderGeometry(0.163, 0.163, 0.05, 8)),
+    orange: sharedMat('#e8742a'), green: sharedMat('#4a6a2a'), witch: sharedMat('#3a2a52'), gold: sharedMat('#e0b040'),
+    eyes: sharedMat('#2a1a10'),
+  };
+  return HAT_PARTS;
+}
+function festiveHat(vis) {
+  const P = hatParts();
+  const box = new THREE.Box3().setFromObject(vis);
+  const top = box.max.y;
+  const g = new THREE.Group();
+  if (Math.random() < 0.55) {
+    const b = new THREE.Mesh(P.pumpkin, P.orange);
+    const st = new THREE.Mesh(P.stem, P.green); st.position.y = 0.14;
+    // two carved eyes, as dark notches
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(sharedBox(0.05, 0.04, 0.02), P.eyes);
+      eye.position.set(sx * 0.06, 0.02, 0.16);
+      g.add(eye);
+    }
+    g.add(b, st);
+    g.position.y = top + 0.08;
+  } else {
+    const br = new THREE.Mesh(P.brim, P.witch);
+    const c = new THREE.Mesh(P.cone, P.witch); c.position.y = 0.22; c.rotation.z = 0.18;
+    const band = new THREE.Mesh(P.band, P.gold); band.position.y = 0.06;
+    g.add(br, c, band);
+    g.position.y = top - 0.02;
+  }
+  g.rotation.z = (Math.random() - 0.5) * 0.3;
+  vis.add(g);
+}
+
 export function createEnemyManager(terrain, decorBlocked, scene, particles, projectiles, hooks) {
   const enemies = [];
   // hooks: { onPlayerHit(enemy, dmg), sfx(name) }
@@ -750,7 +796,8 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
       const heroBonus = Math.floor((hooks.getPlayerLevel?.() || 1) / 5);
       const level = Math.max(1, levelFor(x, z) + heroBonus + (def.boss ? 2 : 0));
       const mesh = BUILDERS[type]();
-      attachVis(mesh);
+      const vis0 = attachVis(mesh);
+      if (hooks.festive?.() && Math.random() < 0.35) festiveHat(vis0);
       // ELITE variant: rarer, bigger, gilded aura ring — much tougher, pays more
       const elite = !def.boss && level >= 2 && Math.random() < 0.08;
       let hpMax = Math.round(def.hp * (1 + (level - 1) * 0.35));

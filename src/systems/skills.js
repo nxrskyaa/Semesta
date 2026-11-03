@@ -1195,8 +1195,17 @@ export function createSkillSystem(deps) {
     deps.particles.burst(p.pos.clone().add(new THREE.Vector3(0, 0.25, 0)), def.icon.color, 8, 2.2, 2, 0.5);
     deps.particles.flash(p.pos, def.icon.color, 3.5, 0.25);
     deps.particles.rise?.(p.pos, def.icon.color, 1.1 + castLvl * 0.06, 14);
+    // THE AURA: two bands of light wind up round the caster on every cast
+    deps.particles.helix?.(p.pos, def.icon.color, 2.2 + castLvl * 0.08, 0.85, 0.62);
     currentId = id;
+    const from = p.pos.clone();
     FX[id]();
+    // ANY skill that moves you leaves a comet tail from where you were to where
+    // you are — read off the hero's position before and after, so every dash,
+    // blink, charge and leap gets one, including ones added later
+    if (from.distanceToSquared(p.pos) > 2.25) deps.particles.streak?.(from, p.pos, def.icon.color);
+    // the big ones (long cooldowns) land with a screen-edge flash and a camera punch
+    if (def.cd >= 14) deps.bigCast?.(def.icon.color, Math.min(1, (def.cd - 10) / 14));
     return true;
   }
 
@@ -1227,5 +1236,5 @@ export function createSkillSystem(deps) {
     if (data?.levels) Object.assign(levels, data.levels);
   }
 
-  return { cast, update, ready, cdFrac, levelOf, upgrade, effCd, resetLevels, serialize, load, SKILLS };
+  return { cast, update, ready, cdFrac, levelOf, upgrade, effCd, resetLevels, serialize, load, SKILLS, cooldowns };
 }

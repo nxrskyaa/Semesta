@@ -29,7 +29,8 @@ export function setupLighting(scene) {
   scene.add(sun.target);
 
   // in-game clock: starts at 10:00, 1 game-minute per real second
-  const state = { minutes: 10 * 60, weatherDim: 0, fogBase: q.fogDensity };
+  const state = { minutes: 10 * 60, weatherDim: 0, fogBase: q.fogDensity, tint: 0 };
+  const HOLLOW_SKY = new THREE.Color('#3a2458'), HOLLOW_FOG = new THREE.Color('#40285c');
 
   // live re-apply when the SHADOWS / WORLD DETAIL knobs move
   function applyQuality(nq) {
@@ -98,6 +99,12 @@ export function setupLighting(scene) {
 
     gradeColor(_sky, hr, nightSky, dawnSky, daySky, duskSky);
     gradeColor(_fog, hr, nightFog, dawnFog, dayFog, duskFog);
+    // HOLLOWTIDE: the night leans purple while the festival is on
+    if (state.tint > 0) {
+      const nightness = Math.max(0, 1 - dayness * 1.6);
+      _sky.lerp(HOLLOW_SKY, 0.42 * state.tint * nightness);
+      _fog.lerp(HOLLOW_FOG, 0.36 * state.tint * nightness);
+    }
     if (state.weatherDim > 0) {
       _sky.lerp(new THREE.Color('#5c6a74'), state.weatherDim * 0.6);
       _fog.lerp(new THREE.Color('#5c6a74'), state.weatherDim * 0.55);

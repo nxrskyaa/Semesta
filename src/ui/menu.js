@@ -230,7 +230,11 @@ ${Array.from({ length: 12 }, (_, i) => `#opening .menu > *:nth-child(${i + 1}) {
 }
 #opening .about.show { display: flex; }
 #opening .about .card {
-  width: min(400px, 86vw); padding: 22px; text-align: center;
+  /* the About page is taller than it was: it scrolls inside the card rather
+     than running off a short screen, and a phone can scroll it (body is
+     touch-action: none for pinch zoom, so the card has to opt back in) */
+  width: min(480px, 92vw); max-height: 90vh; overflow-y: auto; touch-action: pan-y;
+  padding: 18px 20px; text-align: center; scrollbar-width: thin; scrollbar-color: #6a5a3a transparent;
   background: linear-gradient(180deg, rgba(26,31,20,0.97), rgba(14,18,11,0.97));
   border: 2px solid #46523c;
   box-shadow: inset 0 0 0 1px rgba(216,184,102,0.25), 0 14px 40px rgba(0,0,0,0.6);
