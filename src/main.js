@@ -2566,7 +2566,15 @@ async function init(character, saved, audio, online = false) {
     player.state.maxStamina = cls.baseStam + (lv - 1) * cls.stamPerLevel + stats.bonusStamina();
   }
   applyLevelStats();
-  player.state.hp = saved?.hp ?? player.state.maxHp;
+  // A SAVE AT ZERO IS A DEATH, NOT A HERO. The autosave runs every few seconds
+  // and can land on the frame you died, and a tab closed mid-death keeps that
+  // copy; restored verbatim it gave a hero with 0 HP who was NOT dead — no
+  // death screen, no regeneration, killed by the next thing to touch them.
+  // Load it as the respawn it would have been.
+  {
+    const h = Number(saved?.hp);
+    player.state.hp = Number.isFinite(h) && h > 0 ? Math.min(player.state.maxHp, h) : player.state.maxHp;
+  }
   player.state.stamina = player.state.maxStamina;
 
   // --- level up: golden celebration + a reward drop every level ---
@@ -4351,7 +4359,12 @@ const CAM_PITCH_DEFAULT = 0.98;
         gamepass: gamepass.serialize(),
         dungeon: dungeon.serialize(),
         story: story.serialize(),
-        pos: [player.state.pos.x, player.state.pos.y, player.state.pos.z],
+        // inside the Hollow the hero's coordinates are the HALL's, which mean
+        // nothing on the surface; the place you will walk back out to is the
+        // one worth keeping
+        pos: (inHollow && hollowReturn)
+          ? [hollowReturn.x, hollowReturn.y, hollowReturn.z]
+          : [player.state.pos.x, player.state.pos.y, player.state.pos.z],
         at: Date.now(),
       };
       saveSlot(activeSlot(), lastSave);
@@ -4440,11 +4453,19 @@ const CAM_PITCH_DEFAULT = 0.98;
   // tick, which already traverses the scene four times a second, so the gate
   // itself costs one comparison per object and no extra pass.
   const SHADOW_R = 42;                 // comfortably past the 30-unit frustum
+  // MEASURED FROM THE OBJECT'S BOUNDING SPHERE, NOT ITS ORIGIN. Every
+  // scattered prop (trees, rocks, bushes) is an instanced mesh whose origin is
+  // the world origin — so measured by origin, every tree in the world switched
+  // its shadow OFF the moment you walked 42 units from the village. A sphere's
+  // centre plus its radius is the honest "how close could any of it be".
   function gateShadow(o) {
     if (!o.userData.shadowGate) return;
     const e = o.matrixWorld.elements;
-    const d = (e[12] - player.state.pos.x) ** 2 + (e[14] - player.state.pos.z) ** 2;
-    o.castShadow = d < SHADOW_R * SHADOW_R;
+    const bs = o.isInstancedMesh ? o.boundingSphere : null;
+    const x = e[12] + (bs ? bs.center.x : 0), z = e[14] + (bs ? bs.center.z : 0);
+    const R = SHADOW_R + (bs ? bs.radius : 0);
+    const d = (x - player.state.pos.x) ** 2 + (z - player.state.pos.z) ** 2;
+    o.castShadow = d < R * R;
   }
 
   function collectLights() {
