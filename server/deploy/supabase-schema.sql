@@ -18,6 +18,7 @@ alter table public.saves enable row level security;
 drop policy if exists "read own save"   on public.saves;
 drop policy if exists "insert own save" on public.saves;
 drop policy if exists "update own save" on public.saves;
+drop policy if exists "delete own save" on public.saves;
 
 create policy "read own save"   on public.saves
   for select using (auth.uid() = user_id);
@@ -25,6 +26,11 @@ create policy "insert own save" on public.saves
   for insert with check (auth.uid() = user_id);
 create policy "update own save" on public.saves
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- DELETE PROFILE needs this. Without it RLS refuses the delete SILENTLY: no
+-- error comes back, zero rows go, and the game would report a deletion that
+-- never happened.
+create policy "delete own save" on public.saves
+  for delete using (auth.uid() = user_id);
 
 -- Optional public profile, for a leaderboard. Numbers only, no personal data:
 -- a display name the player chose and a level. Deliberately does NOT carry the

@@ -556,7 +556,7 @@ export function showOpening(saved, syncAccount) {
         savedRef = null;               // so CONTINUE goes away with it
         acct.innerHTML = `<span class="note">${ok
           ? 'Profile deleted. Start a new adventure whenever you like.'
-          : 'Could not reach the server — nothing was deleted.'}</span>`;
+          : 'This device was cleared, but the cloud copy could not be deleted — try again later.'}</span>`;
         setTimeout(() => { renderAccount(); rebuildMenuButtons(); }, 2600);
       }
     });

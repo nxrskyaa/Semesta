@@ -551,6 +551,14 @@ export async function deleteCloudSave() {
   if (!u) return false;
   const { error } = await c.from('saves').delete().eq('user_id', u.id);
   if (error) { console.warn('[semesta] delete failed:', error.message); return false; }
+  // A delete that RLS does not permit returns NO error and removes nothing, so
+  // "no error" is not proof. Read the row back: only its absence is.
+  const { data: still, error: readErr } = await c.from('saves')
+    .select('user_id').eq('user_id', u.id).maybeSingle();
+  if (readErr || still) {
+    console.warn('[semesta] delete did not take effect — is the "delete own save" policy installed?');
+    return false;
+  }
   for (let i = 0; i < MAX_SLOTS; i++) markSlotDeleted(i);
   return true;
 }

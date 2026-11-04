@@ -19,6 +19,15 @@ const PORT = Number(process.env.PORT || 8787);
 const TICK_HZ = 20;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS || 60);
 const CHAT_COOLDOWN_MS = 700;
+// Largest message the protocol ever sends. Enforced by the ws PARSER, not just
+// in the handler: without it ws buffers frames up to its 100 MiB default before
+// our own check runs, and a few of those exhaust the box for everyone.
+const MAX_MESSAGE_BYTES = 4096;
+// One address may hold this many sockets. Generous enough for a household or a
+// cafe behind one NAT, small enough that one script cannot take every slot.
+const MAX_PER_IP = Number(process.env.MAX_PER_IP || 6);
+// A socket that has not said HELLO by now is not a game client.
+const HELLO_TIMEOUT_MS = 5000;
 
 // --- a tiny health endpoint, so you can curl the box and Caddy can probe it ---
 const http = createServer((req, res) => {
@@ -33,7 +42,8 @@ const http = createServer((req, res) => {
   res.writeHead(404); res.end();
 });
 
-const wss = new WebSocketServer({ server: http });
+const wss = new WebSocketServer({ server: http, maxPayload: MAX_MESSAGE_BYTES });
+const connsByIp = new Map();     // address -> open sockets
 const players = new Map();       // id -> player
 let nextPlayerId = 1;
 
@@ -57,13 +67,30 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  const ip = clientAddress(req);
+  const open = connsByIp.get(ip) || 0;
+  if (open >= MAX_PER_IP) {
+    ws.send(encode(S2C.REJECT, { reason: 'Too many connections from your network.' }));
+    ws.close(1008, 'too many connections');
+    return;
+  }
+  connsByIp.set(ip, open + 1);
+  let counted = true;
+  const release = () => {
+    if (!counted) return;
+    counted = false;
+    const n = (connsByIp.get(ip) || 1) - 1;
+    if (n > 0) connsByIp.set(ip, n); else connsByIp.delete(ip);
+  };
+
   let player = null;
+  const helloTimer = setTimeout(() => { if (!player) ws.terminate(); }, HELLO_TIMEOUT_MS);
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (raw) => {
     // a hostile client is a normal condition, not an exception
-    if (raw.length > 4096) return;
+    if (raw.length > MAX_MESSAGE_BYTES) return;
     const msg = decode(raw.toString());
     if (!msg) return;
 
@@ -75,6 +102,7 @@ wss.on('connection', (ws, req) => {
         ws.close();
         return;
       }
+      clearTimeout(helloTimer);
       const id = nextPlayerId++;
       player = {
         id, ws,
@@ -185,6 +213,8 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
+    clearTimeout(helloTimer);
+    release();
     if (!player) return;
     players.delete(player.id);
     broadcast(S2C.LEAVE, { id: player.id });
@@ -240,6 +270,22 @@ setInterval(() => {
 }, 30000);
 
 // --- helpers ----------------------------------------------------------------
+/** The real client address. In production the server sits behind a proxy
+ *  (Cloudflare Tunnel or Caddy) on the same box, so every socket arrives from
+ *  loopback and the client is named in a header. The headers are only trusted
+ *  when the socket really came from loopback — reached directly, anyone could
+ *  write any address into them and dodge the per-address cap. */
+function clientAddress(req) {
+  const remote = req.socket.remoteAddress || '';
+  const local = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+  if (local) {
+    const cf = req.headers['cf-connecting-ip'];
+    if (typeof cf === 'string' && cf) return cf.trim();
+    const xff = req.headers['x-forwarded-for'];
+    if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  }
+  return remote;
+}
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const publicPlayer = (p) => ({
   id: p.id, name: p.name, cls: p.cls, appearance: p.appearance,
