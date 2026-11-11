@@ -1900,6 +1900,10 @@ async function init(character, saved, audio, online = false) {
   // and takes NOTHING from Semesta's fight: no level, gear, skills or bag.
   // See world/royaleworld.js, systems/royale.js, systems/royaleguns.js.
   const ROYALE_MENU_OK = new Set(['gfx', 'about', 'help']);
+  // Looked at from nearly overhead: at Anavela's 56 degrees a four-unit rock
+  // hides anybody standing behind it, and in a shooter that is a death you
+  // never saw. Steeper, the same rock hides a unit and a half.
+  const ROYALE_PITCH = 1.06;
   const royaleWorld = createRoyaleWorld(scene, terrain, { keep: [player.state.group] });
   let royaleReturn = null;                  // where the hero stood in Anavela
   let royaleMoving = false;                 // a curtain is up
@@ -1976,7 +1980,7 @@ async function init(character, saved, audio, online = false) {
     player.state.stamina = player.state.maxStamina;
     player.state.noRegen = true;
     player.setWeaponVisible(false);
-    cam.yaw = 0; cam.dist = 27; cam.pitch = CAM_PITCH_DEFAULT;
+    cam.yaw = 0; cam.dist = 27; cam.pitch = ROYALE_PITCH;
     audio.setMood('royale');
     audio.setHeat(0);
     royaleHud.reset();
@@ -2102,13 +2106,14 @@ async function init(character, saved, audio, online = false) {
     }
     if (!inRoyale) return;
     cam.yaw = 0;                          // north is up, so the map and the screen agree
+    cam.pitch = ROYALE_PITCH;
     royale.update(dt, time);
     royaleWorld.update(dt, time, player.state.pos, camera);
     const v = royale.view();
     if (!v) return;
     // on the skiff and under the canopy the match holds the hero, not gravity
     if (v.you.phase !== 'ground') { player.state.vy = 0; player.state.grounded = false; }
-    cam.dist += ((v.you.phase === 'ground' ? 20 : 27) - cam.dist) * Math.min(1, dt * 1.6);
+    cam.dist += ((v.you.phase === 'ground' ? 19.5 : 27) - cam.dist) * Math.min(1, dt * 1.6);
     royaleHud.update(v, dt);
     // the music tightens as the light does
     audio.setHeat(Math.min(1, (v.ring.idx + (v.ring.mode === 'shrink' ? 0.6 : 0)) / 5.4));

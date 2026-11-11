@@ -78,11 +78,12 @@ body.inroyale .ryhud { display: block; }
 .ryhud .cons i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 
 .ryhud .slots { position: absolute; right: 14px; bottom: 20px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-.ryhud .slot { pointer-events: auto; cursor: pointer; display: grid; grid-template-columns: 22px 64px 1fr; align-items: center; gap: 9px; width: 230px; padding: 7px 11px 7px 8px; border-left: 4px solid var(--rc, rgba(255,255,255,.2));
+.ryhud .slot { pointer-events: auto; cursor: pointer; display: grid; grid-template-columns: 22px 64px 1fr; align-items: center; gap: 9px; width: 270px; padding: 7px 11px 7px 8px; border-left: 4px solid var(--rc, rgba(255,255,255,.2));
   opacity: .62; transition: opacity .12s, transform .12s, width .12s; position: relative; overflow: hidden; }
-.ryhud .slot.on { opacity: 1; width: 258px; border-color: var(--line); border-left-color: var(--rc, var(--acc)); background: rgba(30,20,15,.9); }
+.ryhud .slot.on { opacity: 1; width: 292px; border-color: var(--line); border-left-color: var(--rc, var(--acc)); background: rgba(30,20,15,.9); }
 .ryhud .slot.empty { opacity: .3; }
 .ryhud .slot svg { width: 64px; height: 32px; display: block; }
+.ryhud .slot > div:nth-child(3) { min-width: 0; padding-right: 46px; }
 .ryhud .slot .nm { font-size: 12px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ryhud .slot .cl { font-size: 9px; font-weight: 700; letter-spacing: .14em; color: var(--rc, var(--dim)); }
 .ryhud .slot .am { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); text-align: right; font-variant-numeric: tabular-nums; }
@@ -161,13 +162,13 @@ body.touch .ryhud .pill { padding: 3px 8px; } body.touch .ryhud .pill em { font-
 body.touch .ryhud .prompt { bottom: 236px; } body.touch .ryhud .usebar { bottom: 290px; } body.touch .ryhud .jump { bottom: 210px; }
 
 /* -------------------------------------------------------- full-screen --- */
-.ryscreen { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; cursor: default; overflow: auto; padding: 18px;
+.ryscreen { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; cursor: default; overflow-x: hidden; overflow-y: auto; padding: 18px;
   background: radial-gradient(120% 90% at 50% 110%, #ff8a4a 0%, #b8432f 22%, #4a2148 55%, #150d1c 100%); animation: ryfade .35s ease-out; }
 .ryscreen.dim { background: rgba(10,6,10,.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .ryscreen * { cursor: inherit; } .ryscreen button { cursor: pointer; }
 @keyframes ryfade { from { opacity: 0; } }
-.ryscreen .sun { position: absolute; left: 50%; bottom: -24vh; width: 70vh; height: 70vh; border-radius: 50%; transform: translateX(-50%); background: radial-gradient(circle, #ffe2a0 0%, #ffb04a 38%, rgba(255,120,60,0) 70%); opacity: .8; pointer-events: none; }
-.ryscreen .ridge { position: absolute; left: 0; right: 0; bottom: 0; height: 26vh; pointer-events: none; background: #1a0f16;
+.ryscreen .sun { position: fixed; left: 50%; bottom: -24vh; width: 70vh; height: 70vh; border-radius: 50%; transform: translateX(-50%); background: radial-gradient(circle, #ffe2a0 0%, #ffb04a 38%, rgba(255,120,60,0) 70%); opacity: .8; pointer-events: none; }
+.ryscreen .ridge { position: fixed; left: 0; right: 0; bottom: 0; height: 26vh; pointer-events: none; background: #1a0f16;
   clip-path: polygon(0 62%, 7% 40%, 13% 46%, 19% 18%, 26% 22%, 30% 50%, 38% 44%, 44% 60%, 52% 30%, 58% 34%, 62% 8%, 69% 12%, 73% 48%, 81% 40%, 88% 58%, 94% 36%, 100% 52%, 100% 100%, 0 100%); }
 .rycard { position: relative; width: min(880px, 100%); padding: 30px 34px 26px; border-radius: 18px; background: rgba(18,12,14,.82); border: 1px solid var(--line);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 30px 80px rgba(0,0,0,.5); touch-action: pan-y; }
@@ -202,7 +203,8 @@ body.touch .ryhud .prompt { bottom: 236px; } body.touch .ryhud .usebar { bottom:
 .rycard.narrow { width: min(440px, 100%); }
 .rycard .placebig { font-size: clamp(60px, 13vw, 120px); font-weight: 900; line-height: .9; letter-spacing: -.02em; color: var(--ink); }
 .rycard .placebig small { font-size: .3em; color: var(--dim); letter-spacing: .04em; margin-left: 8px; }
-.rycard.win h1 { font-size: clamp(38px, 7.4vw, 76px); }
+.rycard.narrow.win { width: min(640px, 100%); }
+.rycard.win h1 { font-size: clamp(32px, 6.2vw, 62px); }
 .rymap { position: fixed; inset: 0; z-index: 60; display: none; place-items: center; background: rgba(10,6,10,.7); cursor: default; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
 .rymap.on { display: grid; }
 .rymap .box { padding: 10px; display: grid; grid-template-columns: auto 190px; gap: 14px; max-width: 96vw; }

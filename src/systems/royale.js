@@ -18,15 +18,20 @@ import { GUNS, RARITIES, KNIFE, rollGun, gunScore, buildGun, buildKnife, buildIt
 
 export const ROYALE_SIZE = 24;
 export const DIFFICULTY = {
-  easy: { name: 'EASY', dmg: 0.42, aim: 1.9, react: 1.0 },
-  normal: { name: 'NORMAL', dmg: 0.62, aim: 1.25, react: 0.62 },
-  hard: { name: 'HARD', dmg: 0.86, aim: 0.8, react: 0.36 },
+  easy: { name: 'EASY', dmg: 0.3, aim: 1.9, react: 1.0 },
+  normal: { name: 'NORMAL', dmg: 0.44, aim: 1.25, react: 0.62 },
+  hard: { name: 'HARD', dmg: 0.64, aim: 0.8, react: 0.36 },
 };
 
 const HP = 100, SHIELD = 100, MAX_TONIC = 4, MAX_CELL = 4, MAX_AMMO = 300;
 const TONIC_HEAL = 50, TONIC_TIME = 1.5, CELL_CHARGE = 50, CELL_TIME = 1.3;
 const SHIP_Y = 48, SHIP_SPEED = 17, GLIDE_FALL = 7.6, GLIDE_SPEED = 10.5;
-const BODY_R = 0.55, RIVAL_DMG = 0.55, BOT_SPEED = 5.0, SIGHT = 27;
+const BODY_R = 0.68, BOT_SPEED = 5.0;
+// the pace of a match lives in these four numbers; see the measurements in CLAUDE.md
+const TUNE = { rival: 0.07, truce: 25, sight: 20, sightBot: 9 };
+// nobody starts a fight in the first seconds on the ground: everybody loots
+// the chibi rig is small under a camera this high, so every keeper is drawn larger
+const KEEPER_SCALE = 1.32;
 // reserve units a round costs: a marksman round is worth six pistol rounds
 const AMMO_COST = { wick: 1, rattler: 1, lance: 1, bloom: 4, longwick: 6, mortar: 9, sunray: 0.34 };
 const TRACER = { wick: '#ffe9a8', rattler: '#ffc46a', lance: '#ffd98a', bloom: '#ffb070', longwick: '#bfe6ff', mortar: '#ff9a4a', sunray: '#fff1a0' };
@@ -66,7 +71,16 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
   const itemProto = {};
   const itemMesh = (kind) => (itemProto[kind] ||= buildItem(kind)).clone();
 
-  const ringGeo = new THREE.RingGeometry(0.5, 0.66, 20).rotateX(-Math.PI / 2);
+  const ringGeo = new THREE.RingGeometry(0.5, 0.6, 28).rotateX(-Math.PI / 2);
+  const poolGeo = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
+  const poolMats = new Map();
+  const poolMat = (color) => {
+    if (!poolMats.has(color)) {
+      poolMats.set(color, new THREE.MeshBasicMaterial({ map: world.glow(), color: new THREE.Color(color), transparent: true, opacity: 0.38,
+        blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    }
+    return poolMats.get(color);
+  };
   const pillarGeo = new THREE.CylinderGeometry(0.09, 0.2, 1, 6, 1, true).translate(0, 0.5, 0);
   const tracerGeo = new THREE.BoxGeometry(0.07, 0.07, 1).translate(0, 0, -0.5);
   const shellGeo = new THREE.SphereGeometry(0.2, 8, 6);
@@ -99,6 +113,30 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     state.active?.flares.push({ s, life: 0.07, size });
   }
 
+  // WHERE YOU ARE AND WHERE YOU ARE POINTING, drawn through everything. A ring
+  // under the hero and a fading line along the barrel: the two things a
+  // twin-stick shooter cannot let a rock or a roof take away from you.
+  let mark = null;
+  function heroMark() {
+    if (mark) return mark;
+    const c = document.createElement('canvas'); c.width = 4; c.height = 64;
+    const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,0.7)');
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 64);
+    const tex = new THREE.CanvasTexture(c);
+    const mk = (o) => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthTest: false, depthWrite: false, fog: false, ...o });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.69, 36).rotateX(-Math.PI / 2), mk({ opacity: 0.8 }));
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(0.07, 1).rotateX(-Math.PI / 2).translate(0, 0, 0.5), mk({ map: tex, opacity: 0.8 }));
+    const tip = new THREE.Mesh(new THREE.CircleGeometry(0.22, 3).rotateX(-Math.PI / 2).rotateY(Math.PI / 2), mk({ opacity: 0.9 }));
+    ring.renderOrder = line.renderOrder = tip.renderOrder = 9;
+    tip.position.z = 0.98;
+    const arm = new THREE.Group(); arm.add(line, tip);
+    mark = new THREE.Group(); mark.add(ring, arm);
+    mark.userData = { arm, line };
+    group.add(mark);
+    return mark;
+  }
+
   // ----------------------------------------------------------------- rigs ---
   // Built once and reused every match: a rig is a few hundred shared parts and
   // a face texture, and twenty-three of them a match would be a leak.
@@ -107,7 +145,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     const c = document.createElement('canvas'); c.width = 192; c.height = 56;
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, fog: false }));
-    sp.scale.set(2.3, 0.67, 1); sp.position.y = 2.25; sp.renderOrder = 5;
+    sp.scale.set(2.1, 0.61, 1); sp.position.y = 2.2; sp.renderOrder = 5;
     const p = { sp, c, tex, key: '', name };
     return p;
   }
@@ -141,6 +179,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       built.setWeapon?.(null);
       built.setWeaponVisible?.(false);
       built.group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      built.group.scale.setScalar(KEEPER_SCALE);
       const p = plate('');
       built.group.add(p.sp);
       rigs[i] = { built, plate: p };
@@ -170,7 +209,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     const [id, rar] = key.split('|');
     k.gun = gunMesh(id, +rar);
     k.gun.rotation.x = Math.PI / 2;
-    k.gun.scale.setScalar(1.3);
+    k.gun.scale.setScalar(1.15);
     k.parts.handR.add(k.gun);
   }
   function setCanopy(k, on_) {
@@ -187,11 +226,13 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     const col = kind === 'gun' ? RAR_COL[o.rar] : kind === 'tonic' ? '#63e08a' : kind === 'cell' ? '#5ad1ff' : '#ffd27a';
     const g = new THREE.Group();
     const body = kind === 'gun' ? gunMesh(o.id, o.rar) : itemMesh(kind);
-    if (kind === 'gun') { body.scale.setScalar(1.7); body.position.y = 0.55; body.rotation.z = 0.35; }
+    if (kind === 'gun') { body.scale.setScalar(2.3); body.position.y = 0.6; body.rotation.z = 0.35; }
+    else body.scale.setScalar(1.35);
     g.add(body);
-    const ring = new THREE.Mesh(ringGeo, addMat(col, 0.85)); ring.position.y = 0.06; g.add(ring);
-    if (kind === 'gun' && o.rar >= 1) {
-      const pil = new THREE.Mesh(pillarGeo, addMat(col, 0.3)); pil.scale.set(1, 2.2 + o.rar * 1.5, 1); g.add(pil);
+    const ring = new THREE.Mesh(ringGeo, addMat(col, 0.95)); ring.position.y = 0.07; ring.scale.setScalar(kind === 'gun' ? 1.5 : 1.1); g.add(ring);
+    const pool = new THREE.Mesh(poolGeo, poolMat(col)); pool.position.y = 0.05; pool.scale.setScalar(kind === 'gun' ? 1.25 + (o.rar || 0) * 0.2 : 0.95); g.add(pool);
+    if (kind === 'gun') {
+      const pil = new THREE.Mesh(pillarGeo, addMat(col, 0.16 + o.rar * 0.08)); pil.scale.set(1 + o.rar * 0.3, 1.6 + o.rar * 1.9, 1 + o.rar * 0.3); g.add(pil);
     }
     const y = world.heightAt(x, z);
     g.position.set(x, y, z);
@@ -275,7 +316,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
 
   function hurt(m, k, amount, from, o = {}) {
     if (!k.alive || k.phase !== 'ground' || m.over) return 0;
-    if (from && from.isBot) amount *= k.isBot ? RIVAL_DMG : m.diff.dmg;
+    if (from && from.isBot) amount *= k.isBot ? TUNE.rival : m.diff.dmg;
     const hadShield = k.shield > 0 && !o.dark;
     let left = amount;
     if (hadShield) { const s = Math.min(k.shield, left); k.shield -= s; left -= s; }
@@ -291,7 +332,10 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       on('hit', { shield: hadShield, kill: k.hp <= 0, broke: hadShield && k.shield <= 0 });
     }
     if (hadShield && k.shield <= 0) particles.shockwave(V(k.pos.x, k.pos.y + 0.9, k.pos.z), '#5ad1ff', 1.6, 0.25);
-    if (!o.dark) particles.burst(V(k.pos.x, k.pos.y + 1, k.pos.z), hadShield ? '#7fdcff' : '#ff6b5e', 3, 2.4, 5, 0.3);
+    if (!o.dark) {
+      particles.burst(V(k.pos.x, k.pos.y + 1, k.pos.z), hadShield ? '#7fdcff' : '#ff6b5e', 4, 2.6, 5, 0.3);
+      if (from === you || k === you) particles.impact?.(V(k.pos.x, k.pos.y + 1, k.pos.z), hadShield ? '#9fe8ff' : '#fff0d0', 1.1, 0.16);
+    }
     if (k.isBot && from && from !== k && !k.target) { k.target = from; k.react = 0.15; }
     if (k.hp <= 0) eliminate(m, k, from, o);
     return amount;
@@ -536,12 +580,14 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
 
   function think(m, b) {
     // who can I see
-    let best = null, bd = SIGHT;
+    const truce = b.groundT < TUNE.truce;
+    let best = null, bd = 1e9;
     for (const o of m.keepers) {
       if (o === b || !o.alive || o.phase !== 'ground') continue;
-      if (o === m.you && m.onHero >= 3 && b.target !== o) continue;
+      // a keeper is hunted by two at most (three for you): a fight, not a pile
+      if ((o.hunters || 0) >= (o === m.you ? 3 : 2) && b.target !== o) continue;
       const d = dist(b, o);
-      if (d >= bd) continue;
+      if (d >= bd || d > (truce ? 4 : o.isBot ? TUNE.sightBot : TUNE.sight)) continue;
       if (d > 4 && !world.losClear(b.pos.x, b.pos.z, o.pos.x, o.pos.z)) continue;
       best = o; bd = d;
     }
@@ -609,23 +655,23 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       if (hurtBad && b.tonics > 0 && (!los || d > 15)) { startUse(m, b, 'tonic'); return; }
       if (!g) {
         // nothing to shoot with: rush with the knife if they are close, else go find a gun
-        if (d < 8) { nav(m, b, t.pos.x, t.pos.z, dt, BOT_SPEED * 1.1); if (d < KNIFE.range + 0.2 && b.fireCd <= 0 && b.react <= 0) knife(m, b); }
+        if (d < 4.5) { nav(m, b, t.pos.x, t.pos.z, dt, BOT_SPEED * 1.1); if (d < KNIFE.range + 0.2 && b.fireCd <= 0 && b.react <= 0) knife(m, b); }
         else if (b.goal) nav(m, b, b.goal.x, b.goal.z, dt);
         return;
       }
       const G = GUNS[g.id];
       if (g.mag <= 0 && b.reloadT <= 0) startReload(m, b);
-      const ideal = hurtBad ? G.ideal * 1.5 : G.ideal;
+      const ideal = Math.min(12, hurtBad ? G.ideal * 1.5 : G.ideal);
       b.strafeT = (b.strafeT || 0) - dt;
       if (b.strafeT <= 0) { b.strafeT = 0.8 + m.rnd() * 1.6; b.strafe = m.rnd() < 0.5 ? 1 : -1; }
-      if (!los || d > Math.min(G.range * 0.85, ideal * 1.3)) nav(m, b, t.pos.x, t.pos.z, dt);
+      if (!los || d > Math.min(G.range * 0.85, ideal * 1.3, 15)) nav(m, b, t.pos.x, t.pos.z, dt);
       else if (d < ideal * 0.55) steer(m, b, ta + Math.PI + b.strafe * 0.5, dt, BOT_SPEED * 0.9);
       else steer(m, b, ta + b.strafe * Math.PI / 2, dt, BOT_SPEED * 0.6);
       if (willBe && !outside && m.rnd() < 0.02) b.target = null;
       // fire in bursts: nobody holds a trigger down for a whole magazine
       b.burstT = (b.burstT || 0) - dt;
       if (b.burstT < -(0.25 + (1 - b.skill) * 0.5)) b.burstT = G.auto ? 0.45 + m.rnd() * 0.6 : 0.05;
-      if (los && b.react <= 0 && b.reloadT <= 0 && g.mag > 0 && b.fireCd <= 0 && d < G.range * 0.95
+      if (los && b.react <= 0 && b.reloadT <= 0 && g.mag > 0 && b.fireCd <= 0 && d < Math.min(G.range * 0.95, 17)
           && Math.abs(angDiff(ta, b.aim)) < 0.2 && (b.burstT > 0 || !G.auto)) {
         fire(m, b, g, d);
         if (!G.auto) b.fireCd += 0.12 + m.rnd() * 0.3 * (1.5 - b.skill);
@@ -702,6 +748,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     pickNext(m);
     const you = keeper(false, hooks.heroName?.() || 'You');
     you.pos = player.state.pos; you.parts = player.parts;
+    player.state.group.scale.setScalar(KEEPER_SCALE);
     m.you = you; m.keepers.push(you);
     const names = [...NAMES].sort(() => rnd() - 0.5);
     for (let i = 0; i < ROYALE_SIZE - 1; i++) {
@@ -762,6 +809,8 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     for (const it of m.items) group.remove(it.g);
     for (const d of m.drops) group.remove(d.g, d.pil, d.ring);
     if (world.skiff) world.skiff.visible = false;
+    if (mark) mark.visible = false;
+    player.state.group.scale.setScalar(1);
     player.setWeaponVisible?.(true);
     state.active = null;
   }
@@ -913,8 +962,8 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     m.darkT -= dt;
 
     // ---- everybody
-    m.onHero = 0;
-    for (const k of m.keepers) if (k.isBot && k.alive && k.target === you) m.onHero++;
+    for (const k of m.keepers) k.hunters = 0;
+    for (const k of m.keepers) if (k.isBot && k.alive && k.target) k.target.hunters++;
     for (const k of m.keepers) {
       if (k.isBot && k.fallT > 0) {                               // a keeper going down
         k.fallT += dt;
@@ -930,6 +979,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       if (k.phase !== 'ground') { airborne(m, k, dt, time); syncGun(k); pose(k, dt, time); continue; }
       if (k.reloadT > 0 && (k.reloadT -= dt) <= 0) endReload(k);
       if (k.useT > 0 && (k.useT -= dt) <= 0) endUse(m, k);
+      k.groundT = (k.groundT || 0) + dt;
       if (k.isBot) {
         botGround(m, k, dt);
         k.pos.y = world.heightAt(k.pos.x, k.pos.z);
@@ -952,6 +1002,14 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     }
     if (m.darkT <= 0) m.darkT = 0.5;
     if (m.you.alive) player.setWeaponVisible?.(false);
+    const mk = heroMark(), hg = heldGun(you);
+    mk.visible = you.alive && you.phase === 'ground';
+    if (mk.visible) {
+      mk.position.set(you.pos.x, you.pos.y + 0.09, you.pos.z);
+      mk.userData.arm.rotation.y = you.aim;
+      mk.userData.arm.visible = !!hg;
+      if (hg) mk.userData.line.scale.z = Math.min(GUNS[hg.id].range, 11);
+    }
     tickFx(m, dt, time);
   }
 
@@ -1096,5 +1154,5 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
   const serialize = () => ({ ...state.stats });
   function load(d) { if (d && typeof d === 'object') Object.assign(state.stats, { played: d.played | 0, wins: d.wins | 0, kills: d.kills | 0, best: d.best | 0 }); }
 
-  return { state, start, stop, update, view, act, setFire, tapFire, forfeit, serialize, load };
+  return { state, start, stop, update, view, act, setFire, tapFire, forfeit, serialize, load, tune: TUNE };
 }

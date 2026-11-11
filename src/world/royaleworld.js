@@ -43,9 +43,9 @@ export const POIS = [
   { id: 'mills', name: 'WINDMILL RIDGE', x: 10, z: 62, r: 13 },
   { id: 'well', name: 'LAST WELL', x: -42, z: 60, r: 12 },
   // three hamlets: houses with doors, which is where you go to not be seen
-  { id: 'cinder', name: 'CINDER HAMLET', x: 36, z: -4, r: 11, hamlet: true },
-  { id: 'dust', name: 'DUSTWATCH', x: -30, z: -8, r: 11, hamlet: true },
-  { id: 'salt', name: 'SALTROW', x: -2, z: 40, r: 11, hamlet: true },
+  { id: 'cinder', name: 'CINDER HAMLET', x: 36, z: -4, r: 13, hamlet: true },
+  { id: 'dust', name: 'DUSTWATCH', x: -30, z: -8, r: 13, hamlet: true },
+  { id: 'salt', name: 'SALTROW', x: -2, z: 40, r: 13, hamlet: true },
 ];
 const P = Object.fromEntries(POIS.map((p) => [p.id, p]));
 const LINKS = [['zig', 'fort'], ['zig', 'bazaar'], ['zig', 'oasis'], ['zig', 'skiff'], ['zig', 'bones'], ['zig', 'mills'],
@@ -245,8 +245,18 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
             vKind = aKind;
           #endif`);
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 uRing; uniform float uTime; varying vec3 vWp;\n#ifdef ROYALE_TERRAIN\nvarying float vKind;\n#endif')
+        .replace('#include <common>', `#include <common>\nuniform vec3 uRing; uniform float uTime; varying vec3 vWp;\n#ifdef ROYALE_TERRAIN\nvarying float vKind;\n#endif\n${NOISE}`)
         .replace('#include <color_fragment>', `#include <color_fragment>
+          #ifndef ROYALE_TERRAIN
+            // plaster and stone are never one flat colour, and a wall is darker
+            // where it meets the ground: grain, and a contact shadow, for free
+            float mt = rnoise(vWp.xz * 1.9 + vWp.y * 1.4) * 0.65 + rnoise(vWp.xz * 7.0 + vWp.y * 5.0) * 0.35;
+            diffuseColor.rgb *= 0.84 + 0.3 * mt;
+            diffuseColor.rgb *= mix(0.58, 1.0, smoothstep(${(PAD_H - 0.1).toFixed(2)}, ${(PAD_H + 1.5).toFixed(2)}, vWp.y));
+          #else
+            float tn = rnoise(vWp.xz * 0.13) * 0.55 + rnoise(vWp.xz * 0.8) * 0.3 + rnoise(vWp.xz * 5.0) * 0.15;
+            diffuseColor.rgb *= 0.8 + 0.38 * tn;
+          #endif
           #ifdef ROYALE_TERRAIN
             // wind ripples across the sand, and banded strata down the cliff
             float rp = sin(vWp.x * 2.4 + sin(vWp.z * 1.2) * 1.7 + vWp.z * 0.45);
@@ -456,12 +466,12 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     for (let i = 0; i < 11; i++) {
       const a = (i / 11) * Math.PI * 2, d = 8 + (i % 3) * 3.4;
       if (i === 2 || i === 7) continue;                      // the two mouths
-      mesa(rock, P.canyon.x + Math.sin(a) * d, P.canyon.z + Math.cos(a) * d, 2.6 + rnd() * 1.8, 4.5 + rnd() * 4.5, rnd);
+      mesa(rock, P.canyon.x + Math.sin(a) * d, P.canyon.z + Math.cos(a) * d, 2.6 + rnd() * 1.8, 2.4 + rnd() * 2.0, rnd);
     }
     for (let tries = 0, n = 0; tries < 500 && n < 16; tries++) {
       const [dx, dz] = spot(rnd, 14);
       if (!clearOf(dx, dz, 5, 5) || blocked(wx(dx), wz(dz), 5)) continue;
-      mesa(rock, dx, dz, 2.2 + rnd() * 2.6, 3.5 + rnd() * 5, rnd); n++;
+      mesa(rock, dx, dz, 2.2 + rnd() * 2.6, 2.0 + rnd() * 2.2, rnd); n++;
     }
     rock.build();
 
@@ -586,7 +596,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
   // and a roof that fades when you are under it. From outside the roof is
   // solid, and whoever is inside cannot be seen: that is what a house is for.
   function house(b, X, Z, w, d, ang, o = {}) {
-    const c = Math.cos(ang), s = Math.sin(ang), H = 2.7, T = 0.3, y0 = PAD_H;
+    const c = Math.cos(ang), s = Math.sin(ang), H = 2.4, T = 0.3, y0 = PAD_H;
     const W = (lx, lz) => [X + lx * c - lz * s, Z + lx * s + lz * c];
     const wallC = o.wall || '#e2c08c', trim = '#b98a56';
     const run = (ax, fixed, a0, a1, low) => {                  // along local x (0) or z (1)
@@ -598,6 +608,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
           .box(trim, sx + (ax ? 0.14 : 0), 0.1, sz + (ax ? 0 : 0.14), px, y0 + 1.0, pz, -ang)
           .box(wallC, sx, 0.6, sz, px, y0 + H - 0.3, pz, -ang);
       } else b.box(wallC, sx, H, sz, px, y0 + H / 2, pz, -ang);
+      b.box('#6e4a2c', sx + 0.1, 0.12, sz + 0.1, px, y0 + H + 0.02, pz, -ang);
       addBox(px, pz, sx / 2, sz / 2, ang, !!low);
     };
     const windowed = (ax, fixed, half) => { run(ax, fixed, -half, -0.75); run(ax, fixed, -0.75, 0.75, true); run(ax, fixed, 0.75, half); };
@@ -605,13 +616,18 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     windowed(1, -w / 2, d / 2); windowed(1, w / 2, d / 2);
     run(0, d / 2, -w / 2, -1.0); run(0, d / 2, 1.0, w / 2);     // the front, with the door
     { const [px, pz] = W(0, d / 2); b.box(trim, 2.3, 0.4, T + 0.08, px, y0 + H - 0.2, pz, -ang); }
-    b.box('#c9a070', w, 0.1, d, X, y0 + 0.05, Z, -ang).box(o.rug || '#b8432f', w * 0.5, 0.03, d * 0.42, X, y0 + 0.115, Z, -ang);
+    b.box('#8a6238', w, 0.1, d, X, y0 + 0.05, Z, -ang).box(o.rug || '#b8432f', w * 0.5, 0.03, d * 0.42, X, y0 + 0.115, Z, -ang)
+      .box('#f0e2c4', w * 0.5 - 0.3, 0.035, d * 0.42 - 0.3, X, y0 + 0.118, Z, -ang).box(o.rug || '#b8432f', w * 0.5 - 0.6, 0.04, d * 0.42 - 0.6, X, y0 + 0.12, Z, -ang);
+    for (let i = 1; i < 6; i++) { const [px, pz] = W(-w / 2 + (w / 6) * i, 0); b.box('#6e4a2c', 0.05, 0.11, d - 0.3, px, y0 + 0.052, pz, -ang); }
+    { const [px, pz] = W(w / 2 - 1.0, -d / 2 + 0.75); b.box('#a94f30', 1.5, 0.5, 0.8, px, y0 + 0.35, pz, -ang).box('#f0e2c4', 1.4, 0.12, 0.7, px, y0 + 0.62, pz, -ang); addBox(px, pz, 0.75, 0.4, ang, true); }
     { const [px, pz] = W(-w / 2 + 0.95, -d / 2 + 0.95); b.box('#8a6238', 0.9, 0.8, 0.9, px, y0 + 0.5, pz, -ang + 0.3); addCircle(px, pz, 0.55, true); }
     { const [px, pz] = W(1.9, d / 2 + 0.7); b.cyl('#a94f30', 0.3, 0.36, 0.7, px, y0 + 0.35, pz, 8); addCircle(px, pz, 0.36, true); }
     const rb = new Batch();
-    rb.box(o.roof || '#b8432f', w + 0.7, 0.24, d + 0.7, X, y0 + H + 0.12, Z, -ang)
-      .box('#e9dcc0', w * 0.52, 0.3, d * 0.52, X, y0 + H + 0.39, Z, -ang)
-      .box(o.roof || '#b8432f', 2.6, 0.1, 1.2, ...((q) => [q[0], y0 + H - 0.5, q[1]])(W(0, d / 2 + 0.6)), -ang, 0, 0);
+    const roofC = o.roof || '#9a5238';
+    rb.box('#5a3a22', w + 0.8, 0.16, d + 0.8, X, y0 + H + 0.1, Z, -ang)
+      .add(roofC, new THREE.ConeGeometry(1, 1, 4, 1).rotateY(Math.PI / 4), X, y0 + H + 0.18 + 0.5, Z, 0, -ang, 0, (w + 1.0) / 1.414, 1.0, (d + 1.0) / 1.414)
+      .box('#5a3a22', 0.5, 0.9, 0.5, ...((q) => [q[0], y0 + H + 0.7, q[1]])(W(w * 0.24, -d * 0.2)), -ang)
+      .box(roofC, 2.6, 0.1, 1.2, ...((q) => [q[0], y0 + H - 0.5, q[1]])(W(0, d / 2 + 0.6)), -ang, 0, 0);
     const rg = rb.build(root, false);
     const mats = [];
     rg.traverse((m) => {
@@ -628,23 +644,23 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
 
   function buildHamlet(p, rnd) {
     const b = new Batch(), X = wx(p.x), Z = wz(p.z);
-    const roofsC = ['#b8432f', '#3b7fa8', '#c9703f', '#6a8f4a'];
+    const roofsC = ['#9a5238', '#5f7a86', '#b8683a', '#7a8450'];
     for (let i = 0; i < 4; i++) {
-      const A = Math.PI / 4 + i * Math.PI / 2 + (rnd() - 0.5) * 0.2, d = 6.2;
+      const A = Math.PI / 4 + i * Math.PI / 2 + (rnd() - 0.5) * 0.2, d = 8.4;
       // the door looks at the yard
       house(b, X + Math.sin(A) * d, Z + Math.cos(A) * d, 5.4 + (i % 2) * 0.8, 4.4, Math.PI - A,
         { roof: roofsC[(i + p.name.length) % 4], rug: roofsC[(i + 1) % 4], poi: p.id });
     }
     // the yard: a well-lamp and things to crouch behind
     for (let i = 0; i < 5; i++) {
-      const a = rnd() * 6.28, d = 1.4 + rnd() * 2.2;
+      const a = rnd() * 6.28, d = 1.6 + rnd() * 3.4;
       const x = X + Math.sin(a) * d, z = Z + Math.cos(a) * d;
       if (i % 2) { b.box('#8a6238', 1.0, 0.9, 1.0, x, PAD_H + 0.45, z, rnd() * 3); addCircle(x, z, 0.62, true); }
       else { b.cyl('#a94f30', 0.36, 0.42, 0.9, x, PAD_H + 0.45, z, 8); addCircle(x, z, 0.42, true); }
     }
     lamp(b, p.x + 0.2, p.z - 0.2);
     b.build();
-    ringSpots(p, 5, 1, 4.2, rnd);
+    ringSpots(p, 6, 1, 6, rnd);
   }
 
   // ---- the places ------------------------------------------------------------
@@ -751,8 +767,8 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
         n++;
       }
     }
-    house(b, wx(p.x - 3), wz(p.z + 10.4), 6, 4.2, Math.PI, { roof: '#3b7fa8', poi: p.id });
-    house(b, wx(p.x + 3), wz(p.z - 10.4), 6, 4.2, 0, { roof: '#c9703f', poi: p.id });
+    house(b, wx(p.x - 3), wz(p.z + 10.4), 6, 4.2, Math.PI, { roof: '#5f7a86', poi: p.id });
+    house(b, wx(p.x + 3), wz(p.z - 10.4), 6, 4.2, 0, { roof: '#b8683a', poi: p.id });
     b.build();
     for (let i = -2; i <= 2; i++) addGlow(root, wx(p.x + i * 4.6), PAD_H + 2.2, wz(p.z), 2.2, ['#ffb45c', '#ff8a5c', '#ffd27a'][(i + 2) % 3]);
     ringSpots(p, 12, 1.5, 13, rnd);
@@ -852,7 +868,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       spinners.push({ o: rotor, sp: 0.9 + i * 0.25 });
       addCircle(x, z, 1.0);
     }
-    { const b = new Batch(); house(b, wx(p.x), wz(p.z - 9.4), 5.6, 4.4, 0, { roof: '#6a8f4a', poi: p.id }); b.build(); }
+    { const b = new Batch(); house(b, wx(p.x), wz(p.z + 9.4), 5.6, 4.4, Math.PI, { roof: '#7a8450', poi: p.id }); b.build(); }
     ringSpots(p, 9, 2, 12, rnd);
   }
 
@@ -880,11 +896,22 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     b.box('#6e4a2c', 3.2, 1.0, 9, 0, 0, 0).box('#8a6238', 3.6, 0.18, 9.4, 0, 0.55, 0).box('#523620', 2.2, 0.8, 2.4, 0, -0.5, -4.8, 0, 0.3)
       .box('#523620', 2.2, 0.8, 2.4, 0, -0.5, 4.8, 0, -0.3).box('#3a3028', 1.6, 1.3, 2.0, 0, 1.3, -2.6);
     for (const s of [-1, 1]) b.box('#d9483b', 0.08, 1.6, 3.2, s * 2.6, 0.3, -1, 0, 0, s * 0.9);
-    for (let i = 0; i < 6; i++) {
-      b.add(i % 2 ? '#e9dcc0' : '#d9483b', new THREE.SphereGeometry(3.0, 10, 8), 0, 5.4, -5 + i * 2, 0, 0, 0, 1.15, 0.95, 0.42);
-    }
     for (const [sx, sz] of [[-1.5, -3.5], [1.5, -3.5], [-1.5, 3.5], [1.5, 3.5]]) b.cyl('#c9a070', 0.03, 0.03, 4.2, sx, 2.6, sz, 4);
     const g = b.build(root, false);
+    // THE BAG IS SEE-THROUGH FROM ABOVE. The camera looks straight down on it,
+    // and a solid balloon hid the deck, the hero and the ground you are
+    // choosing a landing on: the three things the ride exists to show.
+    const bag = new Batch();
+    for (let i = 0; i < 6; i++) {
+      bag.add(i % 2 ? '#e9dcc0' : '#d9483b', new THREE.SphereGeometry(3.0, 10, 8), 0, 5.4, -5 + i * 2, 0, 0, 0, 1.15, 0.95, 0.42);
+    }
+    const bg = bag.build(g, false);
+    bg.traverse((m) => {
+      if (!m.isMesh) return;
+      const mm = m.material.clone();
+      mm.onBeforeCompile = m.material.onBeforeCompile; mm.customProgramCacheKey = m.material.customProgramCacheKey;
+      mm.transparent = true; mm.opacity = 0.2; mm.depthWrite = false; m.material = mm; m.renderOrder = 4;
+    });
     addGlow(g, 0, 1.4, 4.6, 5, '#ffb45c');
     g.visible = false;
     return g;
@@ -973,9 +1000,9 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     for (const o of scene.children) {
       if (!o.isLight || o.isPointLight) continue;
       stash.lights.set(o, { i: o.intensity, c: o.color.getHex(), g: o.groundColor ? o.groundColor.getHex() : null });
-      if (o.isDirectionalLight) { o.intensity = 1.75; o.color.set('#ffb070'); }
-      else if (o.isHemisphereLight) { o.intensity = 1.05; o.color.set('#a892e8'); o.groundColor.set('#d08a58'); }
-      else { o.intensity = 0.5; o.color.set('#ffd9b8'); }
+      if (o.isDirectionalLight) { o.intensity = 2.25; o.color.set('#ffb878'); }
+      else if (o.isHemisphereLight) { o.intensity = 0.95; o.color.set('#8f8cff'); o.groundColor.set('#b8704a'); }
+      else { o.intensity = 0.32; o.color.set('#c9c0ff'); }
     }
     scene.fog = new THREE.Fog(new THREE.Color('#f09a6c'), 90, 330);
     scene.background = new THREE.Color('#f09a6c');
@@ -1036,7 +1063,13 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     for (const s of spinners) s.o.rotation.z += dt * s.sp;
     const under = focus ? houseAt(focus.x, focus.z) : -1;
     for (const r of roofs) {
-      const t = r.i === under ? 0.07 : 1;
+      // under it the roof goes; standing BEHIND it (the camera looks from the
+      // south) it thins, or a house would hide whoever walks round the back
+      let t = r.i === under ? 0.07 : 1;
+      if (t === 1 && focus) {
+        const h = houses[r.i], R = Math.max(h.hw, h.hd) + 0.7, dx = focus.x - h.x, dz = focus.z - h.z;
+        if (Math.abs(dx) < R && dz < 0 && dz > -(R + 2.4)) t = 0.4;
+      }
       if (Math.abs(r.op - t) < 0.004) continue;
       r.op += (t - r.op) * Math.min(1, dt * 9);
       for (const m of r.mats) { m.opacity = r.op; m.depthWrite = r.op > 0.9; }
