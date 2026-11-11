@@ -916,6 +916,54 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     }
   }
 
+  /**
+   * ADOPT A BODY SOMEBODY ELSE DRIVES.
+   *
+   * Every way the hero deals damage — a swing, an arrow, forty-eight skills,
+   * the Summoner's army, auto-aim — walks this list and ends in `damage()`. So
+   * anything that should be hittable by all of them needs no combat code of
+   * its own: it needs to be IN THE LIST. Lanternfall's rival keepers are
+   * exactly that. Their mesh, their brain and their animation belong to
+   * royale.js; this hands them a nameplate and a seat, and `update()` skips
+   * them (`ext`) so the critter AI never tries to pose a chibi like a slime.
+   *
+   * `scaleIn` converts the hero's raw damage into the adopter's own units, so
+   * a Lv50 with a +9 blade and a Lv1 with a stick take the same number of
+   * swings to win the same fight.
+   */
+  function adopt(mesh, opts = {}) {
+    const np = makeNameplate(opts.name || '???', opts.level ?? '', false);
+    np.sprite.position.y = opts.plateY ?? 2.0;
+    np.sprite.visible = true;
+    mesh.add(np.sprite);
+    const e = {
+      ext: true, type: opts.type || 'ext',
+      def: { id: opts.type || 'ext', name: opts.name || '???', speed: opts.speed || 4,
+        aggro: 0, attackRange: 1.7, dmg: 0, behavior: 'ext' },
+      level: opts.level ?? 1, mesh, np,
+      hp: opts.hp ?? 100, hpMax: opts.hp ?? 100, dmg: 0, xp: 0,
+      state: 'wander', wanderT: 0, dir: 0, attackCd: 0, hurtFlash: 0, anim: 0,
+      swing: 0, swingPending: false, recoil: 0,
+      knock: new THREE.Vector2(0, 0), stunT: 0, frozenT: 0,
+      chargeT: 0, windupT: 0, chargeDir: new THREE.Vector2(), chargeHit: false,
+      dead: false, scaleIn: opts.scaleIn || null,
+    };
+    redrawNameplate(np, 1);
+    enemies.push(e);
+    return e;
+  }
+  /** Take an adopted body out of the world (it died to something that was not
+   *  the hero, or its match ended). The list entry goes on the next update. */
+  function dismiss(e) {
+    if (!e || e.dead) return;
+    e.dead = true;
+    retire(e);
+  }
+  /** Repaint an adopted body's health bar after its owner changed its hp. */
+  function refresh(e) {
+    if (e?.np) redrawNameplate(e.np, Math.max(0, e.hp / e.hpMax));
+  }
+
   // spawn a world boss at a random spot 20-32 away from the player — and
   // always well clear of the village, so it never lumbers at the basecamp
   function spawnWorldBoss(playerPos, kindId) {
@@ -977,6 +1025,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
 
   function damage(e, amount, fromPos, onKill) {
     if (e.dead) return;
+    if (e.scaleIn) amount = e.scaleIn(amount, e);
     e.hp -= amount;
     e.hurtFlash = 0.15;
     if (e.state === 'wander') e.state = 'aggro';
@@ -1046,6 +1095,7 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
 
     for (const e of enemies) {
       if (e.dead) continue;
+      if (e.ext) continue;          // adopted: somebody else is its brain
       const p = e.mesh.position;
       const distP = Math.hypot(p.x - playerPos.x, p.z - playerPos.z);
 
@@ -1534,5 +1584,6 @@ export function createEnemyManager(terrain, decorBlocked, scene, particles, proj
     };
   }
 
-  return { enemies, update, damage, spawnOne, spawnAt, clearDungeonFoes, spawnWorldBoss, prewarm };
+  return { enemies, update, damage, spawnOne, spawnAt, clearDungeonFoes, spawnWorldBoss, prewarm,
+    adopt, dismiss, refresh };
 }

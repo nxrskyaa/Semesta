@@ -107,6 +107,25 @@ export function createAudio() {
         a: [[0, 5, 9], [-2, 3, 7], [0, 4, 9], [-5, 0, 4]],
         b: [[0, 4, 9], [-5, 0, 4], [0, 5, 9], [-2, 3, 7]] },
     ],
+    // LANTERNFALL. Everything else in the game is 40 to 92 bpm and written to
+    // be lived in; a match is three minutes long and has a clock on it. So these
+    // are the only pieces that DRIVE: minor, fast, a bass that never stops
+    // walking, and a drum part of their own (see playStep) that gets busier as
+    // the light closes.
+    royale: [
+      { name: 'Last Light', root: 147, bpm: 112, voice: 'pluck',
+        scale: [0, 2, 3, 5, 7, 8, 10, 12],            // natural minor
+        a: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [0, 3, 7]],
+        b: [[-5, 0, 3], [-4, 0, 3], [-2, 2, 7], [0, 3, 10]] },
+      { name: 'The Ring Closes', root: 131, bpm: 120, voice: 'bell',
+        scale: [0, 1, 3, 5, 7, 8, 10, 12],            // Phrygian: the flat 2nd is the dread
+        a: [[0, 3, 7], [1, 5, 8], [-2, 3, 7], [0, 3, 7]],
+        b: [[1, 5, 8], [0, 3, 7], [-4, 0, 5], [-2, 1, 7]] },
+      { name: 'Twenty Keepers', root: 165, bpm: 116, voice: 'kalimba',
+        scale: [0, 2, 3, 5, 7, 9, 10, 12],            // Dorian: minor with a raised 6th, restless
+        a: [[0, 3, 7], [-2, 2, 5], [-5, 0, 3], [-3, 0, 5]],
+        b: [[-3, 0, 5], [0, 3, 7], [-2, 2, 5], [0, 3, 10]] },
+    ],
     menu: [
       { name: 'Title Waltz', root: 262, bpm: 54, voice: 'bell',
         scale: [0, 4, 7, 9, 12, 16, 19, 21],
@@ -327,6 +346,20 @@ export function createAudio() {
         pluck(noteHz(root, chord[ci % chord.length]), t, 0.026);
       }
     }
+    // LANTERNFALL'S OWN RHYTHM SECTION. The combat layer below only wakes up
+    // while something is hunting you; a match needs a pulse from the first
+    // step. Four on the floor, a walking octave bass under it, and a backbeat
+    // — then off-beat hats and a doubled kick as `heat` climbs, so the last
+    // ring SOUNDS like the last ring without a single new note being written.
+    if (mood === 'royale') {
+      if (s % 2 === 0) kick(t, 0.12 + heat * 0.05);
+      if (s === 2 || s === 6) snare(t, 0.07 + heat * 0.04);
+      hat(t, s % 2 === 1 ? 0.03 + heat * 0.02 : 0.014);
+      if (heat > 0.55 && s % 2 === 1) hat(t + dur * 0.5, 0.02);
+      if (heat > 0.8 && (s === 3 || s === 7)) kick(t, 0.09);
+      bassPluck(noteHz(root / 2, chord[0] + (s % 2 ? 12 : 0)), t, dur * 0.9, 0.075);
+      return;
+    }
     // perkusi saat combat (gentler than before)
     if (combat > 0.15) {
       if (s === 0 || (s === 4 && combat > 0.5)) kick(t, 0.13 * combat);
@@ -401,6 +434,25 @@ export function createAudio() {
     o.start(t); o.stop(t + 0.2);
   }
 
+  // a backbeat: a short burst of band-passed noise with a pitched thump under it
+  function snare(t, vol) {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf();
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1900; f.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+    src.connect(f).connect(g).connect(musicBus);
+    src.start(t); src.stop(t + 0.15);
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(210, t);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.08);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(vol * 0.7, t);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(g2).connect(musicBus);
+    o.start(t); o.stop(t + 0.12);
+  }
+
   function hat(t, vol) {
     const b = noiseBuf();
     const src = ctx.createBufferSource(); src.buffer = b;
@@ -431,7 +483,7 @@ export function createAudio() {
     // anything -- came out as NIGHT. The dungeon was asking for its own music
     // and silently getting the overworld's after dark, which is why it sounded
     // like nothing had changed.
-    const NAMED = ['menu', 'sea', 'hollow', 'story'];
+    const NAMED = ['menu', 'sea', 'hollow', 'story', 'royale'];
     const next = NAMED.includes(v) ? v : (v ? 'night' : 'day');
     if (next === mood) return;
     mood = next;
@@ -440,6 +492,9 @@ export function createAudio() {
     barsLeft = 16;
   }
   function setCombat(level) { combat += (level - combat) * 0.05; }
+  // how far the light has closed, 0..1: the royale drum part reads this
+  let heat = 0;
+  function setHeat(v) { heat = Math.max(0, Math.min(1, v)); }
 
   // --- rain loop: looped noise through a lowpass, faded by intensity ---
   let rainSrc = null, rainGain = null;
@@ -476,8 +531,12 @@ export function createAudio() {
     g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
   }
 
+  // one-shot loudness for the sfx being built right now: a gunshot across the
+  // isle is the same sound as one beside you, only quieter
+  let sfxGain = 1;
   function tone(type, f0, f1, dur, vol, t = null) {
     if (!ctx || muted) return;
+    vol *= sfxGain;
     t = t ?? ctx.currentTime;
     const o = ctx.createOscillator(); o.type = type;
     o.frequency.setValueAtTime(f0, t);
@@ -490,6 +549,7 @@ export function createAudio() {
 
   function noise(dur, vol, fType = 'bandpass', f0 = 1200, f1 = null, t = null) {
     if (!ctx || muted) return;
+    vol *= sfxGain;
     t = t ?? ctx.currentTime;
     const src = ctx.createBufferSource(); src.buffer = noiseBuf(); src.loop = true;
     const f = ctx.createBiquadFilter(); f.type = fType;
@@ -662,6 +722,113 @@ export function createAudio() {
       tone('sine', 100, 45, 0.35, 0.16, t0);
       noise(0.6, 0.07, 'highpass', 4200, null, t0 + 0.5);
     },
+    // ---- LANTERNFALL ----
+    // the fall: wind rushing past, pitch dropping as the ground comes up
+    royale_drop: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      noise(2.0, 0.1, 'bandpass', 2600, 500, t0);
+      tone('sine', 900, 140, 2.0, 0.05, t0);
+    },
+    // boots on the ground
+    royale_land: () => {
+      tone('sine', 110, 40, 0.3, 0.26);
+      noise(0.28, 0.14, 'lowpass', 900, 200);
+    },
+    // 3 . 2 . 1
+    royale_tick: () => { tone('square', 660, 660, 0.09, 0.09); tone('sine', 1320, 1320, 0.06, 0.05); },
+    // ...FIGHT: a horn, not a beep
+    royale_go: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      [196, 294, 392].forEach((f) => tone('sawtooth', f, f * 1.01, 0.7, 0.07, t0));
+      tone('sine', 98, 98, 0.8, 0.14, t0);
+      noise(0.5, 0.05, 'highpass', 3600, null, t0);
+    },
+    // a crate: a latch, then what is inside catching the light
+    crate_open: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      noise(0.07, 0.12, 'bandpass', 1500, null, t0);
+      [784, 988, 1175, 1568].forEach((f, i) => tone('triangle', f, f, 0.16, 0.085, t0 + 0.05 + i * 0.045));
+    },
+    // a better weapon in your hand: the same, an octave of steel on top
+    weapon_up: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      noise(0.22, 0.09, 'highpass', 5200, 2400, t0);
+      [523, 784, 1046, 1568].forEach((f, i) => tone('sawtooth', f, f, 0.2, 0.05, t0 + i * 0.05));
+      tone('sine', 2093, 2093, 0.5, 0.05, t0 + 0.24);
+    },
+    // the ring starts to close: a long low horn you hear across the isle
+    ring_warn: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      tone('sawtooth', 87, 82, 1.4, 0.1, t0);
+      tone('sawtooth', 130, 123, 1.4, 0.07, t0);
+      tone('sine', 43, 41, 1.5, 0.16, t0);
+      noise(1.2, 0.03, 'lowpass', 500, null, t0);
+    },
+    // a lantern drop has landed
+    royale_supply: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      [659, 880, 1109, 1319, 1760].forEach((f, i) => tone('sine', f, f, 0.5, 0.07, t0 + i * 0.09));
+      tone('sine', 110, 55, 0.6, 0.12, t0);
+    },
+    // you put a light out: a hard two-note sting
+    royale_kill: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      tone('square', 392, 392, 0.1, 0.13, t0);
+      tone('square', 784, 784, 0.22, 0.13, t0 + 0.09);
+      tone('sine', 1568, 1568, 0.3, 0.06, t0 + 0.09);
+      noise(0.16, 0.08, 'highpass', 4200, null, t0);
+    },
+    // somebody else's light went out, somewhere: one soft bell
+    royale_bell: () => { tone('sine', 523, 520, 0.9, 0.05); tone('sine', 1046, 1040, 0.5, 0.025); },
+    // rivals
+    // the armoury: every gun has to be recognisable with your eyes shut
+    gun_pistol: () => { noise(0.09, 0.34, 'bandpass', 2400, 500); tone('square', 520, 120, 0.07, 0.16); },
+    gun_smg: () => { noise(0.06, 0.26, 'bandpass', 3000, 900); tone('square', 640, 200, 0.045, 0.1); },
+    gun_rifle: () => { noise(0.1, 0.34, 'bandpass', 1900, 380); tone('sawtooth', 360, 90, 0.08, 0.16); },
+    gun_shotgun: () => { noise(0.26, 0.5, 'lowpass', 1800, 180); tone('sine', 150, 42, 0.22, 0.32); noise(0.05, 0.3, 'highpass', 3000); },
+    gun_sniper: () => { noise(0.34, 0.5, 'bandpass', 1500, 160); tone('sawtooth', 300, 46, 0.28, 0.26); noise(0.5, 0.1, 'highpass', 2600, 800, ctx.currentTime + 0.08); },
+    gun_launcher: () => { tone('sine', 190, 60, 0.2, 0.34); noise(0.16, 0.26, 'lowpass', 900, 200); },
+    gun_beam: () => { tone('sawtooth', 880, 990, 0.2, 0.07); tone('sine', 1320, 1480, 0.2, 0.06); },
+    gun_boom: () => { noise(0.6, 0.6, 'lowpass', 900, 60); tone('sine', 110, 30, 0.5, 0.45); },
+    gun_reload: () => { noise(0.04, 0.16, 'highpass', 2600); tone('square', 300, 300, 0.03, 0.08, ctx.currentTime + 0.16); noise(0.05, 0.2, 'bandpass', 1800, 1800, ctx.currentTime + 0.3); },
+    gun_swap: () => { noise(0.05, 0.14, 'bandpass', 2000, 900); tone('square', 420, 520, 0.04, 0.06); },
+    gun_pick: () => { noise(0.05, 0.16, 'bandpass', 1500, 2600); tone('triangle', 520, 780, 0.09, 0.12); tone('triangle', 780, 1040, 0.1, 0.1, ctx.currentTime + 0.07); },
+    gun_dry: () => { tone('square', 900, 700, 0.03, 0.1); noise(0.03, 0.1, 'highpass', 3500); },
+    shield_hit: () => { tone('sine', 1500, 700, 0.1, 0.16); noise(0.06, 0.12, 'highpass', 4000); },
+    shield_up: () => { tone('sine', 500, 1300, 0.3, 0.14); tone('triangle', 760, 1900, 0.3, 0.08, ctx.currentTime + 0.08); },
+    rival_shot: () => { noise(0.07, 0.07, 'highpass', 2400); tone('triangle', 620, 240, 0.12, 0.06); },
+    rival_cast: () => { tone('sine', 340, 760, 0.2, 0.07); noise(0.16, 0.05, 'bandpass', 1700, 700); },
+    rival_wind: () => { tone('sawtooth', 150, 300, 0.45, 0.06); noise(0.4, 0.04, 'bandpass', 700, 1800); },
+    rival_dash: () => { noise(0.16, 0.14, 'bandpass', 2400, 500); tone('square', 260, 90, 0.12, 0.1); },
+    rival_blast: () => {
+      tone('sine', 120, 38, 0.45, 0.22);
+      noise(0.4, 0.14, 'lowpass', 1600, 300);
+      noise(0.3, 0.05, 'highpass', 3600);
+    },
+    // the win: the level-up fanfare's bigger sibling, with a low bell under it
+    royale_win: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      [[294, 0], [392, 0.12], [494, 0.24], [587, 0.36], [784, 0.5], [988, 0.66], [1175, 0.82], [1568, 1.0]]
+        .forEach(([f, dt]) => { tone('triangle', f, f, 0.28, 0.14, t0 + dt); tone('sawtooth', f / 2, f / 2, 0.28, 0.04, t0 + dt); });
+      [784, 988, 1175].forEach((f) => tone('sine', f, f, 1.6, 0.06, t0 + 1.2));
+      tone('sine', 98, 49, 1.2, 0.2, t0);
+      noise(1.4, 0.06, 'highpass', 4200, null, t0 + 1.0);
+    },
+    // out: a falling line that does not resolve
+    royale_out: () => {
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+      [392, 349, 311, 233].forEach((f, i) => tone('triangle', f, f * 0.98, 0.34, 0.1, t0 + i * 0.16));
+      tone('sine', 73, 55, 1.0, 0.14, t0 + 0.5);
+    },
     teleport: () => {
       if (!ctx) return;
       tone('sine', 1400, 200, 0.3, 0.12);
@@ -670,10 +837,11 @@ export function createAudio() {
     },
   };
 
-  function sfx(name) {
+  function sfx(name, vol = 1) {
     if (!ctx || muted || !started) return;
-    SFX[name]?.();
+    sfxGain = vol;
+    try { SFX[name]?.(); } finally { sfxGain = 1; }
   }
 
-  return { start, sfx, setMood, setCombat, setRain, toggleMute, isMuted };
+  return { start, sfx, setMood, setCombat, setHeat, setRain, toggleMute, isMuted };
 }

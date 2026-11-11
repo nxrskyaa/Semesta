@@ -65,6 +65,9 @@ import { createIndex } from './systems/index.js';
 import { createDungeon } from './systems/dungeon.js';
 import { createDungeonWorld, buildHollowGate, DUNGEON_Y } from './world/dungeonworld.js';
 import { showDungeonGate, hollowLockedText, isDungeonGateOpen, closeDungeonGate } from './ui/dungeonpanel.js';
+import { createRoyaleWorld } from './world/royaleworld.js';
+import { createRoyale, ROYALE_SIZE } from './systems/royale.js';
+import { showRoyaleLobby, showRoyaleResult, royaleCurtain, createRoyaleHud } from './ui/royaleui.js';
 import { playDescent } from './ui/descent.js';
 import { createFriends } from './systems/friends.js';
 import { CLASSES, defaultCharacter, AWAKEN_LEVEL, ADVANCED_CLASSES } from './systems/classes.js';
@@ -796,6 +799,10 @@ async function init(character, saved, audio, online = false) {
 
   // true only while a dungeon run is live; see inSafeZone below
   let inHollow = false;
+  // true only while a Lanternfall match is live (the battle royale isle). A
+  // plain flag for the same TDZ reason as inHollow: it is read by code that
+  // runs during the world build, long before `royale` exists.
+  let inRoyale = false;
   // set by the webglcontextlost handler further down; the loop asks before drawing
   let isContextLost = () => false;
 
@@ -819,7 +826,7 @@ async function init(character, saved, audio, online = false) {
     // declared hundreds of lines later, so naming it here would read a const in
     // its temporal dead zone and stop the loading bar dead. That has now
     // happened SEVEN times in this file.
-    if (inHollow) return null;
+    if (inHollow || inRoyale) return null;
     for (const c of calmZones) {
       if ((x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r) return c;
     }
@@ -1066,7 +1073,7 @@ async function init(character, saved, audio, online = false) {
     sfx: (n) => audio.sfx(n),
     inSafeZone,
     // reads a plain flag, not `dungeon`, for the TDZ reason above
-    ambientPaused: () => inHollow,
+    ambientPaused: () => inHollow || inRoyale,
     getPlayerLevel: () => leveling.state.level, // monsters scale every 5 levels
   });
   for (let i = 0; i < 14; i++) enemyMgr.spawnOne(player.state.pos);
@@ -1413,6 +1420,11 @@ async function init(character, saved, audio, online = false) {
     // hard stuck that only a reload clears. The basecamp only ever seemed to
     // work because the village spawn is (0.5, 0.5) and the hall is centred on
     // the origin, so it happened to land inside the walls. That is luck.
+    if (inRoyale) {
+      hud.toastText('There is no road home from the isle. Win, fall, or leave from the menu.');
+      audio.sfx('deny');
+      return;
+    }
     if (dungeon.state.active) {
       hud.toastText('No way out but the stair or the arch. The Hollow does not let go that easily.');
       audio.sfx('deny');
@@ -1879,6 +1891,228 @@ async function init(character, saved, audio, online = false) {
   const dungeonWorld = createDungeonWorld(scene, terrain, { keep: [player.state.group], camera });
   // where the hero was standing in Anavela, so leaving puts them back
   let hollowReturn = null;
+
+  // ====================== LANTERNFALL: the battleground ======================
+  //
+  // A different game in a different place: a top-down shooter on a sky-isle
+  // 4,000 units out, with its own light, its own HUD and its own combat. It is
+  // built on the Hollow's pattern (a terrain override plus a hidden overworld)
+  // and takes NOTHING from Semesta's fight: no level, gear, skills or bag.
+  // See world/royaleworld.js, systems/royale.js, systems/royaleguns.js.
+  const ROYALE_MENU_OK = new Set(['gfx', 'about', 'help']);
+  const royaleWorld = createRoyaleWorld(scene, terrain, { keep: [player.state.group] });
+  let royaleReturn = null;                  // where the hero stood in Anavela
+  let royaleMoving = false;                 // a curtain is up
+  let royaleDiff = 'normal';
+  let royaleCam = null;                     // Anavela's camera, to hand back
+  const royale = createRoyale({
+    scene, world: royaleWorld, particles, player,
+    hooks: {
+      heroName: () => character.name || 'You',
+      moveVec: () => player.moveVecFor(input, cam.yaw),
+      aimPoint: () => cursorPoint(),
+      dmgNum: (pos, text, cls) => dmgNums.spawn(pos, text, cls),
+      shake: (a) => addShake(a),
+      sfx: (n, v) => audio.sfx(n, v),
+      on: (type, data) => {
+        royaleHud.event(type, data);
+        if (type === 'kill') { hitStop(0.07); addShake(0.25); }
+        else if (type === 'hurt' && !data.dark) addShake(0.16);
+        else if (type === 'milestone') audio.sfx('quest_accept');
+      },
+      onEnd: (result) => endRoyale(result),
+    },
+  });
+  const royaleHud = createRoyaleHud({ world: royaleWorld, act: (n) => royaleAct(n), fire: (v) => royale.setFire(v) });
+  royaleHud.setLeave(() => askLeaveRoyale());
+  royale.load(saved?.royale);
+
+  const royaleBlocked = () => royaleMoving || royaleHud.isPaused() || royaleHud.isMapOpen();
+  function royaleAct(name) {
+    if (!inRoyale || royaleBlocked()) return false;
+    return royale.act(name);
+  }
+  /** Every key the match answers to. Returns true if it took the key. */
+  function royaleKey(e) {
+    const c = e.code;
+    if (c === 'Escape') { if (royaleHud.isMapOpen()) royaleHud.toggleMap(false); else royaleHud.pause(); return true; }
+    if (c === 'KeyM' || c === 'Tab') { if (!royaleHud.isPaused()) royaleHud.toggleMap(); return true; }
+    if (royaleBlocked() || e.repeat) return false;
+    if (c === 'Space') { if (!royale.act('jump')) doJump(); return true; }
+    if (c === 'Digit1' || c === 'Digit2' || c === 'Digit3') { royale.act(`slot${+c.slice(5) - 1}`); return true; }
+    if (c === 'KeyQ') { royale.act('next'); return true; }
+    if (c === 'KeyR') { royale.act('reload'); return true; }
+    if (c === 'KeyE') { royale.act('pickup'); return true; }
+    if (c === 'KeyF' || c === 'Digit4') { royale.act('tonic'); return true; }
+    if (c === 'KeyG' || c === 'Digit5') { royale.act('cell'); return true; }
+    if ((c === 'ShiftLeft' || c === 'ShiftRight') && !e.metaKey && !e.ctrlKey && !e.altKey) { doRoll(); return true; }
+    return false;
+  }
+
+  async function openRoyale() {
+    if (inRoyale || royaleMoving) return;
+    if (inHollow || dungeon.state.active) {
+      audio.sfx('deny'); hud.toastText('Climb out of the Hollow first.'); return;
+    }
+    if (player.state.dead || player.state.busy) return;
+    panels.closeAll(); hud.closeMenu?.();
+    // try/finally for the reason askLeaveHollow has one: `busy` set before an
+    // await and cleared after it is a frozen hero the moment the await rejects
+    player.state.busy = true;
+    let go = null;
+    try { go = await showRoyaleLobby({ stats: royale.state.stats, difficulty: royaleDiff }); }
+    finally { player.state.busy = false; }
+    if (go) enterRoyale(go.difficulty);
+  }
+
+  /** Everything a fresh drop needs from the hero, for the first and every rematch. */
+  function royaleFresh() {
+    royale.start({ difficulty: royaleDiff });
+    player.state.vy = 0;
+    player.state.grounded = false;
+    player.state.busy = false;
+    player.state.dead = false;
+    player.state.hp = player.state.maxHp;
+    player.state.stamina = player.state.maxStamina;
+    player.state.noRegen = true;
+    player.setWeaponVisible(false);
+    cam.yaw = 0; cam.dist = 27; cam.pitch = CAM_PITCH_DEFAULT;
+    audio.setMood('royale');
+    audio.setHeat(0);
+    royaleHud.reset();
+    updateCamera(10);                      // snap: the hero just moved 5,000 units
+  }
+
+  async function enterRoyale(difficulty = royaleDiff) {
+    if (inRoyale || royaleMoving || inHollow) return;
+    royaleMoving = true;
+    royaleDiff = difficulty;
+    panels.closeAll(); worldmap.hide(); hud.closeMenu?.();
+    if (autoBattle) { autoBattle = false; hud.setAuto?.(false); }
+    if (watercraft.state.active) watercraft.leave(player, true);
+    dismountIfRiding();
+    fishing.cancel();
+    royaleReturn = player.state.pos.clone();
+    royaleCam = { yaw: cam.yaw, dist: cam.dist, pitch: cam.pitch };
+    audio.sfx('teleport');
+    try {
+      await royaleCurtain('LANTERNFALL', `${ROYALE_SIZE} KEEPERS · ONE LIGHT LEFT`, () => {
+        inRoyale = true;
+        document.body.classList.add('inroyale');
+        clearSurfaceFoes();              // the wilds refill on their own afterwards
+        royaleWorld.enter();
+        royaleFresh();
+      });
+    } finally { royaleMoving = false; }
+  }
+
+  /** The match is decided. Pay it HERE: royale.js never touches the bag. */
+  function endRoyale(result) {
+    royale.setFire(false);
+    if (result.coins) inventory.addCoins(result.coins);
+    if (result.xp) leveling.addXp(result.xp);
+    if (!result.forfeit) gamepass.event(result.won ? 'royale_win' : 'royale');
+    save();
+    if (result.won) {
+      audio.sfx('royale_win');
+      const c = player.state.pos.clone();
+      const cols = ['#ffd27a', '#ff9a4a', '#8fd0ff', '#7dff8a', '#ffb0d0', '#c9a6ff'];
+      for (let i = 0; i < 12; i++) {
+        setTimeout(() => {
+          if (!inRoyale) return;
+          const a = Math.random() * Math.PI * 2, d = 2.5 + Math.random() * 5;
+          const at = new THREE.Vector3(c.x + Math.sin(a) * d, c.y, c.z + Math.cos(a) * d);
+          const col = cols[i % cols.length];
+          particles.beam?.(at, col, 0.35, 8 + Math.random() * 4, 0.7);
+          particles.fountain(at.clone().add(new THREE.Vector3(0, 0.4, 0)), col, 18);
+          particles.burst(at.clone().add(new THREE.Vector3(0, 6 + Math.random() * 3, 0)), col, 26, 4.2, 3, 0.9);
+        }, 150 + i * 200);
+      }
+    } else if (!result.forfeit) {
+      audio.sfx('royale_out');
+    }
+    (async () => {
+      // let the moment land before a card covers it
+      await new Promise((r) => setTimeout(r, result.forfeit ? 0 : result.won ? 2600 : 1100));
+      const next = await showRoyaleResult(result);
+      if (next === 'again' && inRoyale) {
+        royaleMoving = true;
+        try { await royaleCurtain('LANTERNFALL', 'ANOTHER DROP', () => royaleFresh()); }
+        finally { royaleMoving = false; }
+      } else await leaveRoyale();
+    })();
+  }
+
+  async function leaveRoyale() {
+    if (!inRoyale || royaleMoving) return;
+    royaleMoving = true;
+    try {
+      await royaleCurtain('ANAVELA', 'the lanterns are lit', () => forceLeaveRoyale());
+    } finally { royaleMoving = false; }
+    hud.toastText('You are back in Anavela. Nothing you own was touched.');
+  }
+
+  /** Take isle mode off the world whatever state it is in. Not guarded on the
+   *  match being live: this is what runs when that is exactly what went wrong. */
+  function forceLeaveRoyale() {
+    royale.stop();
+    royaleHud.reset();
+    if (royaleWorld.state.active) royaleWorld.leave();
+    inRoyale = false;
+    document.body.classList.remove('inroyale');
+    // NOT player.respawn(): that also strips every buff, and a Scholar Brew
+    // drunk before the match should still be running after it
+    player.state.dead = false;
+    player.state.busy = false;
+    player.state.noRegen = false;
+    player.state.hp = player.state.maxHp;
+    player.state.stamina = player.state.maxStamina;
+    const back = royaleReturn || terrain.spawn;
+    player.state.pos.set(back.x, terrain.surfaceY(back.x, back.z), back.z);
+    player.state.vy = 0;
+    player.state.grounded = true;
+    royaleReturn = null;
+    if (royaleCam) { cam.yaw = royaleCam.yaw; cam.dist = royaleCam.dist; cam.pitch = royaleCam.pitch; royaleCam = null; }
+    player.setWeaponVisible(true);
+    audio.setHeat(0);
+    updateCamera(10);
+  }
+
+  async function askLeaveRoyale() {
+    const m = royale.state.active;
+    if (!inRoyale || royaleMoving || !m || m.over) return;
+    let yes = false;
+    try {
+      yes = await confirmBox({
+        title: 'LEAVE THE ISLE?',
+        body: 'The match goes on without you and pays nothing. Nothing you own is lost.',
+        yes: 'LEAVE', no: 'KEEP FIGHTING',
+      });
+    } catch { yes = false; }
+    if (!yes || !inRoyale || m.over || royale.state.active !== m) return;
+    endRoyale(royale.forfeit());
+  }
+
+  function royaleTick(dt, time) {
+    // THE INVARIANT, as the Hollow has one: the world is never in isle mode
+    // without a match in it. One comparison a frame closes the whole class.
+    if (!royaleMoving && (inRoyale || royaleWorld.state.active) && !royale.state.active) {
+      forceLeaveRoyale();
+      return;
+    }
+    if (!inRoyale) return;
+    cam.yaw = 0;                          // north is up, so the map and the screen agree
+    royale.update(dt, time);
+    royaleWorld.update(dt, time, player.state.pos, camera);
+    const v = royale.view();
+    if (!v) return;
+    // on the skiff and under the canopy the match holds the hero, not gravity
+    if (v.you.phase !== 'ground') { player.state.vy = 0; player.state.grounded = false; }
+    cam.dist += ((v.you.phase === 'ground' ? 20 : 27) - cam.dist) * Math.min(1, dt * 1.6);
+    royaleHud.update(v, dt);
+    // the music tightens as the light does
+    audio.setHeat(Math.min(1, (v.ring.idx + (v.ring.mode === 'shrink' ? 0.6 : 0)) / 5.4));
+  }
 
 
   /** Everything a floor pays, granted through the one path items already take. */
@@ -2370,7 +2604,7 @@ async function init(character, saved, audio, online = false) {
       || worldmap.isOpen()
       || document.querySelector('[data-yes]')          // a confirm box
       || document.querySelector('#dialog.show')        // an NPC talking
-      || document.querySelector('.cshow.show, .dgate, .awk, #statspanel, .descent, .cgate')
+      || document.querySelector('.cshow.show, .dgate, .awk, #statspanel, .descent, .cgate, .roylobby, .royresult, .roycurtain, .roypause')
       || fishing.state.active || fishing.state.afk
       || player.state.dead
       || workFx;
@@ -2556,6 +2790,7 @@ async function init(character, saved, audio, online = false) {
   }
   function toggleMount() {
     if (mounts.state.active) { dismountIfRiding(); return; }
+    if (inRoyale) { audio.sfx('deny'); hud.toastText('Nobody rides on the isle. Everyone is on foot.'); return; }
     // ride the best owned mount (last defined = most advanced)
     const owned = Object.keys(MOUNT_DEFS).filter((id) => inventory.count(MOUNT_DEFS[id].item) > 0);
     if (owned.length) summonMount(owned[owned.length - 1]);
@@ -2920,7 +3155,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       const d = Math.hypot(wb.mesh.position.x - p.x, wb.mesh.position.z - p.z);
       if (d < 26 && !cine.busy() && !player.state.dead && !dialog.isOpen()) { wb.cineDone = true; worldBossIntro(wb); return; }
     }
-    if (inHollow || !quietMoment()) return;
+    if (inHollow || inRoyale || !quietMoment()) return;
     if (!discover) {
       discover = [];
       for (const I of terrain.islands || []) discover.push({ id: `isle:${I.name}`, x: I.x, z: I.z, r: I.r + 7, big: () => islandShot(I) });
@@ -2968,8 +3203,10 @@ const CAM_PITCH_DEFAULT = 0.98;
   function updateCamera(dt) {
     if (cine.update(dt)) return;
     const p = player.state.pos;
-    if (input.keys.has('KeyQ')) cam.yaw += dt * 1.8;
-    if (input.keys.has('KeyE')) cam.yaw -= dt * 1.8;
+    if (!inRoyale) {
+      if (input.keys.has('KeyQ')) cam.yaw += dt * 1.8;
+      if (input.keys.has('KeyE')) cam.yaw -= dt * 1.8;
+    }
     // arrow up tilts the view UP (a smaller pitch is a more level camera)
     let manualTilt = false;
     if (input.keys.has('ArrowUp')) { cam.pitch -= dt * 1.1; manualTilt = true; }
@@ -3066,6 +3303,8 @@ const CAM_PITCH_DEFAULT = 0.98;
   function forgeMult() { return forgeMultiplier(inventory.equippedPlus()); }
 
   function onKill(e, drops) {
+    // a rival keeper is not a monster: no XP, no drops, no quest credit. The
+    // match keeps its own score.
     // INDEX: killing it is what logs it. Seeing one across a field is not
     // "collecting" it, and a log that filled itself from the spawner would be
     // complete before you had fought anything.
@@ -3117,6 +3356,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     }
   }
   function doAttack() {
+    if (inRoyale) { if (!royaleBlocked()) royale.tapFire(); return; }
     if (panels.anyOpen() || dialog.isOpen() || player.state.dead) return;
     if (player.state.busy) { doInteract(); return; } // busy fishing -> attack acts as strike
     dismountIfRiding();
@@ -3426,6 +3666,7 @@ const CAM_PITCH_DEFAULT = 0.98;
   }
 
   function toggleAutoBattle() {
+    if (inRoyale) { audio.sfx('deny'); hud.toastText('Lanternfall is played by hand.'); return; }
     if (!autoBattle && !autoUnlocked()) {
       audio.sfx('deny');
       hud.toastText(`Auto-Battle unlocks at Lv${AUTO_UNLOCK_LEVEL}. You are Lv${leveling.state.level}.`);
@@ -3471,7 +3712,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     if (!autoBattle) return;
     // NOT IN THE HOLLOW. Switched off rather than paused, so it cannot quietly
     // resume when the next floor loads.
-    if (dungeon.state.active) { autoBattle = false; hud.setAuto?.(false); return; }
+    if (dungeon.state.active || inRoyale) { autoBattle = false; hud.setAuto?.(false); return; }
 
     // DYING STOPS IT. It used to keep running while you lay dead: the tick
     // returned early on `dead`, but the flag stayed on, so the moment you
@@ -3555,6 +3796,8 @@ const CAM_PITCH_DEFAULT = 0.98;
   }
 
   function usePotion() {
+    // On the isle the bag stays shut: the only tonics are the ones found there.
+    if (inRoyale) { royaleAct('heal'); return; }
     const t = inventory.usePotion();
     if (!t) { audio.sfx('deny'); return; }
     player.state.hp = Math.min(player.state.maxHp, player.state.hp + t.heal);
@@ -4060,6 +4303,9 @@ const CAM_PITCH_DEFAULT = 0.98;
 
   function gatherInteractions() {
     if (player.state.dead || panels.anyOpen() || dialog.isOpen()) return [];
+    // nothing on the isle is talked to or picked up by hand: crates open when
+    // you walk over them, and everything else is a fight
+    if (inRoyale) return [];
     const list = [];
     const add = (kind, label, run, extra = {}) => list.push({ kind, label, run, ...extra });
 
@@ -4337,6 +4583,10 @@ const CAM_PITCH_DEFAULT = 0.98;
       return;
     }
     input.keys.add(e.code);
+    // ON THE ISLE ONLY THE FIGHTING KEYS WORK. The bag, the forge, the map and
+    // the road home all belong to Anavela; opening them mid-match would be a
+    // way to pause a fight nobody else can pause.
+    if (inRoyale) { if (royaleKey(e)) e.preventDefault(); return; }
     if (e.code === 'Tab') { e.preventDefault(); audio.sfx('ui'); panels.toggle('inv'); }
     if (e.code === 'KeyC') { audio.sfx('ui'); panels.toggle('cra'); }
     if (e.code === 'KeyV') { audio.sfx('ui'); panels.toggle('forge'); }
@@ -4401,13 +4651,23 @@ const CAM_PITCH_DEFAULT = 0.98;
   window.addEventListener('contextmenu', (e) => { if (!onUI(e)) e.preventDefault(); });
   window.addEventListener('mousedown', (e) => {
     if (onUI(e)) return;
+    if (inRoyale) {
+      // the trigger is HELD: automatics fire for as long as the button is down
+      if (royaleBlocked() || (e.target.closest && e.target.closest('.ryhud .slot, .ryhud .mini, .ryscreen, .rymap'))) return;
+      if (e.button === 0) royale.setFire(true);
+      if (e.button === 2) doRoll();
+      return;
+    }
     if (e.button === 0) doAttack();
     if (e.button === 2) doRoll();
   });
+  window.addEventListener('mouseup', (e) => { if (e.button === 0) royale.setFire(false); });
+  window.addEventListener('blur', () => royale.setFire(false));
   window.addEventListener('mousemove', (e) => {
     input.mouse.x = e.clientX; input.mouse.y = e.clientY;
   });
   renderer.domElement.addEventListener('wheel', (e) => {
+    if (inRoyale) { royaleAct(e.deltaY > 0 ? 'next' : 'prev'); return; }
     cam.dist = Math.max(9, Math.min(30, cam.dist + Math.sign(e.deltaY) * 1.6));
   }, { passive: true });
 
@@ -4518,6 +4778,12 @@ const CAM_PITCH_DEFAULT = 0.98;
       if (which === 'tree') { audio.sfx('ui'); openSkillTree(); return; }
       if (which === 'index') { audio.sfx('ui'); panels.toggle('index'); return; }
       if (which === 'quit') { leaveToMenu(); return; }
+      if (which === 'royale') { audio.sfx('ui'); if (inRoyale) askLeaveRoyale(); else openRoyale(); return; }
+      if (inRoyale && !ROYALE_MENU_OK.has(which)) {
+        audio.sfx('deny');
+        hud.toastText('Not during a match. Open LANTERNFALL in the menu to leave the isle.');
+        return;
+      }
       if (which === 'auto') { toggleAutoBattle(); return; }
       if (which === 'home') { teleportHome('home'); return; }
       if (which === 'village') { teleportHome('village'); return; }
@@ -4641,13 +4907,16 @@ const CAM_PITCH_DEFAULT = 0.98;
         awakenNudged,
         gamepass: gamepass.serialize(),
         dungeon: dungeon.serialize(),
+        royale: royale.serialize(),
         story: story.serialize(),
         // inside the Hollow the hero's coordinates are the HALL's, which mean
         // nothing on the surface; the place you will walk back out to is the
         // one worth keeping
         pos: (inHollow && hollowReturn)
           ? [hollowReturn.x, hollowReturn.y, hollowReturn.z]
-          : [player.state.pos.x, player.state.pos.y, player.state.pos.z],
+          : (inRoyale && royaleReturn)
+            ? [royaleReturn.x, royaleReturn.y, royaleReturn.z]
+            : [player.state.pos.x, player.state.pos.y, player.state.pos.z],
         at: Date.now(),
       };
       saveSlot(activeSlot(), lastSave);
@@ -4669,6 +4938,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // can be forced and its effect measured rather than assumed
     adaptive, applyPixelRatio, composer, bloomPass, aoPass,
     resetStats, resetSkillPoints,
+    royale, royaleWorld, royaleHud, enterRoyale, leaveRoyale, openRoyale,
     dungeon, dungeonWorld, hollowGate, cine, cineSeen, fishGauge, hollowtide, ambience,
     enterHollow, leaveHollow, descendHollow, openHollowGate, populateFloor,
     dailies, gamepass, story, skilltree, index, landmarks, watercraft, isles, hud, wind,
@@ -4931,7 +5201,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // meant to measure time spent in Anavela, and letting it run down while you
     // are forty floors under just means a boss is standing on you the moment
     // you step out of the arch.
-    if (dungeon?.state.active) return;
+    if (dungeon?.state.active || inRoyale) return;
     const alive = bossState.current && !bossState.current.dead;
     if (!alive && bossState.current) {
       // it either died (banner handled in onKill) or wandered off
@@ -5002,12 +5272,13 @@ const CAM_PITCH_DEFAULT = 0.98;
     watercraft.update(dt, time);
     dungeonWorld.update(dt, time);
     hollowTick(dt);
+    royaleTick(dt, time);
     busyWatchdog(dt);
     estateTick(dt);
     // The out-of-world rescue must not fire five hundred units up: while a run
     // is live the terrain override reports the hall as in-bounds, so this is
     // simply skipped rather than made to understand dungeons.
-    if (!dungeon.state.active) {
+    if (!dungeon.state.active && !inRoyale) {
       rescueIfOutOfWorld();
       // AND THE HERO IS NEVER INSIDE A BUILDING. Same shape of invariant, and
       // for the same reason: five separate teleports could each put you in a
@@ -5083,7 +5354,7 @@ const CAM_PITCH_DEFAULT = 0.98;
       remote.update(dt, net.state.players, player.state.pos);
     }
     wildlife.update(dt, player.state.pos, time);
-    if (!inHollow) {
+    if (!inHollow && !inRoyale) {
       ambience.update(dt, player.state.pos, camera, nightAmt);
       hollowtide.update(dt, time, player.state.pos, nightAmt);
     }
@@ -5093,7 +5364,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     // ANAVELA'S SKY DOES NOT REACH THE HOLLOW. This drives the sun, the fog
     // colour and the whole day cycle every frame; left running it repainted the
     // dungeon's air back to whatever the clock said outside, once per frame.
-    if (!inHollow) lighting.update(dt, player.state.pos);
+    if (!inHollow && !inRoyale) lighting.update(dt, player.state.pos);
     particles.update(dt);
     dmgNums.update(dt);
     skillSys.update(dt);
@@ -5110,7 +5381,7 @@ const CAM_PITCH_DEFAULT = 0.98;
     //
     // Skipping the tick is also simply correct: none of it can be seen, and
     // posing a hidden village is work nobody is paid for.
-    if (!inHollow) {
+    if (!inHollow && !inRoyale) {
       npcs.update(dt, player.state.pos, time, isNight);
       chests.update(dt, player.state.pos);
       camps.update(dt, player.state.pos, time);
@@ -5266,7 +5537,8 @@ const CAM_PITCH_DEFAULT = 0.98;
     // THE LOOP MUST NOT OVERWRITE THE HOLLOW. This runs every frame, so even a
     // correctly-set dungeon mood was replaced by day/night on the very next one
     // — the dungeon could never hold its own music for a single frame.
-    if (!inHollow) {
+    if (inRoyale) audio.setMood('royale');
+    else if (!inHollow) {
       audio.setMood(
         (watercraft.state.active || player.state.swimming) && terrain.inOcean(player.state.pos.x, player.state.pos.z)
           ? 'sea' : isNight,
@@ -5291,7 +5563,10 @@ const CAM_PITCH_DEFAULT = 0.98;
       // The chip names the door it points at, so it also teaches which is which.
       const runNow = dungeon.state.active;
       const camAng = cam.yaw + Math.PI;
-      if (runNow) {
+      if (inRoyale) {
+        // the chip is hidden on the isle: the match map shows the light
+        hud.setBeacon(null);
+      } else if (runNow) {
         // whichever door is the thing to do next: the stair once the floor is
         // finished and there is a floor below it, otherwise the way home
         const wantStair = runNow.cleared && runNow.floor < dungeon.MAX_FLOOR;
@@ -5325,7 +5600,7 @@ const CAM_PITCH_DEFAULT = 0.98;
           hud.setBeacon(null);
         }
       }
-      touchUI?.update(skillSys, inventory.count('tonic'));
+      touchUI?.update(skillSys, inRoyale ? 0 : inventory.count('tonic'));
       // interact prompts: primary (F / ★) + distinct secondary (R / ★₂)
       const { primary, secondary } = interactPair();
       hud.setPrompt(primary ? { key: 'F', label: primary.label } : null,

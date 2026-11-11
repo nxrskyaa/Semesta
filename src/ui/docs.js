@@ -567,6 +567,25 @@ export const CATEGORIES = [
         <p><b>28 cosmetics</b> in the wardrobe (<b>O</b>): hats, back pieces and
         movement trails, plus a full re-edit of your hero's appearance and name at
         any time.</p>`),
+
+      S('royale', 'Lanternfall (Battle Royale)', `
+        <p><b>Twenty keepers, one isle, one light left.</b> Open it from
+        <b>&#9776; MENU &rarr; LANTERNFALL</b>. Everybody falls out of the dusk onto a
+        separate isle, there is a count of three, and then the ring of light closes
+        five times. The last keeper standing wins. A match runs two to three minutes.</p>
+        ${ul([
+          '<b>Even ground.</b> Your level, gear, forge level and attributes stay in Anavela. Everybody has the same health and the same strength. You bring your class and the skills you learned.',
+          '<b>Crates.</b> Walk over a glowing crate to open it; the mark floating over it shows what is inside. <b>Blade Spark</b> puts the next weapon of your family in your hand, five steps from a plain one to a relic that glows. <b>Ward Plate</b> makes you tougher, <b>Ember Tonic</b> is a heal on the potion button, <b>Swift Wraps</b> make you faster.',
+          '<b>Lantern drops.</b> Each time the light settles a lantern drop lands under a pillar of light, marked on the map. It holds two things, and everybody can see it.',
+          '<b>Read the tells.</b> Swordsmen crouch and lunge, mages put a rune under your feet before the ground erupts, archers loose three arrows in a fan. Every one shows on the ground first: roll out of it.',
+          '<b>The Dark.</b> Outside the ring you lose health, faster each time it closes. It ignores armour and rolling. The last ring closes to nothing, so no match is won by hiding.',
+          '<b>Cover is real.</b> Ruins, rocks and trees stop arrows and bolts.',
+          '<b>Payout.</b> Coins, XP and Gamepass XP at the end, win or lose. Leaving early pays nothing.',
+        ])}
+        ${call('dont', 'What it is not', [
+          'It is not against other people yet. The other nineteen keepers are bots; a shared match needs a server update that has not shipped.',
+          'It cannot cost you anything. Nothing in your bag is used, dropped or lost on the isle, and your own weapon is back in your hand when you leave.',
+        ])}`),
     ],
   },
 

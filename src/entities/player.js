@@ -1896,7 +1896,9 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     state.healTick = (state.healTick || 0) + dt;
     if (state.healTick >= 5) {
       state.healTick = 0;
-      if (state.sinceHurt > 5 && state.hp < state.maxHp && !state.dead) {
+      // `noRegen` is set for a Lanternfall match: on the isle the only mending
+      // is what you find, or standing behind a wall would win every fight
+      if (state.sinceHurt > 5 && state.hp < state.maxHp && !state.dead && !state.noRegen) {
         state.hp = Math.min(state.maxHp, state.hp + Math.max(3, state.maxHp * 0.06));
       }
     }

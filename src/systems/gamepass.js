@@ -137,6 +137,9 @@ export const PASS_XP = {
   // nothing, which is exactly the kind of thing that makes an XP system feel
   // arbitrary
   sail: 8, island: 40,
+  // Lanternfall. A whole match is three or four minutes of play, so it is
+  // worth about what that long spent hunting would be, and a win is a boss.
+  royale: 45, royale_win: 150,
 };
 
 /** Plain-English names for the table in the pass panel. */
@@ -146,6 +149,7 @@ export const PASS_XP_LABEL = {
   harvest: 'Harvest a crop', cook: 'Cook a dish', forge: 'Forge a weapon',
   skill: 'Cast a skill', gacha: 'Spin the gacha', quest: 'Complete a quest',
   sail: 'Sail somewhere new', island: 'Set foot on a new island',
+  royale: 'Finish a Lanternfall match', royale_win: 'Win a Lanternfall match',
 };
 
 // ---------------------------------------------------------------------------

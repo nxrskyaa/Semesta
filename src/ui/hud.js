@@ -839,6 +839,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         <button class="mtile" data-menu="map"><span class="mi">🗺</span>MAP<small>N</small></button>
         <button class="mtile" data-menu="home"><span class="mi">⌂</span>GO HOME<small>T</small></button>
         <button class="mtile" data-menu="village"><span class="mi">⛺</span>BASECAMP<small>Y</small></button>
+        <button class="mtile" data-menu="royale"><span class="mi">🏮</span>LANTERNFALL<small>BR</small></button>
         <button class="mtile autobtn" data-menu="auto"><span class="mi">⚔</span>AUTO-BATTLE<small>B</small></button>
         <button class="mtile" data-menu="help"><span class="mi">?</span>GUIDE<small>H</small></button>
         <button class="mtile" data-menu="index"><span class="mi">📕</span>THE INDEX<small>X</small><i class="xbadge"></i></button>
@@ -1118,15 +1119,25 @@ export function createHUD(root, { inventory, character, forge, audio }) {
         if (chip.textContent !== txt) chip.textContent = txt;
       }
     }
-    const n = inventory.count('tonic');
+    // a Lanternfall match carries its own tonics; the bag's do not count there
+    const n = kit ? kit.tonic : inventory.count('tonic');
     els.potionEl.querySelector('.cnt').textContent = n;
     els.potionEl.classList.toggle('empty', n === 0);
   }
 
+  // THE MATCH KIT. On the isle the hero holds the match's weapon and drinks the
+  // match's tonics, and a chip that went on naming the sword left at home (or a
+  // potion slot counting the bag) would be the HUD lying about both.
+  let kit = null;
+  function setKit(k) {
+    const changed = (k?.weapon || null) !== (kit?.weapon || null);
+    kit = k;
+    if (changed) updateWeaponChip();
+  }
   function updateWeaponChip() {
-    const id = inventory.state.equipped;
+    const id = kit?.weapon || inventory.state.equipped;
     const d = ITEMS[id];
-    const plus = forge.plusOf(id);
+    const plus = kit ? 0 : forge.plusOf(id);
     els.weaponChip.innerHTML =
       `<img src="${itemIconUrl(id)}"> ${d.name} ${plus > 0 ? `<span class="plus">+${plus}</span>` : ''}`;
   }
@@ -1449,7 +1460,7 @@ export function createHUD(root, { inventory, character, forge, audio }) {
     updateVitals, updateSkills, toast, toastText, banner, setClock, setWeather,
     showDead, showHurt, bind, els, updateQuests, setPrompt, setAuto, levelUp, floorClear,
     closeMenu, setBeacon,
-    setHollow,
+    setHollow, setKit,
     refreshPortrait, setName, showOnboarding, isMenuPopOpen, setMenuBadge, showStory, getStoryLog, showCatch, setLifeBadge, setIndexBadge,
   };
 }

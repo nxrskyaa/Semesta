@@ -26,7 +26,7 @@ const cyl = (rt, rb, h, c, seg = 7) => cylMesh(rt, rb, h, c, seg);
 // and a cluster of coconuts. The lean is what makes it read as a palm and not
 // a lollipop on a stick.
 // ---------------------------------------------------------------------------
-function buildPalm(rng) {
+export function buildPalm(rng) {
   const g = new THREE.Group();
   const H = 2.6 + rng() * 1.5;
   const lean = (rng() - 0.5) * 0.55;
@@ -79,7 +79,7 @@ function buildPalm(rng) {
 }
 
 /** A little sun-bleached torii on a rock, the island answer to the shrine. */
-function buildTorii() {
+export function buildTorii() {
   const g = new THREE.Group();
   const C = '#d8543c', D = '#b8402c';
   for (const sx of [-0.6, 0.6]) {
@@ -99,7 +99,7 @@ function buildTorii() {
 }
 
 /** Half a hull sticking out of the sand — the wreck island's landmark. */
-function buildWreck(rng) {
+export function buildWreck(rng) {
   const g = new THREE.Group();
   const hull = new THREE.Group();
   for (let i = 0; i < 6; i++) {
@@ -125,7 +125,7 @@ function buildWreck(rng) {
 }
 
 /** Coral / rock spires for the reef island. */
-function buildCoral(rng) {
+export function buildCoral(rng) {
   const g = new THREE.Group();
   const cols = ['#e8768f', '#d9569a', '#f0a05a', '#7fd8c8'];
   const n = 3 + Math.floor(rng() * 3);
@@ -146,7 +146,7 @@ function buildCoral(rng) {
 }
 
 /** A moored paper lantern on a bamboo pole — night navigation for the cays. */
-function buildBeacon() {
+export function buildBeacon() {
   const g = new THREE.Group();
   const pole = cyl(0.05, 0.06, 2.4, '#9a8f5c');
   pole.position.y = 1.2; g.add(pole);
