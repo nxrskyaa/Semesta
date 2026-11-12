@@ -1918,9 +1918,17 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       if (state.shielding) sp *= 0.45;
       if (state.attackT > 0) sp *= 0.55;
       if (state.swimming && !state.craft) sp *= SWIM_SPEED_MULT;
+      // SHOOTER MODE (Lanternfall). The body faces where the gun points and the
+      // legs go where the stick points, at the match's own speed: no class and
+      // no buff comes with you. Backing away from what you aim at is slower.
+      state.moveAngle = Math.atan2(mv.x, mv.z);
+      if (state.shooter) {
+        const back = Math.cos(state.moveAngle - state.shooter.aim);
+        sp = state.shooter.speed * (0.8 + 0.2 * Math.max(0, back));
+      }
       vx = mv.x * sp; vz = mv.z * sp;
-      state.facing = Math.atan2(mv.x, mv.z);
-    }
+      state.facing = state.shooter ? state.shooter.aim : state.moveAngle;
+    } else if (state.shooter) state.facing = state.shooter.aim;
 
     // an exhausted swimmer is towed to the beach — no drowning, just a nudge
     if (state.washingAshore) {
@@ -2229,6 +2237,10 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       parts.head.rotation.x = -pitch * 0.75;           // face stays out of the water
       parts.head.rotation.z = Math.sin(st) * 0.12;     // breathing to the side
       if (parts.capeMesh) parts.capeMesh.rotation.x = 1.1 + Math.sin(st * 0.7) * 0.12;
+    } else if (state.shooter && state.shooter.air === 'ship') {
+      // standing on the skiff's deck, not mid-jump
+      parts.legL.rotation.x = 0; parts.legR.rotation.x = 0;
+      parts.armL.rotation.set(0, 0, 0.2); parts.armR.rotation.set(0, 0, -0.2);
     } else if (!state.grounded && state.rolling <= 0) {
       // airborne pose: legs tucked, arms out
       parts.legL.rotation.x = mounted ? 1.25 : -0.55;
@@ -2249,6 +2261,17 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
           parts.armL.rotation.z = 0; parts.armR.rotation.z = 0;
         }
         vis.position.y = visBase + Math.abs(Math.sin(state.walkPhase)) * 0.06;
+      } else if (state.shooter) {
+        // STRAFE-AWARE LEGS. Facing the cursor and walking sideways with a
+        // forward run cycle is a moonwalk; the stride is turned by the angle
+        // between where the body faces and where the feet are going, and the
+        // body leans into the direction of travel.
+        const rel = state.moveAngle - state.facing, cs = Math.cos(rel), sn = Math.sin(rel);
+        parts.legL.rotation.x = sw * cs; parts.legR.rotation.x = -sw * cs;
+        parts.legL.rotation.z = -sw * 0.7 * sn; parts.legR.rotation.z = sw * 0.7 * sn;
+        vis.rotation.z += (-0.13 * sn - vis.rotation.z) * Math.min(1, dt * 10);
+        vis.rotation.x += (0.1 * cs - vis.rotation.x) * Math.min(1, dt * 10);
+        vis.position.y = visBase + Math.abs(Math.sin(state.walkPhase)) * 0.045;
       } else {
         parts.legL.rotation.x = sw;
         parts.legR.rotation.x = -sw;
@@ -2262,6 +2285,10 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
       parts.head.rotation.z = Math.sin(state.walkPhase) * 0.03;
       if (parts.capeMesh) parts.capeMesh.rotation.x = 0.35 + Math.sin(state.walkPhase * 0.5) * 0.08;
     } else if (state.rolling <= 0) {
+      if (state.shooter) {
+        parts.legL.rotation.z = 0; parts.legR.rotation.z = 0;
+        vis.rotation.z *= 1 - Math.min(1, dt * 10); vis.rotation.x *= 1 - Math.min(1, dt * 10);
+      }
       parts.legL.rotation.x = mounted ? 1.25 : 0;
       parts.legR.rotation.x = mounted ? 1.25 : 0;
       if (state.attackT <= 0) {
@@ -2282,7 +2309,12 @@ export function createPlayer(terrain, decorBlocked, config, particles, hooks = {
     // slightly out from the hip. This is applied only while NOT attacking, so
     // every swing animation still starts from the orientation it was tuned for.
     const carried = ITEMS[state.equipped]?.type;
-    if (carried === 'cannon'
+    if (state.shooter) {
+      // a gun is parented to this hand and aimed by the arm: the carry pose
+      // (a sword hung back from the hip) pointed every barrel at the sky
+      parts.handR.rotation.set(0, 0, 0);
+      parts.handR.position.set(0, -0.28, 0.02);
+    } else if (carried === 'cannon'
       || (state.attackT <= 0 && state.rolling <= 0 && !state.swimming)) {
       applyCarryPose(parts, carried);
     } else {

@@ -18,15 +18,17 @@ import { GUNS, RARITIES, KNIFE, rollGun, gunScore, buildGun, buildKnife, buildIt
 
 export const ROYALE_SIZE = 24;
 export const DIFFICULTY = {
-  easy: { name: 'EASY', dmg: 0.3, aim: 1.9, react: 1.0 },
-  normal: { name: 'NORMAL', dmg: 0.44, aim: 1.25, react: 0.62 },
-  hard: { name: 'HARD', dmg: 0.64, aim: 0.8, react: 0.36 },
+  easy: { name: 'EASY', dmg: 0.34, aim: 1.9, react: 1.0 },
+  normal: { name: 'NORMAL', dmg: 0.5, aim: 1.25, react: 0.62 },
+  hard: { name: 'HARD', dmg: 0.7, aim: 0.8, react: 0.36 },
 };
 
 const HP = 100, SHIELD = 100, MAX_TONIC = 4, MAX_CELL = 4, MAX_AMMO = 300;
 const TONIC_HEAL = 50, TONIC_TIME = 1.5, CELL_CHARGE = 50, CELL_TIME = 1.3;
-const SHIP_Y = 48, SHIP_SPEED = 17, GLIDE_FALL = 7.6, GLIDE_SPEED = 10.5;
-const BODY_R = 0.68, BOT_SPEED = 5.0;
+const SHIP_Y = 60, SHIP_SPEED = 26, GLIDE_FALL = 7.6, GLIDE_SPEED = 13;
+const BODY_R = 0.68, BOT_SPEED = 5.0, HERO_SPEED = 6.0;
+// where a held gun sits in the keeper's own frame (before KEEPER_SCALE)
+const GUN_X = 0.1, GUN_Y = 0.6, GUN_Z = 0.3;
 // the pace of a match lives in these four numbers; see the measurements in CLAUDE.md
 const TUNE = { rival: 0.07, truce: 25, sight: 20, sightBot: 9 };
 // nobody starts a fight in the first seconds on the ground: everybody loots
@@ -38,12 +40,12 @@ const TRACER = { wick: '#ffe9a8', rattler: '#ffc46a', lance: '#ffd98a', bloom: '
 
 // wait, then close to r over `shrink` seconds; `dark` is health a second outside
 const PHASES = [
-  { wait: 46, shrink: 28, r: 68, dark: 1.5 },
-  { wait: 36, shrink: 26, r: 46, dark: 2.5 },
-  { wait: 30, shrink: 22, r: 30, dark: 4 },
-  { wait: 24, shrink: 20, r: 17, dark: 6 },
-  { wait: 18, shrink: 16, r: 7, dark: 9 },
-  { wait: 12, shrink: 14, r: 0, dark: 14 },
+  { wait: 60, shrink: 45, r: 150, dark: 1.5 },
+  { wait: 55, shrink: 40, r: 105, dark: 2.5 },
+  { wait: 45, shrink: 32, r: 68, dark: 4 },
+  { wait: 35, shrink: 26, r: 40, dark: 6 },
+  { wait: 25, shrink: 20, r: 18, dark: 9 },
+  { wait: 15, shrink: 16, r: 0, dark: 11 },
 ];
 
 const NAMES = ['Wick', 'Tallow', 'Ember', 'Cinder', 'Sable', 'Marrow', 'Quill', 'Bramble',
@@ -82,7 +84,19 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     return poolMats.get(color);
   };
   const pillarGeo = new THREE.CylinderGeometry(0.09, 0.2, 1, 6, 1, true).translate(0, 0.5, 0);
-  const tracerGeo = new THREE.BoxGeometry(0.07, 0.07, 1).translate(0, 0, -0.5);
+  const tracerGeo = new THREE.BoxGeometry(0.06, 0.06, 1).translate(0, 0, -0.5);
+  const haloGeo = new THREE.BoxGeometry(0.2, 0.04, 1.1).translate(0, 0, -0.5);
+  /** A round in flight: a white-hot core inside a halo of the gun's colour. */
+  function tracer(col) {
+    let t = tracerPool.pop();
+    if (!t) { t = new THREE.Mesh(tracerGeo, addMat('#ffffff')); t.add(new THREE.Mesh(haloGeo, addMat(col, 0.3))); }
+    t.children[0].material = addMat(col, 0.3);
+    return t;
+  }
+  const casingGeo = new THREE.BoxGeometry(0.06, 0.06, 0.14);
+  const casingMat = new THREE.MeshBasicMaterial({ color: '#e0b050' });
+  const casingPool = [];
+  const scorchMat = () => new THREE.MeshBasicMaterial({ map: world.glow(), color: 0x000000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
   const shellGeo = new THREE.SphereGeometry(0.2, 8, 6);
   const canopyGeo = new THREE.SphereGeometry(1.25, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2);
   const addMats = new Map();
@@ -205,12 +219,16 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     if (key === k.gunKey) return;
     k.gunKey = key;
     if (k.gun) { k.gun.parent?.remove(k.gun); k.gun = null; }
-    if (!key || !k.parts?.handR) return;
+    if (!key) return;
     const [id, rar] = key.split('|');
     k.gun = gunMesh(id, +rar);
-    k.gun.rotation.x = Math.PI / 2;
-    k.gun.scale.setScalar(1.15);
-    k.parts.handR.add(k.gun);
+    // THE GUN HANGS OFF THE BODY, NOT THE HAND. Parented to the fist it took
+    // the arm's whole pose (and, on the hero, the sword carry pose on top: the
+    // barrel pointed at the sky). Held on the body's own frame it points
+    // exactly where the rounds go, and the arms are posed to reach it.
+    k.gun.scale.setScalar(1.12);
+    k.gun.position.set(GUN_X, GUN_Y, GUN_Z);
+    (k.isBot ? k.rig.built.group : player.state.group).add(k.gun);
   }
   function setCanopy(k, on_) {
     if (on_ && !k.canopy) {
@@ -232,12 +250,12 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     const ring = new THREE.Mesh(ringGeo, addMat(col, 0.95)); ring.position.y = 0.07; ring.scale.setScalar(kind === 'gun' ? 1.5 : 1.1); g.add(ring);
     const pool = new THREE.Mesh(poolGeo, poolMat(col)); pool.position.y = 0.05; pool.scale.setScalar(kind === 'gun' ? 1.25 + (o.rar || 0) * 0.2 : 0.95); g.add(pool);
     if (kind === 'gun') {
-      const pil = new THREE.Mesh(pillarGeo, addMat(col, 0.16 + o.rar * 0.08)); pil.scale.set(1 + o.rar * 0.3, 1.6 + o.rar * 1.9, 1 + o.rar * 0.3); g.add(pil);
+      const pil = new THREE.Mesh(pillarGeo, addMat(col, 0.3 + o.rar * 0.06)); pil.scale.set(1 + o.rar * 0.3, 1.6 + o.rar * 1.9, 1 + o.rar * 0.3); g.add(pil);
     }
     const y = world.heightAt(x, z);
     g.position.set(x, y, z);
     group.add(g);
-    const it = { kind, x, z, y, id: o.id, rar: o.rar || 0, mag: o.mag ?? (kind === 'gun' ? GUNS[o.id].mag : 0), g, body, ph: m.rnd() * 6, taken: false, pop: o.pop ? 0.35 : 0 };
+    const it = { kind, x, z, y, id: o.id, rar: o.rar || 0, mag: o.mag ?? (kind === 'gun' ? GUNS[o.id].mag : 0), g, body, ph: m.rnd() * 6, taken: false, pop: o.pop ? 0.35 : 0, dropped: !!o.pop };
     m.items.push(it);
     return it;
   }
@@ -284,7 +302,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       const old = k.guns[s];
       if (old) spill(m, 'gun', k.pos.x, k.pos.z, { id: old.id, rar: old.rar, mag: old.mag });
       k.guns[s] = { id: it.id, rar: it.rar, mag: it.mag };
-      if (hero) k.ammo = Math.min(MAX_AMMO, k.ammo + Math.ceil(GUNS[it.id].mag * AMMO_COST[it.id]));
+      if (hero && !it.dropped) k.ammo = Math.min(MAX_AMMO, k.ammo + Math.ceil(GUNS[it.id].mag * AMMO_COST[it.id]));
       // pick a gun up and it is in your hands: nobody wants to fumble a key first
       if (k.slot === 0 || k.slot === s + 1 || !hero) k.slot = s + 1;
       k.reloadT = 0;
@@ -331,7 +349,13 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       hooks.dmgNum?.(V(k.pos.x, k.pos.y + 1.7, k.pos.z), Math.max(1, Math.round(amount)), hadShield ? 'shield' : '');
       on('hit', { shield: hadShield, kill: k.hp <= 0, broke: hadShield && k.shield <= 0 });
     }
-    if (hadShield && k.shield <= 0) particles.shockwave(V(k.pos.x, k.pos.y + 0.9, k.pos.z), '#5ad1ff', 1.6, 0.25);
+    if (hadShield && k.shield <= 0) {
+      particles.shockwave(V(k.pos.x, k.pos.y + 0.9, k.pos.z), '#5ad1ff', 1.8, 0.3);
+      particles.spikes?.(V(k.pos.x, k.pos.y, k.pos.z), '#5ad1ff', 1.1, 0.35);
+      particles.burst(V(k.pos.x, k.pos.y + 1, k.pos.z), '#bff0ff', 12, 4, 6, 0.45);
+      if (from === you || k === you) hooks.sfx?.('shield_break');
+    }
+    if (k.isBot && from) { k.alertT = 6; k.alertBy = from; }
     if (!o.dark) {
       particles.burst(V(k.pos.x, k.pos.y + 1, k.pos.z), hadShield ? '#7fdcff' : '#ff6b5e', 4, 2.6, 5, 0.3);
       if (from === you || k === you) particles.impact?.(V(k.pos.x, k.pos.y + 1, k.pos.z), hadShield ? '#9fe8ff' : '#fff0d0', 1.1, 0.16);
@@ -353,9 +377,16 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     if (k.isBot) spill(m, 'ammo', k.pos.x, k.pos.z);
     k.guns = [null, null]; k.slot = 0;
     syncGun(k);
-    particles.burst(V(k.pos.x, k.pos.y + 0.9, k.pos.z), '#ffd27a', 18, 3.6, 4, 0.7);
-    particles.beam?.(V(k.pos.x, k.pos.y, k.pos.z), '#ffd27a', 0.35, 7, 0.5);
-    if (k.isBot) { k.fallT = 0.001; k.rig.plate.sp.visible = false; }
+    particles.burst(V(k.pos.x, k.pos.y + 0.9, k.pos.z), '#ffd27a', 14, 3.2, 4, 0.6);
+    particles.helix?.(V(k.pos.x, k.pos.y, k.pos.z), '#ffd27a', 3, 0.7, 0.8);
+    particles.rise?.(V(k.pos.x, k.pos.y, k.pos.z), '#fff0c0', 1.2, 18);
+    if (k.isBot) {
+      k.fallT = 0.001; k.rig.plate.sp.visible = false;
+      // go down AWAY from whoever did it
+      const G = k.rig.built.group;
+      G.rotation.order = 'YXZ';
+      if (by && by !== k) G.rotation.y = Math.atan2(by.pos.x - k.pos.x, by.pos.z - k.pos.z);
+    }
     const how = o.dark ? 'the Dark' : o.how || (by ? (heldGun(by) ? GUNS[heldGun(by).id].name : KNIFE.name) : 'a fall');
     if (by && by !== k) by.kills++;
     on('feed', { a: by && by !== k ? by.name : null, b: k.name, how, you: by === m.you || k === m.you });
@@ -385,13 +416,25 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     g.mag--;
     k.fireCd = 1 / G.rate;
     k.kick = Math.min(0.5, k.kick + G.kick * 2.2);
-    const y = k.pos.y + 0.95;
-    const reach = 0.55 + G.len * 0.8;
-    const mx = k.pos.x + Math.sin(k.aim) * reach, mz = k.pos.z + Math.cos(k.aim) * reach;
+    // the round leaves the muzzle you can see, not the middle of the chest
+    const y = k.pos.y + GUN_Y * KEEPER_SCALE + 0.08;
+    const reach = (GUN_Z + G.len * 1.12) * KEEPER_SCALE, side = GUN_X * KEEPER_SCALE;
+    const mx = k.pos.x + Math.sin(k.aim) * reach + Math.cos(k.aim) * side, mz = k.pos.z + Math.cos(k.aim) * reach - Math.sin(k.aim) * side;
     const col = TRACER[g.id];
     flare(mx, y, mz, G.pellets > 1 ? 2.3 : G.beam ? 0.8 : 1.3 + G.dmg * 0.02, col);
     if (!G.beam || (k.beamS = (k.beamS || 0) - 1) < 0) { k.beamS = 4; heard(m, k, G.sfx, G.beam ? 0.7 : 1); }
-    if (k === m.you) hooks.shake?.(G.kick * 0.9);
+    if (k === m.you) { hooks.shake?.(G.kick * 0.7); hooks.recoil?.(k.aim, G.kick); }
+    if (dist(k, m.you) < 30) {
+      particles.burst(V(mx, y, mz), col, G.pellets > 1 ? 6 : 2, 5, 0, 0.1);
+      if (G.pellets > 1 || G.arc) particles.burst(V(mx, y, mz), '#d8c8b0', 5, 1.4, -0.6, 0.5);
+      if (!G.beam && !G.arc) {
+        const c = casingPool.pop() || new THREE.Mesh(casingGeo, casingMat);
+        const sa = k.aim + Math.PI / 2 + (m.rnd() - 0.5) * 0.6;
+        c.position.set(k.pos.x + Math.sin(k.aim) * 0.5, y, k.pos.z + Math.cos(k.aim) * 0.5);
+        group.add(c);
+        m.casings.push({ c, vx: Math.sin(sa) * 2.4, vz: Math.cos(sa) * 2.4, vy: 3.2, gy: k.pos.y + 0.05, life: 0.9, spin: 12 + m.rnd() * 10 });
+      }
+    }
     const bloom = G.spread * (k.moving ? 1.35 : 1) * (k.isBot ? m.diff.aim : 1);
     for (let p = 0; p < G.pellets; p++) {
       const a = k.aim + (m.rnd() - 0.5) * 2 * bloom;
@@ -404,13 +447,11 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
         m.shells.push({ mesh, x0: mx, z0: mz, y0: y, x1: mx + dx * d, z1: mz + dz * d, t: 0, dur: d / G.speed, owner: k, dmg: G.dmg * mult, blast: G.blast, h: 2.4 + d * 0.22 });
         continue;
       }
-      let mesh = tracerPool.pop();
-      if (!mesh) mesh = new THREE.Mesh(tracerGeo, addMat(col));
-      mesh.material = addMat(col);
+      const mesh = tracer(col);
       mesh.position.set(mx, y, mz); mesh.rotation.y = a;
-      mesh.scale.set(G.pierce ? 1.6 : 1, G.pierce ? 1.6 : 1, clamp(G.speed * 0.04, 1.2, 3.6));
+      mesh.scale.set(G.pierce ? 1.7 : 1, G.pierce ? 1.7 : 1, clamp(G.speed * 0.065, 1.6, 5.5));
       group.add(mesh);
-      m.bullets.push({ mesh, x: mx, z: mz, dx, dz, sp: G.speed, left: G.range, owner: k, dmg: G.dmg * mult, pierce: !!G.pierce, seen: G.pierce ? new Set() : null, col });
+      m.bullets.push({ mesh, x: mx, z: mz, x0: mx, z0: mz, y, dx, dz, sp: G.speed, left: G.range, owner: k, dmg: G.dmg * mult, pierce: !!G.pierce, seen: G.pierce ? new Set() : null, col, how: G.name });
     }
   }
   function beamShot(m, k, x, y, z, dx, dz, G, mult, col) {
@@ -421,14 +462,12 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       hitK = bodyAt(m, px, pz, k, 0.1);
       if (hitK) break;
     }
-    let mesh = tracerPool.pop();
-    if (!mesh) mesh = new THREE.Mesh(tracerGeo, addMat(col));
-    mesh.material = addMat(col);
+    const mesh = tracer(col);
     mesh.position.set(x + dx * d, y, z + dz * d); mesh.rotation.y = Math.atan2(dx, dz);
     mesh.scale.set(1.5, 1.5, Math.max(0.2, d));
     group.add(mesh);
     m.beams.push({ mesh, life: 0.06 });
-    if (hitK) hurt(m, hitK, G.dmg * mult, k);
+    if (hitK) hurt(m, hitK, G.dmg * mult, k, { how: G.name });
     else if (d < G.range && m.rnd() < 0.3) particles.burst(V(x + dx * d, y, z + dz * d), col, 2, 1.6, 3, 0.2);
   }
   function explode(m, x, y, z, s) {
@@ -436,6 +475,13 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     particles.burst(V(x, y + 0.5, z), '#ffb04a', 20, 5.5, 6, 0.6);
     particles.burst(V(x, y + 0.5, z), '#3a2a22', 10, 3, 2, 0.9);
     flare(x, y + 0.8, z, s.blast * 3.2, '#ffb04a');
+    particles.spikes?.(V(x, y, z), '#ff9a4a', s.blast * 0.7, 0.4);
+    particles.burst(V(x, y + 0.6, z), '#4a3a30', 12, 1.3, -1.6, 1.3);
+    const sm = new THREE.Mesh(poolGeo, scorchMat());
+    sm.scale.setScalar(s.blast * 1.1); sm.position.set(x, y + 0.06, z);
+    group.add(sm);
+    m.scorch.push({ mesh: sm, life: 14 });
+    if (m.scorch.length > 12) { const o = m.scorch.shift(); group.remove(o.mesh); o.mesh.material.dispose(); }
     const you = m.you, dy = Math.hypot(you.pos.x - x, you.pos.z - z);
     if (dy < 40) { hooks.sfx?.('gun_boom', clamp(1.1 - dy / 40, 0.1, 1)); hooks.shake?.(clamp(0.5 - dy / 30, 0, 0.5)); }
     for (const k of m.keepers) {
@@ -542,12 +588,21 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
 
   // ------------------------------------------------------------------ AI ---
   function steer(m, b, ang, dt, speed) {
+    // once it has had to go round something it keeps going round for a moment:
+    // retrying straight ahead every frame was a zigzag along every wall
+    if (b.steerT > 0) b.steerT -= dt;
     const tries = [0, 0.55 * b.side, -0.55 * b.side, 1.15 * b.side, -1.15 * b.side, 1.8 * b.side, -1.8 * b.side];
+    if (b.steerT > 0 && b.steerO) tries.unshift(b.steerO);
     for (const o of tries) {
       const a = ang + o, sx = Math.sin(a), sz = Math.cos(a);
-      if (!world.walkable(b.pos.x + sx * 0.6, b.pos.z + sz * 0.6)) continue;
-      b.pos.x += sx * speed * dt; b.pos.z += sz * speed * dt;
-      b.moveA = a; b.moving = true;
+      if (!world.walkable(b.pos.x + sx * 0.95, b.pos.z + sz * 0.95) || !world.walkable(b.pos.x + sx * 0.45, b.pos.z + sz * 0.45)) continue;
+      // velocity eases toward where it wants to go, so a change of mind is a turn and not a teleport
+      const kk = Math.min(1, dt * 9);
+      b.vx = (b.vx || 0) + (sx * speed - (b.vx || 0)) * kk; b.vz = (b.vz || 0) + (sz * speed - (b.vz || 0)) * kk;
+      const nx = b.pos.x + b.vx * dt, nz = b.pos.z + b.vz * dt;
+      if (world.walkable(nx, nz)) { b.pos.x = nx; b.pos.z = nz; } else { b.pos.x += sx * speed * dt; b.pos.z += sz * speed * dt; b.vx = sx * speed; b.vz = sz * speed; }
+      b.moveA = Math.atan2(b.vx, b.vz); b.moving = true;
+      if (o !== 0) { b.steerO = o; b.steerT = 0.35; }
       if (o !== 0 && Math.sign(o) !== b.side) b.side = -b.side;
       return true;
     }
@@ -561,7 +616,11 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     if (key !== b.doorKey) { b.doorKey = key; b.atDoor = false; }
     if (hb !== hg) {
       const H = world.houses[hb >= 0 ? hb : hg];
-      const first = hb >= 0 ? H.inner : H.outer, second = hb >= 0 ? H.outer : H.inner;
+      if (!b.atDoor || !b.door) {
+        b.door = H.doors[0];
+        for (const dr of H.doors) if (Math.hypot(dr.outer.x - b.pos.x, dr.outer.z - b.pos.z) + Math.hypot(dr.outer.x - tx, dr.outer.z - tz) < Math.hypot(b.door.outer.x - b.pos.x, b.door.outer.z - b.pos.z) + Math.hypot(b.door.outer.x - tx, b.door.outer.z - tz)) b.door = dr;
+      }
+      const first = hb >= 0 ? b.door.inner : b.door.outer, second = hb >= 0 ? b.door.outer : b.door.inner;
       if (!b.atDoor && Math.hypot(first.x - b.pos.x, first.z - b.pos.z) < 0.55) b.atDoor = true;
       const w = b.atDoor ? second : first;
       tx = w.x; tz = w.z;
@@ -587,8 +646,9 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       // a keeper is hunted by two at most (three for you): a fight, not a pile
       if ((o.hunters || 0) >= (o === m.you ? 3 : 2) && b.target !== o) continue;
       const d = dist(b, o);
-      if (d >= bd || d > (truce ? 4 : o.isBot ? TUNE.sightBot : TUNE.sight)) continue;
-      if (d > 4 && !world.losClear(b.pos.x, b.pos.z, o.pos.x, o.pos.z)) continue;
+      const alerted = b.alertT > 0 && b.alertBy === o;
+      if (d >= bd || d > (alerted ? 46 : truce ? 4 : o.isBot ? TUNE.sightBot : TUNE.sight)) continue;
+      if (d > 4 && !alerted && !world.losClear(b.pos.x, b.pos.z, o.pos.x, o.pos.z)) continue;
       best = o; bd = d;
     }
     if (best !== b.target) { b.target = best; if (best) b.react = m.diff.react * (0.6 + m.rnd() * 0.8); }
@@ -621,6 +681,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     b.moving = false;
     b.thinkT -= dt; b.goalT = (b.goalT || 0) + dt;
     if (b.react > 0) b.react -= dt;
+    if (b.alertT > 0) b.alertT -= dt;
     if (b.thinkT <= 0) { b.thinkT = 0.28 + m.rnd() * 0.2; think(m, b); }
     const r = m.ring;
     const dc = Math.hypot(b.pos.x - r.x, b.pos.z - r.z);
@@ -653,6 +714,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       b.aim += angDiff(ta + err, b.aim) * Math.min(1, dt * (7 + b.skill * 5));
       const hurtBad = b.hp + b.shield * 0.5 < 45;
       if (hurtBad && b.tonics > 0 && (!los || d > 15)) { startUse(m, b, 'tonic'); return; }
+      if (b.shield < 30 && b.cells > 0 && !los && startUse(m, b, 'cell')) return;
       if (!g) {
         // nothing to shoot with: rush with the knife if they are close, else go find a gun
         if (d < 4.5) { nav(m, b, t.pos.x, t.pos.z, dt, BOT_SPEED * 1.1); if (d < KNIFE.range + 0.2 && b.fireCd <= 0 && b.react <= 0) knife(m, b); }
@@ -705,11 +767,19 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     k.kick = Math.max(0, k.kick - dt * 3.2);
     if (k.swingT > 0) k.swingT -= dt;
     if (k.isBot) {
-      k.walk += dt * (k.moving ? 11 : 0);
-      const sw = k.moving ? Math.sin(k.walk) * 0.75 : 0;
-      P.legL.rotation.x = sw; P.legR.rotation.x = -sw;
+      // the stride follows the distance actually covered, and is turned by
+      // the angle between where the body faces and where the feet are going
+      const moved = Math.hypot(k.pos.x - (k.lx ?? k.pos.x), k.pos.z - (k.lz ?? k.pos.z));
+      k.lx = k.pos.x; k.lz = k.pos.z;
+      k.walk += Math.min(0.5, moved) * 2.3;
+      k.amp = (k.amp || 0) + ((k.moving ? 1 : 0) - (k.amp || 0)) * Math.min(1, dt * 10);
+      if (!k.moving) { k.vx = (k.vx || 0) * 0.8; k.vz = (k.vz || 0) * 0.8; }
+      const sw = Math.sin(k.walk) * 0.75 * k.amp;
+      const rel = (k.moveA ?? k.aim) - k.rig.built.group.rotation.y, cs = Math.cos(rel), sn = Math.sin(rel);
+      P.legL.rotation.set(sw * cs, 0, -sw * 0.7 * sn); P.legR.rotation.set(-sw * cs, 0, sw * 0.7 * sn);
+      if (k.moving && dist(k, state.active.you) < 26 && (k.stepT = (k.stepT || 0) - dt) <= 0) { k.stepT = 0.3; particles.burst(V(k.pos.x, k.pos.y + 0.08, k.pos.z), '#d8b888', 2, 0.9, 1, 0.35); }
       P.armL.rotation.set(-sw * 0.7, 0, 0); P.armR.rotation.set(sw * 0.7, 0, 0);
-      if (k.rig.built.vis) k.rig.built.vis.position.y = k.moving ? Math.abs(Math.sin(k.walk)) * 0.05 : 0;
+      if (k.rig.built.vis) k.rig.built.vis.position.y = Math.abs(Math.sin(k.walk)) * 0.05 * k.amp;
     }
     if (k.phase === 'glide') {
       P.armL.rotation.set(-2.9, 0, 0.5); P.armR.rotation.set(-2.9, 0, -0.5);
@@ -721,33 +791,43 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     if (g) {
       const long = GUNS[g.id].len > 0.45;
       const dip = k.reloadT > 0 ? 0.55 + Math.sin(time * 14) * 0.08 : 0;
-      P.armR.rotation.set(-1.5 - k.kick + dip, 0, long ? -0.1 : 0);
-      if (long) P.armL.rotation.set(-1.28 - k.kick * 0.6 + dip, 0, 0.56);
+      P.armR.rotation.set(-1.3 + dip * 0.5, 0, -0.42);
+      P.armL.rotation.set(-1.25 + dip * 0.5, 0, long ? 0.8 : 0.5);
+      if (k.gun) {
+        k.gun.position.set(GUN_X, GUN_Y - dip * 0.12, GUN_Z - k.kick * 0.3);
+        k.gun.rotation.set(-k.kick * 0.45 + dip * 0.9, 0, dip * 0.5);
+        k.gun.visible = !(k === state.active?.you && player.state.rolling > 0);
+      }
     } else if (k.swingT > 0) {
       const w = 1 - k.swingT / 0.24;
-      P.armR.rotation.set(-2.3 + w * 2.5, 0, -0.5 + w * 0.9);
-    } else if (k.isBot) P.armR.rotation.x = -0.7;
+      P.armR.rotation.set(-1.4, 0, -0.9 + w * 1.6);
+      if (k.gun) { k.gun.position.set(0.34 - w * 0.5, 0.58, 0.42); k.gun.rotation.set(0, 0.9 - w * 1.9, 0); }
+    } else {
+      P.armR.rotation.set(-0.9, 0, -0.15);
+      if (k.gun) { k.gun.position.set(0.26, 0.5, 0.34); k.gun.rotation.set(0, 0.2, 0); }
+    }
   }
 
   // ---------------------------------------------------------------- match ---
   function start(opts = {}) {
     stop();
     const rnd = world.mulberry(opts.seed ?? ((Math.random() * 1e9) | 0));
-    const a = rnd() * Math.PI * 2, off = (rnd() - 0.5) * 56, half = ISLE_R + 30;
+    const a = rnd() * Math.PI * 2, off = (rnd() - 0.5) * ISLE_R * 0.9, half = ISLE_R + 30;
     const dx = Math.sin(a), dz = Math.cos(a);
-    const chord = Math.sqrt((ISLE_R - 10) ** 2 - off * off);
+    const chord = Math.sqrt((ISLE_R * 0.86 - 10) ** 2 - off * off);
     const m = {
       rnd, t: 0, total: ROYALE_SIZE, alive: ROYALE_SIZE, over: false, result: null, endT: 0,
       diff: DIFFICULTY[opts.difficulty] || DIFFICULTY.normal, diffId: DIFFICULTY[opts.difficulty] ? opts.difficulty : 'normal',
-      keepers: [], items: [], bullets: [], shells: [], beams: [], flares: [], drops: [], pings: [],
+      keepers: [], items: [], bullets: [], shells: [], beams: [], flares: [], drops: [], pings: [], casings: [], scorch: [],
       ship: { x: ROYALE_CX - dx * half - dz * off, z: ROYALE_CZ - dz * half + dx * off, dx, dz, s: 0, len: half * 2, sIn: half - chord, sOut: half + chord, x0: 0, z0: 0 },
       ring: { x: ROYALE_CX, z: ROYALE_CZ, r: ISLE_R + 8, nx: ROYALE_CX, nz: ROYALE_CZ, nr: PHASES[0].r, mode: 'wait', left: PHASES[0].wait, idx: 0, fx: ROYALE_CX, fz: ROYALE_CZ, fr: ISLE_R + 8 },
-      streak: 0, onHero: 0, sfxBudget: 3, fire: false, tap: false, dryT: 0, darkT: 0, firstDrop: 38, you: null,
+      streak: 0, onHero: 0, sfxBudget: 3, fire: false, tapT: 0, dryT: 0, darkT: 0, firstDrop: 55, you: null,
     };
     m.ship.x0 = m.ship.x; m.ship.z0 = m.ship.z;
     pickNext(m);
     const you = keeper(false, hooks.heroName?.() || 'You');
     you.pos = player.state.pos; you.parts = player.parts;
+    player.state.shooter = { aim: 0, speed: HERO_SPEED, air: 'ship' };
     player.state.group.scale.setScalar(KEEPER_SCALE);
     m.you = you; m.keepers.push(you);
     const names = [...NAMES].sort(() => rnd() - 0.5);
@@ -756,7 +836,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       const b = keeper(true, names[i % names.length]);
       b.rig = rig; b.parts = rig.built.parts; b.pos = rig.built.group.position;
       rig.plate.name = b.name; rig.plate.key = ''; rig.plate.sp.visible = false;
-      rig.built.group.visible = false; rig.built.group.rotation.set(0, 0, 0);
+      rig.built.group.visible = false; rig.built.group.rotation.set(0, 0, 0); rig.built.group.scale.setScalar(KEEPER_SCALE);
       b.skill = 0.35 + rnd() * 0.65; b.seed = rnd() * 100; b.side = rnd() < 0.5 ? 1 : -1; b.strafe = 1;
       b.thinkT = rnd() * 0.4; b.stallT = 0; b.bestD = 1e9; b.detourT = 0; b.holdT = 0;
       b.jumpS = m.ship.sIn + 3 + rnd() * (m.ship.sOut - m.ship.sIn - 6);
@@ -789,7 +869,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     for (let t = 0; t < 30; t++) {
       const a = m.rnd() * Math.PI * 2, d = Math.sqrt(m.rnd()) * slack;
       const x = r.x + Math.sin(a) * d, z = r.z + Math.cos(a) * d;
-      if (Math.hypot(x - ROYALE_CX, z - ROYALE_CZ) + P.r * 0.5 < ISLE_R - 6) { r.nx = x; r.nz = z; return; }
+      if (Math.hypot(x - ROYALE_CX, z - ROYALE_CZ) + P.r * 0.5 < ISLE_R * 0.86 - 6) { r.nx = x; r.nz = z; return; }
     }
     r.nx = r.x; r.nz = r.z;
   }
@@ -806,10 +886,14 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     for (const b of m.beams) { group.remove(b.mesh); tracerPool.push(b.mesh); }
     for (const f of m.flares) { group.remove(f.s); flarePool.push(f.s); }
     for (const s of m.shells) group.remove(s.mesh);
+    for (const c of m.casings) { group.remove(c.c); casingPool.push(c.c); }
+    for (const sc of m.scorch) { group.remove(sc.mesh); sc.mesh.material.dispose(); }
     for (const it of m.items) group.remove(it.g);
     for (const d of m.drops) group.remove(d.g, d.pil, d.ring);
     if (world.skiff) world.skiff.visible = false;
     if (mark) mark.visible = false;
+    player.state.shooter = null;
+    for (const leg of [player.parts.legL, player.parts.legR]) leg.rotation.z = 0;
     player.state.group.scale.setScalar(1);
     player.setWeaponVisible?.(true);
     state.active = null;
@@ -840,7 +924,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       k.pos.set(s.x, SHIP_Y + 1.1, s.z);
       const go = k.isBot ? s.s >= k.jumpS : (s.s >= s.sOut || (m.jump && s.s >= s.sIn));
       if (!go) return;
-      k.phase = 'glide'; k.gy = SHIP_Y;
+      k.phase = 'glide'; k.gy = SHIP_Y; k.gx = s.x; k.gz = s.z;
       setCanopy(k, true);
       if (k.isBot) {
         k.rig.built.group.visible = true;
@@ -848,7 +932,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
         for (let i = 0; i < 10; i++) {
           const sp = world.lootSpots[Math.floor(m.rnd() * world.lootSpots.length)];
           const d = Math.hypot(sp.x - s.x, sp.z - s.z);
-          if (d < 52 && (!best || m.rnd() < 0.5)) { best = sp; bd = d; }
+          if (d < 95 && (!best || m.rnd() < 0.5)) { best = sp; bd = d; }
         }
         k.landAt = best || { x: s.x, z: s.z };
       } else { on('jumped', {}); hooks.sfx?.('royale_drop'); }
@@ -863,9 +947,12 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
       const mv = hooks.moveVec?.();
       if (mv) { vx = mv.x; vz = mv.z; }
     }
-    let x = k.pos.x + vx * GLIDE_SPEED * dt, z = k.pos.z + vz * GLIDE_SPEED * dt;
-    const dc = Math.hypot(x - ROYALE_CX, z - ROYALE_CZ);
-    if (dc > ISLE_R - 5) { x = ROYALE_CX + (x - ROYALE_CX) * (ISLE_R - 5) / dc; z = ROYALE_CZ + (z - ROYALE_CZ) * (ISLE_R - 5) / dc; }
+    // from our own record of where the glider is, never from `pos`: the walk
+    // code has already moved the hero this frame and the two used to add up
+    let x = (k.gx ?? k.pos.x) + vx * GLIDE_SPEED * dt, z = (k.gz ?? k.pos.z) + vz * GLIDE_SPEED * dt;
+    const dc = Math.hypot(x - ROYALE_CX, z - ROYALE_CZ), lim = world.edgeAt(x, z) - 6;
+    if (dc > lim) { x = ROYALE_CX + (x - ROYALE_CX) * lim / dc; z = ROYALE_CZ + (z - ROYALE_CZ) * lim / dc; }
+    k.gx = x; k.gz = z;
     k.gy -= GLIDE_FALL * dt;
     if (vx || vz) k.aim = Math.atan2(vx, vz);
     k.pos.set(x, k.gy, z);
@@ -895,7 +982,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     if (p.rolling <= 0) { p.facing = you.aim; p.group.rotation.y = you.aim; }
     // what is at my feet
     let near = null, nd = 1.9;
-    for (const it of m.items) {
+    for (const it of [...m.items]) {
       const d = Math.hypot(it.x - you.pos.x, it.z - you.pos.z);
       if (d > 2.2 || it.pop > 0) continue;
       if (d < 1.25 && (it.kind !== 'gun' ? wants(you, it) : (!you.guns[0] || !you.guns[1]) && !you.guns.some((g) => g && g.id === it.id && g.rar >= it.rar))) { take(m, you, it); continue; }
@@ -903,17 +990,19 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     }
     you.near = near;
     // the trigger
-    const g = heldGun(you), tap = m.tap;
-    m.tap = false;
+    const g = heldGun(you), tap = m.tapT > 0;
+    if (m.tapT > 0) m.tapT -= dt;
     if (you.useT > 0 || p.rolling > 0) return;
-    if (!g) { if ((tap || m.fire) && you.fireCd <= 0) knife(m, you); return; }
+    if (!g) { if ((tap || m.fire) && you.fireCd <= 0) { m.tapT = 0; knife(m, you); } return; }
     const G = GUNS[g.id];
     if (you.reloadT > 0) return;
     if (g.mag <= 0) {
       if (!startReload(m, you) && (tap || (m.fire && m.dryT <= 0))) { m.dryT = 0.4; hooks.sfx?.('gun_dry'); on('dry', {}); }
       return;
     }
-    if (you.fireCd <= 0 && (tap || (m.fire && (G.auto || m.fresh)))) { m.fresh = false; fire(m, you, g, aimDist); }
+    if (you.fireCd <= 0 && (tap || (m.fire && (G.auto || m.fresh)))) { m.fresh = false; m.tapT = 0; fire(m, you, g, aimDist); }
+    // dust under running feet
+    if (you.moving && (you.stepT = (you.stepT || 0) - dt) <= 0) { you.stepT = 0.28; particles.burst(V(you.pos.x, you.pos.y + 0.08, you.pos.z), '#d8b888', 2, 0.9, 1, 0.35); }
   }
 
   function update(dt, time) {
@@ -967,8 +1056,9 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     for (const k of m.keepers) {
       if (k.isBot && k.fallT > 0) {                               // a keeper going down
         k.fallT += dt;
-        const G = k.rig.built.group;
-        G.rotation.x = -Math.min(1, k.fallT / 0.35) * 1.5;
+        const G = k.rig.built.group, f = Math.min(1, k.fallT / 0.4);
+        G.rotation.x = -(1 - (1 - f) * (1 - f)) * 1.5 + (f >= 1 ? Math.max(0, 0.12 - (k.fallT - 0.4) * 0.5) : 0);
+        G.scale.setScalar(KEEPER_SCALE * Math.max(0.01, Math.min(1, (2.2 - k.fallT) / 0.5)));
         if (k.fallT > 2.2) { G.visible = false; k.fallT = 0; }
       }
       if (!k.alive) continue;
@@ -984,8 +1074,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
         botGround(m, k, dt);
         k.pos.y = world.heightAt(k.pos.x, k.pos.z);
         const G = k.rig.built.group;
-        G.rotation.y += angDiff(k.target ? k.aim : (k.moveA ?? k.aim), G.rotation.y) * Math.min(1, dt * 12);
-        if (k.target) G.rotation.y = k.aim;
+        G.rotation.y += angDiff(k.target ? k.aim : (k.moveA ?? k.aim), G.rotation.y) * Math.min(1, dt * (k.target ? 18 : 9));
         drawPlate(k.rig.plate, k);
         // a keeper under a roof is hidden unless you are under it too
         const hb = world.houseAt(k.pos.x, k.pos.z);
@@ -1002,6 +1091,10 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     }
     if (m.darkT <= 0) m.darkT = 0.5;
     if (m.you.alive) player.setWeaponVisible?.(false);
+    if (player.state.shooter) {
+      const sh = player.state.shooter;
+      sh.aim = you.aim; sh.air = you.phase; sh.speed = you.useT > 0 ? HERO_SPEED * 0.6 : HERO_SPEED;
+    }
     const mk = heroMark(), hg = heldGun(you);
     mk.visible = you.alive && you.phase === 'ground';
     if (mk.visible) {
@@ -1024,17 +1117,37 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
         b.x += b.dx * d; b.z += b.dz * d; b.left -= d;
         if (b.left <= 0) { dead = true; break; }
         if (world.shotBlocked(b.x, b.z)) {
-          particles.burst(V(b.x, world.heightAt(b.x, b.z) + 0.95, b.z), '#ffd9a0', 3, 2.2, 5, 0.25);
+          const hp = V(b.x - b.dx * 0.3, b.y, b.z - b.dz * 0.3);
+          particles.impact?.(hp, '#ffe0b0', 0.8, 0.12);
+          particles.burst(hp, '#c9a878', 5, 2.6, 7, 0.35);
           dead = true; break;
         }
         const k = bodyAt(m, b.x, b.z, b.owner);
         if (k && !(b.seen && b.seen.has(k))) {
-          hurt(m, k, b.dmg, b.owner);
+          hurt(m, k, b.dmg, b.owner, { how: b.how });
           if (b.pierce) b.seen.add(k); else dead = true;
         }
       }
-      if (dead) { group.remove(b.mesh); tracerPool.push(b.mesh); m.bullets.splice(i, 1); }
-      else b.mesh.position.set(b.x, world.heightAt(b.x, b.z) + 0.95, b.z);
+      if (dead) {
+        // the line a round drew hangs in the air for a moment: you see where it came from
+        if (b.pierce || b.owner === you) particles.streak?.(V(b.x0, b.y, b.z0), V(b.x, b.y, b.z), b.col, b.pierce ? 0.35 : 0.12, b.pierce ? 0.22 : 0.09);
+        if (b.left <= 0) particles.burst(V(b.x, world.heightAt(b.x, b.z) + 0.1, b.z), '#d8b888', 2, 1, 1, 0.3);
+        group.remove(b.mesh); tracerPool.push(b.mesh); m.bullets.splice(i, 1);
+      } else b.mesh.position.set(b.x, b.y, b.z);
+    }
+    for (let i = m.casings.length - 1; i >= 0; i--) {
+      const c = m.casings[i];
+      c.life -= dt; c.vy -= 14 * dt;
+      c.c.position.x += c.vx * dt; c.c.position.z += c.vz * dt; c.c.position.y += c.vy * dt;
+      c.c.rotation.x += c.spin * dt; c.c.rotation.z += c.spin * 0.7 * dt;
+      if (c.c.position.y < c.gy) { c.c.position.y = c.gy; c.vy = Math.abs(c.vy) * 0.35; c.vx *= 0.5; c.vz *= 0.5; c.spin *= 0.4; }
+      if (c.life <= 0) { group.remove(c.c); casingPool.push(c.c); m.casings.splice(i, 1); }
+    }
+    for (let i = m.scorch.length - 1; i >= 0; i--) {
+      const sc = m.scorch[i];
+      sc.life -= dt;
+      sc.mesh.material.opacity = Math.min(0.5, sc.life / 6);
+      if (sc.life <= 0) { group.remove(sc.mesh); sc.mesh.material.dispose(); m.scorch.splice(i, 1); }
     }
     for (let i = m.shells.length - 1; i >= 0; i--) {
       const s = m.shells[i];
@@ -1117,7 +1230,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     return false;
   }
   function setFire(v) { const m = state.active; if (m) { if (v && !m.fire) m.fresh = true; m.fire = !!v; } }
-  function tapFire() { const m = state.active; if (m) m.tap = true; }
+  function tapFire() { const m = state.active; if (m) m.tapT = 0.2; }
 
   function forfeit() {
     const m = state.active;
@@ -1135,7 +1248,7 @@ export function createRoyale({ scene, world, particles, player, hooks }) {
     const gun = (x) => (x ? { id: x.id, rar: x.rar, mag: x.mag, max: GUNS[x.id].mag, name: GUNS[x.id].name, cls: GUNS[x.id].cls, reserve: Math.floor(you.ammo / AMMO_COST[x.id]) } : null);
     return {
       t: m.t, alive: m.alive, total: m.total, over: m.over, diff: m.diff.name,
-      ring: m.ring, phases: PHASES.length,
+      ring: m.ring, phases: PHASES.length, ringShrink: PHASES[m.ring.idx].shrink,
       ship: { x: s.x, z: s.z, dx: s.dx, dz: s.dz, x0: s.x0, z0: s.z0, len: s.len, on: s.s < s.len, canJump: s.s >= s.sIn && s.s < s.sOut },
       you: {
         x: you.pos.x, z: you.pos.z, aim: you.aim, hp: you.hp, shield: you.shield, alive: you.alive, phase: you.phase,

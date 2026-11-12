@@ -802,6 +802,7 @@ export function createAudio() {
     gun_pick: () => { noise(0.05, 0.16, 'bandpass', 1500, 2600); tone('triangle', 520, 780, 0.09, 0.12); tone('triangle', 780, 1040, 0.1, 0.1, ctx.currentTime + 0.07); },
     gun_dry: () => { tone('square', 900, 700, 0.03, 0.1); noise(0.03, 0.1, 'highpass', 3500); },
     shield_hit: () => { tone('sine', 1500, 700, 0.1, 0.16); noise(0.06, 0.12, 'highpass', 4000); },
+    shield_break: () => { noise(0.22, 0.26, 'highpass', 3200, 900); tone('sine', 2200, 500, 0.2, 0.16); tone('triangle', 1400, 300, 0.24, 0.1, ctx.currentTime + 0.03); },
     shield_up: () => { tone('sine', 500, 1300, 0.3, 0.14); tone('triangle', 760, 1900, 0.3, 0.08, ctx.currentTime + 0.08); },
     rival_shot: () => { noise(0.07, 0.07, 'highpass', 2400); tone('triangle', 620, 240, 0.12, 0.06); },
     rival_cast: () => { tone('sine', 340, 760, 0.2, 0.07); noise(0.16, 0.05, 'bandpass', 1700, 700); },

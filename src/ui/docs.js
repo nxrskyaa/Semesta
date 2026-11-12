@@ -573,7 +573,7 @@ export const CATEGORIES = [
         <b>&#9776; MENU &rarr; LANTERNFALL</b>. It is a top-down shooter with its own
         controls and its own HUD: you ride the Dawnskiff over the Emberwaste, jump when
         you like, glide down, and land with a knife. The Dark closes six times. The last
-        keeper standing wins. A match runs about five minutes.</p>
+        keeper standing wins. A match runs six to seven minutes.</p>
         ${ul([
           '<b>Nothing comes with you.</b> Level, gear, skills and your bag stay in Anavela. Everybody has 100 health and can carry up to 100 shield.',
           '<b>Guns are on the ground.</b> Seven kinds: pistol, SMG, rifle, shotgun, marksman, launcher and beam, each in four rarities (grey, blue, purple, gold). You carry two and the knife. Walk over one to take it if a slot is free; press <b>E</b> to swap.',

@@ -9,7 +9,7 @@
 // minimap + full map, vitals, weapon slots, crosshair, feed, prompts), the
 // PAUSE card and the RESULT, plus the curtain the world is swapped behind.
 
-import { ROYALE_CX, ROYALE_CZ, ISLE_R, POIS, ROADS } from '../world/royaleworld.js';
+import { ROYALE_CX, ROYALE_CZ, ISLE_R, POIS, ROADS, edgeR } from '../world/royaleworld.js';
 import { ROYALE_SIZE, DIFFICULTY } from '../systems/royale.js';
 import { RARITIES, GUNS, gunIcon } from '../systems/royaleguns.js';
 
@@ -23,8 +23,13 @@ body.inroyale #touchui .btns, body.inroyale .chatdock, body.inroyale .chat { dis
 body.inroyale, body.inroyale canvas { cursor: none; }
 body.inroyale .dmg-num { font-family: Rubik, system-ui, sans-serif; font-weight: 900; font-size: 20px; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.55), 0 0 10px rgba(255,120,60,.6); }
 body.inroyale .dmg-num.shield { color: #8fe3ff; text-shadow: 0 2px 0 rgba(0,0,0,.55), 0 0 10px rgba(90,209,255,.7); }
-.ry .glass { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 8px 24px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.05); }
+/* BRASS LANTERN PLATES. Opaque umber with chamfered corners and a double brass
+   hairline: the frame of a lantern, not the frosted-glass card every shooter
+   HUD has. The lit element is a pane with light behind it. */
+.ry .glass { --c: 7px; background: linear-gradient(180deg, #2c1b12, #170e0a); border: 0; border-radius: 0;
+  clip-path: polygon(var(--c) 0, calc(100% - var(--c)) 0, 100% var(--c), 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, var(--c) 100%, 0 calc(100% - var(--c)), 0 var(--c));
+  box-shadow: inset 0 0 0 1px #c9963e, inset 0 0 0 3px #170e0a, inset 0 0 0 4px rgba(201,150,62,.32); }
+.ry .num { font-family: Silkscreen, 'Pixelify Sans', Rubik, monospace; font-weight: 400; letter-spacing: 0; }
 .ry kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; font: 700 11px Rubik, system-ui, sans-serif;
   background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); color: var(--ink); }
 
@@ -35,7 +40,7 @@ body.inroyale .ryhud { display: block; }
 .ryhud .zone .ico { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--acc) calc(var(--k,0) * 1turn), rgba(255,255,255,.1) 0); }
 .ryhud .zone .ico i { width: 26px; height: 26px; border-radius: 50%; background: #1a120e; display: grid; place-items: center; font: 900 11px Rubik; font-style: normal; color: var(--acc); }
 .ryhud .zone .lbl { font-size: 10px; font-weight: 700; letter-spacing: .16em; color: var(--dim); }
-.ryhud .zone .tm { font-size: 22px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.ryhud .zone .tm { font: 400 24px Silkscreen, Rubik, monospace; line-height: 1; }
 .ryhud .zone.closing { border-color: rgba(255,106,60,.7); }
 .ryhud .zone.closing .tm, .ryhud .zone.closing .ico i { color: var(--ember); }
 .ryhud .zone.closing .ico { background: conic-gradient(var(--ember) calc(var(--k,0) * 1turn), rgba(255,255,255,.1) 0); }
@@ -48,46 +53,49 @@ body.inroyale .ryhud { display: block; }
 .ryhud .mini canvas { width: 100%; height: 100%; border-radius: 9px; display: block; }
 .ryhud .mini b { position: absolute; left: 10px; bottom: 8px; font-size: 9px; letter-spacing: .14em; color: var(--dim); font-weight: 700; }
 .ryhud .pills { display: flex; gap: 8px; }
-.ryhud .pill { padding: 6px 12px; display: flex; align-items: baseline; gap: 7px; border-radius: 10px; }
+.ryhud .pill { padding: 7px 13px; display: flex; align-items: baseline; gap: 7px; }
 .ryhud .pill span { font-size: 10px; font-weight: 700; letter-spacing: .16em; color: var(--dim); }
-.ryhud .pill em { font-style: normal; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.ryhud .pill em { font: 400 21px Silkscreen, Rubik, monospace; }
 .ryhud .pill.k em { color: var(--acc); }
 
 .ryhud .tl { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .ryhud .menu { pointer-events: auto; cursor: pointer; width: 40px; height: 40px; display: grid; place-items: center; font-size: 18px; color: var(--ink); }
 .ryhud .feed { display: flex; flex-direction: column; gap: 4px; }
-.ryhud .feed div { font-size: 12px; font-weight: 500; padding: 4px 9px; border-radius: 7px; background: rgba(16,11,9,.6); color: var(--dim); animation: ryin .25s ease-out; white-space: nowrap; }
+.ryhud .feed div { font-size: 12px; font-weight: 500; padding: 4px 9px; background: rgba(23,14,10,.82); border-left: 2px solid #c9963e; display: flex; align-items: center; gap: 2px; color: var(--dim); animation: ryin .25s ease-out; white-space: nowrap; }
 .ryhud .feed div b { color: var(--ink); font-weight: 700; }
-.ryhud .feed div.me { background: rgba(255,178,56,.2); border: 1px solid rgba(255,178,56,.5); color: var(--ink); }
+.ryhud .feed div.me { background: rgba(255,178,56,.26); border-left-color: #fff3e2; color: var(--ink); }
+.ryhud .feed svg { width: 30px; height: 15px; margin: 0 5px; }
 .ryhud .feed div i { font-style: normal; color: var(--ember); margin: 0 5px; }
 @keyframes ryin { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
 
 .ryhud .vit { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(380px, 44vw); padding: 10px 12px; display: grid; gap: 6px; }
-.ryhud .bar { height: 12px; border-radius: 6px; background: rgba(255,255,255,.1); overflow: hidden; position: relative; }
-.ryhud .bar i { position: absolute; inset: 0; transform-origin: left; border-radius: 6px; transition: transform .16s ease-out; }
+.ryhud .bar { height: 14px; background: #0b0705; overflow: hidden; position: relative; box-shadow: inset 0 0 0 1px rgba(201,150,62,.4); }
+.ryhud .bar i { position: absolute; inset: 1px; transform-origin: left; transition: transform .16s ease-out; }
+.ryhud .bar::before { content: ''; position: absolute; inset: 0; z-index: 1; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(11,7,5,.75) calc(10% - 1px) 10%); }
 .ryhud .bar.sh { height: 9px; } .ryhud .bar.sh i { background: linear-gradient(90deg, #2fa8e0, var(--sh)); }
 .ryhud .bar.hp i { background: linear-gradient(90deg, #44b85a, var(--hp)); }
 .ryhud .bar.hp.low i { background: linear-gradient(90deg, #d9342a, #ff7a4a); }
-.ryhud .bar.sh::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(16,11,9,.8); }
 .ryhud .vit .row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--dim); }
-.ryhud .vit .row em { font-style: normal; color: var(--ink); font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.ryhud .vit .row em { font: 400 16px Silkscreen, Rubik, monospace; color: var(--ink); }
 .ryhud .vit .row em.s { color: var(--sh); }
 .ryhud .cons { display: flex; gap: 10px; }
 .ryhud .cons span { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--ink); font-weight: 900; }
 .ryhud .cons span.zero { opacity: .35; }
-.ryhud .cons i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.ryhud .cons svg { display: block; }
+.ryhud .cons b { font: 400 15px Silkscreen, Rubik, monospace; }
 
 .ryhud .slots { position: absolute; right: 14px; bottom: 20px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 .ryhud .slot { pointer-events: auto; cursor: pointer; display: grid; grid-template-columns: 22px 64px 1fr; align-items: center; gap: 9px; width: 270px; padding: 7px 11px 7px 8px; border-left: 4px solid var(--rc, rgba(255,255,255,.2));
   opacity: .62; transition: opacity .12s, transform .12s, width .12s; position: relative; overflow: hidden; }
-.ryhud .slot.on { opacity: 1; width: 292px; border-color: var(--line); border-left-color: var(--rc, var(--acc)); background: rgba(30,20,15,.9); }
+.ryhud .slot.on { opacity: 1; width: 292px; border-left-color: var(--rc, var(--acc)); background: radial-gradient(130% 150% at 0 50%, color-mix(in srgb, var(--rc, #ffb238) 38%, #170e0a), #170e0a 72%); }
 .ryhud .slot.empty { opacity: .3; }
 .ryhud .slot svg { width: 64px; height: 32px; display: block; }
 .ryhud .slot > div:nth-child(3) { min-width: 0; padding-right: 46px; }
 .ryhud .slot .nm { font-size: 12px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ryhud .slot .cl { font-size: 9px; font-weight: 700; letter-spacing: .14em; color: var(--rc, var(--dim)); }
 .ryhud .slot .am { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); text-align: right; font-variant-numeric: tabular-nums; }
-.ryhud .slot .am b { font-size: 22px; font-weight: 900; line-height: 1; }
+.ryhud .slot .am b { font: 400 24px Silkscreen, Rubik, monospace; line-height: 1; }
+.ryhud .slot .am b.lowmag { color: #ffb238; animation: rypulse .5s infinite; }
 .ryhud .slot .am b.out { color: var(--ember); }
 .ryhud .slot .am small { display: block; font-size: 10px; color: var(--dim); font-weight: 700; }
 .ryhud .slot .rl { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--acc); width: 0; }
@@ -95,7 +103,7 @@ body.inroyale .ryhud { display: block; }
 .ryhud .prompt { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); padding: 9px 14px; display: none; align-items: center; gap: 10px; font-size: 13px; font-weight: 500; border-left: 4px solid var(--rc, var(--acc)); white-space: nowrap; }
 .ryhud .prompt.on { display: flex; }
 .ryhud .prompt b { font-weight: 900; } .ryhud .prompt small { font-size: 10px; letter-spacing: .14em; color: var(--rc); font-weight: 700; }
-.ryhud .usebar { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); width: 220px; padding: 8px 12px; display: none; }
+.ryhud .usebar { position: absolute; left: 50%; bottom: 176px; transform: translateX(-50%); width: 220px; padding: 8px 12px; display: none; }
 .ryhud .usebar.on { display: block; }
 .ryhud .usebar span { font-size: 10px; font-weight: 700; letter-spacing: .16em; color: var(--dim); }
 .ryhud .usebar .bar { margin-top: 5px; height: 6px; } .ryhud .usebar .bar i { background: var(--acc); transition: none; }
@@ -107,14 +115,14 @@ body.inroyale .ryhud { display: block; }
 .ryhud .big.red small { color: var(--ember); }
 @keyframes rybig { 0% { opacity: 0; transform: translateX(-50%) scale(1.25); } 9% { opacity: 1; transform: translateX(-50%) scale(1); } 78% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
 
-.ryhud .jump { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); padding: 14px 22px; text-align: center; display: none; }
+.ryhud .jump { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%); padding: 14px 22px; text-align: center; display: none; }
 .ryhud .jump.on { display: block; }
-.ryhud .jump b { display: block; font-size: 20px; font-weight: 900; letter-spacing: .08em; }
+.ryhud .jump b { display: block; font: 400 22px Silkscreen, Rubik, monospace; }
 .ryhud .jump.go b { color: var(--acc); animation: rypulse .8s ease-in-out infinite; }
 .ryhud .jump span { font-size: 11px; color: var(--dim); font-weight: 700; letter-spacing: .14em; }
 @keyframes rypulse { 50% { transform: scale(1.06); } }
 
-.ryhud .toast { position: absolute; left: 50%; bottom: 178px; transform: translateX(-50%); padding: 7px 14px; font-size: 13px; font-weight: 500; border-radius: 9px; background: rgba(16,11,9,.8); opacity: 0; transition: opacity .25s; white-space: nowrap; }
+.ryhud .toast { position: absolute; left: 50%; bottom: 232px; transform: translateX(-50%); padding: 7px 14px; font-size: 13px; font-weight: 500; border-radius: 9px; background: rgba(16,11,9,.8); opacity: 0; transition: opacity .25s; white-space: nowrap; }
 .ryhud .toast.on { opacity: 1; }
 .ryhud .toast b { color: var(--rc, var(--acc)); font-weight: 900; }
 
@@ -159,7 +167,7 @@ body.touch .ryhud .zone { min-width: 0; padding: 5px 10px 5px 6px; top: 8px; } b
 body.touch .ryhud .place { top: 52px; font-size: 10px; } body.touch .ryhud .tl { top: 8px; left: 8px; } body.touch .ryhud .feed { display: none; }
 body.touch .ryhud .tr { top: 8px; right: 8px; } body.touch .ryhud .mini { width: 112px; height: 112px; }
 body.touch .ryhud .pill { padding: 3px 8px; } body.touch .ryhud .pill em { font-size: 15px; }
-body.touch .ryhud .prompt { bottom: 236px; } body.touch .ryhud .usebar { bottom: 290px; } body.touch .ryhud .jump { bottom: 210px; }
+body.touch .ryhud .prompt { display: none !important; } body.touch .ryhud .darkmsg { top: 150px; } body.touch .ryhud .usebar { bottom: 290px; } body.touch .ryhud .jump { bottom: 210px; }
 
 /* -------------------------------------------------------- full-screen --- */
 .ryscreen { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; cursor: default; overflow-x: hidden; overflow-y: auto; padding: 18px;
@@ -192,7 +200,7 @@ body.touch .ryhud .prompt { bottom: 236px; } body.touch .ryhud .usebar { bottom:
 .rycard .stats div { font-size: 10px; font-weight: 700; letter-spacing: .18em; color: var(--dim); }
 .rycard .stats em { display: block; font-style: normal; font-size: 24px; font-weight: 900; color: var(--ink); letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .rycard .acts { display: flex; gap: 10px; margin-top: 22px; position: sticky; bottom: 0; }
-.rybtn { font: 900 15px Rubik, system-ui, sans-serif; letter-spacing: .14em; padding: 14px 26px; border-radius: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.07); color: var(--ink); }
+.rybtn { font: 900 15px Rubik, system-ui, sans-serif; letter-spacing: .14em; padding: 14px 26px; border-radius: 4px; border: 1px solid var(--line); background: rgba(255,255,255,.07); color: var(--ink); }
 .rybtn:hover { background: rgba(255,255,255,.14); }
 .rybtn.go { flex: 1; border: 0; color: #2a1206; background: linear-gradient(180deg, #ffd27a, #ff9a3c); box-shadow: 0 8px 22px rgba(255,140,50,.4), inset 0 1px 0 rgba(255,255,255,.5); }
 .rybtn.go:hover { filter: brightness(1.08); }
@@ -259,7 +267,7 @@ export function showRoyaleLobby({ stats = {}, difficulty = 'normal' } = {}) {
         <h1>LANTERNFALL</h1>
         <p>${ROYALE_SIZE} keepers ride the Dawnskiff over the Emberwaste. Jump when you like, land with a knife, and arm yourself from what is lying on the ground. The Dark closes six times. Last light standing wins.</p>
         <div class="cols">
-          <div class="col"><b>DROP</b><span>Pick your moment and steer the glide. Thirteen named places, each with its own loot and cover.</span></div>
+          <div class="col"><b>DROP</b><span>Pick your moment and steer the glide. Twenty named places, each with its own loot and cover.</span></div>
           <div class="col"><b>LOOT</b><span>Seven guns in four rarities, tonics, shield cells, ammunition. Lantern drops fall under a balloon with the best of it.</span></div>
           <div class="col"><b>SURVIVE</b><span>Houses hide you: a roof is solid from outside. Walls stop rounds, windows do not. Stay in the light.</span></div>
         </div>
@@ -352,7 +360,7 @@ export function createRoyaleHud({ world, act, fire }) {
     <div class="glass prompt"></div>
     <div class="glass usebar"><span></span><div class="bar"><i></i></div></div>
     <div class="glass vit">
-      <div class="row"><span>SHIELD <em class="s" data-sh></em></span><div class="cons"><span data-ton><i style="background:#63e08a"></i><b></b><kbd>F</kbd></span><span data-cel><i style="background:#5ad1ff"></i><b></b><kbd>G</kbd></span></div></div>
+      <div class="row"><span>SHIELD <em class="s" data-sh></em></span><div class="cons"><span data-ton><svg viewBox="0 0 16 16" width="16" height="16"><path d="M6 1h4v2H9v3l4 6v2H3v-2l4-6V3H6z" fill="#63e08a"/><path d="M5 11h6l1 2H4z" fill="#b8ffd0"/></svg><b></b><kbd>F</kbd></span><span data-cel><svg viewBox="0 0 16 16" width="16" height="16"><path d="M8 1l6 3.500v7L8 15l-6-3.500v-7z" fill="#5ad1ff"/><path d="M9 4L5 9h3l-1 3 4-5H8z" fill="#0c2a3a"/></svg><b></b><kbd>G</kbd></span></div></div>
       <div class="bar sh"><i></i></div><div class="bar hp"><i></i></div>
       <div class="row"><span>HEALTH <em data-hp></em></span><span data-ammo></span></div>
     </div>
@@ -406,16 +414,26 @@ export function createRoyaleHud({ world, act, fire }) {
   window.addEventListener('mousemove', (e) => { mouse = { x: e.clientX, y: e.clientY }; });
 
   // ---- the map ----
-  const SPAN = ISLE_R + 10;
+  const SPAN = ISLE_R + 10, BASE = 2048;
   let base = null;
   function paintBase() {
-    base = document.createElement('canvas'); base.width = base.height = 1024;
-    const g = base.getContext('2d'), k = 1024 / (SPAN * 2), X = (x) => (x + SPAN) * k, R = (r) => r * k;
-    g.fillStyle = '#2a1a2e'; g.fillRect(0, 0, 1024, 1024);
-    const grad = g.createRadialGradient(512, 512, R(20), 512, 512, R(ISLE_R));
+    base = document.createElement('canvas'); base.width = base.height = BASE;
+    const g = base.getContext('2d'), k = BASE / (SPAN * 2), X = (x) => (x + SPAN) * k, R = (r) => r * k;
+    g.fillStyle = '#2a1a2e'; g.fillRect(0, 0, BASE, BASE);
+    const grad = g.createRadialGradient(BASE / 2, BASE / 2, R(20), BASE / 2, BASE / 2, R(ISLE_R));
     grad.addColorStop(0, '#e9c48a'); grad.addColorStop(0.8, '#dba968'); grad.addColorStop(1, '#b9783e');
-    g.beginPath(); g.arc(512, 512, R(ISLE_R), 0, 7); g.fillStyle = grad; g.fill();
+    g.beginPath();
+    for (let i = 0; i <= 180; i++) { const a = (i / 180) * Math.PI * 2, e = edgeR(Math.sin(a), Math.cos(a)); g.lineTo(X(Math.sin(a) * e), X(Math.cos(a) * e)); }
+    g.closePath(); g.fillStyle = grad; g.fill();
     g.lineWidth = 5; g.strokeStyle = '#7a4326'; g.stroke();
+    // the three regions, so the map says what the ground is like before you land on it
+    g.save(); g.clip();
+    for (const [x, z, rr, col] of [[-85, -85, 82, '239,228,207'], [108, -44, 78, '201,104,63'], [-72, 86, 78, '150,160,80']]) {
+      const rg = g.createRadialGradient(X(x), X(z), R(rr * 0.3), X(x), X(z), R(rr));
+      rg.addColorStop(0, `rgba(${col},.8)`); rg.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = rg; g.fillRect(0, 0, BASE, BASE);
+    }
+    g.restore();
     g.lineCap = 'round'; g.strokeStyle = 'rgba(150,100,56,.75)'; g.lineWidth = R(2.4);
     for (const [ax, az, bx, bz] of ROADS) { g.beginPath(); g.moveTo(X(ax), X(az)); g.lineTo(X(bx), X(bz)); g.stroke(); }
     for (const p of POIS) {
@@ -436,18 +454,18 @@ export function createRoyaleHud({ world, act, fire }) {
     if (!base) paintBase();
     const k = size / (span * 2), X = (x) => (x - cx + span) * k, Z = (z) => (z - cz + span) * k;
     g.fillStyle = '#2a1a2e'; g.fillRect(0, 0, size, size);
-    const bk = 1024 / (SPAN * 2);
+    const bk = BASE / (SPAN * 2);
     g.drawImage(base, (cx - ROYALE_CX - span + SPAN) * bk, (cz - ROYALE_CZ - span + SPAN) * bk, span * 2 * bk, span * 2 * bk, 0, 0, size, size);
     const r = v.ring;
     // the Dark: everything outside the light
-    g.save(); g.beginPath(); g.rect(0, 0, size, size); g.arc(X(r.x), Z(r.z), Math.max(0.5, r.r * k), 0, 7, true);
+    g.save(); g.beginPath(); g.arc(X(r.x), Z(r.z), size * 6 + r.r * k, 0, Math.PI * 2); g.arc(X(r.x), Z(r.z), Math.max(0.5, r.r * k), 0, Math.PI * 2, true);
     g.fillStyle = 'rgba(70,30,150,.5)'; g.fill('evenodd'); g.restore();
     g.lineWidth = full ? 3 : 2.5; g.strokeStyle = '#fff'; g.beginPath(); g.arc(X(r.x), Z(r.z), Math.max(0.5, r.r * k), 0, 7); g.stroke();
     if (r.mode !== 'done') {
       g.setLineDash([7, 6]); g.strokeStyle = '#ffb238'; g.beginPath(); g.arc(X(r.nx), Z(r.nz), Math.max(1, r.nr * k), 0, 7); g.stroke(); g.setLineDash([]);
     }
     if (full) {
-      g.textAlign = 'center'; g.font = '700 15px Rubik, system-ui, sans-serif';
+      g.textAlign = 'center'; g.font = '700 12px Rubik, system-ui, sans-serif';
       for (const p of POIS) {
         const x = X(ROYALE_CX + p.x), z = Z(ROYALE_CZ + p.z) - p.r * 0.8 * k - 6;
         g.lineWidth = 4; g.strokeStyle = 'rgba(20,12,10,.85)'; g.strokeText(p.name, x, z);
@@ -517,7 +535,10 @@ export function createRoyaleHud({ world, act, fire }) {
   }
 
   function event(type, d = {}) {
-    if (type === 'feed') addFeed(d.a ? `<b>${esc(d.a)}</b><i>▸</i><b>${esc(d.b)}</b> · ${esc(d.how)}` : `<b>${esc(d.b)}</b> was taken by ${esc(d.how)}`, d.you);
+    if (type === 'feed') {
+      const gid = Object.keys(GUNS).find((k) => GUNS[k].name === d.how) || (/Knife/.test(d.how) ? 'knife' : null);
+      addFeed(d.a ? `<b>${esc(d.a)}</b>${gid ? gunIcon(gid, '#ffb238') : '<i>▸</i>'}<b>${esc(d.b)}</b>` : `<b>${esc(d.b)}</b>&nbsp;was taken by ${esc(d.how)}`, d.you);
+    }
     else if (type === 'kill') bigText(d.streak > 1 ? `${d.streak} IN A ROW` : 'ELIMINATED', d.name.toUpperCase(), true);
     else if (type === 'hit') { hitm.classList.remove('on', 'kill'); void hitm.offsetWidth; hitm.classList.add('on'); if (d.kill) hitm.classList.add('kill'); }
     else if (type === 'hurt') {
@@ -551,7 +572,7 @@ export function createRoyaleHud({ world, act, fire }) {
     set('zt', zTm, r.mode === 'done' ? '0:00' : mmss(r.left + 0.99));
     set('zn', zNum, `${Math.min(v.phases, r.idx + 1)}/${v.phases}`);
     cls('zc', zone, 'closing', closing || r.mode === 'done');
-    if (frame % 6 === 0) zIco.style.setProperty('--k', closing ? (1 - r.left / 28).toFixed(2) : '1');
+    if (frame % 6 === 0) zIco.style.setProperty('--k', closing ? (1 - r.left / v.ringShrink).toFixed(2) : '1');
     set('al', $('[data-alive]'), String(v.alive)); set('ki', $('[data-kills]'), String(y.kills));
     // where am I
     const pn = v.place ? v.place.name : '';
@@ -564,7 +585,7 @@ export function createRoyaleHud({ world, act, fire }) {
     cls('hpl', hpWrap, 'low', hp <= 30);
     set('tn', $('[data-ton] b'), String(y.tonics)); set('cn', $('[data-cel] b'), String(y.cells));
     cls('tz', $('[data-ton]'), 'zero', !y.tonics); cls('cz', $('[data-cel]'), 'zero', !y.cells);
-    set('am', $('[data-ammo]'), `AMMO ${y.ammo}`);
+    set('am', $('[data-ammo]'), y.reload >= 0 ? 'RELOADING' : (y.guns[y.slot - 1] && y.guns[y.slot - 1].mag === 0 ? 'RELOAD [R]' : ''));
     // slots
     for (let i = 0; i < 3; i++) {
       const s = slots[i], g = i === 0 ? null : y.guns[i - 1];
@@ -580,7 +601,7 @@ export function createRoyaleHud({ world, act, fire }) {
       }
       cls(`so${i}`, s, 'on', y.slot === i);
       const am = g ? `${g.mag}|${g.reserve}` : '';
-      if (last[`a${i}`] !== am) { last[`a${i}`] = am; s.querySelector('.am').innerHTML = g ? `<b class="${g.mag ? '' : 'out'}">${g.mag}</b><small>${g.reserve}</small>` : ''; }
+      if (last[`a${i}`] !== am) { last[`a${i}`] = am; s.querySelector('.am').innerHTML = g ? `<b class="${g.mag ? (g.mag <= g.max * 0.25 ? 'lowmag' : '') : 'out'}">${g.mag}</b><small>${g.reserve}</small>` : ''; }
       const rl = y.slot === i && y.reload >= 0 ? Math.round(y.reload * 100) : 0;
       if (last[`r${i}`] !== rl) { last[`r${i}`] = rl; s.querySelector('.rl').style.width = `${rl}%`; }
     }
@@ -620,7 +641,7 @@ export function createRoyaleHud({ world, act, fire }) {
     cls('rr', ring, 'on', y.reload >= 0);
     if (y.reload >= 0) ringC.style.strokeDashoffset = String(100 - y.reload * 100);
     // maps
-    if (frame % 3 === 0) drawMap(mctx, 368, v, y.x, y.z, y.phase === 'ground' ? 44 : 80, false);
+    if (frame % 3 === 0) drawMap(mctx, 368, v, y.x, y.z, y.phase === 'ground' ? 60 : 150, false);
     if (mapOpen && frame % 6 === 0) drawMap(bctx, 900, v, ROYALE_CX, ROYALE_CZ, SPAN, true);
   }
 

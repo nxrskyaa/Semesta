@@ -1903,7 +1903,7 @@ async function init(character, saved, audio, online = false) {
   // Looked at from nearly overhead: at Anavela's 56 degrees a four-unit rock
   // hides anybody standing behind it, and in a shooter that is a death you
   // never saw. Steeper, the same rock hides a unit and a half.
-  const ROYALE_PITCH = 1.06;
+  const ROYALE_PITCH = 0.98;
   const royaleWorld = createRoyaleWorld(scene, terrain, { keep: [player.state.group] });
   let royaleReturn = null;                  // where the hero stood in Anavela
   let royaleMoving = false;                 // a curtain is up
@@ -1918,6 +1918,8 @@ async function init(character, saved, audio, online = false) {
       dmgNum: (pos, text, cls) => dmgNums.spawn(pos, text, cls),
       shake: (a) => addShake(a),
       sfx: (n, v) => audio.sfx(n, v),
+      // the camera is shoved back along the barrel and springs home
+      recoil: (aim, k) => { cam.kx -= Math.sin(aim) * k * 1.6; cam.kz -= Math.cos(aim) * k * 1.6; },
       on: (type, data) => {
         royaleHud.event(type, data);
         if (type === 'kill') { hitStop(0.07); addShake(0.25); }
@@ -2113,7 +2115,16 @@ async function init(character, saved, audio, online = false) {
     if (!v) return;
     // on the skiff and under the canopy the match holds the hero, not gravity
     if (v.you.phase !== 'ground') { player.state.vy = 0; player.state.grounded = false; }
-    cam.dist += ((v.you.phase === 'ground' ? 19.5 : 27) - cam.dist) * Math.min(1, dt * 1.6);
+    cam.dist += ((v.you.phase === 'ground' ? 18 : 27) - cam.dist) * Math.min(1, dt * 1.6);
+    // lead toward the cursor (never on touch, where there is no cursor)
+    let tx = 0, tz = 0;
+    const cp = v.you.phase === 'ground' && v.you.alive && !royaleBlocked() ? cursorPoint() : null;
+    if (cp) {
+      tx = (cp.x - player.state.pos.x - cam.lx) * 0.3; tz = (cp.z - player.state.pos.z - cam.lz) * 0.3;
+      const l = Math.hypot(tx, tz);
+      if (l > 4.5) { tx *= 4.5 / l; tz *= 4.5 / l; }
+    }
+    cam.lx += (tx - cam.lx) * Math.min(1, dt * 5); cam.lz += (tz - cam.lz) * Math.min(1, dt * 5);
     royaleHud.update(v, dt);
     // the music tightens as the light does
     audio.setHeat(Math.min(1, (v.ring.idx + (v.ring.mode === 'shrink' ? 0.6 : 0)) / 5.4));
@@ -2966,7 +2977,7 @@ const CAM_PITCH_MIN = 0.42;    // ~24 degrees: nearly level, good for tall thing
 const CAM_PITCH_MAX = 1.30;    // ~75 degrees: almost straight down
 const CAM_PITCH_DEFAULT = 0.98;
 
-  const cam = { yaw: Math.PI * 0.25, dist: 17, pitch: CAM_PITCH_DEFAULT, shake: 0, tiltHeld: 0 };
+  const cam = { yaw: Math.PI * 0.25, dist: 17, pitch: CAM_PITCH_DEFAULT, shake: 0, tiltHeld: 0, lx: 0, lz: 0, kx: 0, kz: 0 };
   function addShake(amt) { cam.shake = Math.min(0.8, cam.shake + amt); }
   // THROTTLED, so a multi-hit skill (Flurry's six punches, Thousand Cuts)
   // freezes once rather than stuttering six times in a row — a stop only
@@ -3205,9 +3216,17 @@ const CAM_PITCH_DEFAULT = 0.98;
     placeShown.set('inPlaza', inPlaza);
   }
 
+  const _camFocus = new THREE.Vector3();
   function updateCamera(dt) {
     if (cine.update(dt)) return;
-    const p = player.state.pos;
+    // IN A SHOOTER THE CAMERA LEADS. It looks a little toward the cursor, so
+    // there is more screen in the direction you are aiming than behind you,
+    // and each shot shoves it back along the barrel. Outside Lanternfall the
+    // offset is zero and this is the hero's own position.
+    cam.kx *= Math.max(0, 1 - dt * 10); cam.kz *= Math.max(0, 1 - dt * 10);
+    if (!inRoyale) { cam.lx = 0; cam.lz = 0; }
+    _camFocus.set(player.state.pos.x + cam.lx + cam.kx, player.state.pos.y, player.state.pos.z + cam.lz + cam.kz);
+    const p = _camFocus;
     if (!inRoyale) {
       if (input.keys.has('KeyQ')) cam.yaw += dt * 1.8;
       if (input.keys.has('KeyE')) cam.yaw -= dt * 1.8;

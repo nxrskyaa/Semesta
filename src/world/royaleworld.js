@@ -26,33 +26,65 @@ import { buildPalm } from './isles.js';
 
 export const ROYALE_CX = 4000;
 export const ROYALE_CZ = 4000;
-export const ISLE_R = 96;
+export const ISLE_R = 190;
 const PAD_H = 2.2;
 const WATER_Y = 1.55;
 
-// Ten named places. A battleground is somewhere you can say you are.
+// THE COAST IS NOT A CIRCLE. One function gives the rim at any bearing, and
+// the ground, the collision, the scatter and both maps all ask it, so a bay
+// on the map is a bay under your feet.
+export function edgeR(dx, dz) {
+  const a = Math.atan2(dx, dz);
+  return ISLE_R * (0.93 + 0.04 * Math.sin(3 * a + 0.7) + 0.02 * Math.sin(7 * a + 2.1) + 0.01 * Math.sin(13 * a));
+}
+
+// Twenty named places with open country between them. The first build packed
+// thirteen onto a disc 192 across: the place discs nearly touched, a glide
+// reached two thirds of the map from any ship line, and there was no decision
+// in where to drop. This isle is 380 across, a walk of over a minute.
 export const POIS = [
-  { id: 'zig', name: 'THE SUNKEN ZIGGURAT', x: 4, z: -2, r: 15 },
-  { id: 'skiff', name: 'WRECK OF THE DAWNSKIFF', x: -52, z: -28, r: 13 },
-  { id: 'oasis', name: 'SALTGLASS OASIS', x: -26, z: 24, r: 16 },
-  { id: 'bazaar', name: 'BAZAAR OF AWNINGS', x: 40, z: 32, r: 14 },
-  { id: 'fort', name: 'FORT CINDER', x: 44, z: -38, r: 15 },
-  { id: 'bones', name: 'THE BONEYARD', x: -8, z: -62, r: 13 },
-  { id: 'canyon', name: 'GLASSFALL CANYON', x: 68, z: -2, r: 15 },
-  { id: 'steps', name: "PILGRIM'S STEPS", x: -66, z: 10, r: 12 },
-  { id: 'mills', name: 'WINDMILL RIDGE', x: 10, z: 62, r: 13 },
-  { id: 'well', name: 'LAST WELL', x: -42, z: 60, r: 12 },
-  // three hamlets: houses with doors, which is where you go to not be seen
-  { id: 'cinder', name: 'CINDER HAMLET', x: 36, z: -4, r: 13, hamlet: true },
-  { id: 'dust', name: 'DUSTWATCH', x: -30, z: -8, r: 13, hamlet: true },
-  { id: 'salt', name: 'SALTROW', x: -2, z: 40, r: 13, hamlet: true },
+  { id: 'zig', name: 'THE SUNKEN ZIGGURAT', x: 8, z: -4, r: 17 },
+  { id: 'skiff', name: 'WRECK OF THE DAWNSKIFF', x: -104, z: -56, r: 14 },
+  { id: 'oasis', name: 'SALTGLASS OASIS', x: -52, z: 48, r: 17 },
+  { id: 'bazaar', name: 'BAZAAR OF AWNINGS', x: 80, z: 64, r: 16 },
+  { id: 'fort', name: 'FORT CINDER', x: 88, z: -76, r: 17 },
+  { id: 'bones', name: 'THE BONEYARD', x: -16, z: -124, r: 14 },
+  { id: 'canyon', name: 'GLASSFALL CANYON', x: 136, z: -4, r: 16 },
+  { id: 'steps', name: "PILGRIM'S STEPS", x: -132, z: 20, r: 13 },
+  { id: 'mills', name: 'WINDMILL RIDGE', x: 20, z: 124, r: 14 },
+  { id: 'well', name: 'LAST WELL', x: -80, z: 112, r: 14, hamlet: 0, wellYard: true },
+  // hamlets: houses with doors, which is where you go to not be seen. `hamlet`
+  // is the layout: 0 a yard, 1 a street, 2 a walled compound.
+  { id: 'cinder', name: 'CINDER HAMLET', x: 72, z: -8, r: 14, hamlet: 0 },
+  { id: 'dust', name: 'DUSTWATCH', x: -60, z: -16, r: 14, hamlet: 1 },
+  { id: 'salt', name: 'SALTROW', x: -4, z: 80, r: 14, hamlet: 1 },
+  { id: 'ash', name: 'ASHFALL', x: 36, z: -112, r: 14, hamlet: 2 },
+  { id: 'reed', name: 'REEDWATER', x: -70, z: -96, r: 14, hamlet: 0 },
+  { id: 'kiln', name: 'THE KILNS', x: 124, z: 60, r: 14, hamlet: 2 },
+  { id: 'drift', name: 'DRIFTMARK', x: -110, z: 76, r: 14, hamlet: 1 },
+  { id: 'lamp', name: 'LAMPLIGHT ROW', x: 60, z: 116, r: 14, hamlet: 1 },
+  { id: 'half', name: 'HALFWAY', x: -10, z: -64, r: 14, hamlet: 2 },
+  { id: 'copper', name: 'COPPER WELLS', x: 44, z: 30, r: 14, hamlet: 0 },
 ];
 const P = Object.fromEntries(POIS.map((p) => [p.id, p]));
-const LINKS = [['zig', 'fort'], ['zig', 'bazaar'], ['zig', 'oasis'], ['zig', 'skiff'], ['zig', 'bones'], ['zig', 'mills'],
-  ['oasis', 'well'], ['well', 'mills'], ['mills', 'bazaar'], ['bazaar', 'canyon'], ['canyon', 'fort'], ['fort', 'bones'],
-  ['bones', 'skiff'], ['skiff', 'steps'], ['steps', 'oasis'],
-  ['zig', 'cinder'], ['cinder', 'canyon'], ['zig', 'dust'], ['dust', 'steps'], ['oasis', 'salt'], ['salt', 'mills']];
+const LINKS = [['zig', 'fort'], ['zig', 'copper'], ['copper', 'bazaar'], ['zig', 'oasis'], ['zig', 'half'], ['half', 'bones'],
+  ['zig', 'salt'], ['salt', 'mills'], ['oasis', 'well'], ['well', 'mills'], ['mills', 'lamp'], ['lamp', 'bazaar'],
+  ['bazaar', 'kiln'], ['kiln', 'canyon'], ['canyon', 'fort'], ['fort', 'ash'], ['ash', 'bones'], ['bones', 'reed'],
+  ['reed', 'skiff'], ['skiff', 'steps'], ['steps', 'drift'], ['drift', 'well'], ['steps', 'oasis'],
+  ['zig', 'cinder'], ['cinder', 'canyon'], ['zig', 'dust'], ['dust', 'skiff'], ['oasis', 'salt'], ['dust', 'half']];
 export const ROADS = LINKS.map(([a, b]) => [P[a].x, P[a].z, P[b].x, P[b].z]);
+
+// Three regions, each with its own ground and its own cover. Weights 0..1.
+const REGIONS = {
+  salt: { x: -85, z: -85, r: 82 },      // pale flats, long sight lines, little to hide behind
+  bad: { x: 108, z: -44, r: 78 },       // red badlands, a maze of rock
+  green: { x: -72, z: 86, r: 78 },      // the wadi: scrub, palms, grass
+};
+const regionW = (id, dx, dz) => {
+  const g = REGIONS[id];
+  const t = Math.max(0, Math.min(1, (g.r - Math.hypot(dx - g.x, dz - g.z)) / (g.r * 0.55)));
+  return t * t * (3 - 2 * t);
+};
 
 function mulberry(seed) {
   let a = seed >>> 0;
@@ -102,8 +134,9 @@ function localHeight(dx, dz) {
   const od = Math.hypot(dx - P.oasis.x, dz - P.oasis.z);
   h = lerp(h, 0.6, smooth(10.5, 5.5, od));
   // and the world ends in a cliff
-  if (d > ISLE_R) h = lerp(h, PAD_H, 0.5) - (d - ISLE_R) * 7;
-  else h = lerp(h, PAD_H, smooth(ISLE_R - 10, ISLE_R, d) * 0.6);
+  const E = edgeR(dx, dz);
+  if (d > E) h = lerp(h, PAD_H, 0.5) - (d - E) * 7;
+  else h = lerp(h, PAD_H, smooth(E - 10, E, d) * 0.6);
   return h;
 }
 export const isleHeight = (x, z) => localHeight(x - ROYALE_CX, z - ROYALE_CZ);
@@ -214,6 +247,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
   const boxes = [];            // { x, z, hw, hd, c, s, low } oriented, world space
   const houses = [];           // { x, z, hw, hd, c, s, inner, outer, centre }
   const roofs = [];            // { mats, i, op } faded while you stand under one
+  let houseGrid = null;
   const lootSpots = [];
   const mesas = [];
   const flames = [], spinners = [], crystals = [];
@@ -308,13 +342,41 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
   // ---- collision -----------------------------------------------------------
   const addCircle = (x, z, r, low = false) => circles.push({ x, z, r, low });
   function addBox(x, z, hw, hd, ang = 0, low = false) { boxes.push({ x, z, hw, hd, c: Math.cos(ang), s: Math.sin(ang), low }); }
+  // A GRID OVER THE SOLIDS. `hit` is asked thousands of times a frame (every
+  // bullet step, every bot's footing, every line of sight) and there are well
+  // over a thousand solids on an isle this size; a linear scan was millions of
+  // comparisons a frame. Each solid is filed under every 8-unit cell it could
+  // reach with the largest pad anybody passes, so a query reads ONE cell.
+  const CELL = 8;
+  let grid = null;
+  function indexCollision() {
+    grid = new Map();
+    const put = (o, x, z, r, kind) => {
+      for (let ix = Math.floor((x - r) / CELL); ix <= Math.floor((x + r) / CELL); ix++) {
+        for (let iz = Math.floor((z - r) / CELL); iz <= Math.floor((z + r) / CELL); iz++) {
+          const k = ix * 8192 + iz;
+          let c = grid.get(k);
+          if (!c) grid.set(k, c = { c: [], b: [] });
+          c[kind].push(o);
+        }
+      }
+    };
+    for (const o of circles) put(o, o.x, o.z, o.r + 2.4, 'c');
+    for (const b of boxes) put(b, b.x, b.z, Math.hypot(b.hw, b.hd) + 2.4, 'b');
+  }
   function hit(x, z, pad, shots) {
-    for (const o of circles) {
+    let circles_ = circles, boxes_ = boxes;
+    if (grid) {
+      const cell = grid.get(Math.floor(x / CELL) * 8192 + Math.floor(z / CELL));
+      if (!cell) return false;
+      circles_ = cell.c; boxes_ = cell.b;
+    }
+    for (const o of circles_) {
       if (shots && o.low) continue;
       const dx = x - o.x, dz = z - o.z, rr = o.r + pad;
       if (dx * dx + dz * dz < rr * rr) return true;
     }
-    for (const b of boxes) {
+    for (const b of boxes_) {
       if (shots && b.low) continue;
       const dx = x - b.x, dz = z - b.z;
       const lx = dx * b.c + dz * b.s, lz = -dx * b.s + dz * b.c;
@@ -325,11 +387,20 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
   const blocked = (x, z, pad = 0) => hit(x, z, pad, false);
   /** Does this point stop a round? Low props (cacti, pots) do not. */
   const shotBlocked = (x, z) => hit(x, z, -0.05, true);
-  const onIsle = (x, z) => Math.hypot(x - ROYALE_CX, z - ROYALE_CZ) < ISLE_R - 1.4;
+  const onIsle = (x, z) => Math.hypot(x - ROYALE_CX, z - ROYALE_CZ) < edgeR(x - ROYALE_CX, z - ROYALE_CZ) - 1.4;
   const dry = (x, z) => isleHeight(x, z) > WATER_Y - 0.25;
   const walkable = (x, z) => onIsle(x, z) && dry(x, z) && !hit(x, z, 0.34, false);
   /** Which house is this point inside, or -1. */
   function houseAt(x, z) {
+    if (houseGrid) {
+      const list = houseGrid.get(Math.floor(x / 16) * 8192 + Math.floor(z / 16));
+      if (!list) return -1;
+      for (const i of list) {
+        const h = houses[i], dx = x - h.x, dz = z - h.z;
+        if (Math.abs(dx * h.c + dz * h.s) < h.hw && Math.abs(-dx * h.s + dz * h.c) < h.hd) return i;
+      }
+      return -1;
+    }
     for (let i = 0; i < houses.length; i++) {
       const h = houses[i], dx = x - h.x, dz = z - h.z;
       if (Math.abs(dx * h.c + dz * h.s) < h.hw && Math.abs(-dx * h.s + dz * h.c) < h.hd) return i;
@@ -374,7 +445,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
 
   // ---- the land --------------------------------------------------------------
   function buildGround() {
-    const size = (ISLE_R + 12) * 2, seg = 170;
+    const size = (ISLE_R + 12) * 2, seg = 250;
     const geo = new THREE.PlaneGeometry(size, size, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -382,12 +453,17 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     const sand = new THREE.Color('#e6ba78'), crest = new THREE.Color('#f4d39a'), road = new THREE.Color('#c29058');
     const pave = new THREE.Color('#d8b98c'), red = new THREE.Color('#cf7a4c'), grass = new THREE.Color('#7fae4f');
     const wet = new THREE.Color('#b08a5c'), c = new THREE.Color();
+    const salt = new THREE.Color('#efe4cf'), scrub = new THREE.Color('#b0a560'), lee = new THREE.Color('#b9844e');
     for (let i = 0; i < pos.count; i++) {
       const dx = pos.getX(i), dz = pos.getZ(i);
       const h = localHeight(dx, dz), d = Math.hypot(dx, dz);
       pos.setY(i, h);
       c.copy(sand).lerp(crest, smooth(PAD_H + 0.2, PAD_H + 1.4, h));
-      c.lerp(red, smooth(34, 12, Math.hypot(dx - P.canyon.x, dz - P.canyon.z)) * 0.85);
+      // the lee side of a dune is in shade: tint by which way the ground falls
+      c.lerp(lee, smooth(0.0, 0.12, localHeight(dx + 1.2, dz - 0.6) - h) * 0.35);
+      c.lerp(salt, regionW('salt', dx, dz) * 0.85);
+      c.lerp(red, regionW('bad', dx, dz) * 0.8);
+      c.lerp(scrub, regionW('green', dx, dz) * 0.7);
       c.lerp(road, smooth(2.6, 1.0, roadDist(dx, dz)) * 0.8);
       const pd = poiDist(dx, dz);
       if (pd.p.id !== 'oasis' && pd.p.id !== 'canyon' && pd.p.id !== 'bones') c.lerp(pave, smooth(1.5, -3, pd.d) * 0.75);
@@ -395,7 +471,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       c.lerp(grass, smooth(20, 12, od) * 0.9);
       c.lerp(wet, smooth(11, 8, od));
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-      kind[i] = d > ISLE_R + 0.3 ? 1 : 0;
+      kind[i] = d > edgeR(dx, dz) + 0.3 ? 1 : 0;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     geo.setAttribute('aKind', new THREE.BufferAttribute(kind, 1));
@@ -409,9 +485,9 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     // the underside: rock hanging into the cloud, so the isle visibly FLOATS
     const under = new Batch();
     const rnd = mulberry(77);
-    for (let i = 0; i < 26; i++) {
-      const a = (i / 26) * Math.PI * 2 + rnd() * 0.2, d = ISLE_R * (0.25 + rnd() * 0.7);
-      const r = 9 + rnd() * 14, h = 22 + rnd() * 34;
+    for (let i = 0; i < 60; i++) {
+      const a = (i / 60) * Math.PI * 2 * 3 + rnd() * 0.3, d = ISLE_R * (0.12 + rnd() * 0.74);
+      const r = 14 + rnd() * 22, h = 26 + rnd() * 44;
       under.add(['#5a2a1c', '#6e3520', '#4a2018'][i % 3], new THREE.ConeGeometry(r, h, 6),
         wx(Math.sin(a) * d), -6 - h / 2, wz(Math.cos(a) * d), Math.PI, rnd() * 6, 0);
     }
@@ -441,7 +517,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
   }
 
   // ---- scatter ---------------------------------------------------------------
-  const clearOf = (dx, dz, poiPad, roadPad) => Math.hypot(dx, dz) < ISLE_R - 5
+  const clearOf = (dx, dz, poiPad, roadPad) => Math.hypot(dx, dz) < edgeR(dx, dz) - 5
     && poiDist(dx, dz).d > poiPad && roadDist(dx, dz) > roadPad;
   const spot = (rnd, minD = 0, maxD = ISLE_R - 5) => {
     const a = rnd() * Math.PI * 2, d = minD + Math.sqrt(rnd()) * (maxD - minD);
@@ -468,9 +544,11 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       if (i === 2 || i === 7) continue;                      // the two mouths
       mesa(rock, P.canyon.x + Math.sin(a) * d, P.canyon.z + Math.cos(a) * d, 2.6 + rnd() * 1.8, 2.4 + rnd() * 2.0, rnd);
     }
-    for (let tries = 0, n = 0; tries < 500 && n < 16; tries++) {
+    for (let tries = 0, n = 0; tries < 4000 && n < 80; tries++) {
       const [dx, dz] = spot(rnd, 14);
-      if (!clearOf(dx, dz, 5, 5) || blocked(wx(dx), wz(dz), 5)) continue;
+      // the badlands are a maze of rock; the salt flats have almost none
+      if (rnd() > 0.3 + regionW('bad', dx, dz) * 0.7 - regionW('salt', dx, dz) * 0.26) continue;
+      if (!clearOf(dx, dz, 5, 5) || blocked(wx(dx), wz(dz), 4)) continue;
       mesa(rock, dx, dz, 2.2 + rnd() * 2.6, 2.0 + rnd() * 2.2, rnd); n++;
     }
     rock.build();
@@ -483,21 +561,33 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       if (col) mesh.setColorAt(i, col);
     };
     const done = (mesh) => { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; mesh.finalize(); root.add(mesh); };
-    const scatter = (count, minD, poiPad, roadPad, pad, fn) => {
+    const scatter = (count, minD, poiPad, roadPad, pad, fn, dens) => {
       const out = [];
       for (let tries = 0; tries < count * 14 && out.length < count; tries++) {
         const [dx, dz] = spot(rnd, minD);
+        if (dens && rnd() > dens(dx, dz)) continue;
         if (!clearOf(dx, dz, poiPad, roadPad) || !dry(wx(dx), wz(dz)) || blocked(wx(dx), wz(dz), pad)) continue;
         out.push(fn(dx, dz));
       }
       return out;
     };
 
-    const boulders = scatter(90, 6, 1, 1.6, 1.4, (dx, dz) => {
-      const s = 0.6 + rnd() * 1.3;
-      addCircle(wx(dx), wz(dz), 0.58 * s);
-      return { x: wx(dx), z: wz(dz), y: localHeight(dx, dz), s, rot: rnd() * 6, k: rnd() };
-    });
+    // BOULDERS COME IN CLUSTERS. Sprinkled evenly there was one every 320
+    // square units, which is cover nowhere; grouped, each cluster is a place
+    // you can fight from and the ground between them is honestly open.
+    const boulders = [];
+    const seeds = scatter(86, 10, 3, 3, 3, (dx, dz) => [dx, dz], (dx, dz) => 0.45 + regionW('bad', dx, dz) * 0.55 - regionW('salt', dx, dz) * 0.3);
+    for (const [cx, cz] of seeds) {
+      const n = 3 + Math.floor(rnd() * 5);
+      for (let k = 0; k < n; k++) {
+        const a = rnd() * 6.28, d = k === 0 ? 0 : 1.2 + rnd() * 4.2;
+        const dx = cx + Math.sin(a) * d, dz = cz + Math.cos(a) * d;
+        if (!clearOf(dx, dz, 1, 1.6) || !dry(wx(dx), wz(dz)) || blocked(wx(dx), wz(dz), 1.25)) continue;
+        const s = k === 0 ? 1.5 + rnd() * 0.9 : 0.6 + rnd() * 1.1;
+        addCircle(wx(dx), wz(dz), 0.58 * s);
+        boulders.push({ x: wx(dx), z: wz(dz), y: localHeight(dx, dz), s, rot: rnd() * 6, k: rnd() });
+      }
+    }
     const bm = new ChunkedInstanced(new THREE.IcosahedronGeometry(0.62, 0), arenaMat('#ffffff', { flat: true }), boulders, 48).setShadows(true, true);
     const bc = ['#b06a44', '#c98452', '#96583a'].map(C);
     boulders.forEach((r, i) => set(bm, i, r.x, r.y + r.s * 0.26, r.z, r.s * 1.3, r.s * 0.78, r.s * 1.1, r.rot, bc[Math.floor(r.k * 3) % 3]));
@@ -512,10 +602,10 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       new THREE.CylinderGeometry(0.1, 0.1, 0.42, 6).rotateZ(Math.PI / 2).translate(-0.32, 1.2, 0),
       new THREE.CylinderGeometry(0.1, 0.11, 0.5, 6).translate(-0.52, 1.44, 0),
     ].map((g) => g.toNonIndexed()));
-    const cacti = scatter(80, 8, 2, 2.2, 1.2, (dx, dz) => {
+    const cacti = scatter(300, 8, 2, 2.2, 1.2, (dx, dz) => {
       addCircle(wx(dx), wz(dz), 0.34, true);
       return { x: wx(dx), z: wz(dz), y: localHeight(dx, dz), s: 0.8 + rnd() * 0.7, rot: rnd() * 6, k: rnd() };
-    });
+    }, (dx, dz) => 1 - regionW('salt', dx, dz) * 0.85);
     const cm = new ChunkedInstanced(cg, arenaMat('#ffffff', { flat: true }), cacti, 48).setShadows(true, false);
     const cc = ['#4f8f5a', '#3f7a4c', '#62a468'].map(C);
     cacti.forEach((r, i) => set(cm, i, r.x, r.y - 0.05, r.z, r.s, r.s, r.s, r.rot, cc[Math.floor(r.k * 3) % 3]));
@@ -528,7 +618,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       new THREE.CylinderGeometry(0.05, 0.09, 1.1, 5).rotateZ(0.9).translate(-0.45, 2.1, 0.1),
       new THREE.CylinderGeometry(0.04, 0.07, 0.9, 5).rotateX(0.8).translate(0, 2.45, 0.35),
     ].map((g) => g.toNonIndexed()));
-    const trees = scatter(30, 10, 3, 2.4, 1.6, (dx, dz) => {
+    const trees = scatter(110, 10, 3, 2.4, 1.6, (dx, dz) => {
       addCircle(wx(dx), wz(dz), 0.3);
       return { x: wx(dx), z: wz(dz), y: localHeight(dx, dz), s: 0.9 + rnd() * 0.7, rot: rnd() * 6 };
     });
@@ -546,15 +636,21 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     }
     const gt = new THREE.CanvasTexture(gc); gt.colorSpace = THREE.SRGBColorSpace;
     const tuftGeo = mergeGeometries([new THREE.PlaneGeometry(1, 1), new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2)]);
-    const tufts = scatter(1300, 6, 0.5, 1.4, 0.6, (dx, dz) => ({ x: wx(dx), z: wz(dz), y: localHeight(dx, dz), s: 0.55 + rnd() * 0.6 }));
-    const um = new ChunkedInstanced(tuftGeo, new THREE.MeshLambertMaterial({ map: gt, alphaTest: 0.4, side: THREE.DoubleSide }), tufts, 48);
+    const tufts = scatter(4600, 6, 0.5, 1.4, 0.6, (dx, dz) => ({ x: wx(dx), z: wz(dz), y: localHeight(dx, dz), s: 0.55 + rnd() * 0.6 }),
+      (dx, dz) => 0.4 + regionW('green', dx, dz) * 0.6 - regionW('salt', dx, dz) * 0.34);
+    // the grass takes the Dark like everything else (it used to stay bright outside the ring)
+    const tuftBase = arenaMat('#ffffff', { side: THREE.DoubleSide });
+    const tuftMat = tuftBase.clone();
+    tuftMat.onBeforeCompile = tuftBase.onBeforeCompile; tuftMat.customProgramCacheKey = () => 'royale|tuft';
+    tuftMat.map = gt; tuftMat.alphaTest = 0.4;
+    const um = new ChunkedInstanced(tuftGeo, tuftMat, tufts, 48);
     tufts.forEach((t, i) => set(um, i, t.x, t.y + t.s * 0.42, t.z, t.s, t.s, t.s, (i * 0.37) % Math.PI));
     done(um);
 
     // emberglass: the one cold colour on the isle, and it glows
     const cgeo = new THREE.OctahedronGeometry(0.5, 0);
     const cmat = basic('#63f2e2');
-    const cl = scatter(20, 12, 2, 2, 2.2, (dx, dz) => [dx, dz]);
+    const cl = scatter(64, 12, 2, 2, 2.2, (dx, dz) => [dx, dz]);
     for (let i = 0; i < 9; i++) cl.push([P.canyon.x + (rnd() - 0.5) * 12, P.canyon.z + (rnd() - 0.5) * 12]);
     for (const [dx, dz] of cl) {
       if (blocked(wx(dx), wz(dz), 1.2)) continue;
@@ -575,6 +671,22 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       addCircle(wx(dx), wz(dz), 0.75);
       crystals.push({ g, ph: rnd() * 6.28 });
     }
+
+    // the wadi has palms beyond the oasis: the one green region on the isle
+    const grove = new THREE.Group();
+    for (let i = 0, t = 0; i < 46 && t < 1200; t++) {
+      const [dx, dz] = spot(rnd, 20);
+      if (rnd() > regionW('green', dx, dz) || !clearOf(dx, dz, 2, 3) || !dry(wx(dx), wz(dz)) || blocked(wx(dx), wz(dz), 1.4)) continue;
+      const palm = buildPalm(rnd);
+      palm.position.set(wx(dx), localHeight(dx, dz), wz(dz));
+      palm.rotation.y = rnd() * 6; palm.scale.setScalar(0.95 + rnd() * 0.4);
+      palm.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      grove.add(palm);
+      addCircle(wx(dx), wz(dz), 0.34);
+      i++;
+    }
+    root.add(grove);
+    bakeStatic(grove);
   }
 
   /** A lamp: a post and a lit pane. Marks the roads at dusk. */
@@ -591,43 +703,112 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
   }
 
   // ---- houses ----------------------------------------------------------------
-  // A HOUSE YOU CAN GO INTO. Four walls, a door, a window in the other three
-  // (a sill stops feet and lets a round through, so you can shoot out of one),
-  // and a roof that fades when you are under it. From outside the roof is
-  // solid, and whoever is inside cannot be seen: that is what a house is for.
+  // A HOUSE YOU CAN GO INTO. Walls with a door (two for the big ones), a window
+  // in the walls that have no door (a sill stops feet and lets a round through,
+  // so you can shoot out of one), furniture that is cover, and a roof that
+  // fades when you are under it. From outside the roof is solid, and whoever is
+  // inside cannot be seen: that is what a house is for.
+  //   o.big   two rooms, an inside wall with a gap, a back door, a gable roof
+  //   o.ruin  broken walls, no roof: cover, not a hiding place
+  const WALLS = ['#e2c08c', '#d9b27c', '#ead2a4', '#cfa878'];
   function house(b, X, Z, w, d, ang, o = {}) {
     const c = Math.cos(ang), s = Math.sin(ang), H = 2.4, T = 0.3, y0 = PAD_H;
     const W = (lx, lz) => [X + lx * c - lz * s, Z + lx * s + lz * c];
-    const wallC = o.wall || '#e2c08c', trim = '#b98a56';
+    const pt = (lx, lz) => { const [x, z] = W(lx, lz); return { x, z }; };
+    const wallC = o.wall || WALLS[houses.length % WALLS.length], trim = '#b98a56', dark = '#6e4a2c';
+    const hr = mulberry(1 + Math.round(X * 7 + Z * 13));
     const run = (ax, fixed, a0, a1, low) => {                  // along local x (0) or z (1)
       const len = a1 - a0, mid = (a0 + a1) / 2;
+      if (len < 0.2) return;
       const [px, pz] = ax === 0 ? W(mid, fixed) : W(fixed, mid);
       const sx = ax === 0 ? len : T, sz = ax === 0 ? T : len;
+      if (o.ruin) {
+        // what is left of a wall: any height, and under a metre it is only a sill
+        const h = 0.5 + hr() * 1.7;
+        b.box(wallC, sx, h, sz, px, y0 + h / 2, pz, -ang).box(dark, sx + 0.06, 0.08, sz + 0.06, px, y0 + h + 0.02, pz, -ang);
+        addBox(px, pz, sx / 2, sz / 2, ang, h < 1.05);
+        return;
+      }
       if (low) {
         b.box(wallC, sx, 0.95, sz, px, y0 + 0.475, pz, -ang)
           .box(trim, sx + (ax ? 0.14 : 0), 0.1, sz + (ax ? 0 : 0.14), px, y0 + 1.0, pz, -ang)
-          .box(wallC, sx, 0.6, sz, px, y0 + H - 0.3, pz, -ang);
+          .box(wallC, sx, 0.6, sz, px, y0 + H - 0.3, pz, -ang)
+          // shutters either side of the opening
+          .box('#5f7a86', ax ? 0.08 : 0.34, 0.9, ax ? 0.34 : 0.08, ...(ax ? W(fixed, a0 - 0.2) : W(a0 - 0.2, fixed)).flatMap((v, i) => (i ? [y0 + 1.5, v] : [v])), -ang)
+          .box('#5f7a86', ax ? 0.08 : 0.34, 0.9, ax ? 0.34 : 0.08, ...(ax ? W(fixed, a1 + 0.2) : W(a1 + 0.2, fixed)).flatMap((v, i) => (i ? [y0 + 1.5, v] : [v])), -ang);
       } else b.box(wallC, sx, H, sz, px, y0 + H / 2, pz, -ang);
-      b.box('#6e4a2c', sx + 0.1, 0.12, sz + 0.1, px, y0 + H + 0.02, pz, -ang);
+      b.box(dark, sx + 0.1, 0.12, sz + 0.1, px, y0 + H + 0.02, pz, -ang);
+      // a darker band where the wall meets the ground
+      if (!low) b.box('#a87e52', sx + 0.06, 0.34, sz + 0.06, px, y0 + 0.17, pz, -ang);
       addBox(px, pz, sx / 2, sz / 2, ang, !!low);
     };
-    const windowed = (ax, fixed, half) => { run(ax, fixed, -half, -0.75); run(ax, fixed, -0.75, 0.75, true); run(ax, fixed, 0.75, half); };
-    windowed(0, -d / 2, w / 2);
-    windowed(1, -w / 2, d / 2); windowed(1, w / 2, d / 2);
-    run(0, d / 2, -w / 2, -1.0); run(0, d / 2, 1.0, w / 2);     // the front, with the door
-    { const [px, pz] = W(0, d / 2); b.box(trim, 2.3, 0.4, T + 0.08, px, y0 + H - 0.2, pz, -ang); }
-    b.box('#8a6238', w, 0.1, d, X, y0 + 0.05, Z, -ang).box(o.rug || '#b8432f', w * 0.5, 0.03, d * 0.42, X, y0 + 0.115, Z, -ang)
-      .box('#f0e2c4', w * 0.5 - 0.3, 0.035, d * 0.42 - 0.3, X, y0 + 0.118, Z, -ang).box(o.rug || '#b8432f', w * 0.5 - 0.6, 0.04, d * 0.42 - 0.6, X, y0 + 0.12, Z, -ang);
-    for (let i = 1; i < 6; i++) { const [px, pz] = W(-w / 2 + (w / 6) * i, 0); b.box('#6e4a2c', 0.05, 0.11, d - 0.3, px, y0 + 0.052, pz, -ang); }
-    { const [px, pz] = W(w / 2 - 1.0, -d / 2 + 0.75); b.box('#a94f30', 1.5, 0.5, 0.8, px, y0 + 0.35, pz, -ang).box('#f0e2c4', 1.4, 0.12, 0.7, px, y0 + 0.62, pz, -ang); addBox(px, pz, 0.75, 0.4, ang, true); }
-    { const [px, pz] = W(-w / 2 + 0.95, -d / 2 + 0.95); b.box('#8a6238', 0.9, 0.8, 0.9, px, y0 + 0.5, pz, -ang + 0.3); addCircle(px, pz, 0.55, true); }
-    { const [px, pz] = W(1.9, d / 2 + 0.7); b.cyl('#a94f30', 0.3, 0.36, 0.7, px, y0 + 0.35, pz, 8); addCircle(px, pz, 0.36, true); }
-    const rb = new Batch();
-    const roofC = o.roof || '#9a5238';
-    rb.box('#5a3a22', w + 0.8, 0.16, d + 0.8, X, y0 + H + 0.1, Z, -ang)
-      .add(roofC, new THREE.ConeGeometry(1, 1, 4, 1).rotateY(Math.PI / 4), X, y0 + H + 0.18 + 0.5, Z, 0, -ang, 0, (w + 1.0) / 1.414, 1.0, (d + 1.0) / 1.414)
-      .box('#5a3a22', 0.5, 0.9, 0.5, ...((q) => [q[0], y0 + H + 0.7, q[1]])(W(w * 0.24, -d * 0.2)), -ang)
-      .box(roofC, 2.6, 0.1, 1.2, ...((q) => [q[0], y0 + H - 0.5, q[1]])(W(0, d / 2 + 0.6)), -ang, 0, 0);
+    // a wall along local x at z=fixed (ax 0) or along z at x=fixed (ax 1), with
+    // one opening centred at `at`: a window (a sill) or a door (a gap)
+    const doors = [];
+    const wall = (ax, fixed, half, at, kind, nx, nz) => {
+      const g = kind === 'door' ? 1.0 : 0.75;
+      run(ax, fixed, -half, at - g);
+      if (kind === 'window') run(ax, fixed, at - g, at + g, true);
+      run(ax, fixed, at + g, half);
+      if (kind !== 'door') return;
+      const lx = ax === 0 ? at : fixed, lz = ax === 0 ? fixed : at;
+      doors.push({ inner: pt(lx - nx * 0.95, lz - nz * 0.95), outer: pt(lx + nx * 1.35, lz + nz * 1.35) });
+      if (o.ruin) return;
+      const [px, pz] = W(lx, lz);
+      b.box(trim, ax === 0 ? 2.3 : T + 0.08, 0.4, ax === 0 ? T + 0.08 : 2.3, px, y0 + H - 0.2, pz, -ang);
+      // the door itself, standing open against the wall outside
+      const [qx, qz] = W(lx + (ax === 0 ? 1.05 : nx * 0.5), lz + (ax === 0 ? nz * 0.5 : 1.05));
+      b.box('#7d5634', ax === 0 ? 0.1 : 0.9, 1.9, ax === 0 ? 0.9 : 0.1, qx, y0 + 0.95, qz, -ang);
+    };
+    const fx = o.big ? -w / 4 : 0;
+    wall(0, d / 2, w / 2, fx, 'door', 0, 1);                              // front
+    wall(0, -d / 2, w / 2, o.big ? w / 4 : 0, o.big ? 'door' : 'window', 0, -1);   // back
+    wall(1, -w / 2, d / 2, 0, 'window'); wall(1, w / 2, d / 2, 0, 'window');
+    if (o.big) { run(1, 0.5, -d / 2, -0.9); run(1, 0.5, 1.1, d / 2); }             // the inside wall
+
+    // the floor, and what stands on it (all of it low: cover you can fire over)
+    b.box('#8a6238', w, 0.1, d, X, y0 + 0.05, Z, -ang);
+    for (let i = 1; i < Math.round(w / 0.9); i++) { const [px, pz] = W(-w / 2 + (w / Math.round(w / 0.9)) * i, 0); b.box(dark, 0.05, 0.11, d - 0.3, px, y0 + 0.052, pz, -ang); }
+    const low = (color, sw, sh, sd, lx, lz, top) => {
+      const [px, pz] = W(lx, lz);
+      b.box(color, sw, sh, sd, px, y0 + 0.1 + sh / 2, pz, -ang);
+      if (top) b.box(top, sw - 0.12, 0.1, sd - 0.12, px, y0 + 0.1 + sh + 0.05, pz, -ang);
+      addBox(px, pz, sw / 2, sd / 2, ang, true);
+    };
+    if (!o.ruin) {
+      const rug = o.rug || '#9a5238';
+      b.box(rug, w * 0.36, 0.03, d * 0.4, ...((q) => [q[0], y0 + 0.115, q[1]])(W(o.big ? -w / 4 : 0, 0.2)), -ang)
+        .box('#f0e2c4', w * 0.36 - 0.3, 0.035, d * 0.4 - 0.3, ...((q) => [q[0], y0 + 0.118, q[1]])(W(o.big ? -w / 4 : 0, 0.2)), -ang);
+      low('#a94f30', 1.6, 0.42, 0.85, w / 2 - 1.05, -d / 2 + 0.8, '#f0e2c4');          // a bed
+      low('#8a6238', 0.9, 0.8, 0.9, -w / 2 + 0.85, -d / 2 + 0.85);                      // a crate
+      if (o.big) { low('#7d5634', 1.5, 0.7, 0.8, w / 4 + 0.3, d / 2 - 0.9, '#c9a070'); low('#8a6238', 0.8, 1.1, 0.8, w / 2 - 0.75, 0.9); }
+      const [px, pz] = W(fx + 1.9, d / 2 + 0.7);
+      b.cyl('#a94f30', 0.3, 0.36, 0.7, px, y0 + 0.35, pz, 8).cyl('#c9703f', 0.2, 0.26, 0.5, px + 0.5 * c, y0 + 0.25, pz + 0.5 * s, 8);
+      addCircle(px, pz, 0.4, true);
+    } else {
+      for (let i = 0; i < 4; i++) {                              // rubble
+        const [px, pz] = W((hr() - 0.5) * w * 0.8, (hr() - 0.5) * d * 0.8);
+        b.add('#c9a070', new THREE.IcosahedronGeometry(0.3 + hr() * 0.3, 0), px, y0 + 0.2, pz, hr(), hr() * 3, 0);
+      }
+      lootSpots.push({ ...pt(0, 0), poi: o.poi || null, house: true });
+      return;
+    }
+
+    // THE ROOF IS A SHAPE, NOT A SLAB: pitched faces each catch the dusk at a
+    // different angle, which is the whole reason a roof reads as one from above
+    const rb = new Batch(), roofC = o.roof || '#9a5238';
+    rb.box('#5a3a22', w + 0.8, 0.16, d + 0.8, X, y0 + H + 0.1, Z, -ang);
+    if (o.big) {
+      const th = 0.47, L = (d / 2 + 0.55) / Math.cos(th), ridge = (d / 2 + 0.55) * Math.tan(th);
+      for (const sgn of [1, -1]) {
+        rb.add(roofC, new THREE.BoxGeometry(w + 1.0, 0.16, L).translate(0, 0, sgn * L / 2).rotateX(sgn * th).translate(0, ridge, 0), X, y0 + H + 0.2, Z, 0, -ang, 0);
+      }
+      rb.add('#5a3a22', new THREE.BoxGeometry(w + 1.1, 0.2, 0.3).translate(0, ridge + 0.06, 0), X, y0 + H + 0.2, Z, 0, -ang, 0);
+    } else {
+      rb.add(roofC, new THREE.ConeGeometry(1, 1, 4, 1).rotateY(Math.PI / 4), X, y0 + H + 0.18 + 0.5, Z, 0, -ang, 0, (w + 1.0) / 1.414, 1.0, (d + 1.0) / 1.414);
+    }
+    rb.box('#5a3a22', 0.5, 0.9, 0.5, ...((q) => [q[0], y0 + H + 0.7, q[1]])(W(w * 0.26, -d * 0.2)), -ang)
+      .box(roofC, 2.6, 0.1, 1.2, ...((q) => [q[0], y0 + H - 0.5, q[1]])(W(fx, d / 2 + 0.6)), -ang, 0, 0);
     const rg = rb.build(root, false);
     const mats = [];
     rg.traverse((m) => {
@@ -636,31 +817,79 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
       mm.onBeforeCompile = base.onBeforeCompile; mm.customProgramCacheKey = base.customProgramCacheKey;
       mm.transparent = true; m.material = mm; m.renderOrder = 3; mats.push(mm);
     });
-    const pt = (lx, lz) => { const [x, z] = W(lx, lz); return { x, z }; };
     roofs.push({ mats, i: houses.length, op: 1 });
-    houses.push({ x: X, z: Z, hw: w / 2, hd: d / 2, c, s, inner: pt(0, d / 2 - 0.95), outer: pt(0, d / 2 + 1.35), centre: pt(0.4, -0.3) });
-    for (const [lx, lz] of [[w / 4, -d / 4], [-w / 4, d / 5]]) lootSpots.push({ ...pt(lx, lz), poi: o.poi || null, house: true });
+    houses.push({ x: X, z: Z, hw: w / 2, hd: d / 2, c, s, doors, inner: doors[0].inner, outer: doors[0].outer, centre: pt(o.big ? -w / 4 : 0, 0.3) });
+    lootSpots.push({ ...pt(o.big ? -w / 4 : 0, -d / 4), poi: o.poi || null, house: true });
+    lootSpots.push({ ...pt(o.big ? w / 4 + 0.4 : -w / 4, o.big ? -0.2 : d / 5), poi: o.poi || null, house: true });
   }
 
+  const ROOFS = ['#9a5238', '#5f7a86', '#b8683a', '#7a8450', '#8a4a36', '#a8843c'];
+  /** Things to crouch behind, kept clear of where a door opens. */
+  function clutter(b, X, Z, n, r0, r1, rnd) {
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * 6.28, d = r0 + rnd() * (r1 - r0);
+      const x = X + Math.sin(a) * d, z = Z + Math.cos(a) * d;
+      if (blocked(x, z, 1.5)) continue;
+      const k = i % 3;
+      if (k === 0) { b.box('#8a6238', 1.0, 0.9, 1.0, x, PAD_H + 0.45, z, rnd() * 3).box('#6e4a2c', 1.06, 0.1, 1.06, x, PAD_H + 0.6, z, 0); addCircle(x, z, 0.62, true); }
+      else if (k === 1) { b.cyl('#a94f30', 0.36, 0.42, 0.9, x, PAD_H + 0.45, z, 8); addCircle(x, z, 0.42, true); }
+      else {                                                    // a cart
+        const ry = rnd() * 3;
+        b.box('#7d5634', 1.9, 0.5, 1.1, x, PAD_H + 0.75, z, ry).cyl('#523620', 0.42, 0.42, 0.14, x, PAD_H + 0.42, z, 10)
+          .box('#c9a070', 1.7, 0.3, 0.9, x, PAD_H + 1.1, z, ry);
+        addCircle(x, z, 0.85, true);
+      }
+    }
+  }
+  /** A waist-high wall: stops feet, not rounds. */
+  function fence(b, x0, z0, x1, z1, color = '#cfa878') {
+    const len = Math.hypot(x1 - x0, z1 - z0), a = Math.atan2(z1 - z0, x1 - x0);
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    b.box(color, len, 1.05, 0.45, cx, PAD_H + 0.52, cz, -a).box('#b98a56', len + 0.1, 0.12, 0.55, cx, PAD_H + 1.08, cz, -a);
+    addBox(cx, cz, len / 2, 0.24, a, true);
+  }
+
+  // Three hamlets you can tell apart from the skiff: a yard, a street, a compound.
   function buildHamlet(p, rnd) {
     const b = new Batch(), X = wx(p.x), Z = wz(p.z);
-    const roofsC = ['#9a5238', '#5f7a86', '#b8683a', '#7a8450'];
-    for (let i = 0; i < 4; i++) {
-      const A = Math.PI / 4 + i * Math.PI / 2 + (rnd() - 0.5) * 0.2, d = 8.4;
-      // the door looks at the yard
-      house(b, X + Math.sin(A) * d, Z + Math.cos(A) * d, 5.4 + (i % 2) * 0.8, 4.4, Math.PI - A,
-        { roof: roofsC[(i + p.name.length) % 4], rug: roofsC[(i + 1) % 4], poi: p.id });
+    const roof = (i) => ROOFS[(i + p.name.length) % ROOFS.length];
+    const opt = (i, extra = {}) => ({ roof: roof(i), rug: roof(i + 2), poi: p.id, ...extra });
+    if (p.hamlet === 0) {
+      // houses round a yard, every door looking at it
+      for (let i = 0; i < 4; i++) {
+        const A = Math.PI / 4 + i * Math.PI / 2 + (rnd() - 0.5) * 0.2, big = i === 1, ruin = i === 3 && !p.wellYard;
+        const d = big ? 9.2 : 8.4;
+        house(b, X + Math.sin(A) * d, Z + Math.cos(A) * d, big ? 8.4 : 5.4 + (i % 2) * 0.6, big ? 5.2 : 4.4, Math.PI - A, opt(i, { big, ruin }));
+      }
+      if (p.wellYard) {
+        b.cyl('#b8a48a', 1.3, 1.3, 0.9, X, PAD_H + 0.45, Z, 10).cyl('#2a4a58', 1.05, 1.05, 0.1, X, PAD_H + 0.86, Z, 10)
+          .cyl('#6e4a2c', 0.08, 0.08, 2.4, X - 1.2, PAD_H + 1.6, Z, 5).cyl('#6e4a2c', 0.08, 0.08, 2.4, X + 1.2, PAD_H + 1.6, Z, 5)
+          .box('#6e4a2c', 3.0, 0.14, 0.14, X, PAD_H + 2.8, Z).add('#b8432f', new THREE.ConeGeometry(2.0, 0.9, 4), X, PAD_H + 3.3, Z, 0, Math.PI / 4);
+        addCircle(X, Z, 1.4);
+      } else lamp(b, p.x + 0.2, p.z - 0.2);
+      clutter(b, X, Z, 5, 1.8, 3.4, rnd);
+    } else if (p.hamlet === 1) {
+      // a street: a row each side, doors facing across it
+      [[-8.2, -6.4, 0, false], [0, -6.8, 0, true], [8.6, -6.4, 0, false], [-5, 6.6, Math.PI, true], [6.2, 6.4, Math.PI, false]].forEach(([lx, lz, a, big], i) => {
+        house(b, X + lx, Z + lz, big ? 8.2 : 5.6, big ? 5.2 : 4.4, a, opt(i, { big, ruin: i === 4 }));
+      });
+      lamp(b, p.x - 3.6, p.z); lamp(b, p.x + 4.4, p.z);
+      clutter(b, X, Z, 5, 0.5, 2.0, rnd);
+      fence(b, X - 12.6, Z - 2.2, X - 12.6, Z + 2.2);
+    } else {
+      // a compound: a waist-high wall with two gates, and a yard to hold
+      const S = 10.4;
+      fence(b, X - S, Z - S, X + S, Z - S); fence(b, X - S, Z + S, X + S, Z + S);
+      fence(b, X - S, Z - S, X - S, Z - 1.8); fence(b, X - S, Z + 1.8, X - S, Z + S);
+      fence(b, X + S, Z - S, X + S, Z - 1.8); fence(b, X + S, Z + 1.8, X + S, Z + S);
+      house(b, X, Z - 5.4, 8.6, 5.2, 0, opt(0, { big: true }));
+      house(b, X - 5.4, Z + 5.6, 5.6, 4.4, Math.PI, opt(1));
+      house(b, X + 5.2, Z + 5.6, 5.4, 4.4, Math.PI, opt(2, { ruin: true }));
+      lamp(b, p.x + 0.2, p.z + 0.6);
+      clutter(b, X, Z + 0.6, 6, 1.0, 2.6, rnd);
     }
-    // the yard: a well-lamp and things to crouch behind
-    for (let i = 0; i < 5; i++) {
-      const a = rnd() * 6.28, d = 1.6 + rnd() * 3.4;
-      const x = X + Math.sin(a) * d, z = Z + Math.cos(a) * d;
-      if (i % 2) { b.box('#8a6238', 1.0, 0.9, 1.0, x, PAD_H + 0.45, z, rnd() * 3); addCircle(x, z, 0.62, true); }
-      else { b.cyl('#a94f30', 0.36, 0.42, 0.9, x, PAD_H + 0.45, z, 8); addCircle(x, z, 0.42, true); }
-    }
-    lamp(b, p.x + 0.2, p.z - 0.2);
     b.build();
-    ringSpots(p, 6, 1, 6, rnd);
+    ringSpots(p, 7, 0.5, 7, rnd);
   }
 
   // ---- the places ------------------------------------------------------------
@@ -682,8 +911,8 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     for (let s = 0; s < 4; s++) {                              // a stair up each face
       const a = (s / 4) * Math.PI * 2;
       for (let k = 0; k < 12; k++) {
-        const d = 9.6 - k * 0.56;
-        b.box('#e8c898', 2.6, 0.28, 0.6, X + Math.sin(a) * d, PAD_H + 0.3 + k * 0.42, Z + Math.cos(a) * d, a);
+        const d = 10.6 - k * 0.72;
+        b.box('#e8c898', 2.6, 0.3, 0.8, X + Math.sin(a) * d, PAD_H + 0.3 + k * 0.57, Z + Math.cos(a) * d, a);
       }
     }
     for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {     // corner obelisks
@@ -789,15 +1018,16 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     };
     // four walls with a gate in the north and the west
     wallSeg(-S, -S, -2.6, -S); wallSeg(2.6, -S, S, -S);
-    wallSeg(-S, S, S, S); wallSeg(S, -S, S, S);
+    wallSeg(-S, S, -2.6, S); wallSeg(2.6, S, S, S); wallSeg(S, -S, S, S);
     wallSeg(-S, -S, -S, -2.6); wallSeg(-S, 2.6, -S, S);
     for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
       const tx = X + sx * S, tz = Z + sz * S;
       b.cyl('#d9b27c', 1.9, 2.1, 5.6, tx, PAD_H + 2.8, tz, 8).add('#b8432f', new THREE.ConeGeometry(2.4, 2.2, 8), tx, PAD_H + 6.7, tz);
       addCircle(tx, tz, 2.1);
     }
-    house(b, X + 3.4, Z + 3.6, 6.6, 6.0, Math.PI, { roof: '#8a4a36', wall: '#d9b27c', poi: p.id });
-    house(b, X - 5.6, Z + 4.6, 5.0, 4.4, -Math.PI / 2, { roof: '#8a4a36', wall: '#d9b27c', poi: p.id });
+    house(b, X + 5.0, Z - 4.6, 8.6, 5.4, 0, { roof: '#8a4a36', wall: '#d9b27c', poi: p.id, big: true });
+    house(b, X - 6.0, Z + 1.0, 5.0, 4.4, -Math.PI / 2, { roof: '#8a4a36', wall: '#d9b27c', poi: p.id });
+    clutter(b, X + 2, Z + 5.5, 6, 0.5, 4, rnd);
     b.build();
     addGlow(root, X - 2.6, PAD_H + 2.6, Z - S, 2.6, '#ffb45c'); addGlow(root, X + 2.6, PAD_H + 2.6, Z - S, 2.6, '#ffb45c');
     ringSpots(p, 13, 0.5, 9.5, rnd);
@@ -805,11 +1035,11 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
 
   function buildBones(rnd) {
     const p = P.bones, b = new Batch(), X = wx(p.x), Z = wz(p.z), bone = '#efe6d0', shade = '#d8ccb0';
-    for (let i = 0; i < 9; i++) b.cyl(i % 2 ? bone : shade, 0.5, 0.5, 1.3, X - 8 + i * 2, PAD_H + 3.4, Z, 7, 0);
+    for (let i = 0; i < 9; i++) b.add(i % 2 ? bone : shade, new THREE.CylinderGeometry(0.46, 0.46, 1.7, 7).rotateZ(Math.PI / 2), X - 8 + i * 2, PAD_H + 3.05, Z);
     for (let i = 0; i < 7; i++) {                              // the ribs, in pairs
       const x = X - 6.5 + i * 2.1, r = 3.4 - Math.abs(i - 3) * 0.3;
       for (const s of [-1, 1]) {
-        b.add(bone, new THREE.TorusGeometry(r, 0.24, 6, 12, Math.PI * 0.62), x, PAD_H + 3.3 - r * 0.1, Z, 0, s * Math.PI / 2, 0);
+        b.add(bone, new THREE.TorusGeometry(r, 0.24, 6, 12, Math.PI * 0.56), x, PAD_H - 0.25, Z, 0, -s * Math.PI / 2, 0);
         addCircle(x, Z + s * r * 0.98, 0.34);
       }
     }
@@ -872,25 +1102,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     ringSpots(p, 9, 2, 12, rnd);
   }
 
-  function buildWell(rnd) {
-    const p = P.well, b = new Batch(), X = wx(p.x), Z = wz(p.z);
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + 0.3, d = 7.6;
-      const x = X + Math.sin(a) * d, z = Z + Math.cos(a) * d;
-      b.cyl(i % 2 ? '#d9a66c' : '#e0b27c', 1.9, 2.05, 2.5, x, PAD_H + 1.25, z, 9)
-        .add('#c98452', new THREE.SphereGeometry(1.95, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), x, PAD_H + 2.5, z, 0, 0, 0, 1, 0.62, 1)
-        .box('#3a2a1e', 0.9, 1.5, 0.2, x - Math.sin(a) * 1.95, PAD_H + 0.75, z - Math.cos(a) * 1.95, a);
-      addCircle(x, z, 2.1);
-    }
-    b.cyl('#b8a48a', 1.3, 1.3, 0.9, X, PAD_H + 0.45, Z, 10).cyl('#2a4a58', 1.05, 1.05, 0.1, X, PAD_H + 0.86, Z, 10)
-      .cyl('#6e4a2c', 0.08, 0.08, 2.4, X - 1.2, PAD_H + 1.6, Z, 5).cyl('#6e4a2c', 0.08, 0.08, 2.4, X + 1.2, PAD_H + 1.6, Z, 5)
-      .box('#6e4a2c', 3.0, 0.14, 0.14, X, PAD_H + 2.8, Z).add('#b8432f', new THREE.ConeGeometry(2.0, 0.9, 4), X, PAD_H + 3.3, Z, 0, Math.PI / 4);
-    b.build();
-    addCircle(X, Z, 1.4);
-    ringSpots(p, 10, 2.2, 11.5, rnd);
-  }
-
-  /** The Dawnskiff: the ship everybody jumps from. A hull under a striped bag. */
+    /** The Dawnskiff: the ship everybody jumps from. A hull under a striped bag. */
   function buildSkiff() {
     const b = new Batch();
     b.box('#6e4a2c', 3.2, 1.0, 9, 0, 0, 0).box('#8a6238', 3.6, 0.18, 9.4, 0, 0.55, 0).box('#523620', 2.2, 0.8, 2.4, 0, -0.5, -4.8, 0, 0.3)
@@ -925,11 +1137,11 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     buildSky();
     buildGround();
     buildZiggurat(rnd); buildWreck(rnd); buildOasis(rnd); buildBazaar(rnd); buildFort(rnd);
-    buildBones(rnd); buildSteps(rnd); buildMills(rnd); buildWell(rnd);
-    for (const p of POIS) if (p.hamlet) buildHamlet(p, rnd);
+    buildBones(rnd); buildSteps(rnd); buildMills(rnd);
+    for (const p of POIS) if (p.hamlet !== undefined) buildHamlet(p, rnd);
     const lamps = new Batch();
     for (const [ax, az, bx, bz] of ROADS) {
-      const len = Math.hypot(bx - ax, bz - az), n = Math.floor(len / 15);
+      const len = Math.hypot(bx - ax, bz - az), n = Math.floor(len / 22);
       for (let i = 1; i < n; i++) {
         const t = i / n, nx = -(bz - az) / len, nz = (bx - ax) / len;
         const dx = ax + (bx - ax) * t + nx * 2.3, dz = az + (bz - az) * t + nz * 2.3;
@@ -940,13 +1152,25 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
     lamps.build();
     buildScatter(rnd);
     ringSpots(P.canyon, 10, 0.5, 7, rnd);
-    for (let i = 0, t = 0; i < 46 && t < 900; t++) {          // loot out in the open, too
+    for (let i = 0, t = 0; i < 170 && t < 5000; t++) {        // loot out in the open, too
       const [dx, dz] = spot(rnd, 8, ISLE_R - 8);
       const x = wx(dx), z = wz(dz);
       if (poiDist(dx, dz).d < 3 || !walkable(x, z) || blocked(x, z, 1)) continue;
       lootSpots.push({ x, z, poi: null }); i++;
     }
     skiff = buildSkiff();
+    indexCollision();
+    houseGrid = new Map();
+    houses.forEach((h, i) => {
+      const r = Math.hypot(h.hw, h.hd);
+      for (let ix = Math.floor((h.x - r) / 16); ix <= Math.floor((h.x + r) / 16); ix++) {
+        for (let iz = Math.floor((h.z - r) / 16); iz <= Math.floor((h.z + r) / 16); iz++) {
+          const k = ix * 8192 + iz;
+          if (!houseGrid.has(k)) houseGrid.set(k, []);
+          houseGrid.get(k).push(i);
+        }
+      }
+    });
   }
 
   /** A free standing spot in a distance band from the middle. */
@@ -1080,6 +1304,7 @@ export function createRoyaleWorld(scene, terrain, opts = {}) {
   return {
     state, root, enter, leave, update, setRing, walkable, blocked, shotBlocked, losClear,
     randomSpot, placeAt, heightAt: isleHeight, lootSpots, mesas, mulberry, houses, houseAt,
+    edgeAt: (x, z) => edgeR(x - ROYALE_CX, z - ROYALE_CZ),
     get skiff() { return skiff; }, glow: () => glowTex,
   };
 }
